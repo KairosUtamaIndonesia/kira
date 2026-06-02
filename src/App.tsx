@@ -1,5 +1,7 @@
+import { AppShell } from "@/features/app-shell";
+
 function App() {
-  return <main>Hello Kira!</main>;
+  return <AppShell />;
 }
 
 export default App;

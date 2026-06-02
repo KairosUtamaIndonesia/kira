@@ -8,6 +8,7 @@
     "check": "bun run check:rust && bun run build",
     "check:rust": "cd src-tauri && cargo check",
     "dev": "vite",
+    "devtools": "react-devtools",
     "format": "oxfmt .",
     "format:all": "bun run format && bun run format:rust",
     "format:all:check": "bun run format:check && bun run format:rust:check",
@@ -46,6 +47,7 @@
     "@vitejs/plugin-react": "^4.6.0",
     "oxfmt": "^0.53.0",
     "oxlint": "^1.68.0",
+    "react-devtools": "^7.0.1",
     "typescript": "~5.8.3",
     "vite": "^7.0.4"
   }
