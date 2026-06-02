@@ -1,5 +1,6 @@
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { MouseEvent, PointerEvent } from "react";
+
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useState } from "react";
 
 const appWindow = getCurrentWindow();
@@ -15,7 +16,9 @@ function describeTitleBarError(error: unknown) {
 function useTitleBarDrag() {
   const [titleBarError, setTitleBarError] = useState<string>();
 
-  async function handleTitleBarMouseDown(event: MouseEvent<HTMLElement> | PointerEvent<HTMLElement>) {
+  async function handleTitleBarMouseDown(
+    event: MouseEvent<HTMLElement> | PointerEvent<HTMLElement>,
+  ) {
     if (event.buttons !== 1) {
       return;
     }

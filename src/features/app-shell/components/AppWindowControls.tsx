@@ -17,10 +17,7 @@ function describeWindowControlError(action: WindowControlAction, error: unknown)
 function AppWindowControls() {
   const [windowControlError, setWindowControlError] = useState<string>();
 
-  async function runWindowControl(
-    action: WindowControlAction,
-    command: () => Promise<void>,
-  ) {
+  async function runWindowControl(action: WindowControlAction, command: () => Promise<void>) {
     setWindowControlError(undefined);
 
     try {
@@ -31,11 +28,7 @@ function AppWindowControls() {
   }
 
   return (
-    <div
-      data-window-controls
-      className="flex items-center"
-      aria-label="Window controls"
-    >
+    <div data-window-controls className="flex items-center" aria-label="Window controls">
       <button
         type="button"
         className="flex size-9 items-center justify-center text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"

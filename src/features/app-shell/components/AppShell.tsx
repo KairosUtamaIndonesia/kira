@@ -1,8 +1,4 @@
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "@/components/ui/resizable";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 
 import { AppInspector } from "./AppInspector";
 import { AppSidebar } from "./AppSidebar";
@@ -15,10 +11,7 @@ function AppShell() {
 
   return (
     <div className="grid h-dvh grid-rows-[minmax(0,1fr)_1.75rem] overflow-hidden bg-background text-foreground">
-      <ResizablePanelGroup
-        orientation="horizontal"
-        className="min-h-0 border-b border-border"
-      >
+      <ResizablePanelGroup orientation="horizontal" className="min-h-0 border-b border-border">
         <ResizablePanel
           className="min-h-0"
           defaultSize="16rem"

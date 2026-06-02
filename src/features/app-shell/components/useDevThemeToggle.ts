@@ -9,7 +9,11 @@ function isEditableTarget(target: EventTarget | null) {
     return true;
   }
 
-  return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement
+  );
 }
 
 function useDevThemeToggle() {
