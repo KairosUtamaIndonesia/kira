@@ -5,6 +5,10 @@ import { defineConfig } from "vite";
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
+// @ts-expect-error process is a nodejs global
+const devPort = Number.parseInt(process.env.KIRA_VITE_PORT ?? "1420", 10);
+// @ts-expect-error process is a nodejs global
+const hmrPort = Number.parseInt(process.env.KIRA_VITE_HMR_PORT ?? "1421", 10);
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
@@ -20,16 +24,16 @@ export default defineConfig(async () => ({
   //
   // 1. prevent Vite from obscuring rust errors
   clearScreen: false,
-  // 2. tauri expects a fixed port, fail if that port is not available
+  // 2. tauri expects a known port, provided by scripts/tauri.ts for random-port dev runs
   server: {
-    port: 1420,
+    port: devPort,
     strictPort: true,
     host: host || false,
     hmr: host
       ? {
           protocol: "ws",
           host,
-          port: 1421,
+          port: hmrPort,
         }
       : undefined,
     watch: {

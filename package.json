@@ -20,7 +20,7 @@
     "lint:fix": "oxlint --fix",
     "lint:rust": "cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings",
     "preview": "vite preview",
-    "tauri": "tauri",
+    "tauri": "bun scripts/tauri.ts",
     "test:rust": "cd src-tauri && cargo test"
   },
   "dependencies": {
