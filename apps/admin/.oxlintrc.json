@@ -5,6 +5,7 @@
     "react",
     "react-hooks",
     "jsx-a11y",
+    "nextjs",
     "import",
     "promise",
     "unicorn",
@@ -60,12 +61,13 @@
   },
   "env": {
     "browser": true,
+    "node": true,
     "es2024": true
   },
   "settings": {
     "react": {
-      "version": "19.1"
+      "version": "19.2"
     }
   },
-  "ignorePatterns": ["apps", "node_modules"]
+  "ignorePatterns": [".next", "node_modules", "next-env.d.ts"]
 }

@@ -1,6 +1,10 @@
 {
   "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxfmt/configuration_schema.json",
-  "ignorePatterns": ["apps", "node_modules", "bun.lock"],
+  "ignorePatterns": [".next", "node_modules", "next-env.d.ts"],
+  "sortTailwindcss": {
+    "stylesheet": "./app/globals.css",
+    "functions": ["clsx", "cn", "cva"]
+  },
   "sortImports": {
     "groups": [
       "type-import",

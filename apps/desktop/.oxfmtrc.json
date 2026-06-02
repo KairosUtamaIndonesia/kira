@@ -1,6 +1,10 @@
 {
   "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxfmt/configuration_schema.json",
-  "ignorePatterns": ["apps", "node_modules", "bun.lock"],
+  "ignorePatterns": ["dist", "node_modules", "src-tauri/target", "src-tauri/gen", "bun.lock"],
+  "sortTailwindcss": {
+    "stylesheet": "./src/main.css",
+    "functions": ["clsx", "cn", "cva"]
+  },
   "sortImports": {
     "groups": [
       "type-import",

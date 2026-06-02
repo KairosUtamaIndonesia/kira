@@ -67,5 +67,5 @@
       "version": "19.1"
     }
   },
-  "ignorePatterns": ["apps", "node_modules"]
+  "ignorePatterns": ["dist", "node_modules", "src-tauri/target", "src-tauri/gen"]
 }

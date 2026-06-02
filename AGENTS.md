@@ -16,17 +16,23 @@
 
 ## Project overview
 
-Kira v3 is a Tauri 2 desktop app with a Vite React frontend and Rust backend.
+Kira v3 is a Bun/Turborepo monorepo.
 
-- Frontend root: `src/`
-- Tauri/Rust backend: `src-tauri/`
-- Vite entry: `src/main.tsx`
-- Global stylesheet: `src/main.css`
-- Main React app: `src/App.tsx`
-- shadcn/ui components: `src/components/ui/`
-- Shared frontend helpers: `src/lib/`
-- Rust app library: `src-tauri/src/lib.rs`
-- Rust binary entrypoint: `src-tauri/src/main.rs`
+- Desktop app: `apps/desktop/` — Tauri 2 app with a Vite React frontend and Rust backend.
+- Admin app: `apps/admin/` — hosted Next.js admin panel/API.
+- Shared TypeScript configs: `packages/tsconfig/`.
+
+Desktop paths:
+
+- Frontend root: `apps/desktop/src/`
+- Tauri/Rust backend: `apps/desktop/src-tauri/`
+- Vite entry: `apps/desktop/src/main.tsx`
+- Global stylesheet: `apps/desktop/src/main.css`
+- Main React app: `apps/desktop/src/App.tsx`
+- shadcn/ui components: `apps/desktop/src/components/ui/`
+- Shared desktop frontend helpers: `apps/desktop/src/lib/`
+- Rust app library: `apps/desktop/src-tauri/src/lib.rs`
+- Rust binary entrypoint: `apps/desktop/src-tauri/src/main.rs`
 
 ## Frontend stack
 
@@ -62,11 +68,16 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 ```
 
-Alias config lives in:
+Desktop alias config lives in:
 
-- `tsconfig.json`
-- `vite.config.ts`
-- `components.json`
+- `apps/desktop/tsconfig.json`
+- `apps/desktop/vite.config.ts`
+- `apps/desktop/components.json`
+
+Admin alias config lives in:
+
+- `apps/admin/tsconfig.json`
+- `apps/admin/components.json`
 
 ## Formatting and linting
 
@@ -109,7 +120,7 @@ bun run check
 
 - For any UI, styling, component, Tailwind, or design-token change, read `docs/style-guide.md` before editing.
 - Also load and follow the `css-canon` skill for CSS/Tailwind work.
-- `src/main.css` is the source of truth for design tokens; do not hardcode colors in components when a token exists.
+- `apps/desktop/src/main.css` is the source of truth for desktop design tokens; do not hardcode colors in components when a token exists.
 
 ## Coding conventions
 
@@ -127,9 +138,10 @@ bun run check
 Do not edit generated or build output unless explicitly asked.
 
 - `dist/`
+- `.next/`
 - `node_modules/`
-- `src-tauri/target/`
-- `src-tauri/gen/`
+- `apps/desktop/src-tauri/target/`
+- `apps/desktop/src-tauri/gen/`
 
 ## Common commands
 
