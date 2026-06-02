@@ -30,6 +30,10 @@ _Avoid_: Terminal instance when referring to the backend process
 A workspace panel or future domain surface for interacting with an AI agent run.
 _Avoid_: Chat when the interaction includes tools, execution, or run state
 
+**Agent Thread**:
+A durable conversational/workflow thread inside a Session for interacting with agent activity, messages, Runs, and future tool execution state.
+_Avoid_: Chat when the interaction includes tools, execution, or run state
+
 **Run**:
 A tracked execution of an agent, command, or workflow.
 _Avoid_: Job unless referring to an external scheduler concept
@@ -47,5 +51,5 @@ The bottom application area for concise global state and operational feedback.
 _Avoid_: Footer
 
 **Persistence Store**:
-The app-owned durable data store, currently expected to be SQLite through the Rust backend.
+The app-owned durable data store, currently SQLite through the Rust backend.
 _Avoid_: Database when discussing the product boundary rather than the implementation

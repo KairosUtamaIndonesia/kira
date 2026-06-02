@@ -7,7 +7,10 @@
 #![deny(clippy::unwrap_used)]
 #![warn(clippy::pedantic)]
 
+mod persistence;
 mod terminal;
+
+use tauri::Manager;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -25,9 +28,16 @@ fn greet(name: &str) -> String {
 pub fn run() -> tauri::Result<()> {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            let persistence_store =
+                tauri::async_runtime::block_on(persistence::initialize(app.handle()))?;
+            app.manage(persistence_store);
+            Ok(())
+        })
         .manage(terminal::TerminalRegistry::default())
         .invoke_handler(tauri::generate_handler![
             greet,
+            persistence::persistence_store_health,
             terminal::terminal_kill,
             terminal::terminal_resize,
             terminal::terminal_spawn,
