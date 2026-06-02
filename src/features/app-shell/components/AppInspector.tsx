@@ -23,7 +23,7 @@ function AppInspector() {
           <output className="sr-only">{titleBarError}</output>
         )}
       </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-3 p-3">
+      <div className="flex min-h-0 flex-1 scrollbar-sleek flex-col gap-3 overflow-auto p-3">
         <div className="rounded-xl border border-border p-3 text-sm text-muted-foreground">
           Contextual details and actions for the active workspace panel.
         </div>

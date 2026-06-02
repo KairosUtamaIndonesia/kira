@@ -9,6 +9,7 @@
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: "Geist Variable", sans-serif;
+  --font-mono: "SFMono-Regular", "Cascadia Code", "Liberation Mono", Consolas, monospace;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -22,6 +23,22 @@
   --color-chart-3: var(--chart-3);
   --color-chart-2: var(--chart-2);
   --color-editor-surface: var(--editor-surface);
+  --color-terminal-ansi-black: var(--terminal-ansi-black);
+  --color-terminal-ansi-red: var(--terminal-ansi-red);
+  --color-terminal-ansi-green: var(--terminal-ansi-green);
+  --color-terminal-ansi-yellow: var(--terminal-ansi-yellow);
+  --color-terminal-ansi-blue: var(--terminal-ansi-blue);
+  --color-terminal-ansi-magenta: var(--terminal-ansi-magenta);
+  --color-terminal-ansi-cyan: var(--terminal-ansi-cyan);
+  --color-terminal-ansi-white: var(--terminal-ansi-white);
+  --color-terminal-ansi-bright-black: var(--terminal-ansi-bright-black);
+  --color-terminal-ansi-bright-red: var(--terminal-ansi-bright-red);
+  --color-terminal-ansi-bright-green: var(--terminal-ansi-bright-green);
+  --color-terminal-ansi-bright-yellow: var(--terminal-ansi-bright-yellow);
+  --color-terminal-ansi-bright-blue: var(--terminal-ansi-bright-blue);
+  --color-terminal-ansi-bright-magenta: var(--terminal-ansi-bright-magenta);
+  --color-terminal-ansi-bright-cyan: var(--terminal-ansi-bright-cyan);
+  --color-terminal-ansi-bright-white: var(--terminal-ansi-bright-white);
   --color-git-decoration-added: var(--git-decoration-added);
   --color-git-decoration-modified: var(--git-decoration-modified);
   --color-git-decoration-deleted: var(--git-decoration-deleted);
@@ -91,6 +108,22 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  --terminal-ansi-black: oklch(0.205 0 0);
+  --terminal-ansi-red: oklch(0.52 0.18 28);
+  --terminal-ansi-green: oklch(0.45 0.11 145);
+  --terminal-ansi-yellow: oklch(0.55 0.12 82);
+  --terminal-ansi-blue: oklch(0.48 0.12 252);
+  --terminal-ansi-magenta: oklch(0.5 0.12 320);
+  --terminal-ansi-cyan: oklch(0.5 0.1 205);
+  --terminal-ansi-white: oklch(0.556 0 0);
+  --terminal-ansi-bright-black: oklch(0.708 0 0);
+  --terminal-ansi-bright-red: oklch(0.6 0.2 28);
+  --terminal-ansi-bright-green: oklch(0.56 0.13 145);
+  --terminal-ansi-bright-yellow: oklch(0.66 0.14 82);
+  --terminal-ansi-bright-blue: oklch(0.58 0.14 252);
+  --terminal-ansi-bright-magenta: oklch(0.6 0.14 320);
+  --terminal-ansi-bright-cyan: oklch(0.6 0.12 205);
+  --terminal-ansi-bright-white: oklch(0.145 0 0);
   --git-decoration-added: #587c0c;
   --git-decoration-modified: #895503;
   --git-decoration-deleted: #ad0707;
@@ -133,6 +166,22 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+  --terminal-ansi-black: oklch(0.145 0 0);
+  --terminal-ansi-red: oklch(0.704 0.191 22.216);
+  --terminal-ansi-green: oklch(0.72 0.13 145);
+  --terminal-ansi-yellow: oklch(0.82 0.12 82);
+  --terminal-ansi-blue: oklch(0.7 0.12 252);
+  --terminal-ansi-magenta: oklch(0.74 0.13 320);
+  --terminal-ansi-cyan: oklch(0.76 0.1 205);
+  --terminal-ansi-white: oklch(0.87 0 0);
+  --terminal-ansi-bright-black: oklch(0.556 0 0);
+  --terminal-ansi-bright-red: oklch(0.78 0.18 22.216);
+  --terminal-ansi-bright-green: oklch(0.82 0.14 145);
+  --terminal-ansi-bright-yellow: oklch(0.9 0.12 82);
+  --terminal-ansi-bright-blue: oklch(0.8 0.12 252);
+  --terminal-ansi-bright-magenta: oklch(0.82 0.13 320);
+  --terminal-ansi-bright-cyan: oklch(0.84 0.1 205);
+  --terminal-ansi-bright-white: oklch(0.985 0 0);
   --git-decoration-added: #81b88b;
   --git-decoration-modified: #e2c08d;
   --git-decoration-deleted: #c74e39;
@@ -142,7 +191,45 @@
   --git-decoration-ignored: #6e6e6e;
 }
 
+@utility scrollbar-sleek {
+  @apply scrollbar-thin scrollbar-thumb-muted-foreground/30 scrollbar-track-transparent scrollbar-gutter-stable hover:scrollbar-thumb-muted-foreground/50;
+}
+
+@utility scrollbar-editor {
+  @apply scrollbar-thin scrollbar-thumb-muted-foreground/30 scrollbar-track-editor-surface scrollbar-gutter-stable hover:scrollbar-thumb-muted-foreground/50;
+}
+
+.wterm.theme-kira {
+  overflow-anchor: none;
+
+  --term-bg: var(--editor-surface);
+  --term-fg: var(--foreground);
+  --term-cursor: var(--ring);
+  --term-color-0: var(--terminal-ansi-black);
+  --term-color-1: var(--terminal-ansi-red);
+  --term-color-2: var(--terminal-ansi-green);
+  --term-color-3: var(--terminal-ansi-yellow);
+  --term-color-4: var(--terminal-ansi-blue);
+  --term-color-5: var(--terminal-ansi-magenta);
+  --term-color-6: var(--terminal-ansi-cyan);
+  --term-color-7: var(--terminal-ansi-white);
+  --term-color-8: var(--terminal-ansi-bright-black);
+  --term-color-9: var(--terminal-ansi-bright-red);
+  --term-color-10: var(--terminal-ansi-bright-green);
+  --term-color-11: var(--terminal-ansi-bright-yellow);
+  --term-color-12: var(--terminal-ansi-bright-blue);
+  --term-color-13: var(--terminal-ansi-bright-magenta);
+  --term-color-14: var(--terminal-ansi-bright-cyan);
+  --term-color-15: var(--terminal-ansi-bright-white);
+  --term-font-family: var(--font-mono);
+  --term-font-size: 0.875rem;
+  --term-line-height: 1.4;
+  --term-row-height: 1.225rem;
+}
+
 .kira-dockview {
+  @apply scrollbar-editor;
+
   --dv-tabs-and-actions-container-height: 2.75rem;
   --dv-tabs-and-actions-container-font-size: 0.875rem;
   --dv-group-view-background-color: var(--editor-surface);
@@ -161,11 +248,7 @@
   --dv-sash-color: transparent;
   --dv-active-sash-color: color-mix(in srgb, var(--ring) 70%, transparent);
   --dv-active-sash-transition-delay: 0s;
-  --dv-drag-over-background-color: color-mix(
-    in srgb,
-    var(--primary) 12%,
-    transparent
-  );
+  --dv-drag-over-background-color: color-mix(in srgb, var(--primary) 12%, transparent);
   --dv-drag-over-border-color: var(--ring);
   --dv-icon-hover-background-color: var(--accent);
   --dv-tab-border-radius: 0;

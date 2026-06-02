@@ -21,7 +21,7 @@ function AppSidebar() {
           <output className="sr-only">{titleBarError}</output>
         )}
       </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-3 p-3">
+      <div className="flex min-h-0 flex-1 scrollbar-sleek flex-col gap-3 overflow-auto p-3">
         <div className="text-xs font-semibold tracking-wide text-sidebar-foreground/70 uppercase">
           Navigate
         </div>

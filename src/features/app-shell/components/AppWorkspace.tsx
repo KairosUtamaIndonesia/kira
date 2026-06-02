@@ -1,8 +1,20 @@
 import {
   DockviewReact,
   type DockviewReadyEvent,
+  type IDockviewHeaderActionsProps,
   type IDockviewPanelProps,
 } from "dockview-react";
+import { Plus, Terminal as TerminalIcon } from "lucide-react";
+
+import { buttonVariants } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+import { TerminalPanel, type TerminalPanelParams } from "./TerminalPanel";
 
 type WorkspacePanelParams = {
   description: string;
@@ -21,8 +33,45 @@ function WorkspacePanel({ api, params }: IDockviewPanelProps<WorkspacePanelParam
   );
 }
 
+function WorkspaceHeaderActions({ containerApi, group }: IDockviewHeaderActionsProps) {
+  function addTerminalPanel() {
+    containerApi.addPanel<TerminalPanelParams>({
+      id: `terminal-${crypto.randomUUID()}`,
+      component: "terminalPanel",
+      title: "Terminal",
+      params: {
+        terminalId: crypto.randomUUID(),
+      },
+      position: {
+        referenceGroup: group,
+        direction: "within",
+      },
+    });
+  }
+
+  return (
+    <div className="flex h-full items-center px-1">
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          aria-label="Add workspace panel"
+          className={buttonVariants({ variant: "ghost", size: "icon-sm" })}
+        >
+          <Plus className="size-4" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-auto min-w-44">
+          <DropdownMenuItem onClick={addTerminalPanel}>
+            <TerminalIcon className="size-4 text-muted-foreground" />
+            <span>New Terminal (shell)</span>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
 const workspaceComponents = {
   workspacePanel: WorkspacePanel,
+  terminalPanel: TerminalPanel,
 };
 
 function handleWorkspaceReady(event: DockviewReadyEvent) {
@@ -59,6 +108,7 @@ function AppWorkspace() {
         dndStrategy="pointer"
         hideBorders
         onReady={handleWorkspaceReady}
+        rightHeaderActionsComponent={WorkspaceHeaderActions}
       />
     </main>
   );
