@@ -5,13 +5,22 @@
   "type": "module",
   "scripts": {
     "build": "tsc && vite build",
+    "check": "bun run check:rust && bun run build",
+    "check:rust": "cd src-tauri && cargo check",
     "dev": "vite",
     "format": "oxfmt .",
+    "format:all": "bun run format && bun run format:rust",
+    "format:all:check": "bun run format:check && bun run format:rust:check",
     "format:check": "oxfmt --check .",
+    "format:rust": "cd src-tauri && cargo fmt",
+    "format:rust:check": "cd src-tauri && cargo fmt --check",
     "lint": "oxlint",
+    "lint:all": "bun run lint && bun run lint:rust",
     "lint:fix": "oxlint --fix",
+    "lint:rust": "cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "test:rust": "cd src-tauri && cargo test"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
