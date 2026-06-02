@@ -12,7 +12,7 @@
     "check": "turbo check",
     "dev": "turbo dev",
     "dev:admin": "turbo dev --filter=@kira/admin",
-    "dev:desktop": "turbo dev --filter=@kira/desktop",
+    "dev:desktop": "turbo tauri:dev --filter=@kira/desktop",
     "format": "oxfmt AGENTS.md README.md docs package.json turbo.json .oxfmtrc.json .oxlintrc.json && turbo format",
     "format:all": "turbo format:all",
     "format:all:check": "turbo format:all:check",

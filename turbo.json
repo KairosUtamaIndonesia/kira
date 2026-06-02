@@ -45,6 +45,10 @@
       "cache": false,
       "persistent": true
     },
+    "tauri:dev": {
+      "cache": false,
+      "persistent": true
+    },
     "dev": {
       "cache": false,
       "persistent": true
