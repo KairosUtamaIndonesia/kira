@@ -5,17 +5,17 @@ function AppInspector() {
   const { handleTitleBarMouseDown, titleBarError } = useTitleBarDrag();
 
   return (
-    <aside className="flex min-h-0 flex-col border-l border-border bg-card text-card-foreground">
+    <aside className="flex h-full min-h-0 flex-col bg-card text-card-foreground">
       <div
         role="toolbar"
         aria-label="Inspector title bar"
         tabIndex={-1}
-        className="flex h-11 shrink-0 items-center justify-between border-b border-border bg-background pl-3 select-none"
+        className="flex h-11 shrink-0 items-center justify-between border-b border-sidebar-border bg-sidebar pl-3 text-sidebar-foreground select-none"
         onMouseDown={(event) => {
           void handleTitleBarMouseDown(event);
         }}
       >
-        <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+        <span className="text-xs font-semibold tracking-wide text-sidebar-foreground/70 uppercase">
           Inspector
         </span>
         <AppWindowControls />

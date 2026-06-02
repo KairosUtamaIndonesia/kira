@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "dockview-react/dist/styles/dockview.css";
 @import "@fontsource-variable/geist";
 
 @custom-variant dark (&:is(.dark *));
@@ -139,6 +140,88 @@
   --git-decoration-untracked: #73c991;
   --git-decoration-copied: #73c991;
   --git-decoration-ignored: #6e6e6e;
+}
+
+.kira-dockview {
+  --dv-tabs-and-actions-container-height: 2.75rem;
+  --dv-tabs-and-actions-container-font-size: 0.875rem;
+  --dv-group-view-background-color: var(--editor-surface);
+  --dv-tabs-and-actions-container-background-color: var(--sidebar);
+  --dv-activegroup-visiblepanel-tab-background-color: var(--sidebar);
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--sidebar);
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--sidebar);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--sidebar);
+  --dv-activegroup-visiblepanel-tab-color: var(--foreground);
+  --dv-activegroup-hiddenpanel-tab-color: var(--muted-foreground);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--foreground);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--muted-foreground);
+  --dv-separator-border: var(--border);
+  --dv-separator-border-color: var(--border);
+  --dv-paneview-active-outline-color: var(--ring);
+  --dv-sash-color: transparent;
+  --dv-active-sash-color: color-mix(in srgb, var(--ring) 70%, transparent);
+  --dv-active-sash-transition-delay: 0s;
+  --dv-drag-over-background-color: color-mix(
+    in srgb,
+    var(--primary) 12%,
+    transparent
+  );
+  --dv-drag-over-border-color: var(--ring);
+  --dv-icon-hover-background-color: var(--accent);
+  --dv-tab-border-radius: 0;
+  --dv-border-radius: 0;
+  height: 100%;
+}
+
+.kira-dockview .dv-tabs-and-actions-container {
+  border-bottom: 1px solid var(--sidebar-border);
+}
+
+.kira-dockview .dv-tab {
+  border-top: 2px solid transparent;
+  border-right: 1px solid var(--sidebar-border);
+  border-left: 1px solid transparent;
+  color: var(--muted-foreground);
+}
+
+.kira-dockview .dv-tab.dv-active-tab {
+  border-top-color: var(--ring);
+  border-right-color: var(--border);
+  border-left-color: var(--border);
+}
+
+.kira-dockview .dv-tab:first-child,
+.kira-dockview .dv-tab.dv-active-tab:first-child {
+  border-left-color: transparent;
+}
+
+.kira-dockview .dv-tab:focus::after,
+.kira-dockview .dv-tab:focus-within::after {
+  outline: none !important;
+}
+
+.kira-dockview .dv-tab.dv-active-tab,
+.kira-dockview .dv-tab.dv-active-tab .dv-default-tab-content {
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+.kira-dockview .dv-tab:not(.dv-active-tab) .dv-default-tab-content {
+  color: var(--muted-foreground);
+}
+
+.kira-dockview .dv-sash {
+  border-radius: 9999px;
+}
+
+.kira-dockview .dv-split-view-container.dv-horizontal > .dv-sash-container > .dv-sash {
+  width: 0.25rem;
+  transform: translateX(-0.125rem);
+}
+
+.kira-dockview .dv-split-view-container.dv-vertical > .dv-sash-container > .dv-sash {
+  height: 0.25rem;
+  transform: translateY(-0.125rem);
 }
 
 @layer base {

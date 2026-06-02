@@ -1,44 +1,65 @@
-import { Search } from "lucide-react";
+import {
+  DockviewReact,
+  type DockviewReadyEvent,
+  type IDockviewPanelProps,
+} from "dockview-react";
 
-import { useTitleBarDrag } from "./useTitleBarDrag";
+type WorkspacePanelParams = {
+  description: string;
+};
+
+function WorkspacePanel({ api, params }: IDockviewPanelProps<WorkspacePanelParams>) {
+  return (
+    <section className="flex h-full flex-col bg-editor-surface p-4 text-foreground">
+      <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-border text-sm text-muted-foreground">
+        <div className="space-y-1 text-center">
+          <div className="font-medium text-foreground">{api.title}</div>
+          <div>{params.description}</div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+const workspaceComponents = {
+  workspacePanel: WorkspacePanel,
+};
+
+function handleWorkspaceReady(event: DockviewReadyEvent) {
+  event.api.addPanel({
+    id: "welcome",
+    component: "workspacePanel",
+    title: "Welcome",
+    params: {
+      description: "Primary workspace panel.",
+    },
+  });
+
+  event.api.addPanel({
+    id: "agent-session",
+    component: "workspacePanel",
+    title: "Agent Session",
+    params: {
+      description: "Split, dock, and rearrange panels from here.",
+    },
+    position: {
+      referencePanel: "welcome",
+      direction: "right",
+    },
+  });
+}
 
 function AppWorkspace() {
-  const { handleTitleBarMouseDown, titleBarError } = useTitleBarDrag();
-
   return (
-    <main className="flex min-h-0 flex-col bg-editor-surface">
-      <div
-        role="toolbar"
-        aria-label="Workspace title bar"
-        tabIndex={-1}
-        className="grid h-11 shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border bg-background px-2 select-none"
-        onMouseDown={(event) => {
-          void handleTitleBarMouseDown(event);
-        }}
-      >
-        <div className="mx-auto flex h-7 w-full max-w-xl items-center gap-2 rounded-md border border-border bg-muted px-2 text-xs text-muted-foreground">
-          <Search className="size-3.5" aria-hidden="true" />
-          <span className="truncate">Command, search, or ask Kira</span>
-        </div>
-        <div className="rounded-t-md border border-border bg-editor-surface px-3 py-1.5 text-sm">
-          Welcome
-        </div>
-        {titleBarError === undefined ? undefined : (
-          <output className="sr-only">{titleBarError}</output>
-        )}
-      </div>
-      <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_12rem]">
-        <section className="min-h-0 p-4" aria-label="Dockview workspace">
-          <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-border text-sm text-muted-foreground">
-            Dockview tabbed and splittable workspace
-          </div>
-        </section>
-        <section className="border-t border-border bg-background p-3" aria-label="Bottom split">
-          <div className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-            Bottom split
-          </div>
-        </section>
-      </div>
+    <main className="h-full min-h-0 bg-editor-surface">
+      <DockviewReact
+        className="dockview-theme-dark kira-dockview"
+        components={workspaceComponents}
+        defaultHeaderPosition="top"
+        dndStrategy="pointer"
+        hideBorders
+        onReady={handleWorkspaceReady}
+      />
     </main>
   );
 }

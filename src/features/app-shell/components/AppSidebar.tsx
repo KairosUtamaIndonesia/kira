@@ -6,7 +6,7 @@ function AppSidebar() {
   const { handleTitleBarMouseDown, titleBarError } = useTitleBarDrag();
 
   return (
-    <aside className="flex min-h-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
+    <aside className="flex h-full min-h-0 flex-col bg-sidebar text-sidebar-foreground">
       <div
         role="toolbar"
         aria-label="Sidebar title bar"
