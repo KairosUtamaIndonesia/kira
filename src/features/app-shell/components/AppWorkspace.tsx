@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 import { TerminalPanel, type TerminalPanelParams } from "./TerminalPanel";
+import { useTitleBarDrag } from "./useTitleBarDrag";
 
 type WorkspacePanelParams = {
   description: string;
@@ -74,7 +75,27 @@ const workspaceComponents = {
   terminalPanel: TerminalPanel,
 };
 
+function isElementInsideSelector(target: EventTarget | null, selector: string) {
+  return target instanceof Element && target.closest(selector) !== null;
+}
+
+function preventHeaderSpaceDrag(event: DockviewReadyEvent) {
+  event.api.onWillDragPanel((dragEvent) => {
+    if (!isElementInsideSelector(dragEvent.nativeEvent.target, ".dv-tab")) {
+      dragEvent.nativeEvent.preventDefault();
+    }
+  });
+
+  event.api.onWillDragGroup((dragEvent) => {
+    if (isElementInsideSelector(dragEvent.nativeEvent.target, ".dv-void-container")) {
+      dragEvent.nativeEvent.preventDefault();
+    }
+  });
+}
+
 function handleWorkspaceReady(event: DockviewReadyEvent) {
+  preventHeaderSpaceDrag(event);
+
   event.api.addPanel({
     id: "welcome",
     component: "workspacePanel",
@@ -99,8 +120,24 @@ function handleWorkspaceReady(event: DockviewReadyEvent) {
 }
 
 function AppWorkspace() {
+  const { handleTitleBarMouseDown, titleBarError } = useTitleBarDrag();
+
   return (
-    <main className="h-full min-h-0 bg-editor-surface">
+    <main
+      className="h-full min-h-0 bg-editor-surface"
+      onDragStartCapture={(event) => {
+        if (isElementInsideSelector(event.target, ".dv-void-container")) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      }}
+      onPointerDownCapture={(event) => {
+        if (isElementInsideSelector(event.target, ".dv-void-container")) {
+          event.stopPropagation();
+          void handleTitleBarMouseDown(event);
+        }
+      }}
+    >
       <DockviewReact
         className="dockview-theme-dark kira-dockview"
         components={workspaceComponents}
@@ -110,6 +147,9 @@ function AppWorkspace() {
         onReady={handleWorkspaceReady}
         rightHeaderActionsComponent={WorkspaceHeaderActions}
       />
+      {titleBarError === undefined ? undefined : (
+        <output className="sr-only">{titleBarError}</output>
+      )}
     </main>
   );
 }
