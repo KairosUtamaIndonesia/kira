@@ -139,6 +139,17 @@ pub async fn project_open(
     open_project(store.pool(), input).await
 }
 
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
+pub async fn project_open_last(
+    store: tauri::State<'_, PersistenceStore>,
+) -> Result<Option<OpenProject>, ProjectError> {
+    open_last_project(store.pool()).await
+}
+
 async fn list_projects(pool: &SqlitePool) -> Result<Vec<Project>, ProjectError> {
     sqlx::query_as::<_, Project>(
         "SELECT id, name, folder_path, created_at, updated_at FROM projects ORDER BY name COLLATE NOCASE",
@@ -146,6 +157,20 @@ async fn list_projects(pool: &SqlitePool) -> Result<Vec<Project>, ProjectError> 
     .fetch_all(pool)
     .await
     .map_err(|error| ProjectError::Query(error.to_string()))
+}
+
+async fn open_last_project(pool: &SqlitePool) -> Result<Option<OpenProject>, ProjectError> {
+    let project_id = sqlx::query_scalar::<_, String>(
+        "SELECT id FROM projects WHERE last_opened_at IS NOT NULL ORDER BY last_opened_at DESC LIMIT 1",
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(|error| ProjectError::Query(error.to_string()))?;
+
+    match project_id {
+        Some(project_id) => open_project(pool, OpenProjectInput { project_id }).await.map(Some),
+        None => Ok(None),
+    }
 }
 
 async fn open_project(
@@ -177,6 +202,22 @@ async fn open_project(
     .fetch_all(pool)
     .await
     .map_err(|error| ProjectError::Query(error.to_string()))?;
+
+    let now = current_timestamp()?;
+    sqlx::query("UPDATE projects SET last_opened_at = ?, updated_at = ? WHERE id = ?")
+        .bind(&now)
+        .bind(&now)
+        .bind(&project.id)
+        .execute(pool)
+        .await
+        .map_err(|error| ProjectError::Query(error.to_string()))?;
+    sqlx::query("UPDATE sessions SET last_opened_at = ?, updated_at = ? WHERE id = ?")
+        .bind(&now)
+        .bind(&now)
+        .bind(&session.id)
+        .execute(pool)
+        .await
+        .map_err(|error| ProjectError::Query(error.to_string()))?;
 
     Ok(OpenProject {
         project,
@@ -213,11 +254,12 @@ async fn create_project(
         .map_err(|error| ProjectError::Create(error.to_string()))?;
 
     sqlx::query(
-        "INSERT INTO projects (id, name, folder_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO projects (id, name, folder_path, created_at, updated_at, last_opened_at) VALUES (?, ?, ?, ?, ?, ?)",
     )
     .bind(&project_id)
     .bind(&name)
     .bind(&folder_path)
+    .bind(&now)
     .bind(&now)
     .bind(&now)
     .execute(&mut *transaction)
@@ -232,7 +274,7 @@ async fn create_project(
     .bind(DEFAULT_SESSION_NAME)
     .bind(&now)
     .bind(&now)
-    .bind(Option::<String>::None)
+    .bind(&now)
     .execute(&mut *transaction)
     .await
     .map_err(|error| ProjectError::Create(error.to_string()))?;

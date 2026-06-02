@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     io::{Read, Write},
+    path::Path,
     sync::{Arc, Mutex},
     thread,
 };
@@ -15,6 +16,12 @@ use thiserror::Error;
 pub struct TerminalSize {
     rows: u16,
     cols: u16,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalSpawnOptions {
+    working_directory: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -39,6 +46,12 @@ pub enum TerminalError {
     RegistryPoisoned,
     #[error("failed to open terminal PTY: {0}")]
     OpenPty(String),
+    #[error("terminal working directory is required")]
+    MissingWorkingDirectory,
+    #[error("terminal working directory does not exist: {0}")]
+    WorkingDirectoryDoesNotExist(String),
+    #[error("terminal working directory is not a directory: {0}")]
+    WorkingDirectoryIsNotDirectory(String),
     #[error("failed to spawn shell `{shell}`: {message}")]
     SpawnShell { shell: String, message: String },
     #[error("failed to clone terminal output reader for session {id}: {message}")]
@@ -81,10 +94,12 @@ struct TerminalSession {
 pub fn terminal_spawn(
     id: String,
     size: TerminalSize,
+    options: TerminalSpawnOptions,
     on_event: Channel<TerminalEvent>,
     registry: tauri::State<'_, TerminalRegistry>,
 ) -> Result<(), TerminalError> {
     let pty_size = validate_size(size)?;
+    let working_directory = validate_working_directory(&options.working_directory)?;
     {
         let sessions = registry
             .sessions
@@ -101,7 +116,8 @@ pub fn terminal_spawn(
         .openpty(pty_size)
         .map_err(|error| TerminalError::OpenPty(error.to_string()))?;
 
-    let command = CommandBuilder::new(&shell);
+    let mut command = CommandBuilder::new(&shell);
+    command.cwd(&working_directory);
     let mut child =
         pair.slave
             .spawn_command(command)
@@ -242,6 +258,28 @@ fn kill_spawned_child(
         id: id.to_string(),
         message: error.to_string(),
     })
+}
+
+fn validate_working_directory(working_directory: &str) -> Result<String, TerminalError> {
+    let trimmed_working_directory = working_directory.trim();
+    if trimmed_working_directory.is_empty() {
+        return Err(TerminalError::MissingWorkingDirectory);
+    }
+
+    let path = Path::new(trimmed_working_directory);
+    if !path.exists() {
+        return Err(TerminalError::WorkingDirectoryDoesNotExist(
+            trimmed_working_directory.to_string(),
+        ));
+    }
+
+    if !path.is_dir() {
+        return Err(TerminalError::WorkingDirectoryIsNotDirectory(
+            trimmed_working_directory.to_string(),
+        ));
+    }
+
+    Ok(trimmed_working_directory.to_string())
 }
 
 fn validate_size(size: TerminalSize) -> Result<PtySize, TerminalError> {

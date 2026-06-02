@@ -1,5 +1,3 @@
-import type { MouseEvent } from "react";
-
 import {
   DockviewReact,
   type DockviewReadyEvent,
@@ -7,6 +5,7 @@ import {
   type IDockviewPanelProps,
 } from "dockview-react";
 import { Plus, Terminal as TerminalIcon } from "lucide-react";
+import { createContext, useContext, useMemo, type MouseEvent } from "react";
 
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -25,6 +24,12 @@ type WorkspacePanelParams = {
   description: string;
 };
 
+type WorkspaceRuntimeContextValue = {
+  workingDirectory: string;
+};
+
+const WorkspaceRuntimeContext = createContext<WorkspaceRuntimeContextValue | undefined>(undefined);
+
 function WorkspacePanel({ api, params }: IDockviewPanelProps<WorkspacePanelParams>) {
   return (
     <section className="flex h-full flex-col bg-editor-surface p-4 text-foreground">
@@ -39,6 +44,7 @@ function WorkspacePanel({ api, params }: IDockviewPanelProps<WorkspacePanelParam
 }
 
 function WorkspaceHeaderActions({ containerApi, group }: IDockviewHeaderActionsProps) {
+  const { workingDirectory } = useWorkspaceRuntimeContext();
   function addTerminalPanel() {
     containerApi.addPanel<TerminalPanelParams>({
       id: `terminal-${crypto.randomUUID()}`,
@@ -46,6 +52,7 @@ function WorkspaceHeaderActions({ containerApi, group }: IDockviewHeaderActionsP
       title: "Terminal",
       params: {
         terminalId: crypto.randomUUID(),
+        workingDirectory,
       },
       position: {
         referenceGroup: group,
@@ -78,6 +85,15 @@ const workspaceComponents = {
   workspacePanel: WorkspacePanel,
   terminalPanel: TerminalPanel,
 };
+
+function useWorkspaceRuntimeContext() {
+  const context = useContext(WorkspaceRuntimeContext);
+  if (context === undefined) {
+    throw new Error("Workspace runtime context is required.");
+  }
+
+  return context;
+}
 
 function isElementInsideSelector(target: EventTarget | null, selector: string) {
   return target instanceof Element && target.closest(selector) !== null;
@@ -129,6 +145,13 @@ type AppWorkspaceProps = {
 
 function AppWorkspace({ activeWorkspace }: AppWorkspaceProps) {
   const { handleTitleBarMouseDown, titleBarError } = useTitleBarDrag();
+  const workspaceRuntimeContext = useMemo(
+    () => ({
+      workingDirectory:
+        activeWorkspace.status === "active" ? activeWorkspace.project.folderPath : "",
+    }),
+    [activeWorkspace],
+  );
 
   return (
     <main
@@ -147,16 +170,18 @@ function AppWorkspace({ activeWorkspace }: AppWorkspaceProps) {
       }}
     >
       {activeWorkspace.status === "active" ? (
-        <DockviewReact
-          key={activeWorkspace.session.id}
-          className="dockview-theme-dark kira-dockview"
-          components={workspaceComponents}
-          defaultHeaderPosition="top"
-          dndStrategy="pointer"
-          hideBorders
-          onReady={handleWorkspaceReady}
-          rightHeaderActionsComponent={WorkspaceHeaderActions}
-        />
+        <WorkspaceRuntimeContext.Provider value={workspaceRuntimeContext}>
+          <DockviewReact
+            key={activeWorkspace.session.id}
+            className="dockview-theme-dark kira-dockview"
+            components={workspaceComponents}
+            defaultHeaderPosition="top"
+            dndStrategy="pointer"
+            hideBorders
+            onReady={handleWorkspaceReady}
+            rightHeaderActionsComponent={WorkspaceHeaderActions}
+          />
+        </WorkspaceRuntimeContext.Provider>
       ) : (
         <WorkspaceEmptyState
           activeWorkspace={activeWorkspace}

@@ -43,6 +43,7 @@ pub fn run() -> tauri::Result<()> {
             projects::project_create,
             projects::project_list,
             projects::project_open,
+            projects::project_open_last,
             terminal::terminal_kill,
             terminal::terminal_resize,
             terminal::terminal_spawn,

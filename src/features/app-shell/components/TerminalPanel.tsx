@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 type TerminalPanelParams = {
   terminalId: string;
+  workingDirectory: string;
 };
 
 type TerminalOutputEvent = {
@@ -84,6 +85,9 @@ function TerminalPanel({ params }: IDockviewPanelProps<TerminalPanelParams>) {
         await invoke("terminal_spawn", {
           id: params.terminalId,
           size,
+          options: {
+            workingDirectory: params.workingDirectory,
+          },
           onEvent: channel,
         });
         sessionIdRef.current = params.terminalId;
@@ -94,7 +98,7 @@ function TerminalPanel({ params }: IDockviewPanelProps<TerminalPanelParams>) {
         setStatus(errorToMessage(error));
       }
     },
-    [focus, handleTerminalEvent, params.terminalId],
+    [focus, handleTerminalEvent, params.terminalId, params.workingDirectory],
   );
 
   const handleReady = useCallback(

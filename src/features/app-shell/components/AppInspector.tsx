@@ -1,7 +1,13 @@
+import type { ActiveWorkspaceState } from "../types";
+
 import { AppWindowControls } from "./AppWindowControls";
 import { useTitleBarDrag } from "./useTitleBarDrag";
 
-function AppInspector() {
+type AppInspectorProps = {
+  activeWorkspace: ActiveWorkspaceState;
+};
+
+function AppInspector({ activeWorkspace }: AppInspectorProps) {
   const { handleTitleBarMouseDown, titleBarError } = useTitleBarDrag();
 
   return (
@@ -24,11 +30,66 @@ function AppInspector() {
         )}
       </div>
       <div className="flex min-h-0 flex-1 scrollbar-sleek flex-col gap-3 overflow-auto p-3">
-        <div className="rounded-xl border border-border p-3 text-muted-foreground">
-          Contextual details and actions for the active workspace panel.
-        </div>
+        {inspectorContent(activeWorkspace)}
       </div>
     </aside>
+  );
+}
+
+function inspectorContent(activeWorkspace: ActiveWorkspaceState) {
+  if (activeWorkspace.status === "active") {
+    return (
+      <section className="space-y-3 rounded-xl border border-border p-3">
+        <h2 className="text-sm font-medium text-foreground">Project</h2>
+        <dl className="space-y-2 text-sm">
+          <InspectorField label="Name" value={activeWorkspace.project.name} />
+          <InspectorField label="Folder" value={activeWorkspace.project.folderPath} mono />
+          <InspectorField label="Session" value={activeWorkspace.session.name} />
+          <InspectorField label="Panels" value={activeWorkspace.panels.length.toString()} />
+        </dl>
+      </section>
+    );
+  }
+
+  if (activeWorkspace.status === "loading") {
+    return (
+      <div className="rounded-xl border border-border p-3 text-muted-foreground">
+        Opening project…
+      </div>
+    );
+  }
+
+  if (activeWorkspace.status === "error") {
+    return (
+      <div role="alert" className="rounded-xl border border-border p-3 text-muted-foreground">
+        {activeWorkspace.message}
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-border p-3 text-muted-foreground">
+      Select a Project to view its details.
+    </div>
+  );
+}
+
+type InspectorFieldProps = {
+  label: string;
+  value: string;
+  mono?: boolean;
+};
+
+function InspectorField({ label, value, mono = false }: InspectorFieldProps) {
+  return (
+    <div>
+      <dt className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+        {label}
+      </dt>
+      <dd className={mono ? "font-mono text-xs break-all text-foreground" : "text-foreground"}>
+        {value}
+      </dd>
+    </div>
   );
 }
 

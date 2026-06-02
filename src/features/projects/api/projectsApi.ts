@@ -20,4 +20,8 @@ function openProject(input: OpenProjectInput) {
   return invoke<OpenProject>("project_open", { input });
 }
 
-export { createProject, listProjects, openProject };
+function openLastProject() {
+  return invoke<OpenProject | null>("project_open_last");
+}
+
+export { createProject, listProjects, openLastProject, openProject };

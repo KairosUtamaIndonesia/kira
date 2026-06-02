@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import type { CreatedProject } from "@/features/projects/types";
 
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
-import { openProject } from "@/features/projects/api/projectsApi";
+import { openLastProject, openProject } from "@/features/projects/api/projectsApi";
 
 import type { ActiveWorkspaceState } from "../types";
 
@@ -16,6 +16,35 @@ import { useDevThemeToggle } from "./useDevThemeToggle";
 function AppShell() {
   useDevThemeToggle();
   const [activeWorkspace, setActiveWorkspace] = useState<ActiveWorkspaceState>({ status: "none" });
+
+  useEffect(() => {
+    let ignoreResult = false;
+
+    async function restoreLastProject() {
+      try {
+        const lastProject = await openLastProject();
+        if (ignoreResult || lastProject === null) {
+          return;
+        }
+
+        setActiveWorkspace({ status: "active", ...lastProject });
+      } catch (error) {
+        if (!ignoreResult) {
+          setActiveWorkspace({
+            status: "error",
+            projectId: "last-opened-project",
+            message: errorMessageFromUnknown(error),
+          });
+        }
+      }
+    }
+
+    void restoreLastProject();
+
+    return () => {
+      ignoreResult = true;
+    };
+  }, []);
 
   async function handleProjectSelect(projectId: string) {
     setActiveWorkspace({ status: "loading", projectId });
@@ -69,7 +98,7 @@ function AppShell() {
           maxSize="28rem"
           groupResizeBehavior="preserve-pixel-size"
         >
-          <AppInspector />
+          <AppInspector activeWorkspace={activeWorkspace} />
         </ResizablePanel>
       </ResizablePanelGroup>
       <AppStatusBar activeWorkspace={activeWorkspace} />
