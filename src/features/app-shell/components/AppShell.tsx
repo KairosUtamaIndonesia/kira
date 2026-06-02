@@ -1,4 +1,11 @@
+import { useState } from "react";
+
+import type { CreatedProject } from "@/features/projects/types";
+
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { openProject } from "@/features/projects/api/projectsApi";
+
+import type { ActiveWorkspaceState } from "../types";
 
 import { AppInspector } from "./AppInspector";
 import { AppSidebar } from "./AppSidebar";
@@ -8,6 +15,31 @@ import { useDevThemeToggle } from "./useDevThemeToggle";
 
 function AppShell() {
   useDevThemeToggle();
+  const [activeWorkspace, setActiveWorkspace] = useState<ActiveWorkspaceState>({ status: "none" });
+
+  async function handleProjectSelect(projectId: string) {
+    setActiveWorkspace({ status: "loading", projectId });
+
+    try {
+      const openedProject = await openProject({ projectId });
+      setActiveWorkspace({ status: "active", ...openedProject });
+    } catch (error) {
+      setActiveWorkspace({
+        status: "error",
+        projectId,
+        message: errorMessageFromUnknown(error),
+      });
+    }
+  }
+
+  function handleProjectCreated(createdProject: CreatedProject) {
+    setActiveWorkspace({
+      status: "active",
+      project: createdProject.project,
+      session: createdProject.defaultSession,
+      panels: [],
+    });
+  }
 
   return (
     <div className="grid h-dvh grid-rows-[minmax(0,1fr)_1.75rem] overflow-hidden bg-background text-foreground">
@@ -19,11 +51,15 @@ function AppShell() {
           maxSize="24rem"
           groupResizeBehavior="preserve-pixel-size"
         >
-          <AppSidebar />
+          <AppSidebar
+            activeWorkspace={activeWorkspace}
+            onProjectCreated={handleProjectCreated}
+            onProjectSelect={(projectId) => void handleProjectSelect(projectId)}
+          />
         </ResizablePanel>
         <ResizableHandle />
         <ResizablePanel className="min-h-0" minSize="24rem">
-          <AppWorkspace />
+          <AppWorkspace activeWorkspace={activeWorkspace} />
         </ResizablePanel>
         <ResizableHandle />
         <ResizablePanel
@@ -36,9 +72,21 @@ function AppShell() {
           <AppInspector />
         </ResizablePanel>
       </ResizablePanelGroup>
-      <AppStatusBar />
+      <AppStatusBar activeWorkspace={activeWorkspace} />
     </div>
   );
+}
+
+function errorMessageFromUnknown(error: unknown) {
+  if (typeof error === "string") {
+    return error;
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return "Failed to open project.";
 }
 
 export { AppShell };

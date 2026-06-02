@@ -42,6 +42,7 @@ pub fn run() -> tauri::Result<()> {
             persistence::persistence_store_health,
             projects::project_create,
             projects::project_list,
+            projects::project_open,
             terminal::terminal_kill,
             terminal::terminal_resize,
             terminal::terminal_spawn,

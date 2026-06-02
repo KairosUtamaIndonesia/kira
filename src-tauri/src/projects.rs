@@ -45,6 +45,32 @@ pub struct CreatedProject {
     default_session: Session,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenProjectInput {
+    project_id: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenProject {
+    project: Project,
+    session: Session,
+    panels: Vec<WorkspacePanel>,
+}
+
+#[derive(Debug, Serialize, FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspacePanel {
+    id: String,
+    session_id: String,
+    kind: String,
+    title: String,
+    position_index: i64,
+    created_at: String,
+    updated_at: String,
+}
+
 #[derive(Debug, Error)]
 pub enum ProjectError {
     #[error("project name is required")]
@@ -57,6 +83,10 @@ pub enum ProjectError {
     FolderIsNotDirectory(String),
     #[error("project folder is already added to Kira: {0}")]
     DuplicateFolder(String),
+    #[error("project was not found: {0}")]
+    MissingProject(String),
+    #[error("project has no sessions: {0}")]
+    MissingSession(String),
     #[error("failed to generate project timestamp: {0}")]
     Timestamp(String),
     #[error("failed to query projects: {0}")]
@@ -97,6 +127,18 @@ pub async fn project_create(
     create_project(store.pool(), input).await
 }
 
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
+pub async fn project_open(
+    input: OpenProjectInput,
+    store: tauri::State<'_, PersistenceStore>,
+) -> Result<OpenProject, ProjectError> {
+    open_project(store.pool(), input).await
+}
+
 async fn list_projects(pool: &SqlitePool) -> Result<Vec<Project>, ProjectError> {
     sqlx::query_as::<_, Project>(
         "SELECT id, name, folder_path, created_at, updated_at FROM projects ORDER BY name COLLATE NOCASE",
@@ -106,6 +148,43 @@ async fn list_projects(pool: &SqlitePool) -> Result<Vec<Project>, ProjectError> 
     .map_err(|error| ProjectError::Query(error.to_string()))
 }
 
+async fn open_project(
+    pool: &SqlitePool,
+    input: OpenProjectInput,
+) -> Result<OpenProject, ProjectError> {
+    let project = sqlx::query_as::<_, Project>(
+        "SELECT id, name, folder_path, created_at, updated_at FROM projects WHERE id = ?",
+    )
+    .bind(&input.project_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|error| ProjectError::Query(error.to_string()))?
+    .ok_or_else(|| ProjectError::MissingProject(input.project_id.clone()))?;
+
+    let session = sqlx::query_as::<_, Session>(
+        "SELECT id, project_id, name, created_at, updated_at, last_opened_at FROM sessions WHERE project_id = ? ORDER BY COALESCE(last_opened_at, created_at) DESC LIMIT 1",
+    )
+    .bind(&input.project_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|error| ProjectError::Query(error.to_string()))?
+    .ok_or(ProjectError::MissingSession(input.project_id))?;
+
+    let panels = sqlx::query_as::<_, WorkspacePanel>(
+        "SELECT id, session_id, kind, title, position_index, created_at, updated_at FROM workspace_panels WHERE session_id = ? ORDER BY position_index ASC",
+    )
+    .bind(&session.id)
+    .fetch_all(pool)
+    .await
+    .map_err(|error| ProjectError::Query(error.to_string()))?;
+
+    Ok(OpenProject {
+        project,
+        session,
+        panels,
+    })
+}
+
 async fn create_project(
     pool: &SqlitePool,
     input: CreateProjectInput,
@@ -113,13 +192,12 @@ async fn create_project(
     let name = validate_name(&input.name)?;
     let folder_path = validate_folder_path(&input.folder_path)?;
 
-    let existing_project_id = sqlx::query_scalar::<_, String>(
-        "SELECT id FROM projects WHERE folder_path = ? LIMIT 1",
-    )
-    .bind(&folder_path)
-    .fetch_optional(pool)
-    .await
-    .map_err(|error| ProjectError::Query(error.to_string()))?;
+    let existing_project_id =
+        sqlx::query_scalar::<_, String>("SELECT id FROM projects WHERE folder_path = ? LIMIT 1")
+            .bind(&folder_path)
+            .fetch_optional(pool)
+            .await
+            .map_err(|error| ProjectError::Query(error.to_string()))?;
 
     if existing_project_id.is_some() {
         return Err(ProjectError::DuplicateFolder(folder_path));

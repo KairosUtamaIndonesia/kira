@@ -1,7 +1,7 @@
 import { Settings } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import type { Project } from "@/features/projects/types";
+import type { CreatedProject, Project } from "@/features/projects/types";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -21,9 +21,17 @@ import { listProjects } from "@/features/projects/api/projectsApi";
 import { NewProjectButton } from "@/features/projects/components/NewProjectButton";
 import { ProjectList } from "@/features/projects/components/ProjectList";
 
+import type { ActiveWorkspaceState } from "../types";
+
 import { useTitleBarDrag } from "./useTitleBarDrag";
 
-function AppSidebar() {
+type AppSidebarProps = {
+  activeWorkspace: ActiveWorkspaceState;
+  onProjectCreated: (createdProject: CreatedProject) => void;
+  onProjectSelect: (projectId: string) => void;
+};
+
+function AppSidebar({ activeWorkspace, onProjectCreated, onProjectSelect }: AppSidebarProps) {
   const { handleTitleBarMouseDown, titleBarError } = useTitleBarDrag();
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectsError, setProjectsError] = useState<string>();
@@ -74,12 +82,19 @@ function AppSidebar() {
             <SidebarGroupLabel>Projects</SidebarGroupLabel>
             <NewProjectButton
               onProjectCreated={(createdProject) => {
-                setProjects((currentProjects) => [...currentProjects, createdProject.project]);
+                setProjects((currentProjects) =>
+                  sortProjectsByName([...currentProjects, createdProject.project]),
+                );
+                onProjectCreated(createdProject);
               }}
             />
             <SidebarGroupContent>
               {projectsError === undefined ? (
-                <ProjectList projects={projects} />
+                <ProjectList
+                  activeProjectId={activeProjectId(activeWorkspace)}
+                  projects={projects}
+                  onProjectSelect={onProjectSelect}
+                />
               ) : (
                 <p role="alert" className="px-2 text-sm text-destructive">
                   {projectsError}
@@ -101,6 +116,27 @@ function AppSidebar() {
       </Sidebar>
     </SidebarProvider>
   );
+}
+
+function activeProjectId(activeWorkspace: ActiveWorkspaceState) {
+  if (activeWorkspace.status === "active") {
+    return activeWorkspace.project.id;
+  }
+
+  if (activeWorkspace.status === "loading" || activeWorkspace.status === "error") {
+    return activeWorkspace.projectId;
+  }
+
+  return "";
+}
+
+function sortProjectsByName(projects: Project[]) {
+  const sortedProjects = [...projects];
+  // oxlint-disable-next-line unicorn/no-array-sort -- TypeScript target does not include Array.prototype.toSorted.
+  sortedProjects.sort((leftProject, rightProject) =>
+    leftProject.name.localeCompare(rightProject.name),
+  );
+  return sortedProjects;
 }
 
 function errorMessageFromUnknown(error: unknown) {

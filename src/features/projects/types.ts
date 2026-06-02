@@ -25,4 +25,32 @@ type CreatedProject = {
   defaultSession: Session;
 };
 
-export type { CreatedProject, CreateProjectInput, Project, Session };
+type WorkspacePanel = {
+  id: string;
+  sessionId: string;
+  kind: string;
+  title: string;
+  positionIndex: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type OpenProjectInput = {
+  projectId: string;
+};
+
+type OpenProject = {
+  project: Project;
+  session: Session;
+  panels: WorkspacePanel[];
+};
+
+export type {
+  CreatedProject,
+  CreateProjectInput,
+  OpenProject,
+  OpenProjectInput,
+  Project,
+  Session,
+  WorkspacePanel,
+};

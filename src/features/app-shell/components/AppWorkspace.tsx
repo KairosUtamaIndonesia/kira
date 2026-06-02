@@ -1,3 +1,5 @@
+import type { MouseEvent } from "react";
+
 import {
   DockviewReact,
   type DockviewReadyEvent,
@@ -13,6 +15,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+
+import type { ActiveWorkspaceState } from "../types";
 
 import { TerminalPanel, type TerminalPanelParams } from "./TerminalPanel";
 import { useTitleBarDrag } from "./useTitleBarDrag";
@@ -119,7 +123,11 @@ function handleWorkspaceReady(event: DockviewReadyEvent) {
   });
 }
 
-function AppWorkspace() {
+type AppWorkspaceProps = {
+  activeWorkspace: ActiveWorkspaceState;
+};
+
+function AppWorkspace({ activeWorkspace }: AppWorkspaceProps) {
   const { handleTitleBarMouseDown, titleBarError } = useTitleBarDrag();
 
   return (
@@ -138,19 +146,80 @@ function AppWorkspace() {
         }
       }}
     >
-      <DockviewReact
-        className="dockview-theme-dark kira-dockview"
-        components={workspaceComponents}
-        defaultHeaderPosition="top"
-        dndStrategy="pointer"
-        hideBorders
-        onReady={handleWorkspaceReady}
-        rightHeaderActionsComponent={WorkspaceHeaderActions}
-      />
+      {activeWorkspace.status === "active" ? (
+        <DockviewReact
+          key={activeWorkspace.session.id}
+          className="dockview-theme-dark kira-dockview"
+          components={workspaceComponents}
+          defaultHeaderPosition="top"
+          dndStrategy="pointer"
+          hideBorders
+          onReady={handleWorkspaceReady}
+          rightHeaderActionsComponent={WorkspaceHeaderActions}
+        />
+      ) : (
+        <WorkspaceEmptyState
+          activeWorkspace={activeWorkspace}
+          onTitleBarMouseDown={handleTitleBarMouseDown}
+        />
+      )}
       {titleBarError === undefined ? undefined : (
         <output className="sr-only">{titleBarError}</output>
       )}
     </main>
+  );
+}
+
+type WorkspaceEmptyStateProps = AppWorkspaceProps & {
+  onTitleBarMouseDown: (event: MouseEvent<HTMLElement>) => Promise<void>;
+};
+
+function WorkspaceEmptyState({ activeWorkspace, onTitleBarMouseDown }: WorkspaceEmptyStateProps) {
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div
+        role="toolbar"
+        aria-label="Workspace title bar"
+        tabIndex={-1}
+        className="flex h-11 shrink-0 items-center border-b border-sidebar-border bg-sidebar px-3 text-sidebar-foreground select-none"
+        onMouseDown={(event) => {
+          void onTitleBarMouseDown(event);
+        }}
+      />
+      {emptyStateContent(activeWorkspace)}
+    </div>
+  );
+}
+
+function emptyStateContent(activeWorkspace: ActiveWorkspaceState) {
+  if (activeWorkspace.status === "loading") {
+    return (
+      <div className="flex min-h-0 flex-1 items-center justify-center p-6 text-muted-foreground">
+        Opening project…
+      </div>
+    );
+  }
+
+  if (activeWorkspace.status === "error") {
+    return (
+      <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+        <div role="alert" className="max-w-md rounded-xl border border-border p-4 text-center">
+          <div className="font-medium text-foreground">Could not open project</div>
+          <div className="mt-1 text-sm text-muted-foreground">{activeWorkspace.message}</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+      <div className="max-w-md rounded-xl border border-dashed border-border p-6 text-center">
+        <div className="font-medium text-foreground">Select or create a Project</div>
+        <div className="mt-1 text-sm text-muted-foreground">
+          Choose a Project from the sidebar, or add a local folder to get started.
+        </div>
+      </div>
+    </div>
   );
 }
 
