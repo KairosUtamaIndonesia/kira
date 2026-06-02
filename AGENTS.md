@@ -5,7 +5,12 @@
 - Always load and follow the `canon` skill before non-trivial implementation, refactoring, debugging, code review, or configuration work.
 - If the `canon` skill is unavailable, unreadable, or was not loaded before code work, stop and explicitly tell the user: `Canon skill was not loaded.` Then ask whether to proceed without it.
 - Canon is the project default: prefer direct, exhaustive, fail-fast code. Do not preserve bad shapes for compatibility unless the user explicitly asks for compatibility.
+- Before asking questions or editing, explore the relevant code path and project docs deeply enough to infer the likely answer from existing implementation, tests, naming, ownership, and documented decisions.
 - Before editing, trace the relevant flow and owner. Prefer local feature ownership over vague shared utilities.
+- Read `docs/domain-language.md` when it exists and use its terms consistently in names, UI copy, APIs, and model boundaries.
+- Read relevant `docs/adr/*.md` when changing architecture, persistence, integrations, module boundaries, compatibility behavior, or cross-context communication.
+- Surface conflicts between code, docs, user requests, domain language, and ADRs before implementation.
+- Ask only questions that materially affect behavior, ownership, compatibility, domain language, or risk.
 - Avoid hidden fallbacks: no silent defaulting, broad optional chaining, catch-and-ignore, or `unwrap`/`expect` style escapes unless deliberately justified.
 - Verify with the strongest relevant checks before finishing.
 
