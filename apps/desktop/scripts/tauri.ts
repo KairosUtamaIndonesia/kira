@@ -4,6 +4,7 @@ import process from "node:process";
 
 const LOCAL_HOST = "127.0.0.1";
 const MAX_PORT = 65535;
+const BUN_EXECUTABLE = process.execPath;
 
 function parsePort(value: string) {
   const port = Number.parseInt(value, 10);
@@ -43,7 +44,7 @@ function findAvailablePort() {
 }
 
 function runTauri(args: readonly string[]) {
-  const child = spawn("bun", ["x", "tauri", ...args], {
+  const child = spawn(BUN_EXECUTABLE, ["x", "tauri", ...args], {
     env: process.env,
     shell: false,
     stdio: "inherit",
@@ -76,22 +77,36 @@ async function runTauriDev(args: readonly string[]) {
     throw new Error("Vite dev and HMR ports must be different.");
   }
 
-  const devUrl = `http://${LOCAL_HOST}:${devPort}`;
-  const configOverride = {
-    build: {
-      beforeDevCommand: `bun run dev -- --host ${LOCAL_HOST} --port ${devPort} --strictPort`,
-      devUrl,
-    },
-  };
-
   const env = {
     ...process.env,
     KIRA_VITE_PORT: String(devPort),
     KIRA_VITE_HMR_PORT: String(hmrPort),
   };
 
-  const child = spawn(
-    "bun",
+  const viteChild = spawn(
+    BUN_EXECUTABLE,
+    ["run", "dev", "--", "--host", LOCAL_HOST, "--port", String(devPort), "--strictPort"],
+    {
+      env,
+      shell: false,
+      stdio: "inherit",
+    },
+  );
+
+  viteChild.on("error", (error) => {
+    throw error;
+  });
+
+  const devUrl = `http://${LOCAL_HOST}:${devPort}`;
+  const configOverride = {
+    build: {
+      beforeDevCommand: "",
+      devUrl,
+    },
+  };
+
+  const tauriChild = spawn(
+    BUN_EXECUTABLE,
     ["x", "tauri", "dev", "--config", JSON.stringify(configOverride), ...args],
     {
       env,
@@ -100,7 +115,11 @@ async function runTauriDev(args: readonly string[]) {
     },
   );
 
-  child.on("exit", (code, signal) => {
+  tauriChild.on("exit", (code, signal) => {
+    if (!viteChild.killed) {
+      viteChild.kill();
+    }
+
     if (signal !== null) {
       process.kill(process.pid, signal);
       return;
@@ -109,7 +128,11 @@ async function runTauriDev(args: readonly string[]) {
     process.exit(code ?? 1);
   });
 
-  child.on("error", (error) => {
+  tauriChild.on("error", (error) => {
+    if (!viteChild.killed) {
+      viteChild.kill();
+    }
+
     throw error;
   });
 }
