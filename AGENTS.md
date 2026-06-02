@@ -100,6 +100,12 @@ bun run check
 - Rust formatting uses `cargo fmt` with `rustfmt.toml`.
 - Rust linting uses `cargo clippy --all-targets --all-features -- -D warnings` with `clippy.toml`.
 
+## UI changes
+
+- For any UI, styling, component, Tailwind, or design-token change, read `docs/style-guide.md` before editing.
+- Also load and follow the `css-canon` skill for CSS/Tailwind work.
+- `src/main.css` is the source of truth for design tokens; do not hardcode colors in components when a token exists.
+
 ## Coding conventions
 
 - Keep feature-specific code near the feature.

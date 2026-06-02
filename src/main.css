@@ -20,6 +20,14 @@
   --color-chart-4: var(--chart-4);
   --color-chart-3: var(--chart-3);
   --color-chart-2: var(--chart-2);
+  --color-editor-surface: var(--editor-surface);
+  --color-git-decoration-added: var(--git-decoration-added);
+  --color-git-decoration-modified: var(--git-decoration-modified);
+  --color-git-decoration-deleted: var(--git-decoration-deleted);
+  --color-git-decoration-renamed: var(--git-decoration-renamed);
+  --color-git-decoration-untracked: var(--git-decoration-untracked);
+  --color-git-decoration-copied: var(--git-decoration-copied);
+  --color-git-decoration-ignored: var(--git-decoration-ignored);
   --color-chart-1: var(--chart-1);
   --color-ring: var(--ring);
   --color-input: var(--input);
@@ -50,6 +58,7 @@
 
 :root {
   --background: oklch(1 0 0);
+  --editor-surface: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
@@ -81,10 +90,18 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  --git-decoration-added: #587c0c;
+  --git-decoration-modified: #895503;
+  --git-decoration-deleted: #ad0707;
+  --git-decoration-renamed: #007acc;
+  --git-decoration-untracked: #007100;
+  --git-decoration-copied: #007acc;
+  --git-decoration-ignored: #8c8c8c;
 }
 
 .dark {
   --background: oklch(0.145 0 0);
+  --editor-surface: #1e1e1e;
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
   --card-foreground: oklch(0.985 0 0);
@@ -115,6 +132,13 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+  --git-decoration-added: #81b88b;
+  --git-decoration-modified: #e2c08d;
+  --git-decoration-deleted: #c74e39;
+  --git-decoration-renamed: #73c991;
+  --git-decoration-untracked: #73c991;
+  --git-decoration-copied: #73c991;
+  --git-decoration-ignored: #6e6e6e;
 }
 
 @layer base {
