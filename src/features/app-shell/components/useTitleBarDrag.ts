@@ -7,10 +7,16 @@ const appWindow = getCurrentWindow();
 
 function describeTitleBarError(error: unknown) {
   if (error instanceof Error) {
-    return `Could not move the window: ${error.message}`;
+    return `Could not update the window: ${error.message}`;
   }
 
-  return "Could not move the window.";
+  return "Could not update the window.";
+}
+
+function isInteractiveTitleBarTarget(target: EventTarget) {
+  return (
+    target instanceof Element && target.closest("button, input, [data-window-controls]") !== null
+  );
 }
 
 function useTitleBarDrag() {
@@ -23,31 +29,38 @@ function useTitleBarDrag() {
       return;
     }
 
-    const target = event.target;
-
-    if (!(target instanceof Element)) {
+    if (event.detail > 1) {
       return;
     }
 
-    if (target.closest("button, input, [data-window-controls]")) {
+    if (isInteractiveTitleBarTarget(event.target)) {
       return;
     }
 
     setTitleBarError(undefined);
 
     try {
-      if (event.detail === 2) {
-        await appWindow.toggleMaximize();
-        return;
-      }
-
       await appWindow.startDragging();
     } catch (error: unknown) {
       setTitleBarError(describeTitleBarError(error));
     }
   }
 
-  return { handleTitleBarMouseDown, titleBarError };
+  async function handleTitleBarDoubleClick(event: MouseEvent<HTMLElement>) {
+    if (isInteractiveTitleBarTarget(event.target)) {
+      return;
+    }
+
+    setTitleBarError(undefined);
+
+    try {
+      await appWindow.toggleMaximize();
+    } catch (error: unknown) {
+      setTitleBarError(describeTitleBarError(error));
+    }
+  }
+
+  return { handleTitleBarDoubleClick, handleTitleBarMouseDown, titleBarError };
 }
 
 export { useTitleBarDrag };

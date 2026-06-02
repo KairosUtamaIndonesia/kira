@@ -13,6 +13,7 @@ type Session = {
   createdAt: string;
   updatedAt: string;
   lastOpenedAt: string | null;
+  layoutJson: string | null;
 };
 
 type CreateProjectInput = {
@@ -28,11 +29,41 @@ type CreatedProject = {
 type WorkspacePanel = {
   id: string;
   sessionId: string;
-  kind: string;
+  kind: "terminal";
   title: string;
   positionIndex: number;
   createdAt: string;
   updatedAt: string;
+  terminalState: TerminalPanelState | null;
+};
+
+type TerminalPanelState = {
+  workingDirectory: string;
+  shell: string | null;
+};
+
+type CreateTerminalPanelInput = {
+  sessionId: string;
+  title: string;
+  workingDirectory: string;
+};
+
+type DeleteWorkspacePanelInput = {
+  panelId: string;
+};
+
+type RenameProjectInput = {
+  projectId: string;
+  name: string;
+};
+
+type RemoveProjectInput = {
+  projectId: string;
+};
+
+type UpdateSessionLayoutInput = {
+  sessionId: string;
+  layoutJson: string;
 };
 
 type OpenProjectInput = {
@@ -49,8 +80,14 @@ export type {
   CreatedProject,
   CreateProjectInput,
   OpenProject,
+  CreateTerminalPanelInput,
+  DeleteWorkspacePanelInput,
   OpenProjectInput,
   Project,
+  RemoveProjectInput,
+  RenameProjectInput,
   Session,
+  TerminalPanelState,
+  UpdateSessionLayoutInput,
   WorkspacePanel,
 };

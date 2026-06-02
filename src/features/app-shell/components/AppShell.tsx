@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import type { CreatedProject } from "@/features/projects/types";
+import type { CreatedProject, Project, WorkspacePanel } from "@/features/projects/types";
 
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { openLastProject, openProject } from "@/features/projects/api/projectsApi";
@@ -70,6 +70,57 @@ function AppShell() {
     });
   }
 
+  function handleProjectChanged(project: Project) {
+    setActiveWorkspace((currentWorkspace) => {
+      if (currentWorkspace.status !== "active" || currentWorkspace.project.id !== project.id) {
+        return currentWorkspace;
+      }
+
+      return { ...currentWorkspace, project };
+    });
+  }
+
+  function handleProjectRemoved(projectId: string) {
+    setActiveWorkspace((currentWorkspace) => {
+      if (currentWorkspace.status === "none") {
+        return currentWorkspace;
+      }
+
+      const activeProjectId =
+        currentWorkspace.status === "active"
+          ? currentWorkspace.project.id
+          : currentWorkspace.projectId;
+      if (activeProjectId !== projectId) {
+        return currentWorkspace;
+      }
+
+      return { status: "none" };
+    });
+  }
+
+  function handlePanelCreated(panel: WorkspacePanel) {
+    setActiveWorkspace((currentWorkspace) => {
+      if (currentWorkspace.status !== "active") {
+        return currentWorkspace;
+      }
+
+      return { ...currentWorkspace, panels: [...currentWorkspace.panels, panel] };
+    });
+  }
+
+  function handlePanelDeleted(panelId: string) {
+    setActiveWorkspace((currentWorkspace) => {
+      if (currentWorkspace.status !== "active") {
+        return currentWorkspace;
+      }
+
+      return {
+        ...currentWorkspace,
+        panels: currentWorkspace.panels.filter((panel) => panel.id !== panelId),
+      };
+    });
+  }
+
   return (
     <div className="grid h-dvh grid-rows-[minmax(0,1fr)_1.75rem] overflow-hidden bg-background text-foreground">
       <ResizablePanelGroup orientation="horizontal" className="min-h-0 border-b border-border">
@@ -82,13 +133,19 @@ function AppShell() {
         >
           <AppSidebar
             activeWorkspace={activeWorkspace}
+            onProjectChanged={handleProjectChanged}
             onProjectCreated={handleProjectCreated}
+            onProjectRemoved={handleProjectRemoved}
             onProjectSelect={(projectId) => void handleProjectSelect(projectId)}
           />
         </ResizablePanel>
         <ResizableHandle />
         <ResizablePanel className="min-h-0" minSize="24rem">
-          <AppWorkspace activeWorkspace={activeWorkspace} />
+          <AppWorkspace
+            activeWorkspace={activeWorkspace}
+            onPanelCreated={handlePanelCreated}
+            onPanelDeleted={handlePanelDeleted}
+          />
         </ResizablePanel>
         <ResizableHandle />
         <ResizablePanel

@@ -44,10 +44,15 @@ pub fn run() -> tauri::Result<()> {
             projects::project_list,
             projects::project_open,
             projects::project_open_last,
+            projects::project_remove,
+            projects::project_rename,
+            projects::session_layout_update,
             terminal::terminal_kill,
             terminal::terminal_resize,
             terminal::terminal_spawn,
-            terminal::terminal_write
+            terminal::terminal_write,
+            projects::workspace_panel_delete,
+            projects::workspace_terminal_panel_create
         ])
         .run(tauri::generate_context!())
 }

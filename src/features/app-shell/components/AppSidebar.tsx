@@ -27,12 +27,20 @@ import { useTitleBarDrag } from "./useTitleBarDrag";
 
 type AppSidebarProps = {
   activeWorkspace: ActiveWorkspaceState;
+  onProjectChanged: (project: Project) => void;
   onProjectCreated: (createdProject: CreatedProject) => void;
+  onProjectRemoved: (projectId: string) => void;
   onProjectSelect: (projectId: string) => void;
 };
 
-function AppSidebar({ activeWorkspace, onProjectCreated, onProjectSelect }: AppSidebarProps) {
-  const { handleTitleBarMouseDown, titleBarError } = useTitleBarDrag();
+function AppSidebar({
+  activeWorkspace,
+  onProjectChanged,
+  onProjectCreated,
+  onProjectRemoved,
+  onProjectSelect,
+}: AppSidebarProps) {
+  const { handleTitleBarDoubleClick, handleTitleBarMouseDown, titleBarError } = useTitleBarDrag();
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectsError, setProjectsError] = useState<string>();
 
@@ -68,6 +76,9 @@ function AppSidebar({ activeWorkspace, onProjectCreated, onProjectSelect }: AppS
           aria-label="Sidebar title bar"
           tabIndex={-1}
           className="h-11 justify-center border-b border-sidebar-border px-3 py-0 select-none"
+          onDoubleClick={(event) => {
+            void handleTitleBarDoubleClick(event);
+          }}
           onMouseDown={(event) => {
             void handleTitleBarMouseDown(event);
           }}
@@ -93,6 +104,22 @@ function AppSidebar({ activeWorkspace, onProjectCreated, onProjectSelect }: AppS
                 <ProjectList
                   activeProjectId={activeProjectId(activeWorkspace)}
                   projects={projects}
+                  onProjectChanged={(project) => {
+                    setProjects((currentProjects) =>
+                      sortProjectsByName(
+                        currentProjects.map((currentProject) =>
+                          currentProject.id === project.id ? project : currentProject,
+                        ),
+                      ),
+                    );
+                    onProjectChanged(project);
+                  }}
+                  onProjectRemoved={(projectId) => {
+                    setProjects((currentProjects) =>
+                      currentProjects.filter((project) => project.id !== projectId),
+                    );
+                    onProjectRemoved(projectId);
+                  }}
                   onProjectSelect={onProjectSelect}
                 />
               ) : (

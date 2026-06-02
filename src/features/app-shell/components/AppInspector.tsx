@@ -8,7 +8,7 @@ type AppInspectorProps = {
 };
 
 function AppInspector({ activeWorkspace }: AppInspectorProps) {
-  const { handleTitleBarMouseDown, titleBarError } = useTitleBarDrag();
+  const { handleTitleBarDoubleClick, handleTitleBarMouseDown, titleBarError } = useTitleBarDrag();
 
   return (
     <aside className="flex h-full min-h-0 flex-col bg-card text-card-foreground">
@@ -17,6 +17,9 @@ function AppInspector({ activeWorkspace }: AppInspectorProps) {
         aria-label="Inspector title bar"
         tabIndex={-1}
         className="flex h-11 shrink-0 items-center justify-between border-b border-sidebar-border bg-sidebar pl-3 text-sidebar-foreground select-none"
+        onDoubleClick={(event) => {
+          void handleTitleBarDoubleClick(event);
+        }}
         onMouseDown={(event) => {
           void handleTitleBarMouseDown(event);
         }}

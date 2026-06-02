@@ -5,15 +5,22 @@ import {
   type IDockviewPanelProps,
 } from "dockview-react";
 import { Plus, Terminal as TerminalIcon } from "lucide-react";
-import { createContext, useContext, useMemo, type MouseEvent } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, type MouseEvent } from "react";
 
-import { buttonVariants } from "@/components/ui/button";
+import type { WorkspacePanel as StoredWorkspacePanel } from "@/features/projects/types";
+
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  createTerminalPanel,
+  deleteWorkspacePanel,
+  updateSessionLayout,
+} from "@/features/projects/api/projectsApi";
 
 import type { ActiveWorkspaceState } from "../types";
 
@@ -25,7 +32,9 @@ type WorkspacePanelParams = {
 };
 
 type WorkspaceRuntimeContextValue = {
+  sessionId: string;
   workingDirectory: string;
+  onPanelCreated: (panel: StoredWorkspacePanel) => void;
 };
 
 const WorkspaceRuntimeContext = createContext<WorkspaceRuntimeContextValue | undefined>(undefined);
@@ -44,20 +53,32 @@ function WorkspacePanel({ api, params }: IDockviewPanelProps<WorkspacePanelParam
 }
 
 function WorkspaceHeaderActions({ containerApi, group }: IDockviewHeaderActionsProps) {
-  const { workingDirectory } = useWorkspaceRuntimeContext();
-  function addTerminalPanel() {
-    containerApi.addPanel<TerminalPanelParams>({
-      id: `terminal-${crypto.randomUUID()}`,
-      component: "terminalPanel",
+  const { onPanelCreated, sessionId, workingDirectory } = useWorkspaceRuntimeContext();
+
+  async function addTerminalPanel() {
+    const panel = await createTerminalPanel({
+      sessionId,
       title: "Terminal",
+      workingDirectory,
+    });
+    const terminalState = requireTerminalState(panel);
+    onPanelCreated(panel);
+    containerApi.addPanel<TerminalPanelParams>({
+      id: panel.id,
+      component: "terminalPanel",
+      title: panel.title,
       params: {
-        terminalId: crypto.randomUUID(),
-        workingDirectory,
+        terminalId: panel.id,
+        workingDirectory: terminalState.workingDirectory,
       },
       position: {
         referenceGroup: group,
         direction: "within",
       },
+    });
+    await updateSessionLayout({
+      sessionId,
+      layoutJson: JSON.stringify(containerApi.toJSON()),
     });
   }
 
@@ -71,7 +92,7 @@ function WorkspaceHeaderActions({ containerApi, group }: IDockviewHeaderActionsP
           <Plus className="size-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-auto min-w-44">
-          <DropdownMenuItem onClick={addTerminalPanel}>
+          <DropdownMenuItem onClick={() => void addTerminalPanel()}>
             <TerminalIcon className="size-4 text-muted-foreground" />
             <span>New Terminal (shell)</span>
           </DropdownMenuItem>
@@ -85,6 +106,14 @@ const workspaceComponents = {
   workspacePanel: WorkspacePanel,
   terminalPanel: TerminalPanel,
 };
+
+function requireTerminalState(panel: StoredWorkspacePanel) {
+  if (panel.terminalState === null) {
+    throw new Error(`Terminal panel ${panel.id} is missing terminal state.`);
+  }
+
+  return panel.terminalState;
+}
 
 function useWorkspaceRuntimeContext() {
   const context = useContext(WorkspaceRuntimeContext);
@@ -113,46 +142,127 @@ function preventHeaderSpaceDrag(event: DockviewReadyEvent) {
   });
 }
 
-function handleWorkspaceReady(event: DockviewReadyEvent) {
+function restoreWorkspacePanels(
+  event: DockviewReadyEvent,
+  activeWorkspace: Extract<ActiveWorkspaceState, { status: "active" }>,
+  onPanelDeleted: (panelId: string) => void,
+) {
   preventHeaderSpaceDrag(event);
 
-  event.api.addPanel({
-    id: "welcome",
-    component: "workspacePanel",
-    title: "Welcome",
-    params: {
-      description: "Primary workspace panel.",
-    },
-  });
+  if (activeWorkspace.session.layoutJson !== null) {
+    const serializedLayout = JSON.parse(activeWorkspace.session.layoutJson) as Parameters<
+      typeof event.api.fromJSON
+    >[0];
+    event.api.fromJSON(serializedLayout);
+  } else {
+    restorePanelsWithoutLayout(event, activeWorkspace.panels);
+    void saveWorkspaceLayout(activeWorkspace.session.id, event);
+  }
 
-  event.api.addPanel({
-    id: "agent-session",
-    component: "workspacePanel",
-    title: "Agent Session",
-    params: {
-      description: "Split, dock, and rearrange panels from here.",
-    },
-    position: {
-      referencePanel: "welcome",
-      direction: "right",
-    },
+  event.api.onDidRemovePanel((panel) => {
+    onPanelDeleted(panel.id);
+    void deleteWorkspacePanel({ panelId: panel.id });
+    void saveWorkspaceLayout(activeWorkspace.session.id, event);
   });
+  event.api.onDidMovePanel(() => void saveWorkspaceLayout(activeWorkspace.session.id, event));
+  event.api.onDidActivePanelChange(
+    () => void saveWorkspaceLayout(activeWorkspace.session.id, event),
+  );
+  event.api.onDidAddPanel(() => void saveWorkspaceLayout(activeWorkspace.session.id, event));
+}
+
+function restorePanelsWithoutLayout(event: DockviewReadyEvent, panels: StoredWorkspacePanel[]) {
+  for (const panel of panels) {
+    if (panel.kind === "terminal") {
+      const terminalState = requireTerminalState(panel);
+      event.api.addPanel<TerminalPanelParams>({
+        id: panel.id,
+        component: "terminalPanel",
+        title: panel.title,
+        params: {
+          terminalId: panel.id,
+          workingDirectory: terminalState.workingDirectory,
+        },
+      });
+    }
+  }
+}
+
+async function saveWorkspaceLayout(sessionId: string, event: DockviewReadyEvent) {
+  await updateSessionLayout({
+    sessionId,
+    layoutJson: JSON.stringify(event.api.toJSON()),
+  });
+}
+
+type ActiveWorkspaceDockviewProps = {
+  activeWorkspace: Extract<ActiveWorkspaceState, { status: "active" }>;
+  onPanelCreated: (panel: StoredWorkspacePanel) => void;
+  onPanelDeleted: (panelId: string) => void;
+};
+
+function ActiveWorkspaceDockview({
+  activeWorkspace,
+  onPanelCreated,
+  onPanelDeleted,
+}: ActiveWorkspaceDockviewProps) {
+  const dockviewRootRef = useRef<HTMLDivElement>(null);
+  const workspaceRuntimeContext = useMemo(
+    () => ({
+      sessionId: activeWorkspace.session.id,
+      workingDirectory: activeWorkspace.project.folderPath,
+      onPanelCreated,
+    }),
+    [activeWorkspace, onPanelCreated],
+  );
+
+  useEffect(() => {
+    const dockviewRoot = dockviewRootRef.current;
+    if (dockviewRoot === null) {
+      return;
+    }
+
+    markDockviewTitleBarDragRegions(dockviewRoot);
+    const observer = new MutationObserver(() => {
+      markDockviewTitleBarDragRegions(dockviewRoot);
+    });
+    observer.observe(dockviewRoot, { childList: true, subtree: true });
+
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div ref={dockviewRootRef} className="h-full min-h-0">
+      <WorkspaceRuntimeContext.Provider value={workspaceRuntimeContext}>
+        <DockviewReact
+          key={activeWorkspace.session.id}
+          className="dockview-theme-dark kira-dockview"
+          components={workspaceComponents}
+          defaultHeaderPosition="top"
+          dndStrategy="pointer"
+          hideBorders
+          onReady={(event) => restoreWorkspacePanels(event, activeWorkspace, onPanelDeleted)}
+          rightHeaderActionsComponent={WorkspaceHeaderActions}
+        />
+      </WorkspaceRuntimeContext.Provider>
+    </div>
+  );
+}
+
+function markDockviewTitleBarDragRegions(dockviewRoot: HTMLElement) {
+  for (const titleBarVoid of dockviewRoot.querySelectorAll(".dv-void-container")) {
+    titleBarVoid.setAttribute("data-tauri-drag-region", "");
+  }
 }
 
 type AppWorkspaceProps = {
   activeWorkspace: ActiveWorkspaceState;
+  onPanelCreated: (panel: StoredWorkspacePanel) => void;
+  onPanelDeleted: (panelId: string) => void;
 };
 
-function AppWorkspace({ activeWorkspace }: AppWorkspaceProps) {
-  const { handleTitleBarMouseDown, titleBarError } = useTitleBarDrag();
-  const workspaceRuntimeContext = useMemo(
-    () => ({
-      workingDirectory:
-        activeWorkspace.status === "active" ? activeWorkspace.project.folderPath : "",
-    }),
-    [activeWorkspace],
-  );
-
+function AppWorkspace({ activeWorkspace, onPanelCreated, onPanelDeleted }: AppWorkspaceProps) {
+  const { handleTitleBarDoubleClick, handleTitleBarMouseDown, titleBarError } = useTitleBarDrag();
   return (
     <main
       className="h-full min-h-0 bg-editor-surface"
@@ -162,29 +272,18 @@ function AppWorkspace({ activeWorkspace }: AppWorkspaceProps) {
           event.stopPropagation();
         }
       }}
-      onPointerDownCapture={(event) => {
-        if (isElementInsideSelector(event.target, ".dv-void-container")) {
-          event.stopPropagation();
-          void handleTitleBarMouseDown(event);
-        }
-      }}
     >
-      {activeWorkspace.status === "active" ? (
-        <WorkspaceRuntimeContext.Provider value={workspaceRuntimeContext}>
-          <DockviewReact
-            key={activeWorkspace.session.id}
-            className="dockview-theme-dark kira-dockview"
-            components={workspaceComponents}
-            defaultHeaderPosition="top"
-            dndStrategy="pointer"
-            hideBorders
-            onReady={handleWorkspaceReady}
-            rightHeaderActionsComponent={WorkspaceHeaderActions}
-          />
-        </WorkspaceRuntimeContext.Provider>
+      {activeWorkspace.status === "active" && activeWorkspace.panels.length > 0 ? (
+        <ActiveWorkspaceDockview
+          activeWorkspace={activeWorkspace}
+          onPanelCreated={onPanelCreated}
+          onPanelDeleted={onPanelDeleted}
+        />
       ) : (
         <WorkspaceEmptyState
           activeWorkspace={activeWorkspace}
+          onPanelCreated={onPanelCreated}
+          onTitleBarDoubleClick={handleTitleBarDoubleClick}
           onTitleBarMouseDown={handleTitleBarMouseDown}
         />
       )}
@@ -195,11 +294,19 @@ function AppWorkspace({ activeWorkspace }: AppWorkspaceProps) {
   );
 }
 
-type WorkspaceEmptyStateProps = AppWorkspaceProps & {
+type WorkspaceEmptyStateProps = {
+  activeWorkspace: ActiveWorkspaceState;
+  onPanelCreated: (panel: StoredWorkspacePanel) => void;
+  onTitleBarDoubleClick: (event: MouseEvent<HTMLElement>) => Promise<void>;
   onTitleBarMouseDown: (event: MouseEvent<HTMLElement>) => Promise<void>;
 };
 
-function WorkspaceEmptyState({ activeWorkspace, onTitleBarMouseDown }: WorkspaceEmptyStateProps) {
+function WorkspaceEmptyState({
+  activeWorkspace,
+  onPanelCreated,
+  onTitleBarDoubleClick,
+  onTitleBarMouseDown,
+}: WorkspaceEmptyStateProps) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div
@@ -207,16 +314,22 @@ function WorkspaceEmptyState({ activeWorkspace, onTitleBarMouseDown }: Workspace
         aria-label="Workspace title bar"
         tabIndex={-1}
         className="flex h-11 shrink-0 items-center border-b border-sidebar-border bg-sidebar px-3 text-sidebar-foreground select-none"
+        onDoubleClick={(event) => {
+          void onTitleBarDoubleClick(event);
+        }}
         onMouseDown={(event) => {
           void onTitleBarMouseDown(event);
         }}
       />
-      {emptyStateContent(activeWorkspace)}
+      {emptyStateContent(activeWorkspace, onPanelCreated)}
     </div>
   );
 }
 
-function emptyStateContent(activeWorkspace: ActiveWorkspaceState) {
+function emptyStateContent(
+  activeWorkspace: ActiveWorkspaceState,
+  onPanelCreated: (panel: StoredWorkspacePanel) => void,
+) {
   if (activeWorkspace.status === "loading") {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center p-6 text-muted-foreground">
@@ -236,6 +349,27 @@ function emptyStateContent(activeWorkspace: ActiveWorkspaceState) {
     );
   }
 
+  if (activeWorkspace.status === "active") {
+    return (
+      <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+        <div className="max-w-md rounded-xl border border-dashed border-border p-6 text-center">
+          <div className="font-medium text-foreground">No panels open</div>
+          <div className="mt-1 text-sm text-muted-foreground">
+            Create a terminal panel to start working in this Project.
+          </div>
+          <Button
+            type="button"
+            className="mt-4"
+            onClick={() => void createFirstTerminalPanel(activeWorkspace, onPanelCreated)}
+          >
+            <TerminalIcon aria-hidden="true" />
+            New Terminal
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-0 flex-1 items-center justify-center p-6">
       <div className="max-w-md rounded-xl border border-dashed border-border p-6 text-center">
@@ -246,6 +380,18 @@ function emptyStateContent(activeWorkspace: ActiveWorkspaceState) {
       </div>
     </div>
   );
+}
+
+async function createFirstTerminalPanel(
+  activeWorkspace: Extract<ActiveWorkspaceState, { status: "active" }>,
+  onPanelCreated: (panel: StoredWorkspacePanel) => void,
+) {
+  const panel = await createTerminalPanel({
+    sessionId: activeWorkspace.session.id,
+    title: "Terminal",
+    workingDirectory: activeWorkspace.project.folderPath,
+  });
+  onPanelCreated(panel);
 }
 
 export { AppWorkspace };
