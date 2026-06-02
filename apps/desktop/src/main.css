@@ -225,6 +225,8 @@
   --term-font-size: 1rem;
   --term-line-height: 1.4;
   --term-row-height: 1.225rem;
+
+  box-shadow: none;
 }
 
 .kira-dockview {
@@ -242,6 +244,7 @@
   --dv-activegroup-hiddenpanel-tab-color: var(--muted-foreground);
   --dv-inactivegroup-visiblepanel-tab-color: var(--foreground);
   --dv-inactivegroup-hiddenpanel-tab-color: var(--muted-foreground);
+  --dv-tab-divider-color: var(--border);
   --dv-separator-border: var(--border);
   --dv-separator-border-color: var(--border);
   --dv-paneview-active-outline-color: var(--ring);
@@ -250,6 +253,8 @@
   --dv-active-sash-transition-delay: 0s;
   --dv-drag-over-background-color: color-mix(in srgb, var(--primary) 12%, transparent);
   --dv-drag-over-border-color: var(--ring);
+  --dv-floating-box-shadow: none;
+  --dv-floating-border: 1px solid var(--border);
   --dv-icon-hover-background-color: var(--accent);
   --dv-tab-border-radius: 0;
   --dv-border-radius: 0;
@@ -264,6 +269,11 @@
   border-top: 2px solid transparent;
   border-right: 1px solid var(--sidebar-border);
   color: var(--muted-foreground);
+}
+
+.kira-dockview .dv-tabs-container.dv-horizontal .dv-tab:not(:first-child)::before,
+.kira-dockview .dv-tabs-container.dv-vertical .dv-tab:not(:first-child)::before {
+  display: none;
 }
 
 .kira-dockview .dv-tab.dv-active-tab {
