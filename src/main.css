@@ -222,7 +222,7 @@
   --term-color-14: var(--terminal-ansi-bright-cyan);
   --term-color-15: var(--terminal-ansi-bright-white);
   --term-font-family: var(--font-mono);
-  --term-font-size: 0.875rem;
+  --term-font-size: 1rem;
   --term-line-height: 1.4;
   --term-row-height: 1.225rem;
 }
@@ -231,7 +231,7 @@
   @apply scrollbar-editor;
 
   --dv-tabs-and-actions-container-height: 2.75rem;
-  --dv-tabs-and-actions-container-font-size: 0.875rem;
+  --dv-tabs-and-actions-container-font-size: 1rem;
   --dv-group-view-background-color: var(--editor-surface);
   --dv-tabs-and-actions-container-background-color: var(--sidebar);
   --dv-activegroup-visiblepanel-tab-background-color: var(--sidebar);
@@ -263,7 +263,6 @@
 .kira-dockview .dv-tab {
   border-top: 2px solid transparent;
   border-right: 1px solid var(--sidebar-border);
-  border-left: 1px solid transparent;
   color: var(--muted-foreground);
 }
 

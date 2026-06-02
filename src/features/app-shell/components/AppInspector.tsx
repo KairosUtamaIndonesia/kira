@@ -15,7 +15,7 @@ function AppInspector() {
           void handleTitleBarMouseDown(event);
         }}
       >
-        <span className="text-xs font-semibold tracking-wide text-sidebar-foreground/70 uppercase">
+        <span className="font-semibold tracking-wide text-sidebar-foreground/70 uppercase">
           Inspector
         </span>
         <AppWindowControls />
@@ -24,7 +24,7 @@ function AppInspector() {
         )}
       </div>
       <div className="flex min-h-0 flex-1 scrollbar-sleek flex-col gap-3 overflow-auto p-3">
-        <div className="rounded-xl border border-border p-3 text-sm text-muted-foreground">
+        <div className="rounded-xl border border-border p-3 text-muted-foreground">
           Contextual details and actions for the active workspace panel.
         </div>
       </div>

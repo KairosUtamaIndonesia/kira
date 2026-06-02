@@ -24,7 +24,7 @@ type WorkspacePanelParams = {
 function WorkspacePanel({ api, params }: IDockviewPanelProps<WorkspacePanelParams>) {
   return (
     <section className="flex h-full flex-col bg-editor-surface p-4 text-foreground">
-      <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-border text-sm text-muted-foreground">
+      <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-border text-muted-foreground">
         <div className="space-y-1 text-center">
           <div className="font-medium text-foreground">{api.title}</div>
           <div>{params.description}</div>
