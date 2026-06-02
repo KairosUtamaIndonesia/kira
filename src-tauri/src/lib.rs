@@ -8,6 +8,7 @@
 #![warn(clippy::pedantic)]
 
 mod persistence;
+mod projects;
 mod terminal;
 
 use tauri::Manager;
@@ -28,6 +29,7 @@ fn greet(name: &str) -> String {
 pub fn run() -> tauri::Result<()> {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let persistence_store =
                 tauri::async_runtime::block_on(persistence::initialize(app.handle()))?;
@@ -38,6 +40,8 @@ pub fn run() -> tauri::Result<()> {
         .invoke_handler(tauri::generate_handler![
             greet,
             persistence::persistence_store_health,
+            projects::project_create,
+            projects::project_list,
             terminal::terminal_kill,
             terminal::terminal_resize,
             terminal::terminal_spawn,
