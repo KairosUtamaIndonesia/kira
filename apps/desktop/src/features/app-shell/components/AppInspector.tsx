@@ -1,3 +1,9 @@
+import { Files, GitBranch, type LucideIcon } from "lucide-react";
+import { useState } from "react";
+
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+
 import type { ActiveWorkspaceState } from "../types";
 
 import { AppWindowControls } from "./AppWindowControls";
@@ -7,7 +13,21 @@ type AppInspectorProps = {
   activeWorkspace: ActiveWorkspaceState;
 };
 
+type InspectorView = "explorer" | "sourceControl";
+
+type InspectorViewAction = {
+  view: InspectorView;
+  label: string;
+  icon: LucideIcon;
+};
+
+const inspectorViewActions: InspectorViewAction[] = [
+  { view: "explorer", label: "Explorer", icon: Files },
+  { view: "sourceControl", label: "Source Control", icon: GitBranch },
+];
+
 function AppInspector({ activeWorkspace }: AppInspectorProps) {
+  const [activeView, setActiveView] = useState<InspectorView>("explorer");
   const { handleTitleBarDoubleClick, handleTitleBarMouseDown, titleBarError } = useTitleBarDrag();
 
   return (
@@ -16,7 +36,7 @@ function AppInspector({ activeWorkspace }: AppInspectorProps) {
         role="toolbar"
         aria-label="Inspector title bar"
         tabIndex={-1}
-        className="flex h-11 shrink-0 items-center justify-between border-b border-sidebar-border bg-sidebar pl-3 text-sidebar-foreground select-none"
+        className="flex h-11 shrink-0 items-center justify-end border-b border-sidebar-border bg-sidebar text-sidebar-foreground select-none"
         onDoubleClick={(event) => {
           void handleTitleBarDoubleClick(event);
         }}
@@ -24,23 +44,51 @@ function AppInspector({ activeWorkspace }: AppInspectorProps) {
           void handleTitleBarMouseDown(event);
         }}
       >
-        <span className="font-semibold tracking-wide text-sidebar-foreground/70 uppercase">
-          Inspector
-        </span>
         <AppWindowControls />
         {titleBarError === undefined ? undefined : (
           <output className="sr-only">{titleBarError}</output>
         )}
       </div>
+      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border bg-card px-2">
+        {inspectorViewActions.map((action) => {
+          const Icon = action.icon;
+          const isActive = activeView === action.view;
+
+          return (
+            <Tooltip key={action.view}>
+              <TooltipTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={action.label}
+                    aria-pressed={isActive}
+                    className="aria-pressed:bg-accent aria-pressed:text-accent-foreground"
+                    onClick={() => setActiveView(action.view)}
+                  >
+                    <Icon aria-hidden="true" />
+                  </Button>
+                }
+              />
+              <TooltipContent>{action.label}</TooltipContent>
+            </Tooltip>
+          );
+        })}
+      </div>
       <div className="flex min-h-0 flex-1 scrollbar-sleek flex-col gap-3 overflow-auto p-3">
-        {inspectorContent(activeWorkspace)}
+        {inspectorContent(activeWorkspace, activeView)}
       </div>
     </aside>
   );
 }
 
-function inspectorContent(activeWorkspace: ActiveWorkspaceState) {
-  if (activeWorkspace.status === "active") {
+function inspectorContent(activeWorkspace: ActiveWorkspaceState, activeView: InspectorView) {
+  if (activeView === "sourceControl") {
+    return <SourceControlInspectorContent activeWorkspace={activeWorkspace} />;
+  }
+
+  if (activeView === "explorer" && activeWorkspace.status === "active") {
     return (
       <section className="space-y-3 rounded-xl border border-border p-3">
         <h2 className="text-sm font-medium text-foreground">Project</h2>
@@ -58,6 +106,10 @@ function inspectorContent(activeWorkspace: ActiveWorkspaceState) {
         </dl>
       </section>
     );
+  }
+
+  if (activeView !== "explorer") {
+    return assertNever(activeView);
   }
 
   if (activeWorkspace.status === "loading") {
@@ -81,6 +133,49 @@ function inspectorContent(activeWorkspace: ActiveWorkspaceState) {
       Select a Project to view its details.
     </div>
   );
+}
+
+type SourceControlInspectorContentProps = {
+  activeWorkspace: ActiveWorkspaceState;
+};
+
+function SourceControlInspectorContent({ activeWorkspace }: SourceControlInspectorContentProps) {
+  if (activeWorkspace.status === "active") {
+    return (
+      <section className="space-y-3 rounded-xl border border-border p-3">
+        <h2 className="text-sm font-medium text-foreground">Source Control</h2>
+        <p className="text-sm text-muted-foreground">
+          Source control details for {activeWorkspace.project.name} will appear here.
+        </p>
+      </section>
+    );
+  }
+
+  if (activeWorkspace.status === "loading") {
+    return (
+      <div className="rounded-xl border border-border p-3 text-muted-foreground">
+        Opening project…
+      </div>
+    );
+  }
+
+  if (activeWorkspace.status === "error") {
+    return (
+      <div role="alert" className="rounded-xl border border-border p-3 text-muted-foreground">
+        {activeWorkspace.message}
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-border p-3 text-muted-foreground">
+      Select a Project to view source control details.
+    </div>
+  );
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled inspector view: ${value}`);
 }
 
 type InspectorFieldProps = {
