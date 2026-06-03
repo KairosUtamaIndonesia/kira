@@ -61,6 +61,12 @@ const organizationNavigation: NavigationItem[] = [
     description: "Role permissions",
     icon: ShieldCheck,
   },
+  {
+    href: "settings",
+    label: "Settings",
+    description: "Organization settings",
+    icon: Settings,
+  },
 ];
 
 export { organizationNavigation, primaryNavigation };

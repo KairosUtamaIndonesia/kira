@@ -1,11 +1,15 @@
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
-import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { OrganizationHeader } from "@/features/organizations/components/OrganizationHeader";
 import {
+  InviteMemberForm,
+  MemberActions,
+} from "@/features/organizations/components/OrganizationMemberForms";
+import {
   getOrganizationForAdmin,
+  listOrganizationInvitationsForAdmin,
   listOrganizationMembersForAdmin,
 } from "@/features/organizations/data/organizations";
 
@@ -24,6 +28,7 @@ export default async function MembersPage({ params }: MembersPageProperties) {
   return (
     <div className="space-y-6">
       <OrganizationHeader organization={organization} />
+      <InviteMemberForm organizationId={organization.id} />
       <Suspense fallback={<MembersTableLoading />}>
         <MembersTable organizationId={organization.id} />
       </Suspense>
@@ -36,7 +41,10 @@ type MembersTableProperties = {
 };
 
 async function MembersTable({ organizationId }: MembersTableProperties) {
-  const members = await listOrganizationMembersForAdmin(organizationId);
+  const [members, invitations] = await Promise.all([
+    listOrganizationMembersForAdmin(organizationId),
+    listOrganizationInvitationsForAdmin(organizationId),
+  ]);
 
   return (
     <section className="rounded-xl border border-border bg-card p-4 text-card-foreground">
@@ -45,7 +53,6 @@ async function MembersTable({ organizationId }: MembersTableProperties) {
           <h2 className="font-medium">Members</h2>
           <p className="text-sm text-muted-foreground">Organization users and Better Auth roles.</p>
         </div>
-        <Button disabled>Invite member</Button>
       </div>
       {members.length === 0 ? (
         <Empty>
@@ -66,6 +73,7 @@ async function MembersTable({ organizationId }: MembersTableProperties) {
                 <th className="py-2 pr-4 font-medium">Role</th>
                 <th className="py-2 pr-4 font-medium">Status</th>
                 <th className="py-2 pr-4 font-medium">Joined</th>
+                <th className="py-2 pr-4 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -76,12 +84,44 @@ async function MembersTable({ organizationId }: MembersTableProperties) {
                   <td className="py-3 pr-4 capitalize">{member.role}</td>
                   <td className="py-3 pr-4 capitalize">{member.status}</td>
                   <td className="py-3 pr-4 text-muted-foreground">{member.joinedAt}</td>
+                  <td className="py-3 pr-4">
+                    <MemberActions member={member} />
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
+      {invitations.length > 0 ? (
+        <div className="mt-6">
+          <h3 className="mb-3 font-medium">Pending invitations</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-border text-xs text-muted-foreground uppercase">
+                <tr>
+                  <th className="py-2 pr-4 font-medium">Email</th>
+                  <th className="py-2 pr-4 font-medium">Role</th>
+                  <th className="py-2 pr-4 font-medium">Status</th>
+                  <th className="py-2 pr-4 font-medium">Expires</th>
+                  <th className="py-2 pr-4 font-medium">Invited</th>
+                </tr>
+              </thead>
+              <tbody>
+                {invitations.map((invitation) => (
+                  <tr key={invitation.id} className="border-b border-border last:border-0">
+                    <td className="py-3 pr-4 font-medium">{invitation.email}</td>
+                    <td className="py-3 pr-4 capitalize">{invitation.role}</td>
+                    <td className="py-3 pr-4 capitalize">{invitation.status}</td>
+                    <td className="py-3 pr-4 text-muted-foreground">{invitation.expiresAt}</td>
+                    <td className="py-3 pr-4 text-muted-foreground">{invitation.invitedAt}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : undefined}
     </section>
   );
 }

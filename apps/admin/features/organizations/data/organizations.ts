@@ -1,9 +1,13 @@
 import { eq } from "drizzle-orm";
 
-import type { Organization, OrganizationMember } from "@/features/organizations/types";
+import type {
+  Organization,
+  OrganizationInvitation,
+  OrganizationMember,
+} from "@/features/organizations/types";
 
 import { organizationDesktopAccessConfigId } from "@/features/organizations/data/organizationApiKeys";
-import { apikey, member, organization, user } from "@/lib/db/auth-schema";
+import { apikey, invitation, member, organization, session, user } from "@/lib/db/auth-schema";
 import { db } from "@/lib/db/postgres";
 
 function formatDate(date: Date) {
@@ -104,4 +108,58 @@ async function listOrganizationMembersForAdmin(
   }));
 }
 
-export { getOrganizationForAdmin, listOrganizationMembersForAdmin, listOrganizationsForAdmin };
+async function listOrganizationInvitationsForAdmin(
+  organizationId: string,
+): Promise<OrganizationInvitation[]> {
+  const rows = await db
+    .select({
+      id: invitation.id,
+      organizationId: invitation.organizationId,
+      email: invitation.email,
+      role: invitation.role,
+      status: invitation.status,
+      expiresAt: invitation.expiresAt,
+      invitedAt: invitation.createdAt,
+    })
+    .from(invitation)
+    .where(eq(invitation.organizationId, organizationId))
+    .orderBy(invitation.createdAt);
+
+  return rows.map((row) => ({
+    id: row.id,
+    organizationId: row.organizationId,
+    email: row.email,
+    role: row.role ?? "member",
+    status: row.status,
+    expiresAt: formatDate(row.expiresAt),
+    invitedAt: formatDate(row.invitedAt),
+  }));
+}
+
+async function getActiveOrganizationIdForCurrentSession(
+  sessionId: string,
+): Promise<string | undefined> {
+  const [row] = await db
+    .select({ activeOrganizationId: session.activeOrganizationId })
+    .from(session)
+    .where(eq(session.id, sessionId))
+    .limit(1);
+
+  if (row === undefined) {
+    return undefined;
+  }
+
+  if (row.activeOrganizationId === null) {
+    return undefined;
+  }
+
+  return row.activeOrganizationId;
+}
+
+export {
+  getActiveOrganizationIdForCurrentSession,
+  getOrganizationForAdmin,
+  listOrganizationInvitationsForAdmin,
+  listOrganizationMembersForAdmin,
+  listOrganizationsForAdmin,
+};

@@ -20,6 +20,16 @@ type OrganizationMember = {
   joinedAt: string;
 };
 
+type OrganizationInvitation = {
+  id: string;
+  organizationId: string;
+  email: string;
+  role: string;
+  status: string;
+  expiresAt: string;
+  invitedAt: string;
+};
+
 type OrganizationApiKey = {
   id: string;
   organizationId: string;
@@ -32,4 +42,10 @@ type OrganizationApiKey = {
   status: "active" | "expired" | "disabled";
 };
 
-export type { Organization, OrganizationApiKey, OrganizationMember, OrganizationStatus };
+export type {
+  Organization,
+  OrganizationApiKey,
+  OrganizationInvitation,
+  OrganizationMember,
+  OrganizationStatus,
+};
