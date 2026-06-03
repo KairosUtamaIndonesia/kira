@@ -193,11 +193,11 @@
 }
 
 @utility scrollbar-sleek {
-  @apply scrollbar-thin scrollbar-thumb-muted-foreground/30 scrollbar-track-transparent scrollbar-gutter-stable hover:scrollbar-thumb-muted-foreground/50;
+  @apply scrollbar-thin scrollbar-thumb-muted-foreground/30 scrollbar-track-transparent hover:scrollbar-thumb-muted-foreground/50;
 }
 
 @utility scrollbar-editor {
-  @apply scrollbar-thin scrollbar-thumb-muted-foreground/30 scrollbar-track-editor-surface scrollbar-gutter-stable hover:scrollbar-thumb-muted-foreground/50;
+  @apply scrollbar-thin scrollbar-thumb-muted-foreground/30 scrollbar-track-editor-surface hover:scrollbar-thumb-muted-foreground/50;
 }
 
 .kira-xterm {
