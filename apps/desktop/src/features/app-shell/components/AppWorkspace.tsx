@@ -180,6 +180,7 @@ function restoreWorkspacePanels(
       const serializedLayout = JSON.parse(activeWorkspace.session.layoutJson) as Parameters<
         typeof event.api.fromJSON
       >[0];
+      ensureSavedLayoutReferencesStoredPanels(serializedLayout, activeWorkspace.panels);
       event.api.fromJSON(serializedLayout);
       const restoredMissingPanels = restoreMissingStoredPanels(event, activeWorkspace.panels);
       if (restoredMissingPanels) {
@@ -229,6 +230,32 @@ function restoreWorkspacePanels(
     () =>
       void saveWorkspaceLayoutIfActive(activeWorkspace.session.id, event, isWorkspaceDisposingRef),
   );
+}
+
+function ensureSavedLayoutReferencesStoredPanels(layout: unknown, panels: StoredWorkspacePanel[]) {
+  const storedPanelIds = new Set(panels.map((panel) => panel.id));
+  for (const layoutPanelId of savedLayoutPanelIds(layout)) {
+    if (!storedPanelIds.has(layoutPanelId)) {
+      throw new Error(`Saved Workspace layout references missing panel ${layoutPanelId}.`);
+    }
+  }
+}
+
+function savedLayoutPanelIds(layout: unknown) {
+  const layoutRecord = requireObjectRecord(layout, "Saved Workspace layout");
+  if (!("panels" in layoutRecord)) {
+    throw new Error("Saved Workspace layout is missing panels.");
+  }
+
+  return Object.keys(requireObjectRecord(layoutRecord.panels, "Saved Workspace layout panels"));
+}
+
+function requireObjectRecord(value: unknown, label: string) {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${label} must be an object.`);
+  }
+
+  return value as Record<string, unknown>;
 }
 
 function restoreMissingStoredPanels(event: DockviewReadyEvent, panels: StoredWorkspacePanel[]) {
