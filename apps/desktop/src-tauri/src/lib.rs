@@ -9,6 +9,7 @@
 
 mod persistence;
 mod projects;
+mod source_control;
 mod terminal;
 
 use tauri::Manager;
@@ -58,6 +59,14 @@ pub fn run() -> tauri::Result<()> {
             projects::workspace_terminal_snapshot_delete,
             projects::workspace_terminal_snapshot_get,
             projects::workspace_terminal_snapshot_save
+            source_control::source_control_commit,
+            source_control::source_control_discard_path,
+            source_control::source_control_discard_paths,
+            source_control::source_control_stage_path,
+            source_control::source_control_stage_paths,
+            source_control::source_control_status,
+            source_control::source_control_unstage_path,
+            source_control::source_control_unstage_paths
         ])
         .run(tauri::generate_context!())
 }

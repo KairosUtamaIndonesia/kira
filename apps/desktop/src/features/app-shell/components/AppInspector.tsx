@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { SourceControlInspector } from "@/features/source-control/components/SourceControlInspector";
 
 import type { ActiveWorkspaceState } from "../types";
 
@@ -85,7 +86,13 @@ function AppInspector({ activeWorkspace }: AppInspectorProps) {
 
 function inspectorContent(activeWorkspace: ActiveWorkspaceState, activeView: InspectorView) {
   if (activeView === "sourceControl") {
-    return <SourceControlInspectorContent activeWorkspace={activeWorkspace} />;
+    return (
+      <SourceControlInspector
+        folderPath={
+          activeWorkspace.status === "active" ? activeWorkspace.project.folderPath : undefined
+        }
+      />
+    );
   }
 
   if (activeView === "explorer" && activeWorkspace.status === "active") {
@@ -131,45 +138,6 @@ function inspectorContent(activeWorkspace: ActiveWorkspaceState, activeView: Ins
   return (
     <div className="rounded-xl border border-border p-3 text-muted-foreground">
       Select a Project to view its details.
-    </div>
-  );
-}
-
-type SourceControlInspectorContentProps = {
-  activeWorkspace: ActiveWorkspaceState;
-};
-
-function SourceControlInspectorContent({ activeWorkspace }: SourceControlInspectorContentProps) {
-  if (activeWorkspace.status === "active") {
-    return (
-      <section className="space-y-3 rounded-xl border border-border p-3">
-        <h2 className="text-sm font-medium text-foreground">Source Control</h2>
-        <p className="text-sm text-muted-foreground">
-          Source control details for {activeWorkspace.project.name} will appear here.
-        </p>
-      </section>
-    );
-  }
-
-  if (activeWorkspace.status === "loading") {
-    return (
-      <div className="rounded-xl border border-border p-3 text-muted-foreground">
-        Opening project…
-      </div>
-    );
-  }
-
-  if (activeWorkspace.status === "error") {
-    return (
-      <div role="alert" className="rounded-xl border border-border p-3 text-muted-foreground">
-        {activeWorkspace.message}
-      </div>
-    );
-  }
-
-  return (
-    <div className="rounded-xl border border-border p-3 text-muted-foreground">
-      Select a Project to view source control details.
     </div>
   );
 }
