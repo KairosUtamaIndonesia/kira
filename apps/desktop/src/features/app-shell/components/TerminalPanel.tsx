@@ -98,6 +98,7 @@ function TerminalPanel({ api, params }: IDockviewPanelProps<TerminalPanelParams>
     runtimeRef.current = runtime;
     setStatus(runtime.status);
     runtime.statusListeners.add(setStatus);
+    applyTerminalStyle(runtime);
     mountTerminalRuntime(runtime, terminalHost);
 
     requestAnimationFrame(() => {
@@ -128,6 +129,21 @@ function TerminalPanel({ api, params }: IDockviewPanelProps<TerminalPanelParams>
 
     return () => disposable.dispose();
   }, [api, fitTerminal, resizeBackendTerminal]);
+
+  useEffect(() => {
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.type === "attributes" && mutation.attributeName === "class") {
+          applyTerminalStyles();
+          return;
+        }
+      }
+    });
+
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+
+    return () => observer.disconnect();
+  }, []);
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-editor-surface text-foreground">
@@ -268,6 +284,19 @@ function setRuntimeStatus(runtime: TerminalRuntime, status: string | undefined) 
   for (const listener of runtime.statusListeners) {
     listener(status);
   }
+}
+
+function applyTerminalStyles() {
+  for (const runtime of terminalRuntimes.values()) {
+    applyTerminalStyle(runtime);
+  }
+}
+
+function applyTerminalStyle(runtime: TerminalRuntime) {
+  const themeStyle = getComputedStyle(document.documentElement);
+  runtime.terminal.options.theme = xtermThemeFromStyle(themeStyle);
+  runtime.terminal.options.fontFamily = requireCssVariable(themeStyle, "--font-mono");
+  runtime.terminal.options.fontSize = parseRootRemSize(themeStyle);
 }
 
 function xtermThemeFromStyle(style: CSSStyleDeclaration): ITheme {
