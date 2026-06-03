@@ -10,7 +10,9 @@ import { validateRuntimeCommand } from "./validation";
 const INVALID_COMMAND_ID = "invalid";
 const INVALID_COMMAND_TYPE = "invalid";
 
-const context: RuntimeContext = {};
+const context: RuntimeContext = {
+  emit: (event) => writeJsonLine(process.stdout, event),
+};
 
 const readyEvent: RuntimeEvent = {
   type: "app:ready",

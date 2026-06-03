@@ -144,8 +144,15 @@ export type AppEvent =
       readonly sessionId: string;
     }
   | {
+      readonly type: "app:persist_session_entry";
+      readonly threadId: string;
+      readonly sessionId: string;
+      readonly entry: KiraAgentSessionEntry;
+    }
+  | {
       readonly type: "app:persistence_checkpoint";
       readonly threadId: string;
+      readonly sessionId: string;
       readonly reason: PersistenceCheckpointReason;
       readonly messages: readonly AgentMessage[];
     }
@@ -155,6 +162,11 @@ export type AppEvent =
     };
 
 export type PersistenceCheckpointReason = "agent_end" | "compaction_end" | "manual";
+
+export type KiraAgentSessionEntry = {
+  readonly kind: "message";
+  readonly message: AgentMessage;
+};
 
 export type PiWrappedEvent = {
   readonly type: "pi:event";
