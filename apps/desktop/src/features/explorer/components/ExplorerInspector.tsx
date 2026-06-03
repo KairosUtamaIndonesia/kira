@@ -6,13 +6,37 @@ import {
   useFileTreeSelection,
 } from "@pierre/trees/react";
 import { File, RefreshCw, Search } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, type CSSProperties } from "react";
+
+type FileTreeThemeStyle = CSSProperties & Record<`--${string}`, string>;
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
+import type { ExplorerPathMetadata } from "../types";
+
 import { useExplorerTree } from "../hooks/useExplorerTree";
+
+const fileTreeThemeStyle = {
+  "--trees-bg-override": "var(--card)",
+  "--trees-fg-override": "var(--card-foreground)",
+  "--trees-fg-muted-override": "var(--muted-foreground)",
+  "--trees-bg-muted-override": "var(--muted)",
+  "--trees-input-bg-override": "var(--input)",
+  "--trees-search-bg-override": "var(--input)",
+  "--trees-search-fg-override": "var(--foreground)",
+  "--trees-selected-bg-override": "var(--accent)",
+  "--trees-selected-fg-override": "var(--accent-foreground)",
+  "--trees-selected-focused-border-color-override": "var(--ring)",
+  "--trees-border-color-override": "var(--border)",
+  "--trees-focus-ring-color-override": "var(--ring)",
+  "--trees-indent-guide-bg-override": "var(--border)",
+  "--trees-scrollbar-thumb-override": "var(--border)",
+  "--trees-font-family-override": "var(--font-sans)",
+  "--trees-font-size-override": "0.8125rem",
+  "--trees-border-radius-override": "var(--radius-md)",
+} satisfies FileTreeThemeStyle;
 
 type ExplorerInspectorProps = {
   folderPath: string | undefined;
@@ -36,7 +60,9 @@ function ExplorerInspector({ folderPath, onOpenFile }: ExplorerInspectorProps) {
 
   return (
     <ExplorerTreeView
-      paths={Object.keys(state.result.paths)}
+      pathMap={state.result.paths}
+      truncated={state.result.truncated}
+      limit={state.result.limit}
       onOpenFile={onOpenFile}
       onRefresh={refresh}
     />
@@ -44,13 +70,21 @@ function ExplorerInspector({ folderPath, onOpenFile }: ExplorerInspectorProps) {
 }
 
 type ExplorerTreeViewProps = {
-  paths: string[];
+  pathMap: Record<string, ExplorerPathMetadata>;
+  truncated: boolean;
+  limit: number;
   onOpenFile: (filePath: string) => Promise<void>;
   onRefresh: () => void;
 };
 
-function ExplorerTreeView({ paths, onOpenFile, onRefresh }: ExplorerTreeViewProps) {
-  const sortedPaths = useMemo(() => sortedPathCopy(paths), [paths]);
+function ExplorerTreeView({
+  pathMap,
+  truncated,
+  limit,
+  onOpenFile,
+  onRefresh,
+}: ExplorerTreeViewProps) {
+  const sortedPaths = useMemo(() => sortedPathCopy(Object.keys(pathMap)), [pathMap]);
   const preparedInput = useMemo(() => preparePresortedFileTreeInput(sortedPaths), [sortedPaths]);
   const { model } = useFileTree({
     preparedInput,
@@ -98,6 +132,12 @@ function ExplorerTreeView({ paths, onOpenFile, onRefresh }: ExplorerTreeViewProp
             onChange={(event) => search.setValue(event.target.value)}
           />
         </div>
+        {truncated ? (
+          <p className="rounded-lg border border-border bg-muted/50 p-2 text-xs text-muted-foreground">
+            Explorer is showing the first {limit.toLocaleString()} files. Use search or narrow the
+            Project folder if the file is missing.
+          </p>
+        ) : undefined}
         <Button
           type="button"
           variant="secondary"
@@ -117,7 +157,7 @@ function ExplorerTreeView({ paths, onOpenFile, onRefresh }: ExplorerTreeViewProp
         {sortedPaths.length === 0 ? (
           <ExplorerMessage message="This Project folder has no files to show." />
         ) : (
-          <FileTree model={model} className="h-full" />
+          <FileTree model={model} className="h-full" style={fileTreeThemeStyle as CSSProperties} />
         )}
       </div>
     </div>
@@ -125,18 +165,9 @@ function ExplorerTreeView({ paths, onOpenFile, onRefresh }: ExplorerTreeViewProp
 }
 
 function sortedPathCopy(paths: string[]) {
-  const sortedPaths: string[] = [];
-  for (const path of paths) {
-    const insertIndex = sortedPaths.findIndex(
-      (candidatePath) => comparePaths(path, candidatePath) < 0,
-    );
-    if (insertIndex === -1) {
-      sortedPaths.push(path);
-    } else {
-      sortedPaths.splice(insertIndex, 0, path);
-    }
-  }
-
+  const sortedPaths = [...paths];
+  // oxlint-disable-next-line unicorn/no-array-sort -- Sorting a local copy is non-mutating for callers and avoids O(n²) insertion sort on large trees.
+  sortedPaths.sort(comparePaths);
   return sortedPaths;
 }
 

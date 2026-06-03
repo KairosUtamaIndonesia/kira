@@ -6,7 +6,16 @@ use std::time::UNIX_EPOCH;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-const IGNORED_DIRECTORY_NAMES: &[&str] = &[".git", ".next", "dist", "node_modules", "target"];
+const EXPLORER_FILE_LIMIT: usize = 5_000;
+const IGNORED_DIRECTORY_NAMES: &[&str] = &[
+    ".git",
+    ".next",
+    ".turbo",
+    "dist",
+    "node_modules",
+    "target",
+    "vendor",
+];
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -18,6 +27,8 @@ pub struct ExplorerTreeInput {
 #[serde(rename_all = "camelCase")]
 pub struct ExplorerTreeResult {
     paths: BTreeMap<String, ExplorerPathMetadata>,
+    truncated: bool,
+    limit: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -51,74 +62,95 @@ impl serde::Serialize for ExplorerError {
 #[tauri::command]
 pub async fn explorer_tree(input: ExplorerTreeInput) -> Result<ExplorerTreeResult, ExplorerError> {
     let folder_path = validate_project_folder(&input.folder_path)?;
-    let mut paths = BTreeMap::new();
-    collect_file_paths(&folder_path, &folder_path, &mut paths)?;
-    Ok(ExplorerTreeResult { paths })
+    tauri::async_runtime::spawn_blocking(move || collect_file_paths(&folder_path))
+        .await
+        .map_err(|error| ExplorerError::InspectFolder {
+            path: input.folder_path,
+            message: error.to_string(),
+        })?
 }
 
-fn collect_file_paths(
-    root_path: &Path,
-    folder_path: &Path,
-    paths: &mut BTreeMap<String, ExplorerPathMetadata>,
-) -> Result<(), ExplorerError> {
-    let entries = fs::read_dir(folder_path).map_err(|error| ExplorerError::InspectFolder {
-        path: folder_path.to_string_lossy().to_string(),
-        message: error.to_string(),
-    })?;
+fn collect_file_paths(root_path: &Path) -> Result<ExplorerTreeResult, ExplorerError> {
+    let mut paths = BTreeMap::new();
+    let mut pending_folders = vec![root_path.to_path_buf()];
+    let mut truncated = false;
 
-    for entry_result in entries {
-        let entry = entry_result.map_err(|error| ExplorerError::InspectFolder {
+    while let Some(folder_path) = pending_folders.pop() {
+        let entries = fs::read_dir(&folder_path).map_err(|error| ExplorerError::InspectFolder {
             path: folder_path.to_string_lossy().to_string(),
             message: error.to_string(),
         })?;
-        let entry_path = entry.path();
-        let file_name = entry.file_name();
-        let file_name = file_name.to_string_lossy();
-        if file_name.starts_with('.') && file_name != ".env" {
-            continue;
-        }
 
-        let metadata = entry
-            .metadata()
-            .map_err(|error| ExplorerError::InspectFolder {
-                path: entry_path.to_string_lossy().to_string(),
+        for entry_result in entries {
+            if paths.len() >= EXPLORER_FILE_LIMIT {
+                truncated = true;
+                pending_folders.clear();
+                break;
+            }
+
+            let entry = entry_result.map_err(|error| ExplorerError::InspectFolder {
+                path: folder_path.to_string_lossy().to_string(),
                 message: error.to_string(),
             })?;
-
-        if metadata.is_dir() {
-            if IGNORED_DIRECTORY_NAMES.contains(&file_name.as_ref()) {
+            let entry_path = entry.path();
+            let file_name = entry.file_name();
+            let file_name = file_name.to_string_lossy();
+            if should_ignore_entry(&file_name) {
                 continue;
             }
-            collect_file_paths(root_path, &entry_path, paths)?;
-            continue;
-        }
 
-        if !metadata.is_file() {
-            continue;
-        }
+            let metadata = fs::symlink_metadata(&entry_path).map_err(|error| {
+                ExplorerError::InspectFolder {
+                    path: entry_path.to_string_lossy().to_string(),
+                    message: error.to_string(),
+                }
+            })?;
 
-        let relative_path = entry_path
-            .strip_prefix(root_path)
-            .map_err(|error| ExplorerError::InspectFolder {
-                path: entry_path.to_string_lossy().to_string(),
-                message: error.to_string(),
-            })?
-            .to_string_lossy()
-            .replace('\\', "/");
-        paths.insert(
-            relative_path,
-            ExplorerPathMetadata {
-                size: Some(metadata.len()),
-                last_modified: metadata
-                    .modified()
-                    .ok()
-                    .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
-                    .map(|duration| duration.as_millis()),
-            },
-        );
+            if metadata.file_type().is_symlink() {
+                continue;
+            }
+
+            if metadata.is_dir() {
+                pending_folders.push(entry_path);
+                continue;
+            }
+
+            if !metadata.is_file() {
+                continue;
+            }
+
+            let relative_path = entry_path
+                .strip_prefix(root_path)
+                .map_err(|error| ExplorerError::InspectFolder {
+                    path: entry_path.to_string_lossy().to_string(),
+                    message: error.to_string(),
+                })?
+                .to_string_lossy()
+                .replace('\\', "/");
+            paths.insert(
+                relative_path,
+                ExplorerPathMetadata {
+                    size: Some(metadata.len()),
+                    last_modified: metadata
+                        .modified()
+                        .ok()
+                        .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+                        .map(|duration| duration.as_millis()),
+                },
+            );
+        }
     }
 
-    Ok(())
+    Ok(ExplorerTreeResult {
+        paths,
+        truncated,
+        limit: EXPLORER_FILE_LIMIT,
+    })
+}
+
+fn should_ignore_entry(file_name: &str) -> bool {
+    (file_name.starts_with('.') && file_name != ".env")
+        || IGNORED_DIRECTORY_NAMES.contains(&file_name)
 }
 
 fn validate_project_folder(folder_path: &str) -> Result<PathBuf, ExplorerError> {
