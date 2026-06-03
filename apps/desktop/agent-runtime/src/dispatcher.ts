@@ -1,5 +1,4 @@
-import type { ImageContent } from "@earendil-works/pi-ai";
-
+import { dispatchPiCommand } from "./pi-commands";
 import { createPiRuntime, type PiRuntime, type RuntimeEventEmitter } from "./pi-runtime";
 import {
   PACKAGE_NAME,
@@ -18,14 +17,6 @@ export type RuntimeContext = {
   emit: RuntimeEventEmitter;
 };
 
-type PromptCommand = {
-  readonly id: string;
-  readonly type: "prompt";
-  readonly message: string;
-  readonly images?: ImageContent[];
-  readonly streamingBehavior?: "steer" | "followUp";
-};
-
 export async function dispatchRuntimeCommand(
   context: RuntimeContext,
   command: RuntimeCommand,
@@ -36,7 +27,6 @@ export async function dispatchRuntimeCommand(
     case "app:shutdown":
       return await dispatchAppCommand(context, command);
     case "prompt":
-      return await dispatchPromptCommand(context, toPromptCommand(command));
     case "steer":
     case "follow_up":
     case "abort":
@@ -65,9 +55,9 @@ export async function dispatchRuntimeCommand(
     case "set_session_name":
     case "get_messages":
     case "get_commands":
-      return piCommandNotImplemented(command.id, command.type, context.pi !== undefined);
+      return await dispatchPiCommand(context.pi, command);
     case "extension_ui_response":
-      return piCommandNotImplemented(command.id, command.type, context.pi !== undefined);
+      return piCommandNotImplemented(command.id, command.type);
   }
 }
 
@@ -171,57 +161,6 @@ async function dispatchAppCommand(
   }
 }
 
-function toPromptCommand(command: RuntimeCommand): PromptCommand {
-  if (command.type !== "prompt" || typeof command.message !== "string") {
-    throw new Error("Validated prompt command is missing message.");
-  }
-
-  return {
-    id: command.id,
-    type: "prompt",
-    message: command.message,
-    ...(Array.isArray(command.images) ? { images: command.images as ImageContent[] } : {}),
-    ...(command.streamingBehavior === "steer" || command.streamingBehavior === "followUp"
-      ? { streamingBehavior: command.streamingBehavior }
-      : {}),
-  };
-}
-
-async function dispatchPromptCommand(
-  context: RuntimeContext,
-  command: PromptCommand,
-): Promise<RuntimeResponse> {
-  if (context.pi === undefined) {
-    return piCommandNotImplemented(command.id, command.type, false);
-  }
-
-  try {
-    const options = {
-      ...(Array.isArray(command.images) ? { images: command.images as ImageContent[] } : {}),
-      ...(command.streamingBehavior === "steer" || command.streamingBehavior === "followUp"
-        ? { streamingBehavior: command.streamingBehavior }
-        : {}),
-      source: "rpc" as const,
-    };
-    await context.pi.runtime.session.prompt(command.message, options);
-
-    return {
-      id: command.id,
-      type: "response",
-      command: command.type,
-      success: true,
-    };
-  } catch (error) {
-    return createRuntimeErrorResponse(
-      command.id,
-      command.type,
-      "pi_runtime_error",
-      "Pi failed to process prompt command.",
-      { cause: error instanceof Error ? error.message : String(error) },
-    );
-  }
-}
-
 export function getRuntimeState(context: RuntimeContext): RuntimeState {
   return {
     protocolVersion: PROTOCOL_VERSION,
@@ -251,20 +190,7 @@ export function createRuntimeErrorResponse(
   };
 }
 
-function piCommandNotImplemented(
-  id: string,
-  command: string,
-  initialized: boolean,
-): RuntimeErrorResponse {
-  if (!initialized) {
-    return createRuntimeErrorResponse(
-      id,
-      command,
-      "thread_not_initialized",
-      "Initialize an Agent Thread with app:initialize_thread before sending Pi commands.",
-    );
-  }
-
+function piCommandNotImplemented(id: string, command: string): RuntimeErrorResponse {
   return createRuntimeErrorResponse(
     id,
     command,

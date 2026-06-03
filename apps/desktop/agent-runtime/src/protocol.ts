@@ -61,7 +61,11 @@ export type ExtensionUiResponseCommand =
 
 export type RuntimeOutput = RuntimeResponse | RuntimeEvent;
 
-export type RuntimeResponse = AppResponse | PiResponse | RuntimeErrorResponse;
+export type RuntimeResponse =
+  | AppResponse
+  | PiImplementedResponse
+  | PiResponse
+  | RuntimeErrorResponse;
 
 export type AppResponse =
   | {
@@ -87,6 +91,42 @@ export type AppResponse =
       readonly command: "app:shutdown";
       readonly success: true;
     };
+
+export type PiImplementedResponse =
+  | {
+      readonly id: CommandId;
+      readonly type: "response";
+      readonly command: "prompt" | "steer" | "follow_up" | "abort";
+      readonly success: true;
+    }
+  | {
+      readonly id: CommandId;
+      readonly type: "response";
+      readonly command: "get_state";
+      readonly success: true;
+      readonly data: RpcSessionState;
+    }
+  | {
+      readonly id: CommandId;
+      readonly type: "response";
+      readonly command: "get_messages";
+      readonly success: true;
+      readonly data: { readonly messages: readonly AgentMessage[] };
+    }
+  | {
+      readonly id: CommandId;
+      readonly type: "response";
+      readonly command: "get_commands";
+      readonly success: true;
+      readonly data: { readonly commands: readonly KiraSlashCommand[] };
+    };
+
+export type KiraSlashCommand = {
+  readonly name: string;
+  readonly description?: string;
+  readonly source: "extension" | "prompt" | "skill";
+  readonly sourceInfo: unknown;
+};
 
 export type PiResponse = RequireResponseId<RpcResponse>;
 

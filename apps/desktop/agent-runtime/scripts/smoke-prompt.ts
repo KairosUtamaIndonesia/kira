@@ -16,6 +16,11 @@ let stderrBuffer = "";
 let sawExpectedText = false;
 let sawAgentEnd = false;
 let sawPersistenceCheckpoint = false;
+let sawGetState = false;
+let sawGetMessages = false;
+let sawGetCommands = false;
+let sawAbort = false;
+let sentPostPromptCommands = false;
 
 const timeout = setTimeout(() => {
   child.kill();
@@ -31,6 +36,7 @@ sendCommand({
   threadId: "smoke-thread",
   projectPath,
 });
+sendCommand({ id: "state-before", type: "get_state" });
 sendCommand({
   id: "prompt",
   type: "prompt",
@@ -52,6 +58,18 @@ if (!sawAgentEnd) {
 }
 if (!sawPersistenceCheckpoint) {
   fail(`Did not observe app:persistence_checkpoint. stdout:\n${stdoutBuffer}`);
+}
+if (!sawGetState) {
+  fail(`Did not observe successful get_state response. stdout:\n${stdoutBuffer}`);
+}
+if (!sawGetMessages) {
+  fail(`Did not observe successful get_messages response. stdout:\n${stdoutBuffer}`);
+}
+if (!sawGetCommands) {
+  fail(`Did not observe successful get_commands response. stdout:\n${stdoutBuffer}`);
+}
+if (!sawAbort) {
+  fail(`Did not observe successful abort response. stdout:\n${stdoutBuffer}`);
 }
 
 process.stdout.write(`Smoke prompt passed: ${expectedText}\n`);
@@ -113,10 +131,28 @@ function handleRuntimeLine(line: string): void {
   if (record.type === "app:persistence_checkpoint") {
     sawPersistenceCheckpoint = true;
   }
-  if (record.type === "response" && record.command === "prompt" && record.success === false) {
-    fail(`Prompt failed: ${JSON.stringify(record.error)}`);
+  if (record.type === "response" && record.success === false) {
+    fail(`${record.command ?? "Unknown command"} failed: ${JSON.stringify(record.error)}`);
   }
-  if (sawExpectedText && sawAgentEnd && sawPersistenceCheckpoint) {
+  if (record.type === "response" && record.command === "get_state" && record.success === true) {
+    sawGetState = true;
+  }
+  if (record.type === "response" && record.command === "get_messages" && record.success === true) {
+    sawGetMessages = true;
+  }
+  if (record.type === "response" && record.command === "get_commands" && record.success === true) {
+    sawGetCommands = true;
+  }
+  if (record.type === "response" && record.command === "abort" && record.success === true) {
+    sawAbort = true;
+  }
+  if (sawExpectedText && sawAgentEnd && sawPersistenceCheckpoint && !sentPostPromptCommands) {
+    sentPostPromptCommands = true;
+    sendCommand({ id: "messages", type: "get_messages" });
+    sendCommand({ id: "commands", type: "get_commands" });
+    sendCommand({ id: "abort", type: "abort" });
+  }
+  if (sawGetMessages && sawGetCommands && sawAbort) {
     sendCommand({ id: "shutdown", type: "app:shutdown" });
     child.stdin.end();
   }
