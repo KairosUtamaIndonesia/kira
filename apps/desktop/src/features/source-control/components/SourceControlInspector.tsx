@@ -165,7 +165,7 @@ function SourceControlInspector({ folderPath }: SourceControlInspectorProps) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="space-y-2 border-b border-border px-3 pb-3">
-        <div className="flex items-center gap-2 text-sm">
+        <div className="flex items-center gap-2 pt-2 text-sm">
           <GitBranch className="size-4 text-muted-foreground" aria-hidden="true" />
           <span className="min-w-0 flex-1 truncate font-medium">
             {state.result.branch ?? "Detached HEAD"}
@@ -209,7 +209,7 @@ function SourceControlInspector({ folderPath }: SourceControlInspectorProps) {
           value={filterQuery}
           onChange={(event) => setFilterQuery(event.target.value)}
           placeholder="Filter files…"
-          className="h-7 border-0 bg-transparent px-0 text-xs shadow-none focus-visible:ring-0"
+          className="h-7 border-0 bg-transparent px-0 text-sm shadow-none focus-visible:ring-0"
         />
       </div>
 
@@ -469,7 +469,7 @@ function ActionButton({ label, icon: Icon, disabled = false, onClick }: ActionBu
 
 function EmptyState({ message, role }: { message: string; role?: "alert" }) {
   return (
-    <div role={role} className="rounded-xl border border-border p-3 text-sm text-muted-foreground">
+    <div role={role} className="p-3 text-sm text-muted-foreground">
       {message}
     </div>
   );

@@ -77,7 +77,7 @@ function AppInspector({ activeWorkspace }: AppInspectorProps) {
           );
         })}
       </div>
-      <div className="flex min-h-0 flex-1 scrollbar-sleek flex-col gap-3 overflow-auto p-3">
+      <div className="flex min-h-0 flex-1 scrollbar-sleek flex-col gap-3 overflow-auto">
         {inspectorContent(activeWorkspace, activeView)}
       </div>
     </aside>
