@@ -414,7 +414,7 @@ function AppWorkspace({
         }
       }}
     >
-      {activeWorkspace.status === "active" ? (
+      {activeWorkspace.status === "active" && activeWorkspace.panels.length > 0 ? (
         <ActiveWorkspaceDockview
           activeWorkspace={activeWorkspace}
           isWorkspaceDisposingRef={isWorkspaceDisposingRef}
