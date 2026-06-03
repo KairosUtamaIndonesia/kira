@@ -53,3 +53,19 @@ _Avoid_: Footer
 **Persistence Store**:
 The app-owned durable data store, currently SQLite through the Rust backend.
 _Avoid_: Database when discussing the product boundary rather than the implementation
+
+**Single Sign-On**:
+An organization-owned web admin authentication method that delegates sign-in to an external identity provider.
+_Avoid_: Global social login when the provider is configured for one organization
+
+**SSO Provider**:
+The external identity provider configuration linked to an organization, such as Kairos Azure Entra ID.
+_Avoid_: OAuth app when referring to the Kira organization-level configuration
+
+**SSO Domain**:
+An email domain used to discover an organization's SSO provider during web admin sign-in.
+_Avoid_: Tenant when referring only to the email domain routing key
+
+**Identity Provider**:
+The external system that authenticates a user for Single Sign-On.
+_Avoid_: Authorization provider when Kira still owns organization access decisions

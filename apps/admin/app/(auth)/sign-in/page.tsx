@@ -1,5 +1,5 @@
 import { SignInForm } from "@/features/auth/components/SignInForm";
-import { getInvitationEmailForSignIn } from "@/features/organizations/data/organizations";
+import { getInvitationSignInContext } from "@/features/organizations/data/organizations";
 
 type SignInPageProperties = {
   searchParams: Promise<{ invitationId?: string }>;
@@ -7,10 +7,10 @@ type SignInPageProperties = {
 
 export default async function SignInPage({ searchParams }: SignInPageProperties) {
   const { invitationId } = await searchParams;
-  let invitedEmail: string | undefined;
+  let invitationContext;
 
   if (invitationId !== undefined) {
-    invitedEmail = await getInvitationEmailForSignIn(invitationId);
+    invitationContext = await getInvitationSignInContext(invitationId);
   }
   return (
     <main className="flex min-h-svh items-center justify-center bg-background px-4 py-12 text-foreground">
@@ -28,12 +28,14 @@ export default async function SignInPage({ searchParams }: SignInPageProperties)
               : "Create an account or sign in with the invited email address."}
           </p>
         </div>
-        {invitationId === undefined ? undefined : (
+        {invitationId === undefined || invitationContext === undefined ? undefined : (
           <div className="mt-4 rounded-lg border border-border bg-muted p-3 text-sm text-muted-foreground">
-            If you do not have a password yet, create an account with the invited email address.
+            {invitationContext.ssoRequired
+              ? `${invitationContext.organizationName} requires Single Sign-On. Continue with your organization identity provider to accept this invitation.`
+              : "If you do not have a password yet, create an account with the invited email address."}
           </div>
         )}
-        <SignInForm invitationId={invitationId} invitedEmail={invitedEmail} />
+        <SignInForm invitationId={invitationId} invitationContext={invitationContext} />
       </section>
     </main>
   );

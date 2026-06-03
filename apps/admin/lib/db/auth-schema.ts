@@ -141,6 +141,29 @@ export const invitation = pgTable(
   ],
 );
 
+export const ssoProvider = pgTable(
+  "ssoProvider",
+  {
+    id: text("id").primaryKey(),
+    issuer: text("issuer").notNull(),
+    oidcConfig: text("oidc_config"),
+    samlConfig: text("saml_config"),
+    userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
+    providerId: text("provider_id").notNull().unique(),
+    organizationId: text("organization_id").references(() => organization.id, {
+      onDelete: "cascade",
+    }),
+    domain: text("domain").notNull(),
+    domainVerified: boolean("domain_verified").default(false),
+  },
+  (table) => [
+    index("ssoProvider_userId_idx").on(table.userId),
+    index("ssoProvider_organizationId_idx").on(table.organizationId),
+    index("ssoProvider_domain_idx").on(table.domain),
+    uniqueIndex("ssoProvider_providerId_uidx").on(table.providerId),
+  ],
+);
+
 export const apikey = pgTable(
   "apikey",
   {
@@ -179,6 +202,7 @@ export const userRelations = relations(user, ({ many }) => ({
   accounts: many(account),
   members: many(member),
   invitations: many(invitation),
+  ssoProviders: many(ssoProvider),
 }));
 
 export const sessionRelations = relations(session, ({ one }) => ({
@@ -198,6 +222,7 @@ export const accountRelations = relations(account, ({ one }) => ({
 export const organizationRelations = relations(organization, ({ many }) => ({
   members: many(member),
   invitations: many(invitation),
+  ssoProviders: many(ssoProvider),
 }));
 
 export const memberRelations = relations(member, ({ one }) => ({
@@ -208,6 +233,17 @@ export const memberRelations = relations(member, ({ one }) => ({
   user: one(user, {
     fields: [member.userId],
     references: [user.id],
+  }),
+}));
+
+export const ssoProviderRelations = relations(ssoProvider, ({ one }) => ({
+  user: one(user, {
+    fields: [ssoProvider.userId],
+    references: [user.id],
+  }),
+  organization: one(organization, {
+    fields: [ssoProvider.organizationId],
+    references: [organization.id],
   }),
 }));
 

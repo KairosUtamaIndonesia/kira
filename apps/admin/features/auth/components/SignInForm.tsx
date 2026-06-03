@@ -2,7 +2,7 @@
 
 import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,12 +12,22 @@ import { authClient } from "@/lib/auth/client";
 
 const signInFailureMessage = "Sign-in failed. Check your email and password, then try again.";
 
-type SignInFormProperties = {
-  invitationId: string | undefined;
-  invitedEmail: string | undefined;
+type InvitationSignInContext = {
+  invitedEmail: string;
+  organizationName: string;
+  organizationSlug: string;
+  ssoRequired: boolean;
 };
 
-function SignInForm({ invitationId, invitedEmail }: SignInFormProperties) {
+type SignInFormProperties = {
+  invitationId: string | undefined;
+  invitationContext: InvitationSignInContext | undefined;
+};
+
+function SignInForm({ invitationId, invitationContext }: SignInFormProperties) {
+  const invitedEmail = invitationContext === undefined ? undefined : invitationContext.invitedEmail;
+  const ssoOnlyInvite =
+    invitationId !== undefined && invitationContext !== undefined && invitationContext.ssoRequired;
   const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState(invitedEmail ?? "");
@@ -27,6 +37,62 @@ function SignInForm({ invitationId, invitedEmail }: SignInFormProperties) {
   );
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSsoSubmitting, setIsSsoSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!ssoOnlyInvite || invitationId === undefined) {
+      return;
+    }
+
+    const pendingInvitationId = invitationId;
+    let cancelled = false;
+
+    async function acceptSsoInvitation() {
+      const session = await authClient.getSession();
+
+      if (cancelled || session.data === null) {
+        return;
+      }
+
+      setIsSubmitting(true);
+      const verificationResult = await verifyInvitedEmailAction(pendingInvitationId);
+
+      if (cancelled) {
+        return;
+      }
+
+      if (verificationResult.status === "error") {
+        setIsSubmitting(false);
+        setErrorMessage(verificationResult.message);
+        return;
+      }
+
+      const invitationResult = await authClient.organization.acceptInvitation({
+        invitationId: pendingInvitationId,
+      });
+
+      if (cancelled) {
+        return;
+      }
+
+      if (invitationResult.error) {
+        setIsSubmitting(false);
+        setErrorMessage(
+          "Signed in, but invitation acceptance failed. Confirm you used the invited email address.",
+        );
+        return;
+      }
+
+      router.replace("/invitation-accepted");
+      router.refresh();
+    }
+
+    void acceptSsoInvitation();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [invitationId, router, ssoOnlyInvite]);
 
   let submitLabel = "Sign in";
 
@@ -36,6 +102,23 @@ function SignInForm({ invitationId, invitedEmail }: SignInFormProperties) {
     submitLabel = "Signing in";
   } else if (authMode === "sign-up") {
     submitLabel = "Create account and accept invite";
+  }
+
+  async function handleSsoSignIn() {
+    setErrorMessage(undefined);
+    setIsSsoSubmitting(true);
+
+    const result = await authClient.signIn.sso({
+      email,
+      callbackURL:
+        invitationId === undefined ? "/dashboard" : `/sign-in?invitationId=${invitationId}`,
+      requestSignUp: invitationId !== undefined,
+    });
+
+    if (result.error) {
+      setIsSsoSubmitting(false);
+      setErrorMessage("Single sign-on is not available for this email. Use your password instead.");
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -101,6 +184,35 @@ function SignInForm({ invitationId, invitedEmail }: SignInFormProperties) {
     router.refresh();
   }
 
+  if (ssoOnlyInvite && invitationContext !== undefined) {
+    return (
+      <div className="mt-6 space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="email">Email</Label>
+          <Input id="email" name="email" type="email" value={email} disabled />
+          <p className="text-xs text-muted-foreground">
+            Invitations for {invitationContext.organizationName} must be accepted with Single
+            Sign-On.
+          </p>
+        </div>
+        {errorMessage !== undefined ? (
+          <p className="text-sm text-destructive" role="alert">
+            {errorMessage}
+          </p>
+        ) : undefined}
+        <Button
+          type="button"
+          className="w-full"
+          disabled={isSsoSubmitting || email.length === 0}
+          onClick={handleSsoSignIn}
+        >
+          {isSsoSubmitting ? <Loader2 aria-hidden="true" className="animate-spin" /> : undefined}
+          Continue with Single Sign-On
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
       {authMode === "sign-up" ? (
@@ -137,6 +249,16 @@ function SignInForm({ invitationId, invitedEmail }: SignInFormProperties) {
           </p>
         ) : undefined}
       </div>
+      <Button
+        type="button"
+        variant="secondary"
+        className="w-full"
+        disabled={isSubmitting || isSsoSubmitting || email.length === 0}
+        onClick={handleSsoSignIn}
+      >
+        {isSsoSubmitting ? <Loader2 aria-hidden="true" className="animate-spin" /> : undefined}
+        Continue with Single Sign-On
+      </Button>
       <div className="space-y-2">
         <Label htmlFor="password">Password</Label>
         <Input
@@ -159,7 +281,7 @@ function SignInForm({ invitationId, invitedEmail }: SignInFormProperties) {
           {errorMessage}
         </p>
       ) : undefined}
-      <Button type="submit" className="w-full" disabled={isSubmitting}>
+      <Button type="submit" className="w-full" disabled={isSubmitting || isSsoSubmitting}>
         {isSubmitting ? <Loader2 aria-hidden="true" className="animate-spin" /> : undefined}
         {submitLabel}
       </Button>

@@ -15,6 +15,13 @@
       "when": 1780417742561,
       "tag": "0001_slimy_mimic",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1780471698876,
+      "tag": "0002_young_slyde",
+      "breakpoints": true
     }
   ]
 }

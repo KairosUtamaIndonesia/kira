@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import type {
   Organization,
@@ -7,7 +7,15 @@ import type {
 } from "@/features/organizations/types";
 
 import { organizationDesktopAccessConfigId } from "@/features/organizations/data/organizationApiKeys";
-import { apikey, invitation, member, organization, session, user } from "@/lib/db/auth-schema";
+import {
+  apikey,
+  invitation,
+  member,
+  organization,
+  session,
+  ssoProvider,
+  user,
+} from "@/lib/db/auth-schema";
 import { db } from "@/lib/db/postgres";
 
 function formatDate(date: Date) {
@@ -136,18 +144,53 @@ async function listOrganizationInvitationsForAdmin(
   }));
 }
 
-async function getInvitationEmailForSignIn(invitationId: string): Promise<string | undefined> {
+type InvitationSignInContext = {
+  invitedEmail: string;
+  organizationName: string;
+  organizationSlug: string;
+  ssoRequired: boolean;
+};
+
+async function getInvitationSignInContext(
+  invitationId: string,
+): Promise<InvitationSignInContext | undefined> {
   const [row] = await db
-    .select({ email: invitation.email })
+    .select({
+      email: invitation.email,
+      organizationId: organization.id,
+      organizationName: organization.name,
+      organizationSlug: organization.slug,
+      ssoProviderId: ssoProvider.id,
+    })
     .from(invitation)
-    .where(eq(invitation.id, invitationId))
+    .innerJoin(organization, eq(organization.id, invitation.organizationId))
+    .leftJoin(
+      ssoProvider,
+      and(eq(ssoProvider.organizationId, organization.id), eq(ssoProvider.domainVerified, true)),
+    )
+    .where(and(eq(invitation.id, invitationId), eq(invitation.status, "pending")))
     .limit(1);
 
   if (row === undefined) {
     return undefined;
   }
 
-  return row.email;
+  return {
+    invitedEmail: row.email,
+    organizationName: row.organizationName,
+    organizationSlug: row.organizationSlug,
+    ssoRequired: row.ssoProviderId !== null,
+  };
+}
+
+async function getInvitationEmailForSignIn(invitationId: string): Promise<string | undefined> {
+  const context = await getInvitationSignInContext(invitationId);
+
+  if (context === undefined) {
+    return undefined;
+  }
+
+  return context.invitedEmail;
 }
 
 async function getActiveOrganizationIdForCurrentSession(
@@ -173,6 +216,7 @@ async function getActiveOrganizationIdForCurrentSession(
 export {
   getActiveOrganizationIdForCurrentSession,
   getInvitationEmailForSignIn,
+  getInvitationSignInContext,
   getOrganizationForAdmin,
   listOrganizationInvitationsForAdmin,
   listOrganizationMembersForAdmin,

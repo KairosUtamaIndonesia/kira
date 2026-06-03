@@ -7,6 +7,7 @@ import {
   getActiveOrganizationIdForCurrentSession,
   getOrganizationForAdmin,
 } from "@/features/organizations/data/organizations";
+import { getOrganizationSsoConnection } from "@/features/sso/data/ssoConnections";
 import { auth } from "@/lib/auth/auth";
 
 type OrganizationSettingsPageProperties = {
@@ -23,7 +24,10 @@ export default async function OrganizationSettingsPage({
     notFound();
   }
 
-  const currentSession = await auth.api.getSession({ headers: await headers() });
+  const [currentSession, ssoConnection] = await Promise.all([
+    auth.api.getSession({ headers: await headers() }),
+    getOrganizationSsoConnection(organization.id),
+  ]);
   let activeOrganizationId: string | undefined;
 
   if (currentSession !== null) {
@@ -38,6 +42,7 @@ export default async function OrganizationSettingsPage({
       <OrganizationSettingsForms
         organization={organization}
         isCurrentActiveOrganization={activeOrganizationId === organization.id}
+        ssoConnection={ssoConnection}
       />
     </div>
   );

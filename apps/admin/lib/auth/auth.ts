@@ -1,5 +1,6 @@
 import { apiKey } from "@better-auth/api-key";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
+import { sso } from "@better-auth/sso";
 import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
 import { admin, organization } from "better-auth/plugins";
@@ -23,7 +24,11 @@ const auth = betterAuth({
   experimental: {
     joins: true,
   },
-  trustedOrigins: [betterAuthUrl],
+  trustedOrigins: [
+    betterAuthUrl,
+    "https://login.microsoftonline.com",
+    "https://graph.microsoft.com",
+  ],
   plugins: [
     organization({
       allowUserToCreateOrganization: true,
@@ -44,6 +49,16 @@ const auth = betterAuth({
         enabled: true,
         timeWindow: 1000 * 60,
         maxRequests: 120,
+      },
+    }),
+    sso({
+      disableImplicitSignUp: true,
+      domainVerification: {
+        enabled: true,
+      },
+      organizationProvisioning: {
+        disabled: false,
+        defaultRole: "member",
       },
     }),
     nextCookies(),

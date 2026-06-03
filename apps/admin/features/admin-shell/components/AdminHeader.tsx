@@ -14,7 +14,13 @@ function AdminHeader() {
           </Link>
           <nav aria-label="Admin sections" className="hidden items-center gap-1 md:flex lg:hidden">
             {primaryNavigation.map((item) => (
-              <Button key={item.href} render={<Link href={item.href} />} variant="ghost" size="sm">
+              <Button
+                key={item.href}
+                render={<Link href={item.href} />}
+                nativeButton={false}
+                variant="ghost"
+                size="sm"
+              >
                 {item.label}
               </Button>
             ))}
