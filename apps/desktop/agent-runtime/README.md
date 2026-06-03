@@ -1,126 +1,87 @@
 # @kira/agent-runtime
 
-`@kira/agent-runtime` is the headless agent sidecar for the Kira desktop app.
+`@kira/agent-runtime` is Kira's Flue-backed desktop agent sidecar.
 
-Rust/Tauri owns process supervision, frontend event delivery, and Kira SQLite Persistence Store writes. This package hosts the agent runtime behind a localhost HTTP/WebSocket boundary and must not write Kira SQLite directly.
-
-## Current direction
-
-The runtime is being rebuilt as a Flue-native host process. The current implementation is a clean HTTP/WebSocket skeleton that preserves Kira's ownership boundaries while removing the previous Pi-compatible command surface.
-
-Implemented:
-
-- Localhost HTTP server entrypoint.
-- Token-protected runtime API.
-- `GET /healthz` readiness endpoint.
-- WebSocket event stream at `GET /events?token=...`.
-- In-memory Agent Thread registry.
-- Thread creation and lookup endpoints.
-- Prompt placeholder endpoint that emits Flue-shaped events.
-- Kira persistence bridge event shape for Rust-owned SQLite writes.
-
-Not implemented yet:
-
-- Real Flue harness/session creation.
-- Real prompt execution and model/provider configuration.
-- Tool, run, abort, and dispatch routing.
-- Rust/Tauri process supervision.
-- SQLite persistence schema and event consumers.
+Rust/Tauri owns process supervision, frontend event delivery, and writes to the Kira SQLite Persistence Store. This package hosts Flue agents behind localhost HTTP/WebSocket routes and must not write Kira SQLite directly.
 
 ## Runtime model
 
-The intended desktop model is one sidecar process supervised by Rust/Tauri. Rust starts the process with a random localhost port and random per-process token:
+Kira starts the sidecar with Bun and Flue's Node-target build output:
 
 ```bash
-KIRA_AGENT_RUNTIME_PORT=49321 \
+PORT=49321 \
 KIRA_AGENT_RUNTIME_TOKEN=dev-secret \
-bun src/main.ts
+KIRA_AGENT_PROJECT_PATH=C:/path/to/project \
+bun dist/server.mjs
 ```
 
-The server binds to `127.0.0.1` only.
+During development:
 
-## HTTP API
-
-### Health
-
-```http
-GET /healthz
+```bash
+bun run dev
 ```
 
-```json
-{
-  "status": "ready",
-  "packageName": "@kira/agent-runtime",
-  "protocolVersion": 2
-}
+Build the sidecar:
+
+```bash
+bun run build
 ```
 
-### Create Agent Thread
+## Routes
 
-```http
-POST /threads
-Authorization: Bearer dev-secret
-Content-Type: application/json
-```
+`src/app.ts` is Kira's Hono wrapper around Flue routes.
 
-```json
-{
-  "threadId": "thread-1",
-  "projectPath": "C:/path/to/project",
-  "agent": "coding",
-  "displayName": "Kira"
-}
-```
+- `GET /healthz` is Kira-owned and unauthenticated for local readiness checks.
+- `/agents/*`, `/workflows/*`, and `/runs/*` require `Authorization: Bearer <KIRA_AGENT_RUNTIME_TOKEN>` or `?token=<KIRA_AGENT_RUNTIME_TOKEN>`.
+- `app.route("/", flue())` mounts Flue's native routes.
 
-### Get Agent Thread
+## Agent Thread communication
 
-```http
-GET /threads/thread-1
-Authorization: Bearer dev-secret
-```
-
-### Prompt Agent Thread
-
-```http
-POST /threads/thread-1/prompt
-Authorization: Bearer dev-secret
-Content-Type: application/json
-```
-
-```json
-{
-  "message": "Fix the failing tests"
-}
-```
-
-This currently queues a placeholder event. It will become the Flue session prompt path.
-
-## Event stream
-
-Connect to:
+Kira Agent Threads map to Flue agent instances:
 
 ```txt
-ws://127.0.0.1:49321/events?token=dev-secret
+Kira Agent Thread id = Flue agent instance id
+Kira Agent Thread session = Flue session name, initially default
 ```
 
-Events are JSON messages. Flue runtime activity is forwarded as `flue:event`; Kira persistence bridge records use `app:*` events.
+Connect to the coding agent over Flue's native WebSocket route:
+
+```txt
+ws://127.0.0.1:49321/agents/coding/<threadId>?token=dev-secret
+```
+
+Send Flue prompt frames:
+
+```json
+{
+  "version": 1,
+  "type": "prompt",
+  "requestId": "prompt-1",
+  "message": "Fix the failing tests",
+  "session": "default"
+}
+```
+
+The runtime responds with Flue WebSocket messages such as `ready`, `started`, `event`, `result`, and `error`.
+
+## Agent
+
+`src/agents/coding.ts` defines the first Kira coding agent. It uses Flue's local sandbox pointed at `KIRA_AGENT_PROJECT_PATH` so the agent can operate on the workspace selected by Kira.
+
+The runtime registers Kira's current internal provider in `src/app.ts`:
+
+- Provider id: `cx`
+- Base URL: `https://router.kira.internal.kairos-it.com`
+- Coding model: `cx/gpt-5.5`
+
+Provider API, context-window, and max-token metadata are copied from Pi's built-in `openai/gpt-5.5` model so Flue compaction sees the same limits while requests route through Kira's internal provider:
+
+- API: `openai-responses`
+- Context window: `272,000`
+- Max tokens: `128,000`
+
+Set `KIRA_AGENT_PROVIDER_API_KEY` only if the internal router requires an API key.
 
 ## Persistence boundary
 
-Durable persistence belongs to Rust/Tauri. This package emits persistence-ready events, and Rust translates them into SQLite transactions.
-
-Current persistence event:
-
-```json
-{
-  "type": "app:persist_session_entry",
-  "threadId": "thread-1",
-  "sessionId": "session_thread-1",
-  "entry": {
-    "kind": "flue_event",
-    "event": {
-      "type": "prompt_queued"
-    }
-  }
-}
-```
+Durable persistence belongs to Rust/Tauri. This package currently relies on Flue's process-local session behavior. A future phase will map Flue events/session storage to Rust-owned SQLite writes without allowing this package to write SQLite directly.
