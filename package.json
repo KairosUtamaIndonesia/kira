@@ -4,6 +4,7 @@
   "private": true,
   "workspaces": [
     "apps/*",
+    "apps/desktop/agent-runtime",
     "packages/*"
   ],
   "type": "module",
@@ -26,6 +27,7 @@
   },
   "devDependencies": {
     "oxfmt": "^0.53.0",
+    "oxlint": "^1.68.0",
     "turbo": "^2.6.3"
   },
   "packageManager": "bun@1.3.12"

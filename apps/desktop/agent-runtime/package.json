@@ -1,0 +1,24 @@
+{
+    "name": "@kira/agent-runtime",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "build": "bun build src/main.ts --target=bun --outdir=dist",
+        "check": "tsc --noEmit",
+        "dev": "bun src/main.ts",
+        "format": "oxfmt .",
+        "format:check": "oxfmt --check .",
+        "lint": "oxlint"
+    },
+    "dependencies": {
+        "@earendil-works/pi-coding-agent": "^0.75.3"
+    },
+    "devDependencies": {
+        "@kira/tsconfig": "workspace:*",
+        "@types/bun": "^1.3.3",
+        "oxfmt": "^0.53.0",
+        "oxlint": "^1.68.0",
+        "typescript": "^6.0.3"
+    }
+}
