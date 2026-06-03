@@ -2,6 +2,8 @@ type GitFileStatus = "modified" | "added" | "deleted" | "renamed" | "copied" | "
 
 type GitStagingArea = "staged" | "unstaged" | "untracked";
 
+type SourceControlDiffSource = GitStagingArea;
+
 type GitConflictOperation = "merge" | "rebase" | "cherryPick" | "unknown";
 
 type GitStatusEntry = {
@@ -48,6 +50,26 @@ type SourceControlCommitInput = SourceControlProjectInput & {
   message: string;
 };
 
+type SourceControlDiffInput = SourceControlProjectInput & {
+  filePath: string;
+  oldPath: string | null;
+  source: SourceControlDiffSource;
+};
+
+type SourceControlDiffResult =
+  | {
+      kind: "text";
+      originalContent: string;
+      modifiedContent: string;
+      originalPath: string;
+      modifiedPath: string;
+    }
+  | {
+      kind: "binary";
+      originalPath: string;
+      modifiedPath: string;
+    };
+
 export type {
   GitConflictOperation,
   GitFileStatus,
@@ -56,6 +78,9 @@ export type {
   GitStatusEntry,
   GitUpstreamStatus,
   SourceControlCommitInput,
+  SourceControlDiffInput,
+  SourceControlDiffResult,
+  SourceControlDiffSource,
   SourceControlPathInput,
   SourceControlPathsInput,
   SourceControlProjectInput,

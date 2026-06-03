@@ -60,6 +60,7 @@ pub fn run() -> tauri::Result<()> {
             projects::workspace_terminal_snapshot_get,
             projects::workspace_terminal_snapshot_save,
             source_control::source_control_commit,
+            source_control::source_control_diff,
             source_control::source_control_discard_path,
             source_control::source_control_discard_paths,
             source_control::source_control_stage_path,

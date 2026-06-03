@@ -31,6 +31,46 @@ pub struct SourceControlCommitInput {
     message: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceControlDiffInput {
+    folder_path: String,
+    file_path: String,
+    old_path: Option<String>,
+    source: SourceControlDiffSource,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SourceControlDiffSource {
+    Staged,
+    Unstaged,
+    Untracked,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+pub enum SourceControlDiffResult {
+    Text(SourceControlTextDiff),
+    Binary(SourceControlBinaryDiff),
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceControlTextDiff {
+    original_content: String,
+    modified_content: String,
+    original_path: String,
+    modified_path: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceControlBinaryDiff {
+    original_path: String,
+    modified_path: String,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase", tag = "kind")]
 pub enum SourceControlStatusResult {
@@ -108,6 +148,8 @@ pub enum SourceControlError {
     MissingFilePath,
     #[error("git operation requires at least one file path")]
     MissingFilePaths,
+    #[error("source control diff is unavailable for binary file: {0}")]
+    BinaryDiff(String),
     #[error("commit message is required")]
     MissingCommitMessage,
     #[error("path resolves outside the project folder: {0}")]
@@ -267,6 +309,19 @@ pub async fn source_control_commit(
     Ok(())
 }
 
+#[tauri::command]
+pub async fn source_control_diff(
+    input: SourceControlDiffInput,
+) -> Result<SourceControlDiffResult, SourceControlError> {
+    let folder_path = validate_project_folder(&input.folder_path)?;
+    let file_path = validate_relative_file_path(&folder_path, &input.file_path)?;
+    let old_path = match input.old_path {
+        Some(value) => Some(validate_relative_file_path(&folder_path, &value)?),
+        None => None,
+    };
+    load_diff(&folder_path, &file_path, old_path.as_deref(), &input.source)
+}
+
 fn validate_project_folder(folder_path: &str) -> Result<PathBuf, SourceControlError> {
     if folder_path.trim().is_empty() {
         return Err(SourceControlError::MissingFolderPath);
@@ -351,6 +406,103 @@ fn run_git_owned(
 ) -> Result<String, SourceControlError> {
     let borrowed_args: Vec<&str> = args.iter().map(String::as_str).collect();
     run_git(cwd, operation, &borrowed_args)
+}
+
+fn run_git_bytes(cwd: &Path, operation: &str, args: &[&str]) -> Result<Vec<u8>, SourceControlError> {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(cwd)
+        .output()
+        .map_err(|error| SourceControlError::GitCommand {
+            operation: operation.to_string(),
+            message: error.to_string(),
+        })?;
+    if output.status.success() {
+        return Ok(output.stdout);
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Err(SourceControlError::GitCommand {
+        operation: operation.to_string(),
+        message: if stderr.is_empty() { stdout } else { stderr },
+    })
+}
+
+fn load_diff(
+    folder_path: &Path,
+    file_path: &str,
+    old_path: Option<&str>,
+    source: &SourceControlDiffSource,
+) -> Result<SourceControlDiffResult, SourceControlError> {
+    let original_path = old_path.unwrap_or(file_path).to_string();
+    let modified_path = file_path.to_string();
+    let original_bytes = match source {
+        SourceControlDiffSource::Staged => git_blob_or_empty(folder_path, "HEAD", &original_path)?,
+        SourceControlDiffSource::Unstaged => git_index_blob_or_empty(folder_path, &original_path)?,
+        SourceControlDiffSource::Untracked => Vec::new(),
+    };
+    let modified_bytes = match source {
+        SourceControlDiffSource::Staged => git_index_blob_or_empty(folder_path, file_path)?,
+        SourceControlDiffSource::Unstaged | SourceControlDiffSource::Untracked => {
+            read_worktree_file_or_empty(folder_path, file_path)?
+        }
+    };
+
+    if is_binary(&original_bytes) || is_binary(&modified_bytes) {
+        return Ok(SourceControlDiffResult::Binary(SourceControlBinaryDiff {
+            original_path,
+            modified_path,
+        }));
+    }
+
+    let original_content = String::from_utf8(original_bytes)
+        .map_err(|_| SourceControlError::BinaryDiff(file_path.to_string()))?;
+    let modified_content = String::from_utf8(modified_bytes)
+        .map_err(|_| SourceControlError::BinaryDiff(file_path.to_string()))?;
+
+    Ok(SourceControlDiffResult::Text(SourceControlTextDiff {
+        original_content,
+        modified_content,
+        original_path,
+        modified_path,
+    }))
+}
+
+fn git_blob_or_empty(
+    folder_path: &Path,
+    revision: &str,
+    file_path: &str,
+) -> Result<Vec<u8>, SourceControlError> {
+    let spec = format!("{revision}:{file_path}");
+    match run_git_bytes(folder_path, "read git blob", &["show", &spec]) {
+        Ok(bytes) => Ok(bytes),
+        Err(SourceControlError::GitCommand { .. }) => Ok(Vec::new()),
+        Err(error) => Err(error),
+    }
+}
+
+fn git_index_blob_or_empty(folder_path: &Path, file_path: &str) -> Result<Vec<u8>, SourceControlError> {
+    let spec = format!(":{file_path}");
+    match run_git_bytes(folder_path, "read index blob", &["show", &spec]) {
+        Ok(bytes) => Ok(bytes),
+        Err(SourceControlError::GitCommand { .. }) => Ok(Vec::new()),
+        Err(error) => Err(error),
+    }
+}
+
+fn read_worktree_file_or_empty(
+    folder_path: &Path,
+    file_path: &str,
+) -> Result<Vec<u8>, SourceControlError> {
+    let target = folder_path.join(file_path);
+    if !target.exists() {
+        return Ok(Vec::new());
+    }
+    std::fs::read(target).map_err(|error| SourceControlError::GitRepository(error.to_string()))
+}
+
+fn is_binary(content: &[u8]) -> bool {
+    content.contains(&0)
 }
 
 fn parse_status_output(output: &str) -> Vec<GitStatusEntry> {

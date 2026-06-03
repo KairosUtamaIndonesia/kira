@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { CreatedProject, Project, WorkspacePanel } from "@/features/projects/types";
+import type { GitStatusEntry } from "@/features/source-control/types";
 
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { openLastProject, openProject } from "@/features/projects/api/projectsApi";
 import { SettingsPage } from "@/features/settings";
 
-import type { ActiveWorkspaceState } from "../types";
+import type { ActiveWorkspaceState, SourceControlDiffOpenRequest } from "../types";
 
 import { AppInspector } from "./AppInspector";
 import { AppSidebar } from "./AppSidebar";
@@ -19,8 +20,11 @@ type SettingsSurfaceState = "closed" | "opening" | "open" | "closing";
 function AppShell() {
   useDevThemeToggle();
   const [activeWorkspace, setActiveWorkspace] = useState<ActiveWorkspaceState>({ status: "none" });
+  const [sourceControlDiffRequest, setSourceControlDiffRequest] =
+    useState<SourceControlDiffOpenRequest>();
   const [settingsSurfaceState, setSettingsSurfaceState] = useState<SettingsSurfaceState>("closed");
   const projectSwitchSequenceRef = useRef(0);
+  const sourceControlDiffSequenceRef = useRef(0);
   const settingsReturnFocusRef = useRef<HTMLElement | undefined>(void 0);
 
   useEffect(() => {
@@ -160,6 +164,24 @@ function AppShell() {
     });
   }
 
+  function handleSourceControlDiffOpen(entry: GitStatusEntry) {
+    if (activeWorkspace.status !== "active") {
+      return;
+    }
+
+    const sequence = sourceControlDiffSequenceRef.current + 1;
+    sourceControlDiffSequenceRef.current = sequence;
+    setSourceControlDiffRequest({
+      sequence,
+      projectId: activeWorkspace.project.id,
+      title: entry.path.split("/").pop() ?? entry.path,
+      folderPath: activeWorkspace.project.folderPath,
+      filePath: entry.path,
+      oldPath: entry.oldPath,
+      source: entry.area,
+    });
+  }
+
   function handlePanelDeleted(panelId: string) {
     setActiveWorkspace((currentWorkspace) => {
       if (currentWorkspace.status !== "active") {
@@ -224,6 +246,7 @@ function AppShell() {
         <ResizablePanel className="min-h-0" minSize="24rem">
           <AppWorkspace
             activeWorkspace={activeWorkspace}
+            sourceControlDiffRequest={sourceControlDiffRequest}
             onPanelCreated={handlePanelCreated}
             onPanelDeleted={handlePanelDeleted}
           />
@@ -236,7 +259,10 @@ function AppShell() {
           maxSize="28rem"
           groupResizeBehavior="preserve-pixel-size"
         >
-          <AppInspector activeWorkspace={activeWorkspace} />
+          <AppInspector
+            activeWorkspace={activeWorkspace}
+            onSourceControlDiffOpen={handleSourceControlDiffOpen}
+          />
         </ResizablePanel>
       </ResizablePanelGroup>
       <AppStatusBar activeWorkspace={activeWorkspace} />

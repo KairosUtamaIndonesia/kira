@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type {
   SourceControlCommitInput,
+  SourceControlDiffInput,
+  SourceControlDiffResult,
   SourceControlPathInput,
   SourceControlPathsInput,
   SourceControlProjectInput,
@@ -40,10 +42,15 @@ function commitSourceControlChanges(input: SourceControlCommitInput) {
   return invoke<void>("source_control_commit", { input });
 }
 
+function getSourceControlDiff(input: SourceControlDiffInput) {
+  return invoke<SourceControlDiffResult>("source_control_diff", { input });
+}
+
 export {
   commitSourceControlChanges,
   discardSourceControlPath,
   discardSourceControlPaths,
+  getSourceControlDiff,
   getSourceControlStatus,
   stageSourceControlPath,
   stageSourceControlPaths,
