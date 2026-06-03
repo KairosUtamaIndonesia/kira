@@ -325,6 +325,11 @@
   border-bottom: 1px solid var(--sidebar-border);
 }
 
+.kira-dockview .dv-left-actions-container {
+  display: flex;
+  flex-shrink: 0;
+}
+
 .kira-dockview .dv-tab {
   border-top: 2px solid transparent;
   border-right: 1px solid var(--sidebar-border);

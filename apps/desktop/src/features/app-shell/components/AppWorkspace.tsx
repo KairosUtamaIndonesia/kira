@@ -6,14 +6,7 @@ import {
   type IDockviewPanelProps,
 } from "dockview-react";
 import { Loader2, Plus, Terminal as TerminalIcon } from "lucide-react";
-import {
-  createContext,
-  useContext,
-  useMemo,
-  useRef,
-  type MouseEvent,
-  type RefObject,
-} from "react";
+import { createContext, useContext, useMemo, useRef, type MouseEvent, type RefObject } from "react";
 
 import type { WorkspacePanel as StoredWorkspacePanel } from "@/features/projects/types";
 
@@ -300,7 +293,7 @@ function ActiveWorkspaceDockview({
           onReady={(event) =>
             restoreWorkspacePanels(event, activeWorkspace, onPanelDeleted, isWorkspaceDisposingRef)
           }
-          rightHeaderActionsComponent={WorkspaceHeaderActions}
+          leftHeaderActionsComponent={WorkspaceHeaderActions}
         />
       </WorkspaceRuntimeContext.Provider>
     </div>
