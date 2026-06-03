@@ -9,8 +9,6 @@ type ExplorerPathMetadata = {
 
 type ExplorerTreeResult = {
   paths: Record<string, ExplorerPathMetadata>;
-  truncated: boolean;
-  limit: number;
 };
 
 export type { ExplorerPathMetadata, ExplorerTreeInput, ExplorerTreeResult };

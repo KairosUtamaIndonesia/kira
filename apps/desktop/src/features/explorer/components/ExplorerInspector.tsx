@@ -59,31 +59,17 @@ function ExplorerInspector({ folderPath, onOpenFile }: ExplorerInspectorProps) {
   }
 
   return (
-    <ExplorerTreeView
-      pathMap={state.result.paths}
-      truncated={state.result.truncated}
-      limit={state.result.limit}
-      onOpenFile={onOpenFile}
-      onRefresh={refresh}
-    />
+    <ExplorerTreeView pathMap={state.result.paths} onOpenFile={onOpenFile} onRefresh={refresh} />
   );
 }
 
 type ExplorerTreeViewProps = {
   pathMap: Record<string, ExplorerPathMetadata>;
-  truncated: boolean;
-  limit: number;
   onOpenFile: (filePath: string) => Promise<void>;
   onRefresh: () => void;
 };
 
-function ExplorerTreeView({
-  pathMap,
-  truncated,
-  limit,
-  onOpenFile,
-  onRefresh,
-}: ExplorerTreeViewProps) {
+function ExplorerTreeView({ pathMap, onOpenFile, onRefresh }: ExplorerTreeViewProps) {
   const sortedPaths = useMemo(() => sortedPathCopy(Object.keys(pathMap)), [pathMap]);
   const preparedInput = useMemo(() => preparePresortedFileTreeInput(sortedPaths), [sortedPaths]);
   const { model } = useFileTree({
@@ -132,12 +118,6 @@ function ExplorerTreeView({
             onChange={(event) => search.setValue(event.target.value)}
           />
         </div>
-        {truncated ? (
-          <p className="rounded-lg border border-border bg-muted/50 p-2 text-xs text-muted-foreground">
-            Explorer is showing the first {limit.toLocaleString()} files. Use search or narrow the
-            Project folder if the file is missing.
-          </p>
-        ) : undefined}
         <Button
           type="button"
           variant="secondary"
