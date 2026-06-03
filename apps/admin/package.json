@@ -17,6 +17,7 @@
     "format:check": "oxfmt --check .",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
+    "seed:admin": "bun scripts/seed-admin.ts",
     "start": "next start",
     "typecheck": "tsc --noEmit"
   },

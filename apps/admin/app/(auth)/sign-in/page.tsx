@@ -1,0 +1,20 @@
+import { SignInForm } from "@/features/auth/components/SignInForm";
+
+export default function SignInPage() {
+  return (
+    <main className="flex min-h-svh items-center justify-center bg-background px-4 py-12 text-foreground">
+      <section className="w-full max-w-sm rounded-xl border bg-card p-6 text-card-foreground shadow-xs">
+        <div className="space-y-2">
+          <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+            Kira Admin
+          </p>
+          <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
+          <p className="text-sm text-muted-foreground">
+            Use your admin credentials to manage Kira organizations, users, and access.
+          </p>
+        </div>
+        <SignInForm />
+      </section>
+    </main>
+  );
+}
