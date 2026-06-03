@@ -42,6 +42,7 @@ import { useSourceControlStatus } from "../hooks/useSourceControlStatus";
 
 type SourceControlInspectorProps = {
   folderPath: string | undefined;
+  onOpenDiff: (entry: GitStatusEntry) => void;
 };
 
 type PendingDiscard =
@@ -56,7 +57,7 @@ const sectionLabels: Record<GitStagingArea, string> = {
 
 const sectionOrder: GitStagingArea[] = ["staged", "unstaged", "untracked"];
 
-function SourceControlInspector({ folderPath }: SourceControlInspectorProps) {
+function SourceControlInspector({ folderPath, onOpenDiff }: SourceControlInspectorProps) {
   const { state, refresh } = useSourceControlStatus(folderPath);
   const [filterQuery, setFilterQuery] = useState("");
   const [commitMessage, setCommitMessage] = useState("");
@@ -236,6 +237,7 @@ function SourceControlInspector({ folderPath }: SourceControlInspectorProps) {
             onMutation={(operation) => void runMutation(operation)}
             onDiscardEntry={(entry) => setPendingDiscard({ kind: "entry", entry })}
             onDiscardArea={() => requestDiscardArea(area)}
+            onOpenDiff={onOpenDiff}
           />
         ))}
       </div>
@@ -292,6 +294,7 @@ type SourceControlSectionProps = {
   onMutation: (operation: () => Promise<void>) => void;
   onDiscardEntry: (entry: GitStatusEntry) => void;
   onDiscardArea: () => void;
+  onOpenDiff: (entry: GitStatusEntry) => void;
 };
 
 function SourceControlSection({
@@ -302,6 +305,7 @@ function SourceControlSection({
   onMutation,
   onDiscardEntry,
   onDiscardArea,
+  onOpenDiff,
 }: SourceControlSectionProps) {
   if (entries.length === 0) {
     return <></>;
@@ -362,6 +366,7 @@ function SourceControlSection({
             isMutating={isMutating}
             onMutation={onMutation}
             onDiscard={() => onDiscardEntry(entry)}
+            onOpenDiff={() => onOpenDiff(entry)}
           />
         ))}
       </div>
@@ -375,6 +380,7 @@ type SourceControlFileRowProps = {
   isMutating: boolean;
   onMutation: (operation: () => Promise<void>) => void;
   onDiscard: () => void;
+  onOpenDiff: () => void;
 };
 
 function SourceControlFileRow({
@@ -383,28 +389,35 @@ function SourceControlFileRow({
   isMutating,
   onMutation,
   onDiscard,
+  onOpenDiff,
 }: SourceControlFileRowProps) {
   const StatusIcon = statusIcon(entry);
 
   return (
-    <div className="group/row relative flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-accent">
-      <StatusIcon className={cn("size-3.5 shrink-0", statusColor(entry))} aria-hidden="true" />
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-foreground">{entry.path}</div>
-        {entry.oldPath ? (
-          <div className="truncate text-xs text-muted-foreground">from {entry.oldPath}</div>
-        ) : undefined}
-      </div>
-      {typeof entry.added === "number" || typeof entry.removed === "number" ? (
-        <div className="flex shrink-0 items-center gap-1 font-mono text-[11px]">
-          {typeof entry.added === "number" ? (
-            <span style={{ color: "var(--git-decoration-added)" }}>+{entry.added}</span>
-          ) : undefined}
-          {typeof entry.removed === "number" ? (
-            <span style={{ color: "var(--git-decoration-deleted)" }}>-{entry.removed}</span>
+    <div className="group/row relative hover:bg-accent focus-within:bg-accent">
+      <button
+        type="button"
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm focus-visible:outline-none"
+        onClick={onOpenDiff}
+      >
+        <StatusIcon className={cn("size-3.5 shrink-0", statusColor(entry))} aria-hidden="true" />
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-foreground">{entry.path}</div>
+          {entry.oldPath ? (
+            <div className="truncate text-xs text-muted-foreground">from {entry.oldPath}</div>
           ) : undefined}
         </div>
-      ) : undefined}
+        {typeof entry.added === "number" || typeof entry.removed === "number" ? (
+          <div className="flex shrink-0 items-center gap-1 font-mono text-[11px]">
+            {typeof entry.added === "number" ? (
+              <span style={{ color: "var(--git-decoration-added)" }}>+{entry.added}</span>
+            ) : undefined}
+            {typeof entry.removed === "number" ? (
+              <span style={{ color: "var(--git-decoration-deleted)" }}>-{entry.removed}</span>
+            ) : undefined}
+          </div>
+        ) : undefined}
+      </button>
       <div className="pointer-events-none absolute inset-y-0 right-0 z-10 flex items-center gap-1 bg-muted px-4 opacity-0 transition-opacity group-hover/row:opacity-100 focus-within:opacity-100">
         {entry.area === "staged" ? (
           <ActionButton
@@ -457,7 +470,10 @@ function ActionButton({ label, icon: Icon, disabled = false, onClick }: ActionBu
             className="pointer-events-auto"
             aria-label={label}
             disabled={disabled}
-            onClick={onClick}
+            onClick={(event) => {
+              event.stopPropagation();
+              onClick();
+            }}
           >
             <Icon aria-hidden="true" />
           </Button>

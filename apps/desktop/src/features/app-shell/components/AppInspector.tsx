@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SourceControlInspector } from "@/features/source-control/components/SourceControlInspector";
+import type { GitStatusEntry } from "@/features/source-control/types";
 
 import type { ActiveWorkspaceState } from "../types";
 
@@ -12,6 +13,7 @@ import { useTitleBarDrag } from "./useTitleBarDrag";
 
 type AppInspectorProps = {
   activeWorkspace: ActiveWorkspaceState;
+  onSourceControlDiffOpen: (entry: GitStatusEntry) => void;
 };
 
 type InspectorView = "explorer" | "sourceControl";
@@ -27,7 +29,7 @@ const inspectorViewActions: InspectorViewAction[] = [
   { view: "sourceControl", label: "Source Control", icon: GitBranch },
 ];
 
-function AppInspector({ activeWorkspace }: AppInspectorProps) {
+function AppInspector({ activeWorkspace, onSourceControlDiffOpen }: AppInspectorProps) {
   const [activeView, setActiveView] = useState<InspectorView>("explorer");
   const { handleTitleBarDoubleClick, handleTitleBarMouseDown, titleBarError } = useTitleBarDrag();
 
@@ -78,19 +80,24 @@ function AppInspector({ activeWorkspace }: AppInspectorProps) {
         })}
       </div>
       <div className="flex min-h-0 flex-1 scrollbar-sleek flex-col gap-3 overflow-auto">
-        {inspectorContent(activeWorkspace, activeView)}
+        {inspectorContent(activeWorkspace, activeView, onSourceControlDiffOpen)}
       </div>
     </aside>
   );
 }
 
-function inspectorContent(activeWorkspace: ActiveWorkspaceState, activeView: InspectorView) {
+function inspectorContent(
+  activeWorkspace: ActiveWorkspaceState,
+  activeView: InspectorView,
+  onSourceControlDiffOpen: (entry: GitStatusEntry) => void,
+) {
   if (activeView === "sourceControl") {
     return (
       <SourceControlInspector
         folderPath={
           activeWorkspace.status === "active" ? activeWorkspace.project.folderPath : undefined
         }
+        onOpenDiff={onSourceControlDiffOpen}
       />
     );
   }

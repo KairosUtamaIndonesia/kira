@@ -12,11 +12,16 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
   type MouseEvent,
   type RefObject,
 } from "react";
 
 import type { WorkspacePanel as StoredWorkspacePanel } from "@/features/projects/types";
+import {
+  SourceControlDiffPanel,
+  type SourceControlDiffPanelParams,
+} from "@/features/source-control/components/SourceControlDiffPanel";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -32,7 +37,7 @@ import {
   updateSessionLayout,
 } from "@/features/projects/api/projectsApi";
 
-import type { ActiveWorkspaceState } from "../types";
+import type { ActiveWorkspaceState, SourceControlDiffOpenRequest } from "../types";
 
 import { TerminalPanel, type TerminalPanelParams } from "./TerminalPanel";
 import { useTitleBarDrag } from "./useTitleBarDrag";
@@ -115,6 +120,7 @@ function WorkspaceHeaderActions({ containerApi, group }: IDockviewHeaderActionsP
 const workspaceComponents = {
   workspacePanel: WorkspacePanel,
   terminalPanel: TerminalPanel,
+  sourceControlDiffPanel: SourceControlDiffPanel,
 };
 
 function requireTerminalState(panel: StoredWorkspacePanel) {
@@ -182,12 +188,16 @@ function restoreWorkspacePanels(
     const storedPanel = activeWorkspace.panels.find(
       (workspacePanel) => workspacePanel.id === panel.id,
     );
-    if (storedPanel !== undefined && storedPanel.kind === "terminal") {
+    if (storedPanel === undefined) {
+      return;
+    }
+
+    if (storedPanel.kind === "terminal") {
       void killTerminalSession(panel.id);
+      void deleteTerminalSnapshot({ terminalId: panel.id });
     }
 
     onPanelDeleted(panel.id);
-    void deleteTerminalSnapshot({ terminalId: panel.id });
     void deleteWorkspacePanel({ panelId: panel.id });
     void saveWorkspaceLayoutIfActive(activeWorkspace.session.id, event, isWorkspaceDisposingRef);
   });
@@ -262,7 +272,7 @@ async function saveWorkspaceLayoutIfActive(
 
   await updateSessionLayout({
     sessionId,
-    layoutJson: JSON.stringify(event.api.toJSON()),
+    layoutJson: JSON.stringify(withoutTransientSourceControlPanels(event.api.toJSON())),
   });
 }
 
@@ -270,6 +280,7 @@ type ActiveWorkspaceDockviewProps = {
   activeWorkspace: Extract<ActiveWorkspaceState, { status: "active" }>;
   isWorkspaceDisposingRef: RefObject<boolean>;
   onPanelCreated: (panel: StoredWorkspacePanel) => void;
+  sourceControlDiffRequest: SourceControlDiffOpenRequest | undefined;
   onPanelDeleted: (panelId: string) => void;
 };
 
@@ -277,9 +288,11 @@ function ActiveWorkspaceDockview({
   activeWorkspace,
   isWorkspaceDisposingRef,
   onPanelCreated,
+  sourceControlDiffRequest,
   onPanelDeleted,
 }: ActiveWorkspaceDockviewProps) {
   const dockviewRootRef = useRef<HTMLDivElement>(null);
+  const [dockviewApi, setDockviewApi] = useState<DockviewReadyEvent["api"]>();
   const workspaceRuntimeContext = useMemo(
     () => ({
       sessionId: activeWorkspace.session.id,
@@ -304,6 +317,31 @@ function ActiveWorkspaceDockview({
     return () => observer.disconnect();
   }, []);
 
+  useEffect(() => {
+    if (dockviewApi === undefined || sourceControlDiffRequest === undefined) {
+      return;
+    }
+
+    const panelId = sourceControlDiffPanelId(sourceControlDiffRequest);
+    const existingPanel = dockviewApi.getPanel(panelId);
+    if (existingPanel !== undefined) {
+      existingPanel.api.setActive();
+      return;
+    }
+
+    dockviewApi.addPanel<SourceControlDiffPanelParams>({
+      id: panelId,
+      component: "sourceControlDiffPanel",
+      title: sourceControlDiffRequest.title,
+      params: {
+        folderPath: sourceControlDiffRequest.folderPath,
+        filePath: sourceControlDiffRequest.filePath,
+        oldPath: sourceControlDiffRequest.oldPath,
+        source: sourceControlDiffRequest.source,
+      },
+    });
+  }, [dockviewApi, sourceControlDiffRequest]);
+
   return (
     <div ref={dockviewRootRef} className="h-full min-h-0">
       <WorkspaceRuntimeContext.Provider value={workspaceRuntimeContext}>
@@ -314,13 +352,44 @@ function ActiveWorkspaceDockview({
           defaultHeaderPosition="top"
           dndStrategy="pointer"
           hideBorders
-          onReady={(event) =>
-            restoreWorkspacePanels(event, activeWorkspace, onPanelDeleted, isWorkspaceDisposingRef)
-          }
+          onReady={(event) => {
+            setDockviewApi(event.api);
+            restoreWorkspacePanels(event, activeWorkspace, onPanelDeleted, isWorkspaceDisposingRef);
+          }}
           rightHeaderActionsComponent={WorkspaceHeaderActions}
         />
       </WorkspaceRuntimeContext.Provider>
     </div>
+  );
+}
+
+function withoutTransientSourceControlPanels(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value
+      .filter((item) => !isTransientSourceControlPanelRecord(item))
+      .map((item) => withoutTransientSourceControlPanels(item));
+  }
+
+  if (typeof value !== "object" || value === null) {
+    return value;
+  }
+
+  const entries = Object.entries(value).filter(
+    ([key, item]) =>
+      !key.startsWith("source-control-diff:") && !isTransientSourceControlPanelRecord(item),
+  );
+  return Object.fromEntries(
+    entries.map(([key, item]) => [key, withoutTransientSourceControlPanels(item)]),
+  );
+}
+
+function isTransientSourceControlPanelRecord(value: unknown) {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "id" in value &&
+    typeof value.id === "string" &&
+    value.id.startsWith("source-control-diff:")
   );
 }
 
@@ -330,13 +399,23 @@ function markDockviewTitleBarDragRegions(dockviewRoot: HTMLElement) {
   }
 }
 
+function sourceControlDiffPanelId(request: SourceControlDiffOpenRequest) {
+  return `source-control-diff:${request.projectId}:${request.source}:${request.filePath}`;
+}
+
 type AppWorkspaceProps = {
   activeWorkspace: ActiveWorkspaceState;
+  sourceControlDiffRequest: SourceControlDiffOpenRequest | undefined;
   onPanelCreated: (panel: StoredWorkspacePanel) => void;
   onPanelDeleted: (panelId: string) => void;
 };
 
-function AppWorkspace({ activeWorkspace, onPanelCreated, onPanelDeleted }: AppWorkspaceProps) {
+function AppWorkspace({
+  activeWorkspace,
+  sourceControlDiffRequest,
+  onPanelCreated,
+  onPanelDeleted,
+}: AppWorkspaceProps) {
   const { handleTitleBarDoubleClick, handleTitleBarMouseDown, titleBarError } = useTitleBarDrag();
   const isWorkspaceDisposingRef = useRef(false);
   isWorkspaceDisposingRef.current = activeWorkspace.status !== "active";
@@ -351,11 +430,12 @@ function AppWorkspace({ activeWorkspace, onPanelCreated, onPanelDeleted }: AppWo
         }
       }}
     >
-      {activeWorkspace.status === "active" && activeWorkspace.panels.length > 0 ? (
+      {activeWorkspace.status === "active" ? (
         <ActiveWorkspaceDockview
           activeWorkspace={activeWorkspace}
           isWorkspaceDisposingRef={isWorkspaceDisposingRef}
           onPanelCreated={onPanelCreated}
+          sourceControlDiffRequest={sourceControlDiffRequest}
           onPanelDeleted={onPanelDeleted}
         />
       ) : (
@@ -369,13 +449,10 @@ function AppWorkspace({ activeWorkspace, onPanelCreated, onPanelDeleted }: AppWo
       {activeWorkspace.status === "active" &&
       activeWorkspace.projectSwitch.status === "switching" ? (
         <div className="pointer-events-none absolute inset-x-3 top-14 z-10 flex justify-center motion-safe:animate-in motion-safe:fade-in-0">
-          <div
-            role="status"
-            className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-sm text-card-foreground shadow-xs"
-          >
+          <output className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-sm text-card-foreground shadow-xs">
             <Loader2 aria-hidden="true" className="size-3.5 animate-spin text-muted-foreground" />
             <span>Switching project…</span>
-          </div>
+          </output>
         </div>
       ) : undefined}
       {activeWorkspace.status === "active" && activeWorkspace.projectSwitch.status === "error" ? (
