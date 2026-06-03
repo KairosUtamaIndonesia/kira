@@ -60,6 +60,9 @@ type TerminalRuntime = {
   spawnStarted: boolean;
   status: string | undefined;
   statusListeners: Set<(status: string | undefined) => void>;
+  eventChannel: Channel<TerminalEvent> | undefined;
+  startupPromise: Promise<void> | undefined;
+  snapshotRestorePromise: Promise<void> | undefined;
   lastAppliedSequence: number;
   restoredFromSnapshot: boolean;
   snapshotTimer: number | undefined;
@@ -74,6 +77,7 @@ const TERMINAL_REPLAY_INCOMPLETE_STATUS =
   "Terminal reconnected, but some display history could not be restored.";
 const TERMINAL_SESSION_RESTARTED_STATUS =
   "Terminal display restored. Terminal session was restarted.";
+const TERMINAL_RESTART_SEPARATOR = "\x1b[0m\r\n";
 
 function TerminalPanel({ api, params }: IDockviewPanelProps<TerminalPanelParams>) {
   const terminalHostRef = useRef<HTMLDivElement>(null);
@@ -117,6 +121,15 @@ function TerminalPanel({ api, params }: IDockviewPanelProps<TerminalPanelParams>
     setRuntimeStatus(runtime, void 0);
   }, []);
 
+  const focusTerminal = useCallback(() => {
+    const runtime = runtimeRef.current;
+    if (runtime === undefined) {
+      return;
+    }
+
+    runtime.terminal.focus();
+  }, []);
+
   useEffect(() => {
     let disposed = false;
     let initializedRuntime: TerminalRuntime | undefined = void 0;
@@ -141,10 +154,19 @@ function TerminalPanel({ api, params }: IDockviewPanelProps<TerminalPanelParams>
       mountTerminalRuntime(runtime, terminalHost);
 
       requestAnimationFrame(() => {
-        fitTerminal();
-        void startTerminalSession(runtime, params.workingDirectory);
-        runtime.terminal.focus();
+        void initializeMountedTerminalRuntime(runtime);
       });
+    }
+
+    async function initializeMountedTerminalRuntime(runtime: TerminalRuntime) {
+      fitTerminal();
+      await ensureTerminalRuntimeStarted(runtime, params.workingDirectory);
+      if (disposed) {
+        void flushTerminalSnapshot(runtime);
+        return;
+      }
+
+      runtime.terminal.focus();
     }
 
     void initializeTerminalPanel();
@@ -158,6 +180,17 @@ function TerminalPanel({ api, params }: IDockviewPanelProps<TerminalPanelParams>
       runtimeRef.current = void 0;
     };
   }, [fitTerminal, params.terminalId, params.workingDirectory]);
+
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      fitTerminal();
+      resizeBackendTerminal();
+      const runtime = runtimeRef.current;
+      if (runtime !== undefined) {
+        runtime.terminal.scrollToBottom();
+      }
+    });
+  }, [fitTerminal, resizeBackendTerminal, status]);
 
   useEffect(() => {
     const disposable = api.onDidVisibilityChange((event) => {
@@ -236,7 +269,12 @@ function TerminalPanel({ api, params }: IDockviewPanelProps<TerminalPanelParams>
           </Button>
         </div>
       )}
-      <div ref={terminalHostRef} className="kira-xterm h-full min-h-0 flex-1 overflow-hidden" />
+      <div
+        className="kira-xterm h-full min-h-0 flex-1 overflow-hidden p-2"
+        onPointerDown={focusTerminal}
+      >
+        <div ref={terminalHostRef} className="h-full min-h-0" />
+      </div>
     </section>
   );
 }
@@ -272,14 +310,15 @@ async function getOrCreateTerminalRuntime(terminalId: string) {
     spawnStarted: false,
     status: void 0,
     statusListeners: new Set(),
+    eventChannel: void 0,
+    startupPromise: void 0,
+    snapshotRestorePromise: void 0,
     lastAppliedSequence: 0,
     restoredFromSnapshot: false,
     snapshotTimer: void 0,
     snapshotInFlight: false,
     snapshotQueued: false,
   };
-
-  await restoreTerminalSnapshot(runtime);
 
   terminal.onData((data) => {
     void writeTerminalInput(runtime, data);
@@ -292,7 +331,41 @@ async function getOrCreateTerminalRuntime(terminalId: string) {
   return runtime;
 }
 
+async function ensureTerminalRuntimeStarted(runtime: TerminalRuntime, workingDirectory: string) {
+  if (runtime.startupPromise !== undefined) {
+    await runtime.startupPromise;
+    return;
+  }
+
+  const startupPromise = initializeTerminalRuntimeSession(runtime, workingDirectory);
+  runtime.startupPromise = startupPromise;
+
+  try {
+    await startupPromise;
+  } finally {
+    runtime.startupPromise = void 0;
+  }
+}
+
+async function initializeTerminalRuntimeSession(
+  runtime: TerminalRuntime,
+  workingDirectory: string,
+) {
+  await startTerminalSession(runtime, workingDirectory);
+}
+
 async function restoreTerminalSnapshot(runtime: TerminalRuntime) {
+  if (runtime.snapshotRestorePromise !== undefined) {
+    await runtime.snapshotRestorePromise;
+    return;
+  }
+
+  const restorePromise = loadTerminalSnapshot(runtime);
+  runtime.snapshotRestorePromise = restorePromise;
+  await restorePromise;
+}
+
+async function loadTerminalSnapshot(runtime: TerminalRuntime) {
   try {
     const snapshot = await getTerminalSnapshot({ terminalId: runtime.terminalId });
     if (snapshot === null) {
@@ -300,8 +373,13 @@ async function restoreTerminalSnapshot(runtime: TerminalRuntime) {
     }
 
     validateTerminalSnapshot(runtime.terminalId, snapshot);
+    const displayHistory = await createRestorableTerminalDisplayHistory(snapshot);
+    runtime.terminal.reset();
     runtime.terminal.resize(snapshot.cols, snapshot.rows);
-    runtime.terminal.write(snapshot.serialized);
+    await writeTerminalOutput(runtime.terminal, displayHistory);
+    await writeTerminalOutput(runtime.terminal, TERMINAL_RESTART_SEPARATOR);
+    runtime.fitAddon.fit();
+    runtime.terminal.scrollToBottom();
     runtime.lastAppliedSequence = snapshot.sequence;
     runtime.restoredFromSnapshot = true;
   } catch (error) {
@@ -333,6 +411,47 @@ function validateTerminalSnapshot(terminalId: string, snapshot: TerminalSnapshot
   }
 }
 
+async function createRestorableTerminalDisplayHistory(snapshot: TerminalSnapshot) {
+  const terminal = new XtermTerminal({
+    cols: snapshot.cols,
+    rows: snapshot.rows,
+    convertEol: true,
+    scrollback: 10_000,
+  });
+  const serializeAddon = new SerializeAddon();
+  terminal.loadAddon(serializeAddon);
+
+  try {
+    await writeTerminalOutput(terminal, snapshot.serialized);
+    const displayHistory = serializeTerminalDisplayHistory(terminal, serializeAddon);
+    if (displayHistory.length === 0) {
+      throw new Error(`Terminal snapshot ${snapshot.terminalId} produced empty display history.`);
+    }
+
+    return displayHistory;
+  } finally {
+    terminal.dispose();
+  }
+}
+
+function serializeTerminalDisplayHistory(terminal: XtermTerminal, serializeAddon: SerializeAddon) {
+  const normalBuffer = terminal.buffer.normal;
+  return serializeAddon.serialize({
+    range: {
+      start: 0,
+      end: normalBuffer.length - 1,
+    },
+    excludeAltBuffer: true,
+    excludeModes: true,
+  });
+}
+
+function writeTerminalOutput(terminal: XtermTerminal, data: string) {
+  return new Promise<void>((resolve) => {
+    terminal.write(data, resolve);
+  });
+}
+
 function mountTerminalRuntime(runtime: TerminalRuntime, terminalHost: HTMLDivElement) {
   const terminalElement = runtime.terminal.element;
   if (terminalElement === undefined) {
@@ -349,12 +468,15 @@ async function startTerminalSession(runtime: TerminalRuntime, workingDirectory: 
   }
 
   runtime.spawnStarted = true;
-  runtime.sessionId = runtime.terminalId;
+  runtime.sessionId = void 0;
   setRuntimeStatus(runtime, void 0);
+
+  await restoreTerminalSnapshot(runtime);
 
   const channel = new Channel<TerminalEvent>((message) => {
     handleTerminalEvent(runtime, message);
   });
+  runtime.eventChannel = channel;
   const size = { cols: runtime.terminal.cols, rows: runtime.terminal.rows };
 
   try {
@@ -362,6 +484,7 @@ async function startTerminalSession(runtime: TerminalRuntime, workingDirectory: 
       input: {
         id: runtime.terminalId,
         subscriptionId: runtime.subscriptionId,
+        afterSequence: runtime.lastAppliedSequence,
         size,
         options: {
           workingDirectory,
@@ -369,6 +492,7 @@ async function startTerminalSession(runtime: TerminalRuntime, workingDirectory: 
       },
       onEvent: channel,
     });
+    runtime.sessionId = runtime.terminalId;
     if (runtime.restoredFromSnapshot) {
       setRuntimeStatus(runtime, TERMINAL_SESSION_RESTARTED_STATUS);
     }
@@ -377,6 +501,7 @@ async function startTerminalSession(runtime: TerminalRuntime, workingDirectory: 
     if (!isDuplicateSessionError(error, runtime.terminalId)) {
       runtime.spawnStarted = false;
       runtime.sessionId = void 0;
+      runtime.eventChannel = void 0;
       setRuntimeStatus(runtime, errorToMessage(error));
       return;
     }
@@ -399,6 +524,7 @@ async function attachTerminalSession(
       },
       onEvent: channel,
     });
+    runtime.sessionId = runtime.terminalId;
     setRuntimeStatus(runtime, void 0);
     await resizeTerminal(runtime, { cols: runtime.terminal.cols, rows: runtime.terminal.rows });
   } catch (attachError) {
@@ -414,6 +540,7 @@ async function attachTerminalSession(
 
     runtime.spawnStarted = false;
     runtime.sessionId = void 0;
+    runtime.eventChannel = void 0;
     setRuntimeStatus(runtime, errorToMessage(attachError));
   }
 }
@@ -431,10 +558,12 @@ async function attachTerminalSessionFromRetainedReplay(
       },
       onEvent: channel,
     });
+    runtime.sessionId = runtime.terminalId;
     await resizeTerminal(runtime, { cols: runtime.terminal.cols, rows: runtime.terminal.rows });
   } catch (error) {
     runtime.spawnStarted = false;
     runtime.sessionId = void 0;
+    runtime.eventChannel = void 0;
     setRuntimeStatus(runtime, errorToMessage(error));
   }
 }
@@ -454,6 +583,7 @@ function handleTerminalEvent(runtime: TerminalRuntime, message: TerminalEvent) {
     case "exited":
       runtime.sessionId = void 0;
       runtime.spawnStarted = false;
+      runtime.eventChannel = void 0;
       setRuntimeStatus(runtime, `Terminal exited with code ${message.data.code}.`);
       void flushTerminalSnapshot(runtime);
       break;
@@ -492,7 +622,7 @@ async function flushTerminalSnapshot(runtime: TerminalRuntime) {
     return;
   }
 
-  const serialized = runtime.serializeAddon.serialize();
+  const serialized = serializeTerminalDisplayHistory(runtime.terminal, runtime.serializeAddon);
   if (serialized.length === 0 || runtime.lastAppliedSequence < 0) {
     return;
   }
@@ -578,6 +708,7 @@ function requireCssVariable(style: CSSStyleDeclaration, variableName: string) {
 
 async function writeTerminalInput(runtime: TerminalRuntime, data: string) {
   if (runtime.sessionId === undefined) {
+    setRuntimeStatus(runtime, "Terminal session is not connected yet.");
     return;
   }
 

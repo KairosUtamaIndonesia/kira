@@ -31,6 +31,7 @@ pub struct TerminalSpawnOptions {
 pub struct TerminalSpawnInput {
     id: String,
     subscription_id: String,
+    after_sequence: u64,
     size: TerminalSize,
     options: TerminalSpawnOptions,
 }
@@ -152,12 +153,33 @@ pub fn terminal_spawn(
     let working_directory = validate_working_directory(&input.options.working_directory)?;
     let id = input.id;
     {
-        let sessions = registry
+        let mut sessions = registry
             .sessions
             .lock()
             .map_err(|_| TerminalError::RegistryPoisoned)?;
-        if sessions.contains_key(&id) {
-            return Err(TerminalError::DuplicateSession(id));
+        if let Some(session) = sessions.get_mut(&id) {
+            let replay_chunks = replay_chunks_after(session, &id, input.after_sequence)?;
+            session.subscribers.clear();
+            session.subscribers.push(TerminalSubscriber {
+                id: input.subscription_id,
+                on_event: on_event.clone(),
+            });
+            drop(sessions);
+
+            for chunk in replay_chunks {
+                if on_event
+                    .send(TerminalEvent::Output {
+                        id: id.clone(),
+                        sequence: chunk.sequence,
+                        data: chunk.data,
+                    })
+                    .is_err()
+                {
+                    return Ok(());
+                }
+            }
+
+            return Ok(());
         }
     }
 
@@ -249,9 +271,7 @@ pub fn terminal_attach(
         .ok_or_else(|| TerminalError::MissingSession(input.id.clone()))?;
     let replay_chunks = replay_chunks_after(session, &input.id, input.after_sequence)?;
 
-    session
-        .subscribers
-        .retain(|subscriber| subscriber.id != input.subscription_id);
+    session.subscribers.clear();
     session.subscribers.push(TerminalSubscriber {
         id: input.subscription_id,
         on_event: on_event.clone(),
