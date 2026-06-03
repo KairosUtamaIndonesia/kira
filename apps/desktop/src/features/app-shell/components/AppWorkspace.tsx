@@ -9,7 +9,6 @@ import { Loader2, Plus, Terminal as TerminalIcon } from "lucide-react";
 import {
   createContext,
   useContext,
-  useEffect,
   useMemo,
   useRef,
   type MouseEvent,
@@ -279,7 +278,6 @@ function ActiveWorkspaceDockview({
   onPanelCreated,
   onPanelDeleted,
 }: ActiveWorkspaceDockviewProps) {
-  const dockviewRootRef = useRef<HTMLDivElement>(null);
   const workspaceRuntimeContext = useMemo(
     () => ({
       sessionId: activeWorkspace.session.id,
@@ -289,23 +287,8 @@ function ActiveWorkspaceDockview({
     [activeWorkspace, onPanelCreated],
   );
 
-  useEffect(() => {
-    const dockviewRoot = dockviewRootRef.current;
-    if (dockviewRoot === null) {
-      return;
-    }
-
-    markDockviewTitleBarDragRegions(dockviewRoot);
-    const observer = new MutationObserver(() => {
-      markDockviewTitleBarDragRegions(dockviewRoot);
-    });
-    observer.observe(dockviewRoot, { childList: true, subtree: true });
-
-    return () => observer.disconnect();
-  }, []);
-
   return (
-    <div ref={dockviewRootRef} className="h-full min-h-0">
+    <div className="h-full min-h-0">
       <WorkspaceRuntimeContext.Provider value={workspaceRuntimeContext}>
         <DockviewReact
           key={activeWorkspace.session.id}
@@ -324,12 +307,6 @@ function ActiveWorkspaceDockview({
   );
 }
 
-function markDockviewTitleBarDragRegions(dockviewRoot: HTMLElement) {
-  for (const titleBarVoid of dockviewRoot.querySelectorAll(".dv-void-container")) {
-    titleBarVoid.setAttribute("data-tauri-drag-region", "");
-  }
-}
-
 type AppWorkspaceProps = {
   activeWorkspace: ActiveWorkspaceState;
   onPanelCreated: (panel: StoredWorkspacePanel) => void;
@@ -344,6 +321,12 @@ function AppWorkspace({ activeWorkspace, onPanelCreated, onPanelDeleted }: AppWo
   return (
     <main
       className="relative h-full min-h-0 bg-editor-surface"
+      onPointerDownCapture={(event) => {
+        if (isElementInsideSelector(event.target, ".dv-void-container")) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      }}
       onDragStartCapture={(event) => {
         if (isElementInsideSelector(event.target, ".dv-void-container")) {
           event.preventDefault();
