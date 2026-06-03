@@ -291,7 +291,6 @@ function ActiveWorkspaceDockview({
   sourceControlDiffRequest,
   onPanelDeleted,
 }: ActiveWorkspaceDockviewProps) {
-  const dockviewRootRef = useRef<HTMLDivElement>(null);
   const [dockviewApi, setDockviewApi] = useState<DockviewReadyEvent["api"]>();
   const workspaceRuntimeContext = useMemo(
     () => ({
@@ -301,21 +300,6 @@ function ActiveWorkspaceDockview({
     }),
     [activeWorkspace, onPanelCreated],
   );
-
-  useEffect(() => {
-    const dockviewRoot = dockviewRootRef.current;
-    if (dockviewRoot === null) {
-      return;
-    }
-
-    markDockviewTitleBarDragRegions(dockviewRoot);
-    const observer = new MutationObserver(() => {
-      markDockviewTitleBarDragRegions(dockviewRoot);
-    });
-    observer.observe(dockviewRoot, { childList: true, subtree: true });
-
-    return () => observer.disconnect();
-  }, []);
 
   useEffect(() => {
     if (dockviewApi === undefined || sourceControlDiffRequest === undefined) {
@@ -343,7 +327,7 @@ function ActiveWorkspaceDockview({
   }, [dockviewApi, sourceControlDiffRequest]);
 
   return (
-    <div ref={dockviewRootRef} className="h-full min-h-0">
+    <div className="h-full min-h-0">
       <WorkspaceRuntimeContext.Provider value={workspaceRuntimeContext}>
         <DockviewReact
           key={activeWorkspace.session.id}
@@ -356,7 +340,7 @@ function ActiveWorkspaceDockview({
             setDockviewApi(event.api);
             restoreWorkspacePanels(event, activeWorkspace, onPanelDeleted, isWorkspaceDisposingRef);
           }}
-          rightHeaderActionsComponent={WorkspaceHeaderActions}
+          leftHeaderActionsComponent={WorkspaceHeaderActions}
         />
       </WorkspaceRuntimeContext.Provider>
     </div>
@@ -393,12 +377,6 @@ function isTransientSourceControlPanelRecord(value: unknown) {
   );
 }
 
-function markDockviewTitleBarDragRegions(dockviewRoot: HTMLElement) {
-  for (const titleBarVoid of dockviewRoot.querySelectorAll(".dv-void-container")) {
-    titleBarVoid.setAttribute("data-tauri-drag-region", "");
-  }
-}
-
 function sourceControlDiffPanelId(request: SourceControlDiffOpenRequest) {
   return `source-control-diff:${request.projectId}:${request.source}:${request.filePath}`;
 }
@@ -423,6 +401,12 @@ function AppWorkspace({
   return (
     <main
       className="relative h-full min-h-0 bg-editor-surface"
+      onPointerDownCapture={(event) => {
+        if (isElementInsideSelector(event.target, ".dv-void-container")) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      }}
       onDragStartCapture={(event) => {
         if (isElementInsideSelector(event.target, ".dv-void-container")) {
           event.preventDefault();

@@ -200,6 +200,45 @@
   @apply scrollbar-thin scrollbar-thumb-muted-foreground/30 scrollbar-track-editor-surface hover:scrollbar-thumb-muted-foreground/50;
 }
 
+@keyframes kira-settings-enter {
+  from {
+    opacity: 0;
+    transform: translateY(2rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes kira-settings-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+}
+
+.kira-settings-surface[data-state="opening"] {
+  animation: kira-settings-enter 200ms ease-out both;
+}
+
+.kira-settings-surface[data-state="closing"] {
+  animation: kira-settings-exit 180ms ease-in both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kira-settings-surface[data-state="opening"],
+  .kira-settings-surface[data-state="closing"] {
+    animation-duration: 1ms;
+  }
+}
+
 .kira-xterm {
   overflow-anchor: none;
 
@@ -284,6 +323,11 @@
 
 .kira-dockview .dv-tabs-and-actions-container {
   border-bottom: 1px solid var(--sidebar-border);
+}
+
+.kira-dockview .dv-left-actions-container {
+  display: flex;
+  flex-shrink: 0;
 }
 
 .kira-dockview .dv-tab {

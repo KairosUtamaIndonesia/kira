@@ -193,6 +193,41 @@ function TerminalPanel({ api, params }: IDockviewPanelProps<TerminalPanelParams>
   }, [fitTerminal, resizeBackendTerminal, status]);
 
   useEffect(() => {
+    let animationFrame: number | undefined = void 0;
+
+    function refitVisibleTerminal() {
+      if (animationFrame !== undefined) {
+        window.cancelAnimationFrame(animationFrame);
+      }
+
+      animationFrame = window.requestAnimationFrame(() => {
+        animationFrame = void 0;
+        fitTerminal();
+        resizeBackendTerminal();
+      });
+    }
+
+    const terminalHost = terminalHostRef.current;
+    if (terminalHost === null) {
+      return () => {
+        if (animationFrame !== undefined) {
+          window.cancelAnimationFrame(animationFrame);
+        }
+      };
+    }
+
+    const observer = new ResizeObserver(() => refitVisibleTerminal());
+    observer.observe(terminalHost);
+
+    return () => {
+      observer.disconnect();
+      if (animationFrame !== undefined) {
+        window.cancelAnimationFrame(animationFrame);
+      }
+    };
+  }, [fitTerminal, resizeBackendTerminal]);
+
+  useEffect(() => {
     const disposable = api.onDidVisibilityChange((event) => {
       if (event.isVisible) {
         requestAnimationFrame(() => {
