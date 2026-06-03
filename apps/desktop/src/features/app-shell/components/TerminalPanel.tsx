@@ -5,10 +5,12 @@ import { FitAddon } from "@xterm/addon-fit";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import "@xterm/xterm/css/xterm.css";
 import { Terminal as XtermTerminal, type ITheme } from "@xterm/xterm";
+import { XIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { TerminalSnapshot } from "@/features/projects/types";
 
+import { Button } from "@/components/ui/button";
 import { getTerminalSnapshot, saveTerminalSnapshot } from "@/features/projects/api/projectsApi";
 
 type TerminalPanelParams = {
@@ -104,6 +106,15 @@ function TerminalPanel({ api, params }: IDockviewPanelProps<TerminalPanelParams>
     }
 
     void resizeTerminal(runtime, { cols: runtime.terminal.cols, rows: runtime.terminal.rows });
+  }, []);
+
+  const dismissStatus = useCallback(() => {
+    const runtime = runtimeRef.current;
+    if (runtime === undefined) {
+      return;
+    }
+
+    setRuntimeStatus(runtime, void 0);
   }, []);
 
   useEffect(() => {
@@ -212,8 +223,17 @@ function TerminalPanel({ api, params }: IDockviewPanelProps<TerminalPanelParams>
   return (
     <section className="flex h-full min-h-0 flex-col bg-editor-surface text-foreground">
       {status === undefined ? undefined : (
-        <div className="border-b border-border bg-muted px-3 py-2 text-muted-foreground">
-          {status}
+        <div className="flex items-center gap-2 border-b border-border bg-muted px-3 py-2 text-muted-foreground">
+          <span className="min-w-0 flex-1">{status}</span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label="Dismiss terminal status"
+            onClick={dismissStatus}
+          >
+            <XIcon aria-hidden="true" />
+          </Button>
         </div>
       )}
       <div ref={terminalHostRef} className="kira-xterm h-full min-h-0 flex-1 overflow-hidden" />

@@ -255,7 +255,7 @@
   @apply scrollbar-editor;
 
   --dv-tabs-and-actions-container-height: 2.75rem;
-  --dv-tabs-and-actions-container-font-size: 1rem;
+  --dv-tabs-and-actions-container-font-size: 0.875rem;
   --dv-group-view-background-color: var(--editor-surface);
   --dv-tabs-and-actions-container-background-color: var(--sidebar);
   --dv-activegroup-visiblepanel-tab-background-color: var(--sidebar);

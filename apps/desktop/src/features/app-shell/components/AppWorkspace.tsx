@@ -5,7 +5,7 @@ import {
   type IDockviewHeaderActionsProps,
   type IDockviewPanelProps,
 } from "dockview-react";
-import { Plus, Terminal as TerminalIcon } from "lucide-react";
+import { Loader2, Plus, Terminal as TerminalIcon } from "lucide-react";
 import {
   createContext,
   useContext,
@@ -343,7 +343,7 @@ function AppWorkspace({ activeWorkspace, onPanelCreated, onPanelDeleted }: AppWo
 
   return (
     <main
-      className="h-full min-h-0 bg-editor-surface"
+      className="relative h-full min-h-0 bg-editor-surface"
       onDragStartCapture={(event) => {
         if (isElementInsideSelector(event.target, ".dv-void-container")) {
           event.preventDefault();
@@ -366,6 +366,28 @@ function AppWorkspace({ activeWorkspace, onPanelCreated, onPanelDeleted }: AppWo
           onTitleBarMouseDown={handleTitleBarMouseDown}
         />
       )}
+      {activeWorkspace.status === "active" &&
+      activeWorkspace.projectSwitch.status === "switching" ? (
+        <div className="pointer-events-none absolute inset-x-3 top-14 z-10 flex justify-center motion-safe:animate-in motion-safe:fade-in-0">
+          <div
+            role="status"
+            className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-sm text-card-foreground shadow-xs"
+          >
+            <Loader2 aria-hidden="true" className="size-3.5 animate-spin text-muted-foreground" />
+            <span>Switching project…</span>
+          </div>
+        </div>
+      ) : undefined}
+      {activeWorkspace.status === "active" && activeWorkspace.projectSwitch.status === "error" ? (
+        <div className="pointer-events-none absolute inset-x-3 top-14 z-10 flex justify-center motion-safe:animate-in motion-safe:fade-in-0">
+          <div
+            role="alert"
+            className="max-w-lg rounded-full border border-border bg-card px-3 py-1.5 text-sm text-card-foreground shadow-xs"
+          >
+            Project switch failed: {activeWorkspace.projectSwitch.message}
+          </div>
+        </div>
+      ) : undefined}
       {titleBarError === undefined ? undefined : (
         <output className="sr-only">{titleBarError}</output>
       )}

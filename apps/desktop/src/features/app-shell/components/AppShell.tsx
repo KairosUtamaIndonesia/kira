@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { CreatedProject, Project, WorkspacePanel } from "@/features/projects/types";
 
@@ -16,6 +16,7 @@ import { useDevThemeToggle } from "./useDevThemeToggle";
 function AppShell() {
   useDevThemeToggle();
   const [activeWorkspace, setActiveWorkspace] = useState<ActiveWorkspaceState>({ status: "none" });
+  const projectSwitchSequenceRef = useRef(0);
 
   useEffect(() => {
     let ignoreResult = false;
@@ -27,7 +28,7 @@ function AppShell() {
           return;
         }
 
-        setActiveWorkspace({ status: "active", ...lastProject });
+        setActiveWorkspace({ status: "active", projectSwitch: { status: "idle" }, ...lastProject });
       } catch (error) {
         if (!ignoreResult) {
           setActiveWorkspace({
@@ -47,23 +48,69 @@ function AppShell() {
   }, []);
 
   async function handleProjectSelect(projectId: string) {
-    setActiveWorkspace({ status: "loading", projectId });
+    let shouldOpenProject = true;
+    const switchSequence = projectSwitchSequenceRef.current + 1;
+
+    setActiveWorkspace((currentWorkspace) => {
+      if (currentWorkspace.status === "active") {
+        if (currentWorkspace.project.id === projectId) {
+          shouldOpenProject = false;
+          return currentWorkspace;
+        }
+
+        projectSwitchSequenceRef.current = switchSequence;
+        return {
+          ...currentWorkspace,
+          projectSwitch: { status: "switching", projectId },
+        };
+      }
+
+      projectSwitchSequenceRef.current = switchSequence;
+      return { status: "loading", projectId };
+    });
+
+    if (!shouldOpenProject) {
+      return;
+    }
 
     try {
       const openedProject = await openProject({ projectId });
-      setActiveWorkspace({ status: "active", ...openedProject });
+      if (projectSwitchSequenceRef.current !== switchSequence) {
+        return;
+      }
+
+      setActiveWorkspace({ status: "active", projectSwitch: { status: "idle" }, ...openedProject });
     } catch (error) {
-      setActiveWorkspace({
-        status: "error",
-        projectId,
-        message: errorMessageFromUnknown(error),
+      if (projectSwitchSequenceRef.current !== switchSequence) {
+        return;
+      }
+
+      setActiveWorkspace((currentWorkspace) => {
+        if (currentWorkspace.status === "active") {
+          return {
+            ...currentWorkspace,
+            projectSwitch: {
+              status: "error",
+              projectId,
+              message: errorMessageFromUnknown(error),
+            },
+          };
+        }
+
+        return {
+          status: "error",
+          projectId,
+          message: errorMessageFromUnknown(error),
+        };
       });
     }
   }
 
   function handleProjectCreated(createdProject: CreatedProject) {
+    projectSwitchSequenceRef.current += 1;
     setActiveWorkspace({
       status: "active",
+      projectSwitch: { status: "idle" },
       project: createdProject.project,
       session: createdProject.defaultSession,
       panels: [],

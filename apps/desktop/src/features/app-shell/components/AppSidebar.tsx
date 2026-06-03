@@ -104,6 +104,7 @@ function AppSidebar({
                 <ProjectList
                   activeProjectId={activeProjectId(activeWorkspace)}
                   projects={projects}
+                  isProjectSwitching={isProjectSwitching(activeWorkspace)}
                   onProjectChanged={(project) => {
                     setProjects((currentProjects) =>
                       sortProjectsByName(
@@ -155,6 +156,12 @@ function activeProjectId(activeWorkspace: ActiveWorkspaceState) {
   }
 
   return "";
+}
+
+function isProjectSwitching(activeWorkspace: ActiveWorkspaceState) {
+  return (
+    activeWorkspace.status === "active" && activeWorkspace.projectSwitch.status === "switching"
+  );
 }
 
 function sortProjectsByName(projects: Project[]) {

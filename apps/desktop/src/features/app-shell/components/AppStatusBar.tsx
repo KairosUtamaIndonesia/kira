@@ -15,6 +15,14 @@ function AppStatusBar({ activeWorkspace }: AppStatusBarProps) {
 
 function statusLabel(activeWorkspace: ActiveWorkspaceState) {
   if (activeWorkspace.status === "active") {
+    if (activeWorkspace.projectSwitch.status === "switching") {
+      return `Switching project from ${activeWorkspace.project.name}…`;
+    }
+
+    if (activeWorkspace.projectSwitch.status === "error") {
+      return `Project: ${activeWorkspace.project.name} · Switch failed`;
+    }
+
     return `Project: ${activeWorkspace.project.name}`;
   }
 

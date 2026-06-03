@@ -39,6 +39,7 @@ import { removeProject, renameProject } from "../api/projectsApi";
 type ProjectListProps = {
   activeProjectId: string;
   projects: Project[];
+  isProjectSwitching: boolean;
   onProjectChanged: (project: Project) => void;
   onProjectRemoved: (projectId: string) => void;
   onProjectSelect: (projectId: string) => void;
@@ -47,6 +48,7 @@ type ProjectListProps = {
 function ProjectList({
   activeProjectId,
   projects,
+  isProjectSwitching,
   onProjectChanged,
   onProjectRemoved,
   onProjectSelect,
@@ -72,6 +74,7 @@ function ProjectList({
                     <button
                       type="button"
                       aria-label={project.name}
+                      disabled={isProjectSwitching}
                       onClick={() => onProjectSelect(project.id)}
                     />
                   }

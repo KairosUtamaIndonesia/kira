@@ -49,6 +49,12 @@ function inspectorContent(activeWorkspace: ActiveWorkspaceState) {
           <InspectorField label="Folder" value={activeWorkspace.project.folderPath} mono />
           <InspectorField label="Session" value={activeWorkspace.session.name} />
           <InspectorField label="Panels" value={activeWorkspace.panels.length.toString()} />
+          {activeWorkspace.projectSwitch.status === "switching" ? (
+            <InspectorField label="Status" value="Switching project…" />
+          ) : undefined}
+          {activeWorkspace.projectSwitch.status === "error" ? (
+            <InspectorField label="Status" value={activeWorkspace.projectSwitch.message} />
+          ) : undefined}
         </dl>
       </section>
     );
