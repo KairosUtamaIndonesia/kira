@@ -408,7 +408,11 @@ fn run_git_owned(
     run_git(cwd, operation, &borrowed_args)
 }
 
-fn run_git_bytes(cwd: &Path, operation: &str, args: &[&str]) -> Result<Vec<u8>, SourceControlError> {
+fn run_git_bytes(
+    cwd: &Path,
+    operation: &str,
+    args: &[&str],
+) -> Result<Vec<u8>, SourceControlError> {
     let output = Command::new("git")
         .args(args)
         .current_dir(cwd)
@@ -481,7 +485,10 @@ fn git_blob_or_empty(
     }
 }
 
-fn git_index_blob_or_empty(folder_path: &Path, file_path: &str) -> Result<Vec<u8>, SourceControlError> {
+fn git_index_blob_or_empty(
+    folder_path: &Path,
+    file_path: &str,
+) -> Result<Vec<u8>, SourceControlError> {
     let spec = format!(":{file_path}");
     match run_git_bytes(folder_path, "read index blob", &["show", &spec]) {
         Ok(bytes) => Ok(bytes),

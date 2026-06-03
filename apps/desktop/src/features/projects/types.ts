@@ -26,15 +26,27 @@ type CreatedProject = {
   defaultSession: Session;
 };
 
-type WorkspacePanel = {
+type WorkspacePanelBase = {
   id: string;
   sessionId: string;
-  kind: "terminal";
   title: string;
   positionIndex: number;
   createdAt: string;
   updatedAt: string;
-  terminalState: TerminalPanelState | null;
+};
+
+type WorkspacePanel = TerminalWorkspacePanel | SourceControlDiffWorkspacePanel;
+
+type TerminalWorkspacePanel = WorkspacePanelBase & {
+  kind: "terminal";
+  terminalState: TerminalPanelState;
+  sourceControlDiffState: null;
+};
+
+type SourceControlDiffWorkspacePanel = WorkspacePanelBase & {
+  kind: "source_control_diff";
+  terminalState: null;
+  sourceControlDiffState: SourceControlDiffPanelState;
 };
 
 type TerminalPanelState = {
@@ -42,10 +54,26 @@ type TerminalPanelState = {
   shell: string | null;
 };
 
+type SourceControlDiffPanelState = {
+  folderPath: string;
+  filePath: string;
+  oldPath: string | null;
+  source: "staged" | "unstaged" | "untracked";
+};
+
 type CreateTerminalPanelInput = {
   sessionId: string;
   title: string;
   workingDirectory: string;
+};
+
+type OpenSourceControlDiffPanelInput = {
+  sessionId: string;
+  title: string;
+  folderPath: string;
+  filePath: string;
+  oldPath: string | null;
+  source: SourceControlDiffPanelState["source"];
 };
 
 type DeleteWorkspacePanelInput = {
@@ -108,6 +136,7 @@ export type {
   CreateProjectInput,
   OpenProject,
   CreateTerminalPanelInput,
+  OpenSourceControlDiffPanelInput,
   DeleteTerminalSnapshotInput,
   DeleteWorkspacePanelInput,
   GetTerminalSnapshotInput,
@@ -117,8 +146,11 @@ export type {
   RenameProjectInput,
   Session,
   SaveTerminalSnapshotInput,
+  SourceControlDiffPanelState,
+  SourceControlDiffWorkspacePanel,
   TerminalPanelState,
   TerminalSnapshot,
+  TerminalWorkspacePanel,
   UpdateSessionLayoutInput,
   WorkspacePanel,
 };

@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, Row, SqlitePool};
+use sqlx::{sqlite::SqliteRow, FromRow, Row, SqlitePool};
 use thiserror::Error;
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use uuid::Uuid;
@@ -71,6 +71,7 @@ pub struct WorkspacePanel {
     created_at: String,
     updated_at: String,
     terminal_state: Option<TerminalPanelState>,
+    source_control_diff_state: Option<SourceControlDiffPanelState>,
 }
 
 #[derive(Debug, Serialize)]
@@ -80,12 +81,61 @@ pub struct TerminalPanelState {
     shell: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceControlDiffPanelState {
+    folder_path: String,
+    file_path: String,
+    old_path: Option<String>,
+    source: SourceControlDiffSource,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SourceControlDiffSource {
+    Staged,
+    Unstaged,
+    Untracked,
+}
+
+impl SourceControlDiffSource {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Staged => "staged",
+            Self::Unstaged => "unstaged",
+            Self::Untracked => "untracked",
+        }
+    }
+
+    fn from_database(value: &str) -> Result<Self, ProjectError> {
+        match value {
+            "staged" => Ok(Self::Staged),
+            "unstaged" => Ok(Self::Unstaged),
+            "untracked" => Ok(Self::Untracked),
+            _ => Err(ProjectError::InvalidSourceControlDiffSource(
+                value.to_string(),
+            )),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateTerminalPanelInput {
     session_id: String,
     title: String,
     working_directory: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenSourceControlDiffPanelInput {
+    session_id: String,
+    title: String,
+    folder_path: String,
+    file_path: String,
+    old_path: Option<String>,
+    source: SourceControlDiffSource,
 }
 
 #[derive(Debug, Deserialize)]
@@ -167,6 +217,12 @@ pub enum ProjectError {
     MissingSession(String),
     #[error("workspace panel title is required")]
     MissingPanelTitle,
+    #[error("source control diff file path is required")]
+    MissingSourceControlDiffFilePath,
+    #[error("source control diff source is invalid: {0}")]
+    InvalidSourceControlDiffSource(String),
+    #[error("workspace panel kind `{kind}` is missing required state for panel {panel_id}")]
+    MissingWorkspacePanelState { kind: String, panel_id: String },
     #[error("terminal snapshot id is required")]
     MissingTerminalSnapshotId,
     #[error("terminal snapshot payload is required")]
@@ -293,6 +349,18 @@ pub async fn workspace_terminal_panel_create(
     store: tauri::State<'_, PersistenceStore>,
 ) -> Result<WorkspacePanel, ProjectError> {
     create_terminal_panel(store.pool(), input).await
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
+pub async fn workspace_source_control_diff_panel_open(
+    input: OpenSourceControlDiffPanelInput,
+    store: tauri::State<'_, PersistenceStore>,
+) -> Result<WorkspacePanel, ProjectError> {
+    open_source_control_diff_panel(store.pool(), input).await
 }
 
 #[tauri::command]
@@ -483,51 +551,90 @@ async fn list_workspace_panels(
     session_id: &str,
 ) -> Result<Vec<WorkspacePanel>, ProjectError> {
     let rows = sqlx::query(
-        "SELECT workspace_panels.id, workspace_panels.session_id, workspace_panels.kind, workspace_panels.title, workspace_panels.position_index, workspace_panels.created_at, workspace_panels.updated_at, terminal_panel_state.working_directory, terminal_panel_state.shell FROM workspace_panels LEFT JOIN terminal_panel_state ON terminal_panel_state.panel_id = workspace_panels.id WHERE workspace_panels.session_id = ? ORDER BY workspace_panels.position_index ASC",
+        "SELECT workspace_panels.id, workspace_panels.session_id, workspace_panels.kind, workspace_panels.title, workspace_panels.position_index, workspace_panels.created_at, workspace_panels.updated_at, terminal_panel_state.working_directory, terminal_panel_state.shell, source_control_diff_panel_state.folder_path AS diff_folder_path, source_control_diff_panel_state.file_path AS diff_file_path, source_control_diff_panel_state.old_path AS diff_old_path, source_control_diff_panel_state.source AS diff_source FROM workspace_panels LEFT JOIN terminal_panel_state ON terminal_panel_state.panel_id = workspace_panels.id LEFT JOIN source_control_diff_panel_state ON source_control_diff_panel_state.panel_id = workspace_panels.id WHERE workspace_panels.session_id = ? ORDER BY workspace_panels.position_index ASC",
     )
     .bind(session_id)
     .fetch_all(pool)
     .await
     .map_err(|error| ProjectError::Query(error.to_string()))?;
 
-    rows.into_iter()
-        .map(|row| {
-            let kind: String = row
-                .try_get("kind")
-                .map_err(|error| ProjectError::Query(error.to_string()))?;
-            let working_directory: Option<String> = row
-                .try_get("working_directory")
-                .map_err(|error| ProjectError::Query(error.to_string()))?;
-            let shell: Option<String> = row
-                .try_get("shell")
-                .map_err(|error| ProjectError::Query(error.to_string()))?;
-            Ok(WorkspacePanel {
-                id: row
-                    .try_get("id")
-                    .map_err(|error| ProjectError::Query(error.to_string()))?,
-                session_id: row
-                    .try_get("session_id")
-                    .map_err(|error| ProjectError::Query(error.to_string()))?,
-                kind,
-                title: row
-                    .try_get("title")
-                    .map_err(|error| ProjectError::Query(error.to_string()))?,
-                position_index: row
-                    .try_get("position_index")
-                    .map_err(|error| ProjectError::Query(error.to_string()))?,
-                created_at: row
-                    .try_get("created_at")
-                    .map_err(|error| ProjectError::Query(error.to_string()))?,
-                updated_at: row
-                    .try_get("updated_at")
-                    .map_err(|error| ProjectError::Query(error.to_string()))?,
-                terminal_state: working_directory.map(|working_directory| TerminalPanelState {
-                    working_directory,
-                    shell,
-                }),
-            })
-        })
-        .collect()
+    rows.iter().map(workspace_panel_from_row).collect()
+}
+
+fn workspace_panel_from_row(row: &SqliteRow) -> Result<WorkspacePanel, ProjectError> {
+    let id: String = row
+        .try_get("id")
+        .map_err(|error| ProjectError::Query(error.to_string()))?;
+    let kind: String = row
+        .try_get("kind")
+        .map_err(|error| ProjectError::Query(error.to_string()))?;
+    let working_directory: Option<String> = row
+        .try_get("working_directory")
+        .map_err(|error| ProjectError::Query(error.to_string()))?;
+    let shell: Option<String> = row
+        .try_get("shell")
+        .map_err(|error| ProjectError::Query(error.to_string()))?;
+    let diff_folder_path: Option<String> = row
+        .try_get("diff_folder_path")
+        .map_err(|error| ProjectError::Query(error.to_string()))?;
+    let diff_file_path: Option<String> = row
+        .try_get("diff_file_path")
+        .map_err(|error| ProjectError::Query(error.to_string()))?;
+    let diff_old_path: Option<String> = row
+        .try_get("diff_old_path")
+        .map_err(|error| ProjectError::Query(error.to_string()))?;
+    let diff_source: Option<String> = row
+        .try_get("diff_source")
+        .map_err(|error| ProjectError::Query(error.to_string()))?;
+
+    let terminal_state = match (kind.as_str(), working_directory) {
+        ("terminal", Some(working_directory)) => Some(TerminalPanelState {
+            working_directory,
+            shell,
+        }),
+        ("terminal", None) => {
+            return Err(ProjectError::MissingWorkspacePanelState { kind, panel_id: id });
+        }
+        _ => None,
+    };
+
+    let source_control_diff_state =
+        match (kind.as_str(), diff_folder_path, diff_file_path, diff_source) {
+            ("source_control_diff", Some(folder_path), Some(file_path), Some(source)) => {
+                Some(SourceControlDiffPanelState {
+                    folder_path,
+                    file_path,
+                    old_path: diff_old_path,
+                    source: SourceControlDiffSource::from_database(&source)?,
+                })
+            }
+            ("source_control_diff", _, _, _) => {
+                return Err(ProjectError::MissingWorkspacePanelState { kind, panel_id: id });
+            }
+            _ => None,
+        };
+
+    Ok(WorkspacePanel {
+        id,
+        session_id: row
+            .try_get("session_id")
+            .map_err(|error| ProjectError::Query(error.to_string()))?,
+        kind,
+        title: row
+            .try_get("title")
+            .map_err(|error| ProjectError::Query(error.to_string()))?,
+        position_index: row
+            .try_get("position_index")
+            .map_err(|error| ProjectError::Query(error.to_string()))?,
+        created_at: row
+            .try_get("created_at")
+            .map_err(|error| ProjectError::Query(error.to_string()))?,
+        updated_at: row
+            .try_get("updated_at")
+            .map_err(|error| ProjectError::Query(error.to_string()))?,
+        terminal_state,
+        source_control_diff_state,
+    })
 }
 
 async fn create_terminal_panel(
@@ -586,7 +693,103 @@ async fn create_terminal_panel(
             working_directory,
             shell: None,
         }),
+        source_control_diff_state: None,
     })
+}
+
+async fn open_source_control_diff_panel(
+    pool: &SqlitePool,
+    input: OpenSourceControlDiffPanelInput,
+) -> Result<WorkspacePanel, ProjectError> {
+    let title = validate_panel_title(&input.title)?;
+    let folder_path = validate_folder_path(&input.folder_path)?;
+    let file_path = validate_source_control_diff_file_path(&input.file_path)?;
+    let old_path = validate_optional_source_control_diff_file_path(input.old_path)?;
+    let panel_id = source_control_diff_panel_id(&input.session_id, input.source, &file_path);
+
+    if let Some(panel) = get_workspace_panel(pool, &panel_id).await? {
+        return Ok(panel);
+    }
+
+    let now = current_timestamp()?;
+    let position_index = sqlx::query_scalar::<_, i64>(
+        "SELECT COALESCE(MAX(position_index), -1) + 1 FROM workspace_panels WHERE session_id = ?",
+    )
+    .bind(&input.session_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|error| ProjectError::Query(error.to_string()))?;
+
+    let mut transaction = pool
+        .begin()
+        .await
+        .map_err(|error| ProjectError::Create(error.to_string()))?;
+    sqlx::query("INSERT INTO workspace_panels (id, session_id, kind, title, position_index, created_at, updated_at) VALUES (?, ?, 'source_control_diff', ?, ?, ?, ?)")
+        .bind(&panel_id)
+        .bind(&input.session_id)
+        .bind(&title)
+        .bind(position_index)
+        .bind(&now)
+        .bind(&now)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|error| ProjectError::Create(error.to_string()))?;
+    sqlx::query("INSERT INTO source_control_diff_panel_state (panel_id, folder_path, file_path, old_path, source) VALUES (?, ?, ?, ?, ?)")
+        .bind(&panel_id)
+        .bind(&folder_path)
+        .bind(&file_path)
+        .bind(&old_path)
+        .bind(input.source.as_str())
+        .execute(&mut *transaction)
+        .await
+        .map_err(|error| ProjectError::Create(error.to_string()))?;
+    transaction
+        .commit()
+        .await
+        .map_err(|error| ProjectError::Create(error.to_string()))?;
+
+    Ok(WorkspacePanel {
+        id: panel_id,
+        session_id: input.session_id,
+        kind: "source_control_diff".to_string(),
+        title,
+        position_index,
+        created_at: now.clone(),
+        updated_at: now,
+        terminal_state: None,
+        source_control_diff_state: Some(SourceControlDiffPanelState {
+            folder_path,
+            file_path,
+            old_path,
+            source: input.source,
+        }),
+    })
+}
+
+async fn get_workspace_panel(
+    pool: &SqlitePool,
+    panel_id: &str,
+) -> Result<Option<WorkspacePanel>, ProjectError> {
+    let row = sqlx::query(
+        "SELECT workspace_panels.id, workspace_panels.session_id, workspace_panels.kind, workspace_panels.title, workspace_panels.position_index, workspace_panels.created_at, workspace_panels.updated_at, terminal_panel_state.working_directory, terminal_panel_state.shell, source_control_diff_panel_state.folder_path AS diff_folder_path, source_control_diff_panel_state.file_path AS diff_file_path, source_control_diff_panel_state.old_path AS diff_old_path, source_control_diff_panel_state.source AS diff_source FROM workspace_panels LEFT JOIN terminal_panel_state ON terminal_panel_state.panel_id = workspace_panels.id LEFT JOIN source_control_diff_panel_state ON source_control_diff_panel_state.panel_id = workspace_panels.id WHERE workspace_panels.id = ?",
+    )
+    .bind(panel_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|error| ProjectError::Query(error.to_string()))?;
+
+    row.as_ref().map(workspace_panel_from_row).transpose()
+}
+
+fn source_control_diff_panel_id(
+    session_id: &str,
+    source: SourceControlDiffSource,
+    file_path: &str,
+) -> String {
+    format!(
+        "source-control-diff:{session_id}:{}:{file_path}",
+        source.as_str()
+    )
 }
 
 async fn create_project(
@@ -675,6 +878,23 @@ fn validate_panel_title(title: &str) -> Result<String, ProjectError> {
     }
 
     Ok(trimmed_title.to_string())
+}
+
+fn validate_source_control_diff_file_path(file_path: &str) -> Result<String, ProjectError> {
+    let trimmed_file_path = file_path.trim();
+    if trimmed_file_path.is_empty() {
+        return Err(ProjectError::MissingSourceControlDiffFilePath);
+    }
+
+    Ok(trimmed_file_path.to_string())
+}
+
+fn validate_optional_source_control_diff_file_path(
+    file_path: Option<String>,
+) -> Result<Option<String>, ProjectError> {
+    file_path
+        .map(|file_path| validate_source_control_diff_file_path(&file_path))
+        .transpose()
 }
 
 fn validate_terminal_snapshot_id(terminal_id: &str) -> Result<String, ProjectError> {

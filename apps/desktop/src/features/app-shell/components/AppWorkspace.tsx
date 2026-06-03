@@ -18,10 +18,6 @@ import {
 } from "react";
 
 import type { WorkspacePanel as StoredWorkspacePanel } from "@/features/projects/types";
-import {
-  SourceControlDiffPanel,
-  type SourceControlDiffPanelParams,
-} from "@/features/source-control/components/SourceControlDiffPanel";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -36,6 +32,10 @@ import {
   deleteWorkspacePanel,
   updateSessionLayout,
 } from "@/features/projects/api/projectsApi";
+import {
+  SourceControlDiffPanel,
+  type SourceControlDiffPanelParams,
+} from "@/features/source-control/components/SourceControlDiffPanel";
 
 import type { ActiveWorkspaceState, SourceControlDiffOpenRequest } from "../types";
 
@@ -91,13 +91,10 @@ function WorkspaceHeaderActions({ containerApi, group }: IDockviewHeaderActionsP
         direction: "within",
       },
     });
-    const layoutJson = serializeWorkspaceLayoutForPersistence(containerApi.toJSON());
-    if (layoutJson !== undefined) {
-      await updateSessionLayout({
-        sessionId,
-        layoutJson,
-      });
-    }
+    await updateSessionLayout({
+      sessionId,
+      layoutJson: serializeWorkspaceLayoutForPersistence(containerApi.toJSON()),
+    });
   }
 
   return (
@@ -127,11 +124,19 @@ const workspaceComponents = {
 };
 
 function requireTerminalState(panel: StoredWorkspacePanel) {
-  if (panel.terminalState === null) {
-    throw new Error(`Terminal panel ${panel.id} is missing terminal state.`);
+  if (panel.kind !== "terminal") {
+    throw new Error(`Workspace panel ${panel.id} is not a terminal panel.`);
   }
 
   return panel.terminalState;
+}
+
+function requireSourceControlDiffState(panel: StoredWorkspacePanel) {
+  if (panel.kind !== "source_control_diff") {
+    throw new Error(`Workspace panel ${panel.id} is not a source control diff panel.`);
+  }
+
+  return panel.sourceControlDiffState;
 }
 
 function useWorkspaceRuntimeContext() {
@@ -164,6 +169,7 @@ function preventHeaderSpaceDrag(event: DockviewReadyEvent) {
 function restoreWorkspacePanels(
   event: DockviewReadyEvent,
   activeWorkspace: Extract<ActiveWorkspaceState, { status: "active" }>,
+  panelsRef: RefObject<StoredWorkspacePanel[]>,
   onPanelDeleted: (panelId: string) => void,
   isWorkspaceDisposingRef: RefObject<boolean>,
 ) {
@@ -177,7 +183,11 @@ function restoreWorkspacePanels(
       event.api.fromJSON(serializedLayout);
       const restoredMissingPanels = restoreMissingStoredPanels(event, activeWorkspace.panels);
       if (restoredMissingPanels) {
-        void saveWorkspaceLayoutIfActive(activeWorkspace.session.id, event, isWorkspaceDisposingRef);
+        void saveWorkspaceLayoutIfActive(
+          activeWorkspace.session.id,
+          event,
+          isWorkspaceDisposingRef,
+        );
       }
     } catch {
       restorePanelsWithoutLayout(event, activeWorkspace.panels);
@@ -193,9 +203,7 @@ function restoreWorkspacePanels(
       return;
     }
 
-    const storedPanel = activeWorkspace.panels.find(
-      (workspacePanel) => workspacePanel.id === panel.id,
-    );
+    const storedPanel = panelsRef.current.find((workspacePanel) => workspacePanel.id === panel.id);
     if (storedPanel === undefined) {
       return;
     }
@@ -245,20 +253,31 @@ function restorePanelsWithoutLayout(event: DockviewReadyEvent, panels: StoredWor
 }
 
 function restoreWorkspacePanel(event: DockviewReadyEvent, panel: StoredWorkspacePanel) {
-  if (panel.kind !== "terminal") {
-    return;
+  switch (panel.kind) {
+    case "terminal": {
+      const terminalState = requireTerminalState(panel);
+      event.api.addPanel<TerminalPanelParams>({
+        id: panel.id,
+        component: "terminalPanel",
+        title: panel.title,
+        params: {
+          terminalId: panel.id,
+          workingDirectory: terminalState.workingDirectory,
+        },
+      });
+      return;
+    }
+    case "source_control_diff": {
+      const sourceControlDiffState = requireSourceControlDiffState(panel);
+      event.api.addPanel<SourceControlDiffPanelParams>({
+        id: panel.id,
+        component: "sourceControlDiffPanel",
+        title: panel.title,
+        params: sourceControlDiffState,
+      });
+      return;
+    }
   }
-
-  const terminalState = requireTerminalState(panel);
-  event.api.addPanel<TerminalPanelParams>({
-    id: panel.id,
-    component: "terminalPanel",
-    title: panel.title,
-    params: {
-      terminalId: panel.id,
-      workingDirectory: terminalState.workingDirectory,
-    },
-  });
 }
 
 async function killTerminalSession(sessionId: string) {
@@ -278,14 +297,9 @@ async function saveWorkspaceLayoutIfActive(
     return;
   }
 
-  const layoutJson = serializeWorkspaceLayoutForPersistence(event.api.toJSON());
-  if (layoutJson === undefined) {
-    return;
-  }
-
   await updateSessionLayout({
     sessionId,
-    layoutJson,
+    layoutJson: serializeWorkspaceLayoutForPersistence(event.api.toJSON()),
   });
 }
 
@@ -305,6 +319,8 @@ function ActiveWorkspaceDockview({
   onPanelDeleted,
 }: ActiveWorkspaceDockviewProps) {
   const [dockviewApi, setDockviewApi] = useState<DockviewReadyEvent["api"]>();
+  const panelsRef = useRef(activeWorkspace.panels);
+  panelsRef.current = activeWorkspace.panels;
   const workspaceRuntimeContext = useMemo(
     () => ({
       sessionId: activeWorkspace.session.id,
@@ -319,23 +335,18 @@ function ActiveWorkspaceDockview({
       return;
     }
 
-    const panelId = sourceControlDiffPanelId(sourceControlDiffRequest);
-    const existingPanel = dockviewApi.getPanel(panelId);
+    const panel = sourceControlDiffRequest.panel;
+    const existingPanel = dockviewApi.getPanel(panel.id);
     if (existingPanel !== undefined) {
       existingPanel.api.setActive();
       return;
     }
 
     dockviewApi.addPanel<SourceControlDiffPanelParams>({
-      id: panelId,
+      id: panel.id,
       component: "sourceControlDiffPanel",
-      title: sourceControlDiffRequest.title,
-      params: {
-        folderPath: sourceControlDiffRequest.folderPath,
-        filePath: sourceControlDiffRequest.filePath,
-        oldPath: sourceControlDiffRequest.oldPath,
-        source: sourceControlDiffRequest.source,
-      },
+      title: panel.title,
+      params: panel.sourceControlDiffState,
     });
   }, [dockviewApi, sourceControlDiffRequest]);
 
@@ -351,7 +362,13 @@ function ActiveWorkspaceDockview({
           hideBorders
           onReady={(event) => {
             setDockviewApi(event.api);
-            restoreWorkspacePanels(event, activeWorkspace, onPanelDeleted, isWorkspaceDisposingRef);
+            restoreWorkspacePanels(
+              event,
+              activeWorkspace,
+              panelsRef,
+              onPanelDeleted,
+              isWorkspaceDisposingRef,
+            );
           }}
           leftHeaderActionsComponent={WorkspaceHeaderActions}
         />
@@ -361,44 +378,7 @@ function ActiveWorkspaceDockview({
 }
 
 function serializeWorkspaceLayoutForPersistence(value: unknown) {
-  if (containsTransientSourceControlPanel(value)) {
-    return;
-  }
-
   return JSON.stringify(value);
-}
-
-function containsTransientSourceControlPanel(value: unknown): boolean {
-  if (Array.isArray(value)) {
-    return value.some((item) => containsTransientSourceControlPanel(item));
-  }
-
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-
-  if (isTransientSourceControlPanelRecord(value)) {
-    return true;
-  }
-
-  return Object.entries(value).some(
-    ([key, item]) =>
-      key.startsWith("source-control-diff:") || containsTransientSourceControlPanel(item),
-  );
-}
-
-function isTransientSourceControlPanelRecord(value: unknown) {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "id" in value &&
-    typeof value.id === "string" &&
-    value.id.startsWith("source-control-diff:")
-  );
-}
-
-function sourceControlDiffPanelId(request: SourceControlDiffOpenRequest) {
-  return `source-control-diff:${request.projectId}:${request.source}:${request.filePath}`;
 }
 
 type AppWorkspaceProps = {

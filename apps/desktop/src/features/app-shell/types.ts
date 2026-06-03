@@ -1,5 +1,4 @@
-import type { OpenProject } from "@/features/projects/types";
-import type { SourceControlDiffSource } from "@/features/source-control/types";
+import type { OpenProject, SourceControlDiffWorkspacePanel } from "@/features/projects/types";
 
 type ProjectSwitchState =
   | { status: "idle" }
@@ -14,12 +13,7 @@ type ActiveWorkspaceState =
 
 type SourceControlDiffOpenRequest = {
   sequence: number;
-  projectId: string;
-  title: string;
-  folderPath: string;
-  filePath: string;
-  oldPath: string | null;
-  source: SourceControlDiffSource;
+  panel: SourceControlDiffWorkspacePanel;
 };
 
 export type { ActiveWorkspaceState, SourceControlDiffOpenRequest };

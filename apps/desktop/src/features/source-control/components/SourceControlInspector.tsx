@@ -42,7 +42,7 @@ import { useSourceControlStatus } from "../hooks/useSourceControlStatus";
 
 type SourceControlInspectorProps = {
   folderPath: string | undefined;
-  onOpenDiff: (entry: GitStatusEntry) => void;
+  onOpenDiff: (entry: GitStatusEntry) => Promise<void>;
 };
 
 type PendingDiscard =
@@ -119,6 +119,15 @@ function SourceControlInspector({ folderPath, onOpenDiff }: SourceControlInspect
       setMutationError(errorMessageFromUnknown(error));
     } finally {
       setIsMutating(false);
+    }
+  }
+
+  async function handleOpenDiff(entry: GitStatusEntry) {
+    setMutationError(undefined);
+    try {
+      await onOpenDiff(entry);
+    } catch (error) {
+      setMutationError(errorMessageFromUnknown(error));
     }
   }
 
@@ -237,7 +246,7 @@ function SourceControlInspector({ folderPath, onOpenDiff }: SourceControlInspect
             onMutation={(operation) => void runMutation(operation)}
             onDiscardEntry={(entry) => setPendingDiscard({ kind: "entry", entry })}
             onDiscardArea={() => requestDiscardArea(area)}
-            onOpenDiff={onOpenDiff}
+            onOpenDiff={(entry) => void handleOpenDiff(entry)}
           />
         ))}
       </div>
@@ -394,7 +403,7 @@ function SourceControlFileRow({
   const StatusIcon = statusIcon(entry);
 
   return (
-    <div className="group/row relative hover:bg-accent focus-within:bg-accent">
+    <div className="group/row relative focus-within:bg-accent hover:bg-accent">
       <button
         type="button"
         className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm focus-visible:outline-none"

@@ -55,6 +55,7 @@ pub fn run() -> tauri::Result<()> {
             terminal::terminal_spawn,
             terminal::terminal_write,
             projects::workspace_panel_delete,
+            projects::workspace_source_control_diff_panel_open,
             projects::workspace_terminal_panel_create,
             projects::workspace_terminal_snapshot_delete,
             projects::workspace_terminal_snapshot_get,

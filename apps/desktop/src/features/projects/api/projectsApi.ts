@@ -9,6 +9,7 @@ import type {
   GetTerminalSnapshotInput,
   OpenProject,
   OpenProjectInput,
+  OpenSourceControlDiffPanelInput,
   Project,
   RemoveProjectInput,
   RenameProjectInput,
@@ -36,6 +37,10 @@ function openLastProject() {
 
 function createTerminalPanel(input: CreateTerminalPanelInput) {
   return invoke<WorkspacePanel>("workspace_terminal_panel_create", { input });
+}
+
+function openSourceControlDiffPanel(input: OpenSourceControlDiffPanelInput) {
+  return invoke<WorkspacePanel>("workspace_source_control_diff_panel_open", { input });
 }
 
 function deleteWorkspacePanel(input: DeleteWorkspacePanelInput) {
@@ -75,6 +80,7 @@ export {
   listProjects,
   openLastProject,
   openProject,
+  openSourceControlDiffPanel,
   removeProject,
   renameProject,
   saveTerminalSnapshot,

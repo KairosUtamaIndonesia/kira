@@ -1,10 +1,11 @@
 import { Files, GitBranch, type LucideIcon } from "lucide-react";
 import { useState } from "react";
 
+import type { GitStatusEntry } from "@/features/source-control/types";
+
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SourceControlInspector } from "@/features/source-control/components/SourceControlInspector";
-import type { GitStatusEntry } from "@/features/source-control/types";
 
 import type { ActiveWorkspaceState } from "../types";
 
@@ -13,7 +14,7 @@ import { useTitleBarDrag } from "./useTitleBarDrag";
 
 type AppInspectorProps = {
   activeWorkspace: ActiveWorkspaceState;
-  onSourceControlDiffOpen: (entry: GitStatusEntry) => void;
+  onSourceControlDiffOpen: (entry: GitStatusEntry) => Promise<void>;
 };
 
 type InspectorView = "explorer" | "sourceControl";
@@ -89,7 +90,7 @@ function AppInspector({ activeWorkspace, onSourceControlDiffOpen }: AppInspector
 function inspectorContent(
   activeWorkspace: ActiveWorkspaceState,
   activeView: InspectorView,
-  onSourceControlDiffOpen: (entry: GitStatusEntry) => void,
+  onSourceControlDiffOpen: (entry: GitStatusEntry) => Promise<void>,
 ) {
   if (activeView === "sourceControl") {
     return (

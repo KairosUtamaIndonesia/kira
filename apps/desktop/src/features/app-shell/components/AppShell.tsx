@@ -4,7 +4,11 @@ import type { CreatedProject, Project, WorkspacePanel } from "@/features/project
 import type { GitStatusEntry } from "@/features/source-control/types";
 
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
-import { openLastProject, openProject } from "@/features/projects/api/projectsApi";
+import {
+  openLastProject,
+  openProject,
+  openSourceControlDiffPanel,
+} from "@/features/projects/api/projectsApi";
 import { SettingsPage } from "@/features/settings";
 
 import type { ActiveWorkspaceState, SourceControlDiffOpenRequest } from "../types";
@@ -16,6 +20,16 @@ import { AppWorkspace } from "./AppWorkspace";
 import { useDevThemeToggle } from "./useDevThemeToggle";
 
 type SettingsSurfaceState = "closed" | "opening" | "open" | "closing";
+
+function sourceControlDiffTitle(filePath: string) {
+  const pathParts = filePath.split("/");
+  const title = pathParts[pathParts.length - 1];
+  if (title === undefined || title.length === 0) {
+    return filePath;
+  }
+
+  return title;
+}
 
 function AppShell() {
   useDevThemeToggle();
@@ -164,22 +178,42 @@ function AppShell() {
     });
   }
 
-  function handleSourceControlDiffOpen(entry: GitStatusEntry) {
+  async function handleSourceControlDiffOpen(entry: GitStatusEntry) {
     if (activeWorkspace.status !== "active") {
       return;
     }
 
-    const sequence = sourceControlDiffSequenceRef.current + 1;
-    sourceControlDiffSequenceRef.current = sequence;
-    setSourceControlDiffRequest({
-      sequence,
-      projectId: activeWorkspace.project.id,
-      title: entry.path.split("/").pop() ?? entry.path,
+    const panel = await openSourceControlDiffPanel({
+      sessionId: activeWorkspace.session.id,
+      title: sourceControlDiffTitle(entry.path),
       folderPath: activeWorkspace.project.folderPath,
       filePath: entry.path,
       oldPath: entry.oldPath,
       source: entry.area,
     });
+
+    if (panel.kind !== "source_control_diff") {
+      throw new Error(`Expected source control diff panel, received ${panel.kind}.`);
+    }
+
+    setActiveWorkspace((currentWorkspace) => {
+      if (currentWorkspace.status !== "active") {
+        return currentWorkspace;
+      }
+
+      const existingPanel = currentWorkspace.panels.find(
+        (workspacePanel) => workspacePanel.id === panel.id,
+      );
+      if (existingPanel !== undefined) {
+        return currentWorkspace;
+      }
+
+      return { ...currentWorkspace, panels: [...currentWorkspace.panels, panel] };
+    });
+
+    const sequence = sourceControlDiffSequenceRef.current + 1;
+    sourceControlDiffSequenceRef.current = sequence;
+    setSourceControlDiffRequest({ sequence, panel });
   }
 
   function handlePanelDeleted(panelId: string) {
