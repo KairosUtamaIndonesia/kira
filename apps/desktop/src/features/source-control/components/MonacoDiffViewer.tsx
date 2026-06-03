@@ -1,16 +1,23 @@
 import { shikiToMonaco } from "@shikijs/monaco";
 import { DiffEditor, type DiffOnMount } from "@monaco-editor/react";
 import type * as Monaco from "monaco-editor";
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createHighlighter, type Highlighter } from "shiki";
 
 import { shikiLanguages } from "../language";
+
+const darkTheme = "github-dark";
+const lightTheme = "github-light";
 
 let shikiSetupPromise: Promise<void> | undefined;
 
 function setupShiki(monaco: typeof Monaco) {
   shikiSetupPromise ??= setupShikiOnce(monaco);
   return shikiSetupPromise;
+}
+
+function currentMonacoTheme() {
+  return document.documentElement.classList.contains("dark") ? darkTheme : lightTheme;
 }
 
 async function setupShikiOnce(monaco: typeof Monaco) {
@@ -39,10 +46,29 @@ function MonacoDiffViewer({
   language,
   modelKey,
 }: MonacoDiffViewerProps) {
+  const [monacoInstance, setMonacoInstance] = useState<typeof Monaco>();
+  const [theme, setTheme] = useState(currentMonacoTheme());
+
+  useEffect(() => {
+    const observer = new MutationObserver(() => setTheme(currentMonacoTheme()));
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (monacoInstance === undefined) {
+      return;
+    }
+
+    monacoInstance.editor.setTheme(theme);
+  }, [monacoInstance, theme]);
+
   const handleMount: DiffOnMount = useCallback((diffEditor, monaco) => {
+    setMonacoInstance(monaco);
+
     async function configureHighlighting() {
       await setupShiki(monaco);
-      monaco.editor.setTheme("github-dark");
+      monaco.editor.setTheme(currentMonacoTheme());
     }
 
     void configureHighlighting();
@@ -55,7 +81,7 @@ function MonacoDiffViewer({
       original={originalContent}
       modified={modifiedContent}
       language={language}
-      theme="github-dark"
+      theme={theme}
       originalModelPath={`source-control-diff:original:${modelKey}`}
       modifiedModelPath={`source-control-diff:modified:${modelKey}`}
       keepCurrentOriginalModel

@@ -91,10 +91,13 @@ function WorkspaceHeaderActions({ containerApi, group }: IDockviewHeaderActionsP
         direction: "within",
       },
     });
-    await updateSessionLayout({
-      sessionId,
-      layoutJson: JSON.stringify(containerApi.toJSON()),
-    });
+    const layoutJson = serializeWorkspaceLayoutForPersistence(containerApi.toJSON());
+    if (layoutJson !== undefined) {
+      await updateSessionLayout({
+        sessionId,
+        layoutJson,
+      });
+    }
   }
 
   return (
@@ -167,12 +170,17 @@ function restoreWorkspacePanels(
   preventHeaderSpaceDrag(event);
 
   if (activeWorkspace.session.layoutJson !== null) {
-    const serializedLayout = JSON.parse(activeWorkspace.session.layoutJson) as Parameters<
-      typeof event.api.fromJSON
-    >[0];
-    event.api.fromJSON(serializedLayout);
-    const restoredMissingPanels = restoreMissingStoredPanels(event, activeWorkspace.panels);
-    if (restoredMissingPanels) {
+    try {
+      const serializedLayout = JSON.parse(activeWorkspace.session.layoutJson) as Parameters<
+        typeof event.api.fromJSON
+      >[0];
+      event.api.fromJSON(serializedLayout);
+      const restoredMissingPanels = restoreMissingStoredPanels(event, activeWorkspace.panels);
+      if (restoredMissingPanels) {
+        void saveWorkspaceLayoutIfActive(activeWorkspace.session.id, event, isWorkspaceDisposingRef);
+      }
+    } catch {
+      restorePanelsWithoutLayout(event, activeWorkspace.panels);
       void saveWorkspaceLayoutIfActive(activeWorkspace.session.id, event, isWorkspaceDisposingRef);
     }
   } else {
@@ -270,9 +278,14 @@ async function saveWorkspaceLayoutIfActive(
     return;
   }
 
+  const layoutJson = serializeWorkspaceLayoutForPersistence(event.api.toJSON());
+  if (layoutJson === undefined) {
+    return;
+  }
+
   await updateSessionLayout({
     sessionId,
-    layoutJson: JSON.stringify(withoutTransientSourceControlPanels(event.api.toJSON())),
+    layoutJson,
   });
 }
 
@@ -347,23 +360,30 @@ function ActiveWorkspaceDockview({
   );
 }
 
-function withoutTransientSourceControlPanels(value: unknown): unknown {
+function serializeWorkspaceLayoutForPersistence(value: unknown) {
+  if (containsTransientSourceControlPanel(value)) {
+    return;
+  }
+
+  return JSON.stringify(value);
+}
+
+function containsTransientSourceControlPanel(value: unknown): boolean {
   if (Array.isArray(value)) {
-    return value
-      .filter((item) => !isTransientSourceControlPanelRecord(item))
-      .map((item) => withoutTransientSourceControlPanels(item));
+    return value.some((item) => containsTransientSourceControlPanel(item));
   }
 
   if (typeof value !== "object" || value === null) {
-    return value;
+    return false;
   }
 
-  const entries = Object.entries(value).filter(
+  if (isTransientSourceControlPanelRecord(value)) {
+    return true;
+  }
+
+  return Object.entries(value).some(
     ([key, item]) =>
-      !key.startsWith("source-control-diff:") && !isTransientSourceControlPanelRecord(item),
-  );
-  return Object.fromEntries(
-    entries.map(([key, item]) => [key, withoutTransientSourceControlPanels(item)]),
+      key.startsWith("source-control-diff:") || containsTransientSourceControlPanel(item),
   );
 }
 
