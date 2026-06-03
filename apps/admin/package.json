@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "auth:generate": "bunx auth generate",
+    "auth:info": "bunx auth info",
     "build": "next build",
     "check": "bun run typecheck && bun run lint && bun run format:check",
     "db:generate": "drizzle-kit generate",
@@ -20,6 +22,9 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
+    "@better-auth/api-key": "^1.6.13",
+    "@better-auth/drizzle-adapter": "^1.6.13",
+    "better-auth": "^1.6.13",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.2",

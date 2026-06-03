@@ -12,7 +12,7 @@ function requireEnvironmentVariable(name: string) {
 
 export default defineConfig({
   dialect: "postgresql",
-  schema: "./lib/db/schema.ts",
+  schema: ["./lib/db/auth-schema.ts", "./lib/db/schema.ts"],
   out: "./drizzle",
   dbCredentials: {
     url: requireEnvironmentVariable("DATABASE_URL"),

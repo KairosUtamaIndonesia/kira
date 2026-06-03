@@ -1,0 +1,22 @@
+services:
+  admin-postgres:
+    image: postgres:18-alpine
+    container_name: kira-admin-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: kira_admin
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - admin-postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d kira_admin"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  admin-postgres-data:
