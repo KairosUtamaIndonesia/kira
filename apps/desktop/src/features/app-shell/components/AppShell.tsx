@@ -4,6 +4,7 @@ import type { CreatedProject, Project, WorkspacePanel } from "@/features/project
 
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { openLastProject, openProject } from "@/features/projects/api/projectsApi";
+import { SettingsPage } from "@/features/settings";
 
 import type { ActiveWorkspaceState } from "../types";
 
@@ -13,10 +14,14 @@ import { AppStatusBar } from "./AppStatusBar";
 import { AppWorkspace } from "./AppWorkspace";
 import { useDevThemeToggle } from "./useDevThemeToggle";
 
+type SettingsSurfaceState = "closed" | "opening" | "open" | "closing";
+
 function AppShell() {
   useDevThemeToggle();
   const [activeWorkspace, setActiveWorkspace] = useState<ActiveWorkspaceState>({ status: "none" });
+  const [settingsSurfaceState, setSettingsSurfaceState] = useState<SettingsSurfaceState>("closed");
   const projectSwitchSequenceRef = useRef(0);
+  const settingsReturnFocusRef = useRef<HTMLElement | undefined>(void 0);
 
   useEffect(() => {
     let ignoreResult = false;
@@ -168,6 +173,34 @@ function AppShell() {
     });
   }
 
+  function handleSettingsOpen() {
+    if (settingsSurfaceState !== "closed") {
+      return;
+    }
+
+    settingsReturnFocusRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
+    setSettingsSurfaceState("opening");
+  }
+
+  function handleSettingsEntered() {
+    setSettingsSurfaceState((currentState) => (currentState === "opening" ? "open" : currentState));
+  }
+
+  function handleSettingsClose() {
+    setSettingsSurfaceState((currentState) =>
+      currentState === "closed" || currentState === "closing" ? currentState : "closing",
+    );
+  }
+
+  function handleSettingsClosed() {
+    setSettingsSurfaceState("closed");
+    if (settingsReturnFocusRef.current !== undefined) {
+      settingsReturnFocusRef.current.focus();
+    }
+    settingsReturnFocusRef.current = undefined;
+  }
+
   return (
     <div className="grid h-dvh grid-rows-[minmax(0,1fr)_1.75rem] overflow-hidden bg-background text-foreground">
       <ResizablePanelGroup orientation="horizontal" className="min-h-0 border-b border-border">
@@ -184,6 +217,7 @@ function AppShell() {
             onProjectCreated={handleProjectCreated}
             onProjectRemoved={handleProjectRemoved}
             onProjectSelect={(projectId) => void handleProjectSelect(projectId)}
+            onSettingsOpen={handleSettingsOpen}
           />
         </ResizablePanel>
         <ResizableHandle />
@@ -206,6 +240,14 @@ function AppShell() {
         </ResizablePanel>
       </ResizablePanelGroup>
       <AppStatusBar activeWorkspace={activeWorkspace} />
+      {settingsSurfaceState === "closed" ? undefined : (
+        <SettingsPage
+          state={settingsSurfaceState}
+          onClose={handleSettingsClose}
+          onClosed={handleSettingsClosed}
+          onEntered={handleSettingsEntered}
+        />
+      )}
     </div>
   );
 }

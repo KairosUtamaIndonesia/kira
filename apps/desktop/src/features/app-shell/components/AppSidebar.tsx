@@ -31,6 +31,7 @@ type AppSidebarProps = {
   onProjectCreated: (createdProject: CreatedProject) => void;
   onProjectRemoved: (projectId: string) => void;
   onProjectSelect: (projectId: string) => void;
+  onSettingsOpen: () => void;
 };
 
 function AppSidebar({
@@ -39,6 +40,7 @@ function AppSidebar({
   onProjectCreated,
   onProjectRemoved,
   onProjectSelect,
+  onSettingsOpen,
 }: AppSidebarProps) {
   const { handleTitleBarDoubleClick, handleTitleBarMouseDown, titleBarError } = useTitleBarDrag();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -134,7 +136,9 @@ function AppSidebar({
         <SidebarFooter className="border-t border-sidebar-border">
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton render={<Button type="button" variant="ghost" />}>
+              <SidebarMenuButton
+                render={<Button type="button" variant="ghost" onClick={onSettingsOpen} />}
+              >
                 <Settings aria-hidden="true" />
                 <span>Settings</span>
               </SidebarMenuButton>

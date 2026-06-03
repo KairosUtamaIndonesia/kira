@@ -369,13 +369,10 @@ function AppWorkspace({ activeWorkspace, onPanelCreated, onPanelDeleted }: AppWo
       {activeWorkspace.status === "active" &&
       activeWorkspace.projectSwitch.status === "switching" ? (
         <div className="pointer-events-none absolute inset-x-3 top-14 z-10 flex justify-center motion-safe:animate-in motion-safe:fade-in-0">
-          <div
-            role="status"
-            className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-sm text-card-foreground shadow-xs"
-          >
+          <output className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-sm text-card-foreground shadow-xs">
             <Loader2 aria-hidden="true" className="size-3.5 animate-spin text-muted-foreground" />
             <span>Switching project…</span>
-          </div>
+          </output>
         </div>
       ) : undefined}
       {activeWorkspace.status === "active" && activeWorkspace.projectSwitch.status === "error" ? (
