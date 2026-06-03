@@ -27,6 +27,8 @@ import {
 import { auth } from "@/lib/auth/auth";
 import { invitation, member, organization, session, user } from "@/lib/db/auth-schema";
 import { db } from "@/lib/db/postgres";
+import { sendInvitationEmail } from "@/lib/email/smtp";
+import { requireEnvironmentVariable } from "@/lib/env";
 
 type ActionResult = CreateOrganizationResult;
 
@@ -75,6 +77,11 @@ function success(message: string): ActionResult {
   return { status: "success", message };
 }
 
+function invitationUrl(invitationId: string) {
+  const baseUrl = requireEnvironmentVariable("BETTER_AUTH_URL");
+  return `${baseUrl}/sign-in?invitationId=${invitationId}`;
+}
+
 function failure(error: unknown): ActionResult {
   if (error instanceof Error) {
     return { status: "error", message: error.message };
@@ -87,7 +94,7 @@ async function inviteMemberAction(input: InviteMemberInput): Promise<ActionResul
   try {
     const currentSession = await requirePlatformAdmin();
     const parsedInput = inviteMemberSchema.parse(input);
-    await requireOrganization(parsedInput.organizationId);
+    const existingOrganization = await requireOrganization(parsedInput.organizationId);
 
     const [existingUser] = await db
       .select({ id: user.id })
@@ -123,15 +130,24 @@ async function inviteMemberAction(input: InviteMemberInput): Promise<ActionResul
       return success(`Added ${parsedInput.email} as ${parsedInput.role}.`);
     }
 
+    const invitationId = crypto.randomUUID();
     const invitationExpiresAt = new Date(Date.now() + 1000 * 60 * 60 * 48);
     await db.insert(invitation).values({
-      id: crypto.randomUUID(),
+      id: invitationId,
       organizationId: parsedInput.organizationId,
       email: parsedInput.email,
       role: parsedInput.role,
       status: "pending",
       expiresAt: invitationExpiresAt,
       inviterId: currentSession.user.id,
+    });
+
+    await sendInvitationEmail({
+      to: parsedInput.email,
+      organizationName: existingOrganization.name,
+      inviterName: currentSession.user.name,
+      inviteUrl: invitationUrl(invitationId),
+      role: parsedInput.role,
     });
 
     revalidatePath(`/organizations/${parsedInput.organizationId}/members`);
