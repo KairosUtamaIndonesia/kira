@@ -47,6 +47,8 @@ pub fn run() -> tauri::Result<()> {
             projects::project_remove,
             projects::project_rename,
             projects::session_layout_update,
+            terminal::terminal_attach,
+            terminal::terminal_detach,
             terminal::terminal_kill,
             terminal::terminal_resize,
             terminal::terminal_spawn,

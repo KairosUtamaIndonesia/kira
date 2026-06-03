@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
 use thiserror::Error;
 
+const TERMINAL_REPLAY_BUFFER_LIMIT: usize = 1_000_000;
+
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TerminalSize {
@@ -24,7 +26,16 @@ pub struct TerminalSpawnOptions {
     working_directory: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalSpawnInput {
+    id: String,
+    subscription_id: String,
+    size: TerminalSize,
+    options: TerminalSpawnOptions,
+}
+
+#[derive(Clone, Debug, Serialize)]
 #[serde(tag = "event", content = "data", rename_all = "camelCase")]
 pub enum TerminalEvent {
     Output { id: String, data: String },
@@ -84,6 +95,13 @@ struct TerminalSession {
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
     killer: Box<dyn ChildKiller + Send + Sync>,
+    subscribers: Vec<TerminalSubscriber>,
+    replay_buffer: String,
+}
+
+struct TerminalSubscriber {
+    id: String,
+    on_event: Channel<TerminalEvent>,
 }
 
 #[tauri::command]
@@ -92,14 +110,13 @@ struct TerminalSession {
     reason = "Tauri commands require State by value"
 )]
 pub fn terminal_spawn(
-    id: String,
-    size: TerminalSize,
-    options: TerminalSpawnOptions,
+    input: TerminalSpawnInput,
     on_event: Channel<TerminalEvent>,
     registry: tauri::State<'_, TerminalRegistry>,
 ) -> Result<(), TerminalError> {
-    let pty_size = validate_size(size)?;
-    let working_directory = validate_working_directory(&options.working_directory)?;
+    let pty_size = validate_size(input.size)?;
+    let working_directory = validate_working_directory(&input.options.working_directory)?;
+    let id = input.id;
     {
         let sessions = registry
             .sessions
@@ -162,13 +179,79 @@ pub fn terminal_spawn(
                 master: pair.master,
                 writer,
                 killer,
+                subscribers: vec![TerminalSubscriber {
+                    id: input.subscription_id,
+                    on_event,
+                }],
+                replay_buffer: String::new(),
             },
         );
     }
 
-    spawn_output_reader(id.clone(), reader, on_event.clone());
-    spawn_exit_waiter(id, registry.sessions.clone(), child, on_event);
+    spawn_output_reader(id.clone(), reader, registry.sessions.clone());
+    spawn_exit_waiter(id, registry.sessions.clone(), child);
 
+    Ok(())
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
+pub fn terminal_attach(
+    id: &str,
+    subscription_id: String,
+    on_event: Channel<TerminalEvent>,
+    registry: tauri::State<'_, TerminalRegistry>,
+) -> Result<(), TerminalError> {
+    let mut sessions = registry
+        .sessions
+        .lock()
+        .map_err(|_| TerminalError::RegistryPoisoned)?;
+    let session = sessions
+        .get_mut(id)
+        .ok_or_else(|| TerminalError::MissingSession(id.to_string()))?;
+    session
+        .subscribers
+        .retain(|subscriber| subscriber.id != subscription_id);
+    if !session.replay_buffer.is_empty()
+        && on_event
+            .send(TerminalEvent::Output {
+                id: id.to_string(),
+                data: session.replay_buffer.clone(),
+            })
+            .is_err()
+    {
+        return Ok(());
+    }
+    session.subscribers.push(TerminalSubscriber {
+        id: subscription_id,
+        on_event,
+    });
+    Ok(())
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
+pub fn terminal_detach(
+    id: &str,
+    subscription_id: &str,
+    registry: tauri::State<'_, TerminalRegistry>,
+) -> Result<(), TerminalError> {
+    let mut sessions = registry
+        .sessions
+        .lock()
+        .map_err(|_| TerminalError::RegistryPoisoned)?;
+    let session = sessions
+        .get_mut(id)
+        .ok_or_else(|| TerminalError::MissingSession(id.to_string()))?;
+    session
+        .subscribers
+        .retain(|subscriber| subscriber.id != subscription_id);
     Ok(())
 }
 
@@ -314,7 +397,7 @@ fn default_shell() -> String {
 fn spawn_output_reader(
     id: String,
     mut reader: Box<dyn Read + Send>,
-    on_event: Channel<TerminalEvent>,
+    sessions: Arc<Mutex<HashMap<String, TerminalSession>>>,
 ) {
     let _reader_thread = thread::spawn(move || {
         let mut buffer = [0_u8; 8192];
@@ -323,21 +406,28 @@ fn spawn_output_reader(
                 Ok(0) => break,
                 Ok(count) => {
                     let data = String::from_utf8_lossy(&buffer[..count]).to_string();
-                    if on_event
-                        .send(TerminalEvent::Output {
+                    if broadcast_terminal_event(
+                        &sessions,
+                        &id,
+                        &TerminalEvent::Output {
                             id: id.clone(),
                             data,
-                        })
-                        .is_err()
+                        },
+                    )
+                    .is_err()
                     {
                         break;
                     }
                 }
                 Err(error) => {
-                    let _send_result = on_event.send(TerminalEvent::Error {
-                        id: id.clone(),
-                        message: format!("failed to read terminal output: {error}"),
-                    });
+                    let _broadcast_result = broadcast_terminal_event(
+                        &sessions,
+                        &id,
+                        &TerminalEvent::Error {
+                            id: id.clone(),
+                            message: format!("failed to read terminal output: {error}"),
+                        },
+                    );
                     break;
                 }
             }
@@ -349,33 +439,64 @@ fn spawn_exit_waiter(
     id: String,
     sessions: Arc<Mutex<HashMap<String, TerminalSession>>>,
     mut child: Box<dyn portable_pty::Child + Send + Sync>,
-    on_event: Channel<TerminalEvent>,
 ) {
     let _waiter_thread = thread::spawn(move || match child.wait() {
         Ok(status) => {
-            match sessions.lock() {
-                Ok(mut sessions) => {
-                    sessions.remove(&id);
-                }
-                Err(_) => {
-                    let _send_result = on_event.send(TerminalEvent::Error {
-                        id: id.clone(),
-                        message:
-                            "terminal session registry is unavailable because its lock is poisoned"
-                                .to_string(),
-                    });
-                }
+            let _broadcast_result = broadcast_terminal_event(
+                &sessions,
+                &id,
+                &TerminalEvent::Exited {
+                    id: id.clone(),
+                    code: status.exit_code(),
+                },
+            );
+            if let Ok(mut sessions) = sessions.lock() {
+                sessions.remove(&id);
             }
-            let _send_result = on_event.send(TerminalEvent::Exited {
-                id,
-                code: status.exit_code(),
-            });
         }
         Err(error) => {
-            let _send_result = on_event.send(TerminalEvent::Error {
-                id,
-                message: format!("failed to wait for terminal process: {error}"),
-            });
+            let _broadcast_result = broadcast_terminal_event(
+                &sessions,
+                &id,
+                &TerminalEvent::Error {
+                    id: id.clone(),
+                    message: format!("failed to wait for terminal process: {error}"),
+                },
+            );
         }
     });
+}
+
+fn broadcast_terminal_event(
+    sessions: &Arc<Mutex<HashMap<String, TerminalSession>>>,
+    id: &str,
+    event: &TerminalEvent,
+) -> Result<(), TerminalError> {
+    let mut sessions = sessions
+        .lock()
+        .map_err(|_| TerminalError::RegistryPoisoned)?;
+    let session = sessions
+        .get_mut(id)
+        .ok_or_else(|| TerminalError::MissingSession(id.to_string()))?;
+    if let TerminalEvent::Output { data, .. } = event {
+        append_terminal_replay(&mut session.replay_buffer, data);
+    }
+    session
+        .subscribers
+        .retain(|subscriber| subscriber.on_event.send(event.clone()).is_ok());
+    Ok(())
+}
+
+fn append_terminal_replay(replay_buffer: &mut String, data: &str) {
+    replay_buffer.push_str(data);
+    if replay_buffer.len() <= TERMINAL_REPLAY_BUFFER_LIMIT {
+        return;
+    }
+
+    let excess_bytes = replay_buffer.len() - TERMINAL_REPLAY_BUFFER_LIMIT;
+    let trim_index = replay_buffer
+        .char_indices()
+        .find_map(|(index, _character)| (index >= excess_bytes).then_some(index))
+        .unwrap_or(replay_buffer.len());
+    replay_buffer.drain(..trim_index);
 }

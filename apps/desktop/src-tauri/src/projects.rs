@@ -306,7 +306,9 @@ async fn open_last_project(pool: &SqlitePool) -> Result<Option<OpenProject>, Pro
     .map_err(|error| ProjectError::Query(error.to_string()))?;
 
     match project_id {
-        Some(project_id) => open_project(pool, OpenProjectInput { project_id }).await.map(Some),
+        Some(project_id) => open_project(pool, OpenProjectInput { project_id })
+            .await
+            .map(Some),
         None => Ok(None),
     }
 }
@@ -372,7 +374,9 @@ async fn list_workspace_panels(
 
     rows.into_iter()
         .map(|row| {
-            let kind: String = row.try_get("kind").map_err(|error| ProjectError::Query(error.to_string()))?;
+            let kind: String = row
+                .try_get("kind")
+                .map_err(|error| ProjectError::Query(error.to_string()))?;
             let working_directory: Option<String> = row
                 .try_get("working_directory")
                 .map_err(|error| ProjectError::Query(error.to_string()))?;
@@ -380,13 +384,25 @@ async fn list_workspace_panels(
                 .try_get("shell")
                 .map_err(|error| ProjectError::Query(error.to_string()))?;
             Ok(WorkspacePanel {
-                id: row.try_get("id").map_err(|error| ProjectError::Query(error.to_string()))?,
-                session_id: row.try_get("session_id").map_err(|error| ProjectError::Query(error.to_string()))?,
+                id: row
+                    .try_get("id")
+                    .map_err(|error| ProjectError::Query(error.to_string()))?,
+                session_id: row
+                    .try_get("session_id")
+                    .map_err(|error| ProjectError::Query(error.to_string()))?,
                 kind,
-                title: row.try_get("title").map_err(|error| ProjectError::Query(error.to_string()))?,
-                position_index: row.try_get("position_index").map_err(|error| ProjectError::Query(error.to_string()))?,
-                created_at: row.try_get("created_at").map_err(|error| ProjectError::Query(error.to_string()))?,
-                updated_at: row.try_get("updated_at").map_err(|error| ProjectError::Query(error.to_string()))?,
+                title: row
+                    .try_get("title")
+                    .map_err(|error| ProjectError::Query(error.to_string()))?,
+                position_index: row
+                    .try_get("position_index")
+                    .map_err(|error| ProjectError::Query(error.to_string()))?,
+                created_at: row
+                    .try_get("created_at")
+                    .map_err(|error| ProjectError::Query(error.to_string()))?,
+                updated_at: row
+                    .try_get("updated_at")
+                    .map_err(|error| ProjectError::Query(error.to_string()))?,
                 terminal_state: working_directory.map(|working_directory| TerminalPanelState {
                     working_directory,
                     shell,
@@ -426,13 +442,15 @@ async fn create_terminal_panel(
         .execute(&mut *transaction)
         .await
         .map_err(|error| ProjectError::Create(error.to_string()))?;
-    sqlx::query("INSERT INTO terminal_panel_state (panel_id, working_directory, shell) VALUES (?, ?, ?)")
-        .bind(&panel_id)
-        .bind(&working_directory)
-        .bind(Option::<String>::None)
-        .execute(&mut *transaction)
-        .await
-        .map_err(|error| ProjectError::Create(error.to_string()))?;
+    sqlx::query(
+        "INSERT INTO terminal_panel_state (panel_id, working_directory, shell) VALUES (?, ?, ?)",
+    )
+    .bind(&panel_id)
+    .bind(&working_directory)
+    .bind(Option::<String>::None)
+    .execute(&mut *transaction)
+    .await
+    .map_err(|error| ProjectError::Create(error.to_string()))?;
     transaction
         .commit()
         .await

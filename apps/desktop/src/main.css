@@ -3,13 +3,14 @@
 @import "shadcn/tailwind.css";
 @import "dockview-react/dist/styles/dockview.css";
 @import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: "Geist Variable", sans-serif;
-  --font-mono: "SFMono-Regular", "Cascadia Code", "Liberation Mono", Consolas, monospace;
+  --font-mono: "Geist Mono", "Cascadia Code", "Liberation Mono", Consolas, monospace;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -199,12 +200,13 @@
   @apply scrollbar-thin scrollbar-thumb-muted-foreground/30 scrollbar-track-editor-surface scrollbar-gutter-stable hover:scrollbar-thumb-muted-foreground/50;
 }
 
-.wterm.theme-kira {
+.kira-xterm {
   overflow-anchor: none;
 
   --term-bg: var(--editor-surface);
   --term-fg: var(--foreground);
   --term-cursor: var(--ring);
+  --term-selection: color-mix(in srgb, var(--ring) 30%, transparent);
   --term-color-0: var(--terminal-ansi-black);
   --term-color-1: var(--terminal-ansi-red);
   --term-color-2: var(--terminal-ansi-green);
@@ -222,11 +224,31 @@
   --term-color-14: var(--terminal-ansi-bright-cyan);
   --term-color-15: var(--terminal-ansi-bright-white);
   --term-font-family: var(--font-mono);
-  --term-font-size: 1rem;
   --term-line-height: 1.4;
-  --term-row-height: 1.225rem;
 
   box-shadow: none;
+  font-family: var(--term-font-family);
+  font-size: 1rem;
+  line-height: var(--term-line-height);
+}
+
+.kira-xterm .xterm,
+.kira-xterm .xterm-viewport,
+.kira-xterm .xterm-screen {
+  background: var(--term-bg) !important;
+}
+
+.kira-xterm .xterm {
+  height: 100%;
+  padding: 0.5rem;
+}
+
+.kira-xterm .xterm-viewport {
+  @apply scrollbar-editor;
+}
+
+.kira-xterm .xterm-viewport::-webkit-scrollbar-track {
+  background: var(--term-bg);
 }
 
 .kira-dockview {

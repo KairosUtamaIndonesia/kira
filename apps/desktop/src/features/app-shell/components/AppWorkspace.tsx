@@ -4,8 +4,17 @@ import {
   type IDockviewHeaderActionsProps,
   type IDockviewPanelProps,
 } from "dockview-react";
+import { invoke } from "@tauri-apps/api/core";
 import { Plus, Terminal as TerminalIcon } from "lucide-react";
-import { createContext, useContext, useEffect, useMemo, useRef, type MouseEvent } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  type MouseEvent,
+  type RefObject,
+} from "react";
 
 import type { WorkspacePanel as StoredWorkspacePanel } from "@/features/projects/types";
 
@@ -146,6 +155,7 @@ function restoreWorkspacePanels(
   event: DockviewReadyEvent,
   activeWorkspace: Extract<ActiveWorkspaceState, { status: "active" }>,
   onPanelDeleted: (panelId: string) => void,
+  isWorkspaceDisposingRef: RefObject<boolean>,
 ) {
   preventHeaderSpaceDrag(event);
 
@@ -154,41 +164,98 @@ function restoreWorkspacePanels(
       typeof event.api.fromJSON
     >[0];
     event.api.fromJSON(serializedLayout);
+    const restoredMissingPanels = restoreMissingStoredPanels(event, activeWorkspace.panels);
+    if (restoredMissingPanels) {
+      void saveWorkspaceLayoutIfActive(activeWorkspace.session.id, event, isWorkspaceDisposingRef);
+    }
   } else {
     restorePanelsWithoutLayout(event, activeWorkspace.panels);
-    void saveWorkspaceLayout(activeWorkspace.session.id, event);
+    void saveWorkspaceLayoutIfActive(activeWorkspace.session.id, event, isWorkspaceDisposingRef);
   }
 
   event.api.onDidRemovePanel((panel) => {
+    if (isWorkspaceDisposingRef.current) {
+      return;
+    }
+
+    const storedPanel = activeWorkspace.panels.find(
+      (workspacePanel) => workspacePanel.id === panel.id,
+    );
+    if (storedPanel !== undefined && storedPanel.kind === "terminal") {
+      void killTerminalSession(panel.id);
+    }
+
     onPanelDeleted(panel.id);
     void deleteWorkspacePanel({ panelId: panel.id });
-    void saveWorkspaceLayout(activeWorkspace.session.id, event);
+    void saveWorkspaceLayoutIfActive(activeWorkspace.session.id, event, isWorkspaceDisposingRef);
   });
-  event.api.onDidMovePanel(() => void saveWorkspaceLayout(activeWorkspace.session.id, event));
-  event.api.onDidActivePanelChange(
-    () => void saveWorkspaceLayout(activeWorkspace.session.id, event),
+  event.api.onDidMovePanel(() =>
+    void saveWorkspaceLayoutIfActive(activeWorkspace.session.id, event, isWorkspaceDisposingRef),
   );
-  event.api.onDidAddPanel(() => void saveWorkspaceLayout(activeWorkspace.session.id, event));
+  event.api.onDidActivePanelChange(
+    () =>
+      void saveWorkspaceLayoutIfActive(activeWorkspace.session.id, event, isWorkspaceDisposingRef),
+  );
+  event.api.onDidAddPanel(() =>
+    void saveWorkspaceLayoutIfActive(activeWorkspace.session.id, event, isWorkspaceDisposingRef),
+  );
+}
+
+function restoreMissingStoredPanels(event: DockviewReadyEvent, panels: StoredWorkspacePanel[]) {
+  let restoredAnyPanel = false;
+
+  for (const panel of panels) {
+    if (event.api.getPanel(panel.id) !== undefined) {
+      continue;
+    }
+
+    restoreWorkspacePanel(event, panel);
+    restoredAnyPanel = true;
+  }
+
+  return restoredAnyPanel;
 }
 
 function restorePanelsWithoutLayout(event: DockviewReadyEvent, panels: StoredWorkspacePanel[]) {
   for (const panel of panels) {
-    if (panel.kind === "terminal") {
-      const terminalState = requireTerminalState(panel);
-      event.api.addPanel<TerminalPanelParams>({
-        id: panel.id,
-        component: "terminalPanel",
-        title: panel.title,
-        params: {
-          terminalId: panel.id,
-          workingDirectory: terminalState.workingDirectory,
-        },
-      });
-    }
+    restoreWorkspacePanel(event, panel);
   }
 }
 
-async function saveWorkspaceLayout(sessionId: string, event: DockviewReadyEvent) {
+function restoreWorkspacePanel(event: DockviewReadyEvent, panel: StoredWorkspacePanel) {
+  if (panel.kind !== "terminal") {
+    return;
+  }
+
+  const terminalState = requireTerminalState(panel);
+  event.api.addPanel<TerminalPanelParams>({
+    id: panel.id,
+    component: "terminalPanel",
+    title: panel.title,
+    params: {
+      terminalId: panel.id,
+      workingDirectory: terminalState.workingDirectory,
+    },
+  });
+}
+
+async function killTerminalSession(sessionId: string) {
+  try {
+    await invoke("terminal_kill", { id: sessionId });
+  } catch {
+    // Terminal sessions are runtime-owned and may already be gone when a persisted panel is closed.
+  }
+}
+
+async function saveWorkspaceLayoutIfActive(
+  sessionId: string,
+  event: DockviewReadyEvent,
+  isWorkspaceDisposingRef: RefObject<boolean>,
+) {
+  if (isWorkspaceDisposingRef.current) {
+    return;
+  }
+
   await updateSessionLayout({
     sessionId,
     layoutJson: JSON.stringify(event.api.toJSON()),
@@ -197,12 +264,14 @@ async function saveWorkspaceLayout(sessionId: string, event: DockviewReadyEvent)
 
 type ActiveWorkspaceDockviewProps = {
   activeWorkspace: Extract<ActiveWorkspaceState, { status: "active" }>;
+  isWorkspaceDisposingRef: RefObject<boolean>;
   onPanelCreated: (panel: StoredWorkspacePanel) => void;
   onPanelDeleted: (panelId: string) => void;
 };
 
 function ActiveWorkspaceDockview({
   activeWorkspace,
+  isWorkspaceDisposingRef,
   onPanelCreated,
   onPanelDeleted,
 }: ActiveWorkspaceDockviewProps) {
@@ -241,7 +310,9 @@ function ActiveWorkspaceDockview({
           defaultHeaderPosition="top"
           dndStrategy="pointer"
           hideBorders
-          onReady={(event) => restoreWorkspacePanels(event, activeWorkspace, onPanelDeleted)}
+          onReady={(event) =>
+            restoreWorkspacePanels(event, activeWorkspace, onPanelDeleted, isWorkspaceDisposingRef)
+          }
           rightHeaderActionsComponent={WorkspaceHeaderActions}
         />
       </WorkspaceRuntimeContext.Provider>
@@ -263,6 +334,9 @@ type AppWorkspaceProps = {
 
 function AppWorkspace({ activeWorkspace, onPanelCreated, onPanelDeleted }: AppWorkspaceProps) {
   const { handleTitleBarDoubleClick, handleTitleBarMouseDown, titleBarError } = useTitleBarDrag();
+  const isWorkspaceDisposingRef = useRef(false);
+  isWorkspaceDisposingRef.current = activeWorkspace.status !== "active";
+
   return (
     <main
       className="h-full min-h-0 bg-editor-surface"
@@ -276,6 +350,7 @@ function AppWorkspace({ activeWorkspace, onPanelCreated, onPanelDeleted }: AppWo
       {activeWorkspace.status === "active" && activeWorkspace.panels.length > 0 ? (
         <ActiveWorkspaceDockview
           activeWorkspace={activeWorkspace}
+          isWorkspaceDisposingRef={isWorkspaceDisposingRef}
           onPanelCreated={onPanelCreated}
           onPanelDeleted={onPanelDeleted}
         />
