@@ -34,8 +34,10 @@ Use the published Flue packages once dependency wiring is added. Use the local F
 - Runtime source: `C:/Users/BrandonRaphaelValent/Workspaces/.flue-source/packages/runtime/src/`
 - Runtime README: `C:/Users/BrandonRaphaelValent/Workspaces/.flue-source/packages/runtime/README.md`
 - Examples: `C:/Users/BrandonRaphaelValent/Workspaces/.flue-source/examples/`
+- Documentation app content: `C:/Users/BrandonRaphaelValent/Workspaces/.flue-source/apps/docs/src/content/docs/`
+- SDK docs: `C:/Users/BrandonRaphaelValent/Workspaces/.flue-source/apps/docs/src/content/docs/sdk/`
 
-Warn the user if `.flue-source` does not exist before implementing Flue integration behavior.
+Read the docs app content before making claims about Flue's SDK, HTTP APIs, WebSocket protocol, CLI behavior, sessions, operations, workflows, or deployment behavior. Warn the user if `.flue-source` does not exist before implementing Flue integration behavior.
 
 ## Implementation Rules
 
