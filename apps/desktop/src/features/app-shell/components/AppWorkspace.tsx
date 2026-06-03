@@ -335,7 +335,13 @@ function ActiveWorkspaceDockview({
       return;
     }
 
-    const panel = sourceControlDiffRequest.panel;
+    const panel = activeWorkspace.panels.find(
+      (workspacePanel) => workspacePanel.id === sourceControlDiffRequest.panel.id,
+    );
+    if (panel === undefined || panel.kind !== "source_control_diff") {
+      return;
+    }
+
     const existingPanel = dockviewApi.getPanel(panel.id);
     if (existingPanel !== undefined) {
       existingPanel.api.setActive();
@@ -348,7 +354,7 @@ function ActiveWorkspaceDockview({
       title: panel.title,
       params: panel.sourceControlDiffState,
     });
-  }, [dockviewApi, sourceControlDiffRequest]);
+  }, [activeWorkspace.panels, dockviewApi, sourceControlDiffRequest]);
 
   return (
     <div className="h-full min-h-0">

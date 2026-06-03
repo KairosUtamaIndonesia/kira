@@ -217,6 +217,14 @@ function AppShell() {
   }
 
   function handlePanelDeleted(panelId: string) {
+    setSourceControlDiffRequest((currentRequest) => {
+      if (currentRequest === undefined) {
+        return currentRequest;
+      }
+
+      return currentRequest.panel.id === panelId ? void 0 : currentRequest;
+    });
+
     setActiveWorkspace((currentWorkspace) => {
       if (currentWorkspace.status !== "active") {
         return currentWorkspace;
