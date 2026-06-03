@@ -7,6 +7,7 @@ import type {
   DeleteTerminalSnapshotInput,
   DeleteWorkspacePanelInput,
   GetTerminalSnapshotInput,
+  OpenFileEditorPanelInput,
   OpenProject,
   OpenProjectInput,
   OpenSourceControlDiffPanelInput,
@@ -41,6 +42,10 @@ function createTerminalPanel(input: CreateTerminalPanelInput) {
 
 function openSourceControlDiffPanel(input: OpenSourceControlDiffPanelInput) {
   return invoke<WorkspacePanel>("workspace_source_control_diff_panel_open", { input });
+}
+
+function openFileEditorPanel(input: OpenFileEditorPanelInput) {
+  return invoke<WorkspacePanel>("workspace_file_editor_panel_open", { input });
 }
 
 function deleteWorkspacePanel(input: DeleteWorkspacePanelInput) {
@@ -78,6 +83,7 @@ export {
   deleteWorkspacePanel,
   getTerminalSnapshot,
   listProjects,
+  openFileEditorPanel,
   openLastProject,
   openProject,
   openSourceControlDiffPanel,

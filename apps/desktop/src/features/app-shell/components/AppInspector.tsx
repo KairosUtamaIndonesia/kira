@@ -5,6 +5,7 @@ import type { GitStatusEntry } from "@/features/source-control/types";
 
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ExplorerInspector } from "@/features/explorer";
 import { SourceControlInspector } from "@/features/source-control/components/SourceControlInspector";
 
 import type { ActiveWorkspaceState } from "../types";
@@ -14,6 +15,7 @@ import { useTitleBarDrag } from "./useTitleBarDrag";
 
 type AppInspectorProps = {
   activeWorkspace: ActiveWorkspaceState;
+  onExplorerFileOpen: (filePath: string) => Promise<void>;
   onSourceControlDiffOpen: (entry: GitStatusEntry) => Promise<void>;
 };
 
@@ -30,7 +32,11 @@ const inspectorViewActions: InspectorViewAction[] = [
   { view: "sourceControl", label: "Source Control", icon: GitBranch },
 ];
 
-function AppInspector({ activeWorkspace, onSourceControlDiffOpen }: AppInspectorProps) {
+function AppInspector({
+  activeWorkspace,
+  onExplorerFileOpen,
+  onSourceControlDiffOpen,
+}: AppInspectorProps) {
   const [activeView, setActiveView] = useState<InspectorView>("explorer");
   const { handleTitleBarDoubleClick, handleTitleBarMouseDown, titleBarError } = useTitleBarDrag();
 
@@ -81,7 +87,7 @@ function AppInspector({ activeWorkspace, onSourceControlDiffOpen }: AppInspector
         })}
       </div>
       <div className="flex min-h-0 flex-1 scrollbar-sleek flex-col gap-3 overflow-auto">
-        {inspectorContent(activeWorkspace, activeView, onSourceControlDiffOpen)}
+        {inspectorContent(activeWorkspace, activeView, onExplorerFileOpen, onSourceControlDiffOpen)}
       </div>
     </aside>
   );
@@ -90,6 +96,7 @@ function AppInspector({ activeWorkspace, onSourceControlDiffOpen }: AppInspector
 function inspectorContent(
   activeWorkspace: ActiveWorkspaceState,
   activeView: InspectorView,
+  onExplorerFileOpen: (filePath: string) => Promise<void>,
   onSourceControlDiffOpen: (entry: GitStatusEntry) => Promise<void>,
 ) {
   if (activeView === "sourceControl") {
@@ -103,23 +110,14 @@ function inspectorContent(
     );
   }
 
-  if (activeView === "explorer" && activeWorkspace.status === "active") {
+  if (activeView === "explorer") {
     return (
-      <section className="space-y-3 rounded-xl border border-border p-3">
-        <h2 className="text-sm font-medium text-foreground">Project</h2>
-        <dl className="space-y-2 text-sm">
-          <InspectorField label="Name" value={activeWorkspace.project.name} />
-          <InspectorField label="Folder" value={activeWorkspace.project.folderPath} mono />
-          <InspectorField label="Session" value={activeWorkspace.session.name} />
-          <InspectorField label="Panels" value={activeWorkspace.panels.length.toString()} />
-          {activeWorkspace.projectSwitch.status === "switching" ? (
-            <InspectorField label="Status" value="Switching project…" />
-          ) : undefined}
-          {activeWorkspace.projectSwitch.status === "error" ? (
-            <InspectorField label="Status" value={activeWorkspace.projectSwitch.message} />
-          ) : undefined}
-        </dl>
-      </section>
+      <ExplorerInspector
+        folderPath={
+          activeWorkspace.status === "active" ? activeWorkspace.project.folderPath : undefined
+        }
+        onOpenFile={onExplorerFileOpen}
+      />
     );
   }
 
@@ -152,25 +150,6 @@ function inspectorContent(
 
 function assertNever(value: never): never {
   throw new Error(`Unhandled inspector view: ${value}`);
-}
-
-type InspectorFieldProps = {
-  label: string;
-  value: string;
-  mono?: boolean;
-};
-
-function InspectorField({ label, value, mono = false }: InspectorFieldProps) {
-  return (
-    <div>
-      <dt className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-        {label}
-      </dt>
-      <dd className={mono ? "font-mono text-xs break-all text-foreground" : "text-foreground"}>
-        {value}
-      </dd>
-    </div>
-  );
 }
 
 export { AppInspector };

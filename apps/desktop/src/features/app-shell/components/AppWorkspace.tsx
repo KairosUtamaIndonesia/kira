@@ -26,6 +26,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { FileEditorPanel, type FileEditorPanelParams } from "@/features/editor";
 import {
   createTerminalPanel,
   deleteTerminalSnapshot,
@@ -37,7 +38,11 @@ import {
   type SourceControlDiffPanelParams,
 } from "@/features/source-control/components/SourceControlDiffPanel";
 
-import type { ActiveWorkspaceState, SourceControlDiffOpenRequest } from "../types";
+import type {
+  ActiveWorkspaceState,
+  FileEditorOpenRequest,
+  SourceControlDiffOpenRequest,
+} from "../types";
 
 import { TerminalPanel, type TerminalPanelParams } from "./TerminalPanel";
 import { useTitleBarDrag } from "./useTitleBarDrag";
@@ -121,6 +126,7 @@ const workspaceComponents = {
   workspacePanel: WorkspacePanel,
   terminalPanel: TerminalPanel,
   sourceControlDiffPanel: SourceControlDiffPanel,
+  fileEditorPanel: FileEditorPanel,
 };
 
 function requireTerminalState(panel: StoredWorkspacePanel) {
@@ -137,6 +143,14 @@ function requireSourceControlDiffState(panel: StoredWorkspacePanel) {
   }
 
   return panel.sourceControlDiffState;
+}
+
+function requireFileEditorState(panel: StoredWorkspacePanel) {
+  if (panel.kind !== "file_editor") {
+    throw new Error(`Workspace panel ${panel.id} is not a file editor panel.`);
+  }
+
+  return panel.fileEditorState;
 }
 
 function useWorkspaceRuntimeContext() {
@@ -304,6 +318,16 @@ function restoreWorkspacePanel(event: DockviewReadyEvent, panel: StoredWorkspace
       });
       return;
     }
+    case "file_editor": {
+      const fileEditorState = requireFileEditorState(panel);
+      event.api.addPanel<FileEditorPanelParams>({
+        id: panel.id,
+        component: "fileEditorPanel",
+        title: panel.title,
+        params: fileEditorState,
+      });
+      return;
+    }
   }
 }
 
@@ -335,6 +359,7 @@ type ActiveWorkspaceDockviewProps = {
   isWorkspaceDisposingRef: RefObject<boolean>;
   onPanelCreated: (panel: StoredWorkspacePanel) => void;
   sourceControlDiffRequest: SourceControlDiffOpenRequest | undefined;
+  fileEditorRequest: FileEditorOpenRequest | undefined;
   onPanelDeleted: (panelId: string) => void;
 };
 
@@ -343,6 +368,7 @@ function ActiveWorkspaceDockview({
   isWorkspaceDisposingRef,
   onPanelCreated,
   sourceControlDiffRequest,
+  fileEditorRequest,
   onPanelDeleted,
 }: ActiveWorkspaceDockviewProps) {
   const [dockviewApi, setDockviewApi] = useState<DockviewReadyEvent["api"]>();
@@ -383,6 +409,32 @@ function ActiveWorkspaceDockview({
     });
   }, [activeWorkspace.panels, dockviewApi, sourceControlDiffRequest]);
 
+  useEffect(() => {
+    if (dockviewApi === undefined || fileEditorRequest === undefined) {
+      return;
+    }
+
+    const panel = activeWorkspace.panels.find(
+      (workspacePanel) => workspacePanel.id === fileEditorRequest.panel.id,
+    );
+    if (panel === undefined || panel.kind !== "file_editor") {
+      return;
+    }
+
+    const existingPanel = dockviewApi.getPanel(panel.id);
+    if (existingPanel !== undefined) {
+      existingPanel.api.setActive();
+      return;
+    }
+
+    dockviewApi.addPanel<FileEditorPanelParams>({
+      id: panel.id,
+      component: "fileEditorPanel",
+      title: panel.title,
+      params: panel.fileEditorState,
+    });
+  }, [activeWorkspace.panels, dockviewApi, fileEditorRequest]);
+
   return (
     <div className="h-full min-h-0">
       <WorkspaceRuntimeContext.Provider value={workspaceRuntimeContext}>
@@ -417,6 +469,7 @@ function serializeWorkspaceLayoutForPersistence(value: unknown) {
 type AppWorkspaceProps = {
   activeWorkspace: ActiveWorkspaceState;
   sourceControlDiffRequest: SourceControlDiffOpenRequest | undefined;
+  fileEditorRequest: FileEditorOpenRequest | undefined;
   onPanelCreated: (panel: StoredWorkspacePanel) => void;
   onPanelDeleted: (panelId: string) => void;
 };
@@ -424,6 +477,7 @@ type AppWorkspaceProps = {
 function AppWorkspace({
   activeWorkspace,
   sourceControlDiffRequest,
+  fileEditorRequest,
   onPanelCreated,
   onPanelDeleted,
 }: AppWorkspaceProps) {
@@ -453,6 +507,7 @@ function AppWorkspace({
           isWorkspaceDisposingRef={isWorkspaceDisposingRef}
           onPanelCreated={onPanelCreated}
           sourceControlDiffRequest={sourceControlDiffRequest}
+          fileEditorRequest={fileEditorRequest}
           onPanelDeleted={onPanelDeleted}
         />
       ) : (

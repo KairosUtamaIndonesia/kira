@@ -72,6 +72,7 @@ pub struct WorkspacePanel {
     updated_at: String,
     terminal_state: Option<TerminalPanelState>,
     source_control_diff_state: Option<SourceControlDiffPanelState>,
+    file_editor_state: Option<FileEditorPanelState>,
 }
 
 #[derive(Debug, Serialize)]
@@ -88,6 +89,13 @@ pub struct SourceControlDiffPanelState {
     file_path: String,
     old_path: Option<String>,
     source: SourceControlDiffSource,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileEditorPanelState {
+    folder_path: String,
+    file_path: String,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
@@ -136,6 +144,15 @@ pub struct OpenSourceControlDiffPanelInput {
     file_path: String,
     old_path: Option<String>,
     source: SourceControlDiffSource,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenFileEditorPanelInput {
+    session_id: String,
+    title: String,
+    folder_path: String,
+    file_path: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -219,6 +236,8 @@ pub enum ProjectError {
     MissingPanelTitle,
     #[error("source control diff file path is required")]
     MissingSourceControlDiffFilePath,
+    #[error("file editor file path is required")]
+    MissingFileEditorFilePath,
     #[error("source control diff source is invalid: {0}")]
     InvalidSourceControlDiffSource(String),
     #[error("workspace panel kind `{kind}` is missing required state for panel {panel_id}")]
@@ -361,6 +380,18 @@ pub async fn workspace_source_control_diff_panel_open(
     store: tauri::State<'_, PersistenceStore>,
 ) -> Result<WorkspacePanel, ProjectError> {
     open_source_control_diff_panel(store.pool(), input).await
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
+pub async fn workspace_file_editor_panel_open(
+    input: OpenFileEditorPanelInput,
+    store: tauri::State<'_, PersistenceStore>,
+) -> Result<WorkspacePanel, ProjectError> {
+    open_file_editor_panel(store.pool(), input).await
 }
 
 #[tauri::command]
@@ -551,7 +582,7 @@ async fn list_workspace_panels(
     session_id: &str,
 ) -> Result<Vec<WorkspacePanel>, ProjectError> {
     let rows = sqlx::query(
-        "SELECT workspace_panels.id, workspace_panels.session_id, workspace_panels.kind, workspace_panels.title, workspace_panels.position_index, workspace_panels.created_at, workspace_panels.updated_at, terminal_panel_state.working_directory, terminal_panel_state.shell, source_control_diff_panel_state.folder_path AS diff_folder_path, source_control_diff_panel_state.file_path AS diff_file_path, source_control_diff_panel_state.old_path AS diff_old_path, source_control_diff_panel_state.source AS diff_source FROM workspace_panels LEFT JOIN terminal_panel_state ON terminal_panel_state.panel_id = workspace_panels.id LEFT JOIN source_control_diff_panel_state ON source_control_diff_panel_state.panel_id = workspace_panels.id WHERE workspace_panels.session_id = ? ORDER BY workspace_panels.position_index ASC",
+        "SELECT workspace_panels.id, workspace_panels.session_id, workspace_panels.kind, workspace_panels.title, workspace_panels.position_index, workspace_panels.created_at, workspace_panels.updated_at, terminal_panel_state.working_directory, terminal_panel_state.shell, source_control_diff_panel_state.folder_path AS diff_folder_path, source_control_diff_panel_state.file_path AS diff_file_path, source_control_diff_panel_state.old_path AS diff_old_path, source_control_diff_panel_state.source AS diff_source, file_editor_panel_state.folder_path AS editor_folder_path, file_editor_panel_state.file_path AS editor_file_path FROM workspace_panels LEFT JOIN terminal_panel_state ON terminal_panel_state.panel_id = workspace_panels.id LEFT JOIN source_control_diff_panel_state ON source_control_diff_panel_state.panel_id = workspace_panels.id LEFT JOIN file_editor_panel_state ON file_editor_panel_state.panel_id = workspace_panels.id WHERE workspace_panels.session_id = ? ORDER BY workspace_panels.position_index ASC",
     )
     .bind(session_id)
     .fetch_all(pool)
@@ -586,6 +617,12 @@ fn workspace_panel_from_row(row: &SqliteRow) -> Result<WorkspacePanel, ProjectEr
     let diff_source: Option<String> = row
         .try_get("diff_source")
         .map_err(|error| ProjectError::Query(error.to_string()))?;
+    let editor_folder_path: Option<String> = row
+        .try_get("editor_folder_path")
+        .map_err(|error| ProjectError::Query(error.to_string()))?;
+    let editor_file_path: Option<String> = row
+        .try_get("editor_file_path")
+        .map_err(|error| ProjectError::Query(error.to_string()))?;
 
     let terminal_state = match (kind.as_str(), working_directory) {
         ("terminal", Some(working_directory)) => Some(TerminalPanelState {
@@ -614,6 +651,17 @@ fn workspace_panel_from_row(row: &SqliteRow) -> Result<WorkspacePanel, ProjectEr
             _ => None,
         };
 
+    let file_editor_state = match (kind.as_str(), editor_folder_path, editor_file_path) {
+        ("file_editor", Some(folder_path), Some(file_path)) => Some(FileEditorPanelState {
+            folder_path,
+            file_path,
+        }),
+        ("file_editor", _, _) => {
+            return Err(ProjectError::MissingWorkspacePanelState { kind, panel_id: id });
+        }
+        _ => None,
+    };
+
     Ok(WorkspacePanel {
         id,
         session_id: row
@@ -634,6 +682,7 @@ fn workspace_panel_from_row(row: &SqliteRow) -> Result<WorkspacePanel, ProjectEr
             .map_err(|error| ProjectError::Query(error.to_string()))?,
         terminal_state,
         source_control_diff_state,
+        file_editor_state,
     })
 }
 
@@ -694,6 +743,7 @@ async fn create_terminal_panel(
             shell: None,
         }),
         source_control_diff_state: None,
+        file_editor_state: None,
     })
 }
 
@@ -763,6 +813,74 @@ async fn open_source_control_diff_panel(
             old_path,
             source: input.source,
         }),
+        file_editor_state: None,
+    })
+}
+
+async fn open_file_editor_panel(
+    pool: &SqlitePool,
+    input: OpenFileEditorPanelInput,
+) -> Result<WorkspacePanel, ProjectError> {
+    let title = validate_panel_title(&input.title)?;
+    let folder_path = validate_folder_path(&input.folder_path)?;
+    let file_path = validate_file_editor_file_path(&input.file_path)?;
+    let panel_id = file_editor_panel_id(&input.session_id, &file_path);
+
+    if let Some(panel) = get_workspace_panel(pool, &panel_id).await? {
+        return Ok(panel);
+    }
+
+    let now = current_timestamp()?;
+    let position_index = sqlx::query_scalar::<_, i64>(
+        "SELECT COALESCE(MAX(position_index), -1) + 1 FROM workspace_panels WHERE session_id = ?",
+    )
+    .bind(&input.session_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|error| ProjectError::Query(error.to_string()))?;
+
+    let mut transaction = pool
+        .begin()
+        .await
+        .map_err(|error| ProjectError::Create(error.to_string()))?;
+    sqlx::query("INSERT INTO workspace_panels (id, session_id, kind, title, position_index, created_at, updated_at) VALUES (?, ?, 'file_editor', ?, ?, ?, ?)")
+        .bind(&panel_id)
+        .bind(&input.session_id)
+        .bind(&title)
+        .bind(position_index)
+        .bind(&now)
+        .bind(&now)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|error| ProjectError::Create(error.to_string()))?;
+    sqlx::query(
+        "INSERT INTO file_editor_panel_state (panel_id, folder_path, file_path) VALUES (?, ?, ?)",
+    )
+    .bind(&panel_id)
+    .bind(&folder_path)
+    .bind(&file_path)
+    .execute(&mut *transaction)
+    .await
+    .map_err(|error| ProjectError::Create(error.to_string()))?;
+    transaction
+        .commit()
+        .await
+        .map_err(|error| ProjectError::Create(error.to_string()))?;
+
+    Ok(WorkspacePanel {
+        id: panel_id,
+        session_id: input.session_id,
+        kind: "file_editor".to_string(),
+        title,
+        position_index,
+        created_at: now.clone(),
+        updated_at: now,
+        terminal_state: None,
+        source_control_diff_state: None,
+        file_editor_state: Some(FileEditorPanelState {
+            folder_path,
+            file_path,
+        }),
     })
 }
 
@@ -771,7 +889,7 @@ async fn get_workspace_panel(
     panel_id: &str,
 ) -> Result<Option<WorkspacePanel>, ProjectError> {
     let row = sqlx::query(
-        "SELECT workspace_panels.id, workspace_panels.session_id, workspace_panels.kind, workspace_panels.title, workspace_panels.position_index, workspace_panels.created_at, workspace_panels.updated_at, terminal_panel_state.working_directory, terminal_panel_state.shell, source_control_diff_panel_state.folder_path AS diff_folder_path, source_control_diff_panel_state.file_path AS diff_file_path, source_control_diff_panel_state.old_path AS diff_old_path, source_control_diff_panel_state.source AS diff_source FROM workspace_panels LEFT JOIN terminal_panel_state ON terminal_panel_state.panel_id = workspace_panels.id LEFT JOIN source_control_diff_panel_state ON source_control_diff_panel_state.panel_id = workspace_panels.id WHERE workspace_panels.id = ?",
+        "SELECT workspace_panels.id, workspace_panels.session_id, workspace_panels.kind, workspace_panels.title, workspace_panels.position_index, workspace_panels.created_at, workspace_panels.updated_at, terminal_panel_state.working_directory, terminal_panel_state.shell, source_control_diff_panel_state.folder_path AS diff_folder_path, source_control_diff_panel_state.file_path AS diff_file_path, source_control_diff_panel_state.old_path AS diff_old_path, source_control_diff_panel_state.source AS diff_source, file_editor_panel_state.folder_path AS editor_folder_path, file_editor_panel_state.file_path AS editor_file_path FROM workspace_panels LEFT JOIN terminal_panel_state ON terminal_panel_state.panel_id = workspace_panels.id LEFT JOIN source_control_diff_panel_state ON source_control_diff_panel_state.panel_id = workspace_panels.id LEFT JOIN file_editor_panel_state ON file_editor_panel_state.panel_id = workspace_panels.id WHERE workspace_panels.id = ?",
     )
     .bind(panel_id)
     .fetch_optional(pool)
@@ -790,6 +908,10 @@ fn source_control_diff_panel_id(
         "source-control-diff:{session_id}:{}:{file_path}",
         source.as_str()
     )
+}
+
+fn file_editor_panel_id(session_id: &str, file_path: &str) -> String {
+    format!("file-editor:{session_id}:{file_path}")
 }
 
 async fn create_project(
@@ -895,6 +1017,15 @@ fn validate_optional_source_control_diff_file_path(
     file_path
         .map(|file_path| validate_source_control_diff_file_path(&file_path))
         .transpose()
+}
+
+fn validate_file_editor_file_path(file_path: &str) -> Result<String, ProjectError> {
+    let trimmed_file_path = file_path.trim();
+    if trimmed_file_path.is_empty() {
+        return Err(ProjectError::MissingFileEditorFilePath);
+    }
+
+    Ok(trimmed_file_path.to_string())
 }
 
 fn validate_terminal_snapshot_id(terminal_id: &str) -> Result<String, ProjectError> {

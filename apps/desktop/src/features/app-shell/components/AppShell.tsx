@@ -5,13 +5,18 @@ import type { GitStatusEntry } from "@/features/source-control/types";
 
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import {
+  openFileEditorPanel,
   openLastProject,
   openProject,
   openSourceControlDiffPanel,
 } from "@/features/projects/api/projectsApi";
 import { SettingsPage } from "@/features/settings";
 
-import type { ActiveWorkspaceState, SourceControlDiffOpenRequest } from "../types";
+import type {
+  ActiveWorkspaceState,
+  FileEditorOpenRequest,
+  SourceControlDiffOpenRequest,
+} from "../types";
 
 import { AppInspector } from "./AppInspector";
 import { AppSidebar } from "./AppSidebar";
@@ -21,7 +26,7 @@ import { useDevThemeToggle } from "./useDevThemeToggle";
 
 type SettingsSurfaceState = "closed" | "opening" | "open" | "closing";
 
-function sourceControlDiffTitle(filePath: string) {
+function fileTitle(filePath: string) {
   const pathParts = filePath.split("/");
   const title = pathParts[pathParts.length - 1];
   if (title === undefined || title.length === 0) {
@@ -36,9 +41,11 @@ function AppShell() {
   const [activeWorkspace, setActiveWorkspace] = useState<ActiveWorkspaceState>({ status: "none" });
   const [sourceControlDiffRequest, setSourceControlDiffRequest] =
     useState<SourceControlDiffOpenRequest>();
+  const [fileEditorRequest, setFileEditorRequest] = useState<FileEditorOpenRequest>();
   const [settingsSurfaceState, setSettingsSurfaceState] = useState<SettingsSurfaceState>("closed");
   const projectSwitchSequenceRef = useRef(0);
   const sourceControlDiffSequenceRef = useRef(0);
+  const fileEditorSequenceRef = useRef(0);
   const settingsReturnFocusRef = useRef<HTMLElement | undefined>(void 0);
 
   useEffect(() => {
@@ -185,7 +192,7 @@ function AppShell() {
 
     const panel = await openSourceControlDiffPanel({
       sessionId: activeWorkspace.session.id,
-      title: sourceControlDiffTitle(entry.path),
+      title: fileTitle(entry.path),
       folderPath: activeWorkspace.project.folderPath,
       filePath: entry.path,
       oldPath: entry.oldPath,
@@ -216,8 +223,51 @@ function AppShell() {
     setSourceControlDiffRequest({ sequence, panel });
   }
 
+  async function handleExplorerFileOpen(filePath: string) {
+    if (activeWorkspace.status !== "active") {
+      return;
+    }
+
+    const panel = await openFileEditorPanel({
+      sessionId: activeWorkspace.session.id,
+      title: fileTitle(filePath),
+      folderPath: activeWorkspace.project.folderPath,
+      filePath,
+    });
+
+    if (panel.kind !== "file_editor") {
+      throw new Error(`Expected file editor panel, received ${panel.kind}.`);
+    }
+
+    setActiveWorkspace((currentWorkspace) => {
+      if (currentWorkspace.status !== "active") {
+        return currentWorkspace;
+      }
+
+      const existingPanel = currentWorkspace.panels.find(
+        (workspacePanel) => workspacePanel.id === panel.id,
+      );
+      if (existingPanel !== undefined) {
+        return currentWorkspace;
+      }
+
+      return { ...currentWorkspace, panels: [...currentWorkspace.panels, panel] };
+    });
+
+    const sequence = fileEditorSequenceRef.current + 1;
+    fileEditorSequenceRef.current = sequence;
+    setFileEditorRequest({ sequence, panel });
+  }
+
   function handlePanelDeleted(panelId: string) {
     setSourceControlDiffRequest((currentRequest) => {
+      if (currentRequest === undefined) {
+        return currentRequest;
+      }
+
+      return currentRequest.panel.id === panelId ? void 0 : currentRequest;
+    });
+    setFileEditorRequest((currentRequest) => {
       if (currentRequest === undefined) {
         return currentRequest;
       }
@@ -289,6 +339,7 @@ function AppShell() {
           <AppWorkspace
             activeWorkspace={activeWorkspace}
             sourceControlDiffRequest={sourceControlDiffRequest}
+            fileEditorRequest={fileEditorRequest}
             onPanelCreated={handlePanelCreated}
             onPanelDeleted={handlePanelDeleted}
           />
@@ -303,6 +354,7 @@ function AppShell() {
         >
           <AppInspector
             activeWorkspace={activeWorkspace}
+            onExplorerFileOpen={handleExplorerFileOpen}
             onSourceControlDiffOpen={handleSourceControlDiffOpen}
           />
         </ResizablePanel>

@@ -35,23 +35,40 @@ type WorkspacePanelBase = {
   updatedAt: string;
 };
 
-type WorkspacePanel = TerminalWorkspacePanel | SourceControlDiffWorkspacePanel;
+type WorkspacePanel =
+  | TerminalWorkspacePanel
+  | SourceControlDiffWorkspacePanel
+  | FileEditorWorkspacePanel;
 
 type TerminalWorkspacePanel = WorkspacePanelBase & {
   kind: "terminal";
   terminalState: TerminalPanelState;
   sourceControlDiffState: null;
+  fileEditorState: null;
 };
 
 type SourceControlDiffWorkspacePanel = WorkspacePanelBase & {
   kind: "source_control_diff";
   terminalState: null;
   sourceControlDiffState: SourceControlDiffPanelState;
+  fileEditorState: null;
+};
+
+type FileEditorWorkspacePanel = WorkspacePanelBase & {
+  kind: "file_editor";
+  terminalState: null;
+  sourceControlDiffState: null;
+  fileEditorState: FileEditorPanelState;
 };
 
 type TerminalPanelState = {
   workingDirectory: string;
   shell: string | null;
+};
+
+type FileEditorPanelState = {
+  folderPath: string;
+  filePath: string;
 };
 
 type SourceControlDiffPanelState = {
@@ -74,6 +91,13 @@ type OpenSourceControlDiffPanelInput = {
   filePath: string;
   oldPath: string | null;
   source: SourceControlDiffPanelState["source"];
+};
+
+type OpenFileEditorPanelInput = {
+  sessionId: string;
+  title: string;
+  folderPath: string;
+  filePath: string;
 };
 
 type DeleteWorkspacePanelInput = {
@@ -136,6 +160,9 @@ export type {
   CreateProjectInput,
   OpenProject,
   CreateTerminalPanelInput,
+  FileEditorPanelState,
+  FileEditorWorkspacePanel,
+  OpenFileEditorPanelInput,
   OpenSourceControlDiffPanelInput,
   DeleteTerminalSnapshotInput,
   DeleteWorkspacePanelInput,

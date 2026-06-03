@@ -1,4 +1,8 @@
-import type { OpenProject, SourceControlDiffWorkspacePanel } from "@/features/projects/types";
+import type {
+  FileEditorWorkspacePanel,
+  OpenProject,
+  SourceControlDiffWorkspacePanel,
+} from "@/features/projects/types";
 
 type ProjectSwitchState =
   | { status: "idle" }
@@ -16,4 +20,9 @@ type SourceControlDiffOpenRequest = {
   panel: SourceControlDiffWorkspacePanel;
 };
 
-export type { ActiveWorkspaceState, SourceControlDiffOpenRequest };
+type FileEditorOpenRequest = {
+  sequence: number;
+  panel: FileEditorWorkspacePanel;
+};
+
+export type { ActiveWorkspaceState, FileEditorOpenRequest, SourceControlDiffOpenRequest };

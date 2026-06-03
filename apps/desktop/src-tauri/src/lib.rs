@@ -7,6 +7,8 @@
 #![deny(clippy::unwrap_used)]
 #![warn(clippy::pedantic)]
 
+mod editor;
+mod explorer;
 mod persistence;
 mod projects;
 mod source_control;
@@ -40,6 +42,8 @@ pub fn run() -> tauri::Result<()> {
         .manage(terminal::TerminalRegistry::default())
         .invoke_handler(tauri::generate_handler![
             greet,
+            editor::editor_file_read,
+            explorer::explorer_tree,
             persistence::persistence_store_health,
             projects::project_create,
             projects::project_list,
@@ -54,6 +58,7 @@ pub fn run() -> tauri::Result<()> {
             terminal::terminal_resize,
             terminal::terminal_spawn,
             terminal::terminal_write,
+            projects::workspace_file_editor_panel_open,
             projects::workspace_panel_delete,
             projects::workspace_source_control_diff_panel_open,
             projects::workspace_terminal_panel_create,

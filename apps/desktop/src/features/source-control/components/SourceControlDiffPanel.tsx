@@ -1,10 +1,12 @@
 import type { IDockviewPanelProps } from "dockview-react";
+
 import { useEffect, useState } from "react";
+
+import { languageForPath } from "@/features/editor/language";
 
 import type { SourceControlDiffResult, SourceControlDiffSource } from "../types";
 
 import { getSourceControlDiff } from "../api/sourceControlApi";
-import { languageForPath } from "../language";
 import { MonacoDiffViewer } from "./MonacoDiffViewer";
 
 type SourceControlDiffPanelParams = {
@@ -19,7 +21,10 @@ type DiffLoadState =
   | { status: "ready"; result: SourceControlDiffResult }
   | { status: "error"; message: string };
 
-function SourceControlDiffPanel({ params, api }: IDockviewPanelProps<SourceControlDiffPanelParams>) {
+function SourceControlDiffPanel({
+  params,
+  api,
+}: IDockviewPanelProps<SourceControlDiffPanelParams>) {
   const [state, setState] = useState<DiffLoadState>({ status: "loading" });
 
   useEffect(() => {
@@ -79,7 +84,10 @@ function SourceControlDiffPanel({ params, api }: IDockviewPanelProps<SourceContr
 
 function DiffPanelMessage({ message, role }: { message: string; role?: "alert" }) {
   return (
-    <div role={role} className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
+    <div
+      role={role}
+      className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground"
+    >
       {message}
     </div>
   );

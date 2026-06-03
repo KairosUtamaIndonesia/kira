@@ -1,23 +1,17 @@
 import type * as Monaco from "monaco-editor";
 
-import { DiffEditor, type DiffOnMount } from "@monaco-editor/react";
+import { Editor, type OnMount } from "@monaco-editor/react";
 import { useCallback, useEffect, useState } from "react";
 
-import { currentMonacoTheme, setupShiki } from "@/features/editor/components/monacoShiki";
+import { currentMonacoTheme, setupShiki } from "./monacoShiki";
 
-type MonacoDiffViewerProps = {
-  originalContent: string;
-  modifiedContent: string;
+type MonacoFileEditorProps = {
+  content: string;
   language: string;
-  modelKey: string;
+  modelPath: string;
 };
 
-function MonacoDiffViewer({
-  originalContent,
-  modifiedContent,
-  language,
-  modelKey,
-}: MonacoDiffViewerProps) {
+function MonacoFileEditor({ content, language, modelPath }: MonacoFileEditorProps) {
   const [monacoInstance, setMonacoInstance] = useState<typeof Monaco>();
   const [theme, setTheme] = useState(currentMonacoTheme());
 
@@ -35,7 +29,7 @@ function MonacoDiffViewer({
     monacoInstance.editor.setTheme(theme);
   }, [monacoInstance, theme]);
 
-  const handleMount: DiffOnMount = useCallback((diffEditor, monaco) => {
+  const handleMount: OnMount = useCallback((editor, monaco) => {
     setMonacoInstance(monaco);
 
     async function configureHighlighting() {
@@ -44,30 +38,24 @@ function MonacoDiffViewer({
     }
 
     void configureHighlighting();
-    diffEditor.focus();
+    editor.focus();
   }, []);
 
   return (
-    <DiffEditor
+    <Editor
       height="100%"
-      original={originalContent}
-      modified={modifiedContent}
+      value={content}
       language={language}
       theme={theme}
-      originalModelPath={`source-control-diff:original:${modelKey}`}
-      modifiedModelPath={`source-control-diff:modified:${modelKey}`}
-      keepCurrentOriginalModel
-      keepCurrentModifiedModel
+      path={modelPath}
+      keepCurrentModel
       onMount={handleMount}
       options={{
         readOnly: true,
-        originalEditable: false,
-        renderSideBySide: true,
         automaticLayout: true,
         minimap: { enabled: false },
         scrollBeyondLastLine: false,
         lineNumbers: "on",
-        renderOverviewRuler: true,
         fontFamily: "var(--font-mono)",
         fontSize: 13,
       }}
@@ -75,4 +63,4 @@ function MonacoDiffViewer({
   );
 }
 
-export { MonacoDiffViewer };
+export { MonacoFileEditor };
