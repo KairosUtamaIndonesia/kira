@@ -387,7 +387,7 @@ function SourceControlFileRow({
   const StatusIcon = statusIcon(entry);
 
   return (
-    <div className="group/row flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-accent">
+    <div className="group/row relative flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-accent">
       <StatusIcon className={cn("size-3.5 shrink-0", statusColor(entry))} aria-hidden="true" />
       <div className="min-w-0 flex-1">
         <div className="truncate text-foreground">{entry.path}</div>
@@ -405,7 +405,7 @@ function SourceControlFileRow({
           ) : undefined}
         </div>
       ) : undefined}
-      <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover/row:opacity-100 focus-within:opacity-100">
+      <div className="pointer-events-none absolute inset-y-0 right-0 z-10 flex items-center gap-1 bg-muted px-4 opacity-0 transition-opacity group-hover/row:opacity-100 focus-within:opacity-100">
         {entry.area === "staged" ? (
           <ActionButton
             label="Unstage"
@@ -452,8 +452,9 @@ function ActionButton({ label, icon: Icon, disabled = false, onClick }: ActionBu
         render={
           <Button
             type="button"
-            variant="ghost"
-            size="icon-xs"
+            variant="plain"
+            size="icon-sm"
+            className="pointer-events-auto"
             aria-label={label}
             disabled={disabled}
             onClick={onClick}
