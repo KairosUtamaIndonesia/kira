@@ -136,6 +136,20 @@ async function listOrganizationInvitationsForAdmin(
   }));
 }
 
+async function getInvitationEmailForSignIn(invitationId: string): Promise<string | undefined> {
+  const [row] = await db
+    .select({ email: invitation.email })
+    .from(invitation)
+    .where(eq(invitation.id, invitationId))
+    .limit(1);
+
+  if (row === undefined) {
+    return undefined;
+  }
+
+  return row.email;
+}
+
 async function getActiveOrganizationIdForCurrentSession(
   sessionId: string,
 ): Promise<string | undefined> {
@@ -158,6 +172,7 @@ async function getActiveOrganizationIdForCurrentSession(
 
 export {
   getActiveOrganizationIdForCurrentSession,
+  getInvitationEmailForSignIn,
   getOrganizationForAdmin,
   listOrganizationInvitationsForAdmin,
   listOrganizationMembersForAdmin,

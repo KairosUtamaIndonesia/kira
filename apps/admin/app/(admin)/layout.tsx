@@ -17,5 +17,9 @@ export default async function AdminLayout({ children }: AdminLayoutProperties) {
     redirect("/sign-in");
   }
 
+  if (session.user.role !== "admin") {
+    redirect("/invitation-accepted");
+  }
+
   return <AdminShell>{children}</AdminShell>;
 }

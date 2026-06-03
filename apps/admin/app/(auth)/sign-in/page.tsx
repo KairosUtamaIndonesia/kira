@@ -1,6 +1,17 @@
 import { SignInForm } from "@/features/auth/components/SignInForm";
+import { getInvitationEmailForSignIn } from "@/features/organizations/data/organizations";
 
-export default function SignInPage() {
+type SignInPageProperties = {
+  searchParams: Promise<{ invitationId?: string }>;
+};
+
+export default async function SignInPage({ searchParams }: SignInPageProperties) {
+  const { invitationId } = await searchParams;
+  let invitedEmail: string | undefined;
+
+  if (invitationId !== undefined) {
+    invitedEmail = await getInvitationEmailForSignIn(invitationId);
+  }
   return (
     <main className="flex min-h-svh items-center justify-center bg-background px-4 py-12 text-foreground">
       <section className="w-full max-w-sm rounded-xl border bg-card p-6 text-card-foreground shadow-xs">
@@ -8,12 +19,21 @@ export default function SignInPage() {
           <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
             Kira Admin
           </p>
-          <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {invitationId === undefined ? "Sign in" : "Accept invitation"}
+          </h1>
           <p className="text-sm text-muted-foreground">
-            Use your admin credentials to manage Kira organizations, users, and access.
+            {invitationId === undefined
+              ? "Use your admin credentials to manage Kira organizations, users, and access."
+              : "Create an account or sign in with the invited email address."}
           </p>
         </div>
-        <SignInForm />
+        {invitationId === undefined ? undefined : (
+          <div className="mt-4 rounded-lg border border-border bg-muted p-3 text-sm text-muted-foreground">
+            If you do not have a password yet, create an account with the invited email address.
+          </div>
+        )}
+        <SignInForm invitationId={invitationId} invitedEmail={invitedEmail} />
       </section>
     </main>
   );
