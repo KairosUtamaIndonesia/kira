@@ -1,9 +1,10 @@
+import { Suspense } from "react";
+
 import { Button } from "@/components/ui/button";
-import { listUsers } from "@/features/users/data/mockUsers";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { listPlatformUsersForAdmin } from "@/features/users/data/users";
 
 export default function UsersPage() {
-  const users = listUsers();
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -13,13 +14,34 @@ export default function UsersPage() {
         </div>
         <Button disabled>Create user</Button>
       </div>
-      <section className="rounded-xl border border-border bg-card p-4 text-card-foreground">
-        <div className="mb-4">
-          <h2 className="font-medium">Platform users</h2>
-          <p className="text-sm text-muted-foreground">
-            Global user management will be backed by Better Auth admin APIs.
-          </p>
-        </div>
+      <Suspense fallback={<UsersTableLoading />}>
+        <UsersTable />
+      </Suspense>
+    </div>
+  );
+}
+
+async function UsersTable() {
+  const users = await listPlatformUsersForAdmin();
+
+  return (
+    <section className="rounded-xl border border-border bg-card p-4 text-card-foreground">
+      <div className="mb-4">
+        <h2 className="font-medium">Platform users</h2>
+        <p className="text-sm text-muted-foreground">
+          Real users from Better Auth platform administration data.
+        </p>
+      </div>
+      {users.length === 0 ? (
+        <Empty>
+          <EmptyHeader>
+            <EmptyTitle>No users found</EmptyTitle>
+            <EmptyDescription>
+              Seed or create an admin user to populate this table.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="border-b border-border text-xs text-muted-foreground uppercase">
@@ -46,7 +68,15 @@ export default function UsersPage() {
             </tbody>
           </table>
         </div>
-      </section>
-    </div>
+      )}
+    </section>
+  );
+}
+
+function UsersTableLoading() {
+  return (
+    <section className="rounded-xl border border-border bg-card p-4 text-card-foreground">
+      <p className="text-sm text-muted-foreground">Loading platform users…</p>
+    </section>
   );
 }

@@ -1,11 +1,13 @@
+type PlatformUserStatus = "active" | "suspended";
+
 type PlatformUser = {
   id: string;
   name: string;
   email: string;
-  platformRole: "platform_admin" | "platform_support" | "user";
+  platformRole: string;
   organizationCount: number;
-  status: "active" | "invited" | "suspended";
+  status: PlatformUserStatus;
   createdAt: string;
 };
 
-export type { PlatformUser };
+export type { PlatformUser, PlatformUserStatus };

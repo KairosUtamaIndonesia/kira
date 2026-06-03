@@ -1,4 +1,4 @@
-type OrganizationStatus = "active" | "setup" | "suspended";
+type OrganizationStatus = "active";
 
 type Organization = {
   id: string;
@@ -15,8 +15,8 @@ type OrganizationMember = {
   organizationId: string;
   name: string;
   email: string;
-  role: "owner" | "admin" | "member" | "billing" | "viewer";
-  status: "active" | "invited";
+  role: string;
+  status: "active";
   joinedAt: string;
 };
 
@@ -25,10 +25,11 @@ type OrganizationApiKey = {
   organizationId: string;
   name: string;
   prefix: string;
+  start: string;
   permissions: string[];
   lastUsedAt: string;
   expiresAt: string;
-  status: "active" | "expired" | "revoked";
+  status: "active" | "expired" | "disabled";
 };
 
 export type { Organization, OrganizationApiKey, OrganizationMember, OrganizationStatus };

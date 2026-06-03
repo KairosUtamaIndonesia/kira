@@ -1,11 +1,11 @@
 import Link from "next/link";
+import { Suspense } from "react";
 
 import { Button } from "@/components/ui/button";
-import { listOrganizations } from "@/features/organizations/data/mockOrganizations";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { listOrganizationsForAdmin } from "@/features/organizations/data/organizations";
 
 export default function OrganizationsPage() {
-  const organizations = listOrganizations();
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -15,24 +15,45 @@ export default function OrganizationsPage() {
         </div>
         <Button disabled>Create organization</Button>
       </div>
-      <section className="rounded-xl border border-border bg-card p-4 text-card-foreground">
-        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="font-medium">Managed organizations</h2>
-            <p className="text-sm text-muted-foreground">
-              Better Auth organization data will replace these rows.
-            </p>
-          </div>
-          <label className="w-full max-w-xs text-sm">
-            <span className="sr-only">Search organizations</span>
-            <input
-              className="h-8 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              aria-label="Search organizations"
-              placeholder="Search organizations"
-              disabled
-            />
-          </label>
+      <Suspense fallback={<OrganizationsTableLoading />}>
+        <OrganizationsTable />
+      </Suspense>
+    </div>
+  );
+}
+
+async function OrganizationsTable() {
+  const organizations = await listOrganizationsForAdmin();
+
+  return (
+    <section className="rounded-xl border border-border bg-card p-4 text-card-foreground">
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="font-medium">Managed organizations</h2>
+          <p className="text-sm text-muted-foreground">
+            Real Better Auth organization data for Kira SaaS administration.
+          </p>
         </div>
+        <label className="w-full max-w-xs text-sm">
+          <span className="sr-only">Search organizations</span>
+          <input
+            className="h-8 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label="Search organizations"
+            placeholder="Search organizations"
+            disabled
+          />
+        </label>
+      </div>
+      {organizations.length === 0 ? (
+        <Empty>
+          <EmptyHeader>
+            <EmptyTitle>No organizations found</EmptyTitle>
+            <EmptyDescription>
+              Create a Better Auth organization to populate this table.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="border-b border-border text-xs text-muted-foreground uppercase">
@@ -63,7 +84,15 @@ export default function OrganizationsPage() {
             </tbody>
           </table>
         </div>
-      </section>
-    </div>
+      )}
+    </section>
+  );
+}
+
+function OrganizationsTableLoading() {
+  return (
+    <section className="rounded-xl border border-border bg-card p-4 text-card-foreground">
+      <p className="text-sm text-muted-foreground">Loading organizations…</p>
+    </section>
   );
 }

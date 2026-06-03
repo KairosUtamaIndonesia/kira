@@ -1,11 +1,13 @@
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { OrganizationHeader } from "@/features/organizations/components/OrganizationHeader";
 import {
-  getOrganization,
-  listOrganizationMembers,
-} from "@/features/organizations/data/mockOrganizations";
+  getOrganizationForAdmin,
+  listOrganizationMembersForAdmin,
+} from "@/features/organizations/data/organizations";
 
 type MembersPageProperties = {
   params: Promise<{ organizationId: string }>;
@@ -13,27 +15,48 @@ type MembersPageProperties = {
 
 export default async function MembersPage({ params }: MembersPageProperties) {
   const { organizationId } = await params;
-  const organization = getOrganization(organizationId);
+  const organization = await getOrganizationForAdmin(organizationId);
 
   if (organization === undefined) {
     notFound();
   }
 
-  const members = listOrganizationMembers(organization.id);
-
   return (
     <div className="space-y-6">
       <OrganizationHeader organization={organization} />
-      <section className="rounded-xl border border-border bg-card p-4 text-card-foreground">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div>
-            <h2 className="font-medium">Members</h2>
-            <p className="text-sm text-muted-foreground">
-              Organization users and Better Auth roles.
-            </p>
-          </div>
-          <Button disabled>Invite member</Button>
+      <Suspense fallback={<MembersTableLoading />}>
+        <MembersTable organizationId={organization.id} />
+      </Suspense>
+    </div>
+  );
+}
+
+type MembersTableProperties = {
+  organizationId: string;
+};
+
+async function MembersTable({ organizationId }: MembersTableProperties) {
+  const members = await listOrganizationMembersForAdmin(organizationId);
+
+  return (
+    <section className="rounded-xl border border-border bg-card p-4 text-card-foreground">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <h2 className="font-medium">Members</h2>
+          <p className="text-sm text-muted-foreground">Organization users and Better Auth roles.</p>
         </div>
+        <Button disabled>Invite member</Button>
+      </div>
+      {members.length === 0 ? (
+        <Empty>
+          <EmptyHeader>
+            <EmptyTitle>No members found</EmptyTitle>
+            <EmptyDescription>
+              This organization does not have any Better Auth members.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="border-b border-border text-xs text-muted-foreground uppercase">
@@ -58,7 +81,15 @@ export default async function MembersPage({ params }: MembersPageProperties) {
             </tbody>
           </table>
         </div>
-      </section>
-    </div>
+      )}
+    </section>
+  );
+}
+
+function MembersTableLoading() {
+  return (
+    <section className="rounded-xl border border-border bg-card p-4 text-card-foreground">
+      <p className="text-sm text-muted-foreground">Loading organization members…</p>
+    </section>
   );
 }

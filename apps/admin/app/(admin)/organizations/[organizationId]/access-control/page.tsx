@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { OrganizationHeader } from "@/features/organizations/components/OrganizationHeader";
-import { getOrganization } from "@/features/organizations/data/mockOrganizations";
+import { getOrganizationForAdmin } from "@/features/organizations/data/organizations";
 
 const roles = ["Owner", "Admin", "Member", "Billing", "Viewer"];
 const permissions = [
@@ -22,7 +22,7 @@ type AccessControlPageProperties = {
 
 export default async function AccessControlPage({ params }: AccessControlPageProperties) {
   const { organizationId } = await params;
-  const organization = getOrganization(organizationId);
+  const organization = await getOrganizationForAdmin(organizationId);
 
   if (organization === undefined) {
     notFound();
