@@ -94,6 +94,41 @@ pub struct DeleteWorkspacePanelInput {
     panel_id: String,
 }
 
+#[derive(Debug, Serialize, FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalSnapshot {
+    terminal_id: String,
+    sequence: i64,
+    serialized: String,
+    cols: i64,
+    rows: i64,
+    captured_at: String,
+    updated_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetTerminalSnapshotInput {
+    terminal_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveTerminalSnapshotInput {
+    terminal_id: String,
+    sequence: i64,
+    serialized: String,
+    cols: i64,
+    rows: i64,
+    captured_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteTerminalSnapshotInput {
+    terminal_id: String,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenameProjectInput {
@@ -132,6 +167,14 @@ pub enum ProjectError {
     MissingSession(String),
     #[error("workspace panel title is required")]
     MissingPanelTitle,
+    #[error("terminal snapshot id is required")]
+    MissingTerminalSnapshotId,
+    #[error("terminal snapshot payload is required")]
+    MissingTerminalSnapshotPayload,
+    #[error("terminal snapshot sequence must be at least 0, got {0}")]
+    InvalidTerminalSnapshotSequence(i64),
+    #[error("terminal snapshot size must be at least 1 row and 1 column, got {rows} rows and {cols} columns")]
+    InvalidTerminalSnapshotSize { rows: i64, cols: i64 },
     #[error("failed to generate project timestamp: {0}")]
     Timestamp(String),
     #[error("failed to query projects: {0}")]
@@ -282,6 +325,81 @@ pub async fn workspace_panel_delete(
 ) -> Result<(), ProjectError> {
     sqlx::query("DELETE FROM workspace_panels WHERE id = ?")
         .bind(input.panel_id)
+        .execute(store.pool())
+        .await
+        .map_err(|error| ProjectError::Query(error.to_string()))?;
+    Ok(())
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
+pub async fn workspace_terminal_snapshot_get(
+    input: GetTerminalSnapshotInput,
+    store: tauri::State<'_, PersistenceStore>,
+) -> Result<Option<TerminalSnapshot>, ProjectError> {
+    let terminal_id = validate_terminal_snapshot_id(&input.terminal_id)?;
+    sqlx::query_as::<_, TerminalSnapshot>(
+        "SELECT terminal_id, sequence, serialized, cols, rows, captured_at, updated_at FROM terminal_snapshots WHERE terminal_id = ?",
+    )
+    .bind(terminal_id)
+    .fetch_optional(store.pool())
+    .await
+    .map_err(|error| ProjectError::Query(error.to_string()))
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
+pub async fn workspace_terminal_snapshot_save(
+    input: SaveTerminalSnapshotInput,
+    store: tauri::State<'_, PersistenceStore>,
+) -> Result<TerminalSnapshot, ProjectError> {
+    let terminal_id = validate_terminal_snapshot_id(&input.terminal_id)?;
+    let serialized = validate_terminal_snapshot_payload(&input.serialized)?;
+    validate_terminal_snapshot_sequence(input.sequence)?;
+    validate_terminal_snapshot_size(input.rows, input.cols)?;
+    let now = current_timestamp()?;
+
+    sqlx::query("INSERT INTO terminal_snapshots (terminal_id, sequence, serialized, cols, rows, captured_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(terminal_id) DO UPDATE SET sequence = excluded.sequence, serialized = excluded.serialized, cols = excluded.cols, rows = excluded.rows, captured_at = excluded.captured_at, updated_at = excluded.updated_at")
+        .bind(&terminal_id)
+        .bind(input.sequence)
+        .bind(&serialized)
+        .bind(input.cols)
+        .bind(input.rows)
+        .bind(&input.captured_at)
+        .bind(&now)
+        .execute(store.pool())
+        .await
+        .map_err(|error| ProjectError::Query(error.to_string()))?;
+
+    Ok(TerminalSnapshot {
+        terminal_id,
+        sequence: input.sequence,
+        serialized,
+        cols: input.cols,
+        rows: input.rows,
+        captured_at: input.captured_at,
+        updated_at: now,
+    })
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
+pub async fn workspace_terminal_snapshot_delete(
+    input: DeleteTerminalSnapshotInput,
+    store: tauri::State<'_, PersistenceStore>,
+) -> Result<(), ProjectError> {
+    let terminal_id = validate_terminal_snapshot_id(&input.terminal_id)?;
+    sqlx::query("DELETE FROM terminal_snapshots WHERE terminal_id = ?")
+        .bind(terminal_id)
         .execute(store.pool())
         .await
         .map_err(|error| ProjectError::Query(error.to_string()))?;
@@ -557,6 +675,39 @@ fn validate_panel_title(title: &str) -> Result<String, ProjectError> {
     }
 
     Ok(trimmed_title.to_string())
+}
+
+fn validate_terminal_snapshot_id(terminal_id: &str) -> Result<String, ProjectError> {
+    let trimmed_terminal_id = terminal_id.trim();
+    if trimmed_terminal_id.is_empty() {
+        return Err(ProjectError::MissingTerminalSnapshotId);
+    }
+
+    Ok(trimmed_terminal_id.to_string())
+}
+
+fn validate_terminal_snapshot_payload(serialized: &str) -> Result<String, ProjectError> {
+    if serialized.is_empty() {
+        return Err(ProjectError::MissingTerminalSnapshotPayload);
+    }
+
+    Ok(serialized.to_string())
+}
+
+fn validate_terminal_snapshot_sequence(sequence: i64) -> Result<(), ProjectError> {
+    if sequence < 0 {
+        return Err(ProjectError::InvalidTerminalSnapshotSequence(sequence));
+    }
+
+    Ok(())
+}
+
+fn validate_terminal_snapshot_size(rows: i64, cols: i64) -> Result<(), ProjectError> {
+    if rows <= 0 || cols <= 0 {
+        return Err(ProjectError::InvalidTerminalSnapshotSize { rows, cols });
+    }
+
+    Ok(())
 }
 
 fn validate_name(name: &str) -> Result<String, ProjectError> {

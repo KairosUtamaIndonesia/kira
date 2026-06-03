@@ -1,10 +1,10 @@
+import { invoke } from "@tauri-apps/api/core";
 import {
   DockviewReact,
   type DockviewReadyEvent,
   type IDockviewHeaderActionsProps,
   type IDockviewPanelProps,
 } from "dockview-react";
-import { invoke } from "@tauri-apps/api/core";
 import { Plus, Terminal as TerminalIcon } from "lucide-react";
 import {
   createContext,
@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   createTerminalPanel,
+  deleteTerminalSnapshot,
   deleteWorkspacePanel,
   updateSessionLayout,
 } from "@/features/projects/api/projectsApi";
@@ -186,18 +187,21 @@ function restoreWorkspacePanels(
     }
 
     onPanelDeleted(panel.id);
+    void deleteTerminalSnapshot({ terminalId: panel.id });
     void deleteWorkspacePanel({ panelId: panel.id });
     void saveWorkspaceLayoutIfActive(activeWorkspace.session.id, event, isWorkspaceDisposingRef);
   });
-  event.api.onDidMovePanel(() =>
-    void saveWorkspaceLayoutIfActive(activeWorkspace.session.id, event, isWorkspaceDisposingRef),
+  event.api.onDidMovePanel(
+    () =>
+      void saveWorkspaceLayoutIfActive(activeWorkspace.session.id, event, isWorkspaceDisposingRef),
   );
   event.api.onDidActivePanelChange(
     () =>
       void saveWorkspaceLayoutIfActive(activeWorkspace.session.id, event, isWorkspaceDisposingRef),
   );
-  event.api.onDidAddPanel(() =>
-    void saveWorkspaceLayoutIfActive(activeWorkspace.session.id, event, isWorkspaceDisposingRef),
+  event.api.onDidAddPanel(
+    () =>
+      void saveWorkspaceLayoutIfActive(activeWorkspace.session.id, event, isWorkspaceDisposingRef),
   );
 }
 

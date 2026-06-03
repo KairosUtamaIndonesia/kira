@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     io::{Read, Write},
     path::Path,
     sync::{Arc, Mutex},
@@ -35,12 +35,30 @@ pub struct TerminalSpawnInput {
     options: TerminalSpawnOptions,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalAttachInput {
+    id: String,
+    subscription_id: String,
+    after_sequence: u64,
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "event", content = "data", rename_all = "camelCase")]
 pub enum TerminalEvent {
-    Output { id: String, data: String },
-    Exited { id: String, code: u32 },
-    Error { id: String, message: String },
+    Output {
+        id: String,
+        sequence: u64,
+        data: String,
+    },
+    Exited {
+        id: String,
+        code: u32,
+    },
+    Error {
+        id: String,
+        message: String,
+    },
 }
 
 #[derive(Debug, Error)]
@@ -75,6 +93,14 @@ pub enum TerminalError {
     Resize { id: String, message: String },
     #[error("failed to kill terminal session {id}: {message}")]
     Kill { id: String, message: String },
+    #[error(
+        "terminal session {id} cannot replay output after sequence {after_sequence}; retained output starts at sequence {oldest_sequence}"
+    )]
+    ReplayUnavailable {
+        id: String,
+        after_sequence: u64,
+        oldest_sequence: u64,
+    },
 }
 
 impl serde::Serialize for TerminalError {
@@ -91,12 +117,20 @@ pub struct TerminalRegistry {
     sessions: Arc<Mutex<HashMap<String, TerminalSession>>>,
 }
 
+#[derive(Clone)]
+struct TerminalOutputChunk {
+    sequence: u64,
+    data: String,
+}
+
 struct TerminalSession {
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
     killer: Box<dyn ChildKiller + Send + Sync>,
     subscribers: Vec<TerminalSubscriber>,
-    replay_buffer: String,
+    next_sequence: u64,
+    replay_chunks: VecDeque<TerminalOutputChunk>,
+    replay_buffer_bytes: usize,
 }
 
 struct TerminalSubscriber {
@@ -183,7 +217,9 @@ pub fn terminal_spawn(
                     id: input.subscription_id,
                     on_event,
                 }],
-                replay_buffer: String::new(),
+                next_sequence: 1,
+                replay_chunks: VecDeque::new(),
+                replay_buffer_bytes: 0,
             },
         );
     }
@@ -200,8 +236,7 @@ pub fn terminal_spawn(
     reason = "Tauri commands require State by value"
 )]
 pub fn terminal_attach(
-    id: &str,
-    subscription_id: String,
+    input: TerminalAttachInput,
     on_event: Channel<TerminalEvent>,
     registry: tauri::State<'_, TerminalRegistry>,
 ) -> Result<(), TerminalError> {
@@ -210,25 +245,32 @@ pub fn terminal_attach(
         .lock()
         .map_err(|_| TerminalError::RegistryPoisoned)?;
     let session = sessions
-        .get_mut(id)
-        .ok_or_else(|| TerminalError::MissingSession(id.to_string()))?;
+        .get_mut(&input.id)
+        .ok_or_else(|| TerminalError::MissingSession(input.id.clone()))?;
+    let replay_chunks = replay_chunks_after(session, &input.id, input.after_sequence)?;
+
     session
         .subscribers
-        .retain(|subscriber| subscriber.id != subscription_id);
-    if !session.replay_buffer.is_empty()
-        && on_event
+        .retain(|subscriber| subscriber.id != input.subscription_id);
+    session.subscribers.push(TerminalSubscriber {
+        id: input.subscription_id,
+        on_event: on_event.clone(),
+    });
+    drop(sessions);
+
+    for chunk in replay_chunks {
+        if on_event
             .send(TerminalEvent::Output {
-                id: id.to_string(),
-                data: session.replay_buffer.clone(),
+                id: input.id.clone(),
+                sequence: chunk.sequence,
+                data: chunk.data,
             })
             .is_err()
-    {
-        return Ok(());
+        {
+            return Ok(());
+        }
     }
-    session.subscribers.push(TerminalSubscriber {
-        id: subscription_id,
-        on_event,
-    });
+
     Ok(())
 }
 
@@ -390,7 +432,10 @@ fn default_shell() -> String {
 
     #[cfg(not(windows))]
     {
-        std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string())
+        match std::env::var("SHELL") {
+            Ok(shell) => shell,
+            Err(_) => "/bin/sh".to_string(),
+        }
     }
 }
 
@@ -406,16 +451,7 @@ fn spawn_output_reader(
                 Ok(0) => break,
                 Ok(count) => {
                     let data = String::from_utf8_lossy(&buffer[..count]).to_string();
-                    if broadcast_terminal_event(
-                        &sessions,
-                        &id,
-                        &TerminalEvent::Output {
-                            id: id.clone(),
-                            data,
-                        },
-                    )
-                    .is_err()
-                    {
+                    if broadcast_terminal_output(&sessions, &id, data).is_err() {
                         break;
                     }
                 }
@@ -467,6 +503,31 @@ fn spawn_exit_waiter(
     });
 }
 
+fn broadcast_terminal_output(
+    sessions: &Arc<Mutex<HashMap<String, TerminalSession>>>,
+    id: &str,
+    data: String,
+) -> Result<(), TerminalError> {
+    let mut sessions = sessions
+        .lock()
+        .map_err(|_| TerminalError::RegistryPoisoned)?;
+    let session = sessions
+        .get_mut(id)
+        .ok_or_else(|| TerminalError::MissingSession(id.to_string()))?;
+    let sequence = session.next_sequence;
+    session.next_sequence = session.next_sequence.saturating_add(1);
+    append_terminal_replay(session, sequence, data.clone());
+    let event = TerminalEvent::Output {
+        id: id.to_string(),
+        sequence,
+        data,
+    };
+    session
+        .subscribers
+        .retain(|subscriber| subscriber.on_event.send(event.clone()).is_ok());
+    Ok(())
+}
+
 fn broadcast_terminal_event(
     sessions: &Arc<Mutex<HashMap<String, TerminalSession>>>,
     id: &str,
@@ -478,25 +539,49 @@ fn broadcast_terminal_event(
     let session = sessions
         .get_mut(id)
         .ok_or_else(|| TerminalError::MissingSession(id.to_string()))?;
-    if let TerminalEvent::Output { data, .. } = event {
-        append_terminal_replay(&mut session.replay_buffer, data);
-    }
     session
         .subscribers
         .retain(|subscriber| subscriber.on_event.send(event.clone()).is_ok());
     Ok(())
 }
 
-fn append_terminal_replay(replay_buffer: &mut String, data: &str) {
-    replay_buffer.push_str(data);
-    if replay_buffer.len() <= TERMINAL_REPLAY_BUFFER_LIMIT {
-        return;
+fn replay_chunks_after(
+    session: &TerminalSession,
+    id: &str,
+    after_sequence: u64,
+) -> Result<Vec<TerminalOutputChunk>, TerminalError> {
+    let oldest_sequence = match session.replay_chunks.front() {
+        Some(chunk) => chunk.sequence,
+        None => return Ok(Vec::new()),
+    };
+
+    if after_sequence != 0 && oldest_sequence > after_sequence.saturating_add(1) {
+        return Err(TerminalError::ReplayUnavailable {
+            id: id.to_string(),
+            after_sequence,
+            oldest_sequence,
+        });
     }
 
-    let excess_bytes = replay_buffer.len() - TERMINAL_REPLAY_BUFFER_LIMIT;
-    let trim_index = replay_buffer
-        .char_indices()
-        .find_map(|(index, _character)| (index >= excess_bytes).then_some(index))
-        .unwrap_or(replay_buffer.len());
-    replay_buffer.drain(..trim_index);
+    Ok(session
+        .replay_chunks
+        .iter()
+        .filter(|chunk| chunk.sequence > after_sequence)
+        .cloned()
+        .collect())
+}
+
+fn append_terminal_replay(session: &mut TerminalSession, sequence: u64, data: String) {
+    session.replay_buffer_bytes = session.replay_buffer_bytes.saturating_add(data.len());
+    session
+        .replay_chunks
+        .push_back(TerminalOutputChunk { sequence, data });
+
+    while session.replay_buffer_bytes > TERMINAL_REPLAY_BUFFER_LIMIT {
+        let Some(chunk) = session.replay_chunks.pop_front() else {
+            session.replay_buffer_bytes = 0;
+            return;
+        };
+        session.replay_buffer_bytes = session.replay_buffer_bytes.saturating_sub(chunk.data.len());
+    }
 }

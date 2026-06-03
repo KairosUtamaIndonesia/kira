@@ -66,6 +66,33 @@ type UpdateSessionLayoutInput = {
   layoutJson: string;
 };
 
+type TerminalSnapshot = {
+  terminalId: string;
+  sequence: number;
+  serialized: string;
+  cols: number;
+  rows: number;
+  capturedAt: string;
+  updatedAt: string;
+};
+
+type GetTerminalSnapshotInput = {
+  terminalId: string;
+};
+
+type SaveTerminalSnapshotInput = {
+  terminalId: string;
+  sequence: number;
+  serialized: string;
+  cols: number;
+  rows: number;
+  capturedAt: string;
+};
+
+type DeleteTerminalSnapshotInput = {
+  terminalId: string;
+};
+
 type OpenProjectInput = {
   projectId: string;
 };
@@ -81,13 +108,17 @@ export type {
   CreateProjectInput,
   OpenProject,
   CreateTerminalPanelInput,
+  DeleteTerminalSnapshotInput,
   DeleteWorkspacePanelInput,
+  GetTerminalSnapshotInput,
   OpenProjectInput,
   Project,
   RemoveProjectInput,
   RenameProjectInput,
   Session,
+  SaveTerminalSnapshotInput,
   TerminalPanelState,
+  TerminalSnapshot,
   UpdateSessionLayoutInput,
   WorkspacePanel,
 };

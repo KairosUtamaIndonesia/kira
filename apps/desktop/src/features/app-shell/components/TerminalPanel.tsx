@@ -2,9 +2,14 @@ import type { IDockviewPanelProps } from "dockview-react";
 
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { FitAddon } from "@xterm/addon-fit";
+import { SerializeAddon } from "@xterm/addon-serialize";
 import "@xterm/xterm/css/xterm.css";
 import { Terminal as XtermTerminal, type ITheme } from "@xterm/xterm";
 import { useCallback, useEffect, useRef, useState } from "react";
+
+import type { TerminalSnapshot } from "@/features/projects/types";
+
+import { getTerminalSnapshot, saveTerminalSnapshot } from "@/features/projects/api/projectsApi";
 
 type TerminalPanelParams = {
   terminalId: string;
@@ -15,6 +20,7 @@ type TerminalOutputEvent = {
   event: "output";
   data: {
     id: string;
+    sequence: number;
     data: string;
   };
 };
@@ -46,14 +52,26 @@ type TerminalRuntime = {
   terminalId: string;
   terminal: XtermTerminal;
   fitAddon: FitAddon;
+  serializeAddon: SerializeAddon;
   subscriptionId: string;
   sessionId: string | undefined;
   spawnStarted: boolean;
   status: string | undefined;
   statusListeners: Set<(status: string | undefined) => void>;
+  lastAppliedSequence: number;
+  restoredFromSnapshot: boolean;
+  snapshotTimer: number | undefined;
+  snapshotInFlight: boolean;
+  snapshotQueued: boolean;
 };
 
 const terminalRuntimes = new Map<string, TerminalRuntime>();
+const TERMINAL_SNAPSHOT_DEBOUNCE_MS = 500;
+const TERMINAL_REPLAY_UNAVAILABLE_FRAGMENT = "cannot replay output after sequence";
+const TERMINAL_REPLAY_INCOMPLETE_STATUS =
+  "Terminal reconnected, but some display history could not be restored.";
+const TERMINAL_SESSION_RESTARTED_STATUS =
+  "Terminal display restored. Terminal session was restarted.";
 
 function TerminalPanel({ api, params }: IDockviewPanelProps<TerminalPanelParams>) {
   const terminalHostRef = useRef<HTMLDivElement>(null);
@@ -89,26 +107,43 @@ function TerminalPanel({ api, params }: IDockviewPanelProps<TerminalPanelParams>
   }, []);
 
   useEffect(() => {
-    const terminalHost = terminalHostRef.current;
-    if (terminalHost === null) {
-      return;
+    let disposed = false;
+    let initializedRuntime: TerminalRuntime | undefined = void 0;
+
+    async function initializeTerminalPanel() {
+      const terminalHost = terminalHostRef.current;
+      if (terminalHost === null) {
+        return;
+      }
+
+      const runtime = await getOrCreateTerminalRuntime(params.terminalId);
+      if (disposed) {
+        void flushTerminalSnapshot(runtime);
+        return;
+      }
+
+      initializedRuntime = runtime;
+      runtimeRef.current = runtime;
+      setStatus(runtime.status);
+      runtime.statusListeners.add(setStatus);
+      applyTerminalStyle(runtime);
+      mountTerminalRuntime(runtime, terminalHost);
+
+      requestAnimationFrame(() => {
+        fitTerminal();
+        void startTerminalSession(runtime, params.workingDirectory);
+        runtime.terminal.focus();
+      });
     }
 
-    const runtime = getOrCreateTerminalRuntime(params.terminalId);
-    runtimeRef.current = runtime;
-    setStatus(runtime.status);
-    runtime.statusListeners.add(setStatus);
-    applyTerminalStyle(runtime);
-    mountTerminalRuntime(runtime, terminalHost);
-
-    requestAnimationFrame(() => {
-      fitTerminal();
-      void startTerminalSession(runtime, params.workingDirectory);
-      runtime.terminal.focus();
-    });
+    void initializeTerminalPanel();
 
     return () => {
-      runtime.statusListeners.delete(setStatus);
+      disposed = true;
+      if (initializedRuntime !== undefined) {
+        initializedRuntime.statusListeners.delete(setStatus);
+        void flushTerminalSnapshot(initializedRuntime);
+      }
       runtimeRef.current = void 0;
     };
   }, [fitTerminal, params.terminalId, params.workingDirectory]);
@@ -124,6 +159,12 @@ function TerminalPanel({ api, params }: IDockviewPanelProps<TerminalPanelParams>
             runtime.terminal.focus();
           }
         });
+        return;
+      }
+
+      const runtime = runtimeRef.current;
+      if (runtime !== undefined) {
+        void flushTerminalSnapshot(runtime);
       }
     });
 
@@ -145,6 +186,29 @@ function TerminalPanel({ api, params }: IDockviewPanelProps<TerminalPanelParams>
     return () => observer.disconnect();
   }, []);
 
+  useEffect(() => {
+    function flushVisibleTerminalSnapshot() {
+      const runtime = runtimeRef.current;
+      if (runtime !== undefined) {
+        void flushTerminalSnapshot(runtime);
+      }
+    }
+
+    function flushWhenDocumentIsHidden() {
+      if (document.visibilityState === "hidden") {
+        flushVisibleTerminalSnapshot();
+      }
+    }
+
+    document.addEventListener("visibilitychange", flushWhenDocumentIsHidden);
+    window.addEventListener("beforeunload", flushVisibleTerminalSnapshot);
+
+    return () => {
+      document.removeEventListener("visibilitychange", flushWhenDocumentIsHidden);
+      window.removeEventListener("beforeunload", flushVisibleTerminalSnapshot);
+    };
+  }, []);
+
   return (
     <section className="flex h-full min-h-0 flex-col bg-editor-surface text-foreground">
       {status === undefined ? undefined : (
@@ -157,7 +221,7 @@ function TerminalPanel({ api, params }: IDockviewPanelProps<TerminalPanelParams>
   );
 }
 
-function getOrCreateTerminalRuntime(terminalId: string) {
+async function getOrCreateTerminalRuntime(terminalId: string) {
   const existingRuntime = terminalRuntimes.get(terminalId);
   if (existingRuntime !== undefined) {
     return existingRuntime;
@@ -174,18 +238,28 @@ function getOrCreateTerminalRuntime(terminalId: string) {
     theme: xtermThemeFromStyle(themeStyle),
   });
   const fitAddon = new FitAddon();
+  const serializeAddon = new SerializeAddon();
   terminal.loadAddon(fitAddon);
+  terminal.loadAddon(serializeAddon);
 
   const runtime: TerminalRuntime = {
     terminalId,
     terminal,
     fitAddon,
+    serializeAddon,
     subscriptionId: crypto.randomUUID(),
     sessionId: void 0,
     spawnStarted: false,
     status: void 0,
     statusListeners: new Set(),
+    lastAppliedSequence: 0,
+    restoredFromSnapshot: false,
+    snapshotTimer: void 0,
+    snapshotInFlight: false,
+    snapshotQueued: false,
   };
+
+  await restoreTerminalSnapshot(runtime);
 
   terminal.onData((data) => {
     void writeTerminalInput(runtime, data);
@@ -196,6 +270,47 @@ function getOrCreateTerminalRuntime(terminalId: string) {
 
   terminalRuntimes.set(terminalId, runtime);
   return runtime;
+}
+
+async function restoreTerminalSnapshot(runtime: TerminalRuntime) {
+  try {
+    const snapshot = await getTerminalSnapshot({ terminalId: runtime.terminalId });
+    if (snapshot === null) {
+      return;
+    }
+
+    validateTerminalSnapshot(runtime.terminalId, snapshot);
+    runtime.terminal.resize(snapshot.cols, snapshot.rows);
+    runtime.terminal.write(snapshot.serialized);
+    runtime.lastAppliedSequence = snapshot.sequence;
+    runtime.restoredFromSnapshot = true;
+  } catch (error) {
+    setRuntimeStatus(runtime, errorToMessage(error));
+  }
+}
+
+function validateTerminalSnapshot(terminalId: string, snapshot: TerminalSnapshot) {
+  if (snapshot.terminalId !== terminalId) {
+    throw new Error(
+      `Terminal snapshot id mismatch: expected ${terminalId}, got ${snapshot.terminalId}`,
+    );
+  }
+
+  if (!Number.isSafeInteger(snapshot.sequence) || snapshot.sequence < 0) {
+    throw new Error(`Terminal snapshot sequence is invalid: ${snapshot.sequence}`);
+  }
+
+  if (!Number.isSafeInteger(snapshot.cols) || snapshot.cols <= 0) {
+    throw new Error(`Terminal snapshot column count is invalid: ${snapshot.cols}`);
+  }
+
+  if (!Number.isSafeInteger(snapshot.rows) || snapshot.rows <= 0) {
+    throw new Error(`Terminal snapshot row count is invalid: ${snapshot.rows}`);
+  }
+
+  if (snapshot.serialized.length === 0) {
+    throw new Error("Terminal snapshot payload is empty.");
+  }
 }
 
 function mountTerminalRuntime(runtime: TerminalRuntime, terminalHost: HTMLDivElement) {
@@ -234,6 +349,9 @@ async function startTerminalSession(runtime: TerminalRuntime, workingDirectory: 
       },
       onEvent: channel,
     });
+    if (runtime.restoredFromSnapshot) {
+      setRuntimeStatus(runtime, TERMINAL_SESSION_RESTARTED_STATUS);
+    }
     await resizeTerminal(runtime, { cols: runtime.terminal.cols, rows: runtime.terminal.rows });
   } catch (error) {
     if (!isDuplicateSessionError(error, runtime.terminalId)) {
@@ -243,19 +361,61 @@ async function startTerminalSession(runtime: TerminalRuntime, workingDirectory: 
       return;
     }
 
-    try {
-      await invoke("terminal_attach", {
+    await attachTerminalSession(runtime, channel, runtime.lastAppliedSequence);
+  }
+}
+
+async function attachTerminalSession(
+  runtime: TerminalRuntime,
+  channel: Channel<TerminalEvent>,
+  afterSequence: number,
+) {
+  try {
+    await invoke("terminal_attach", {
+      input: {
         id: runtime.terminalId,
         subscriptionId: runtime.subscriptionId,
-        onEvent: channel,
-      });
-      setRuntimeStatus(runtime, void 0);
-      await resizeTerminal(runtime, { cols: runtime.terminal.cols, rows: runtime.terminal.rows });
-    } catch (attachError) {
-      runtime.spawnStarted = false;
-      runtime.sessionId = void 0;
-      setRuntimeStatus(runtime, errorToMessage(attachError));
+        afterSequence,
+      },
+      onEvent: channel,
+    });
+    setRuntimeStatus(runtime, void 0);
+    await resizeTerminal(runtime, { cols: runtime.terminal.cols, rows: runtime.terminal.rows });
+  } catch (attachError) {
+    if (isReplayUnavailableError(attachError)) {
+      runtime.terminal.reset();
+      runtime.terminal.clear();
+      runtime.lastAppliedSequence = 0;
+      runtime.restoredFromSnapshot = false;
+      setRuntimeStatus(runtime, TERMINAL_REPLAY_INCOMPLETE_STATUS);
+      await attachTerminalSessionFromRetainedReplay(runtime, channel);
+      return;
     }
+
+    runtime.spawnStarted = false;
+    runtime.sessionId = void 0;
+    setRuntimeStatus(runtime, errorToMessage(attachError));
+  }
+}
+
+async function attachTerminalSessionFromRetainedReplay(
+  runtime: TerminalRuntime,
+  channel: Channel<TerminalEvent>,
+) {
+  try {
+    await invoke("terminal_attach", {
+      input: {
+        id: runtime.terminalId,
+        subscriptionId: runtime.subscriptionId,
+        afterSequence: 0,
+      },
+      onEvent: channel,
+    });
+    await resizeTerminal(runtime, { cols: runtime.terminal.cols, rows: runtime.terminal.rows });
+  } catch (error) {
+    runtime.spawnStarted = false;
+    runtime.sessionId = void 0;
+    setRuntimeStatus(runtime, errorToMessage(error));
   }
 }
 
@@ -266,12 +426,16 @@ function handleTerminalEvent(runtime: TerminalRuntime, message: TerminalEvent) {
 
   switch (message.event) {
     case "output":
-      runtime.terminal.write(message.data.data);
+      runtime.terminal.write(message.data.data, () => {
+        runtime.lastAppliedSequence = message.data.sequence;
+        scheduleTerminalSnapshot(runtime);
+      });
       break;
     case "exited":
       runtime.sessionId = void 0;
       runtime.spawnStarted = false;
       setRuntimeStatus(runtime, `Terminal exited with code ${message.data.code}.`);
+      void flushTerminalSnapshot(runtime);
       break;
     case "error":
       setRuntimeStatus(runtime, message.data.message);
@@ -283,6 +447,56 @@ function setRuntimeStatus(runtime: TerminalRuntime, status: string | undefined) 
   runtime.status = status;
   for (const listener of runtime.statusListeners) {
     listener(status);
+  }
+}
+
+function scheduleTerminalSnapshot(runtime: TerminalRuntime) {
+  if (runtime.snapshotTimer !== undefined) {
+    window.clearTimeout(runtime.snapshotTimer);
+  }
+
+  runtime.snapshotTimer = window.setTimeout(() => {
+    runtime.snapshotTimer = void 0;
+    void flushTerminalSnapshot(runtime);
+  }, TERMINAL_SNAPSHOT_DEBOUNCE_MS);
+}
+
+async function flushTerminalSnapshot(runtime: TerminalRuntime) {
+  if (runtime.snapshotTimer !== undefined) {
+    window.clearTimeout(runtime.snapshotTimer);
+    runtime.snapshotTimer = void 0;
+  }
+
+  if (runtime.snapshotInFlight) {
+    runtime.snapshotQueued = true;
+    return;
+  }
+
+  const serialized = runtime.serializeAddon.serialize();
+  if (serialized.length === 0 || runtime.lastAppliedSequence < 0) {
+    return;
+  }
+
+  runtime.snapshotInFlight = true;
+  runtime.snapshotQueued = false;
+  try {
+    await saveTerminalSnapshot({
+      terminalId: runtime.terminalId,
+      sequence: runtime.lastAppliedSequence,
+      serialized,
+      cols: runtime.terminal.cols,
+      rows: runtime.terminal.rows,
+      capturedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    setRuntimeStatus(runtime, errorToMessage(error));
+  } finally {
+    runtime.snapshotInFlight = false;
+  }
+
+  if (runtime.snapshotQueued) {
+    runtime.snapshotQueued = false;
+    await flushTerminalSnapshot(runtime);
   }
 }
 
@@ -374,6 +588,10 @@ async function resizeTerminal(runtime: TerminalRuntime, size: TerminalSize) {
 
 function isDuplicateSessionError(error: unknown, sessionId: string) {
   return errorToMessage(error) === `terminal session already exists: ${sessionId}`;
+}
+
+function isReplayUnavailableError(error: unknown) {
+  return errorToMessage(error).includes(TERMINAL_REPLAY_UNAVAILABLE_FRAGMENT);
 }
 
 function errorToMessage(error: unknown): string {
