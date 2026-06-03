@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { Suspense } from "react";
 
-import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { CreateOrganizationForm } from "@/features/organizations/components/CreateOrganizationForm";
 import { listOrganizationsForAdmin } from "@/features/organizations/data/organizations";
 
 export default function OrganizationsPage() {
@@ -13,8 +13,8 @@ export default function OrganizationsPage() {
           <p className="text-sm text-muted-foreground">SaaS administration</p>
           <h1 className="text-2xl font-semibold tracking-tight">Organizations</h1>
         </div>
-        <Button disabled>Create organization</Button>
       </div>
+      <CreateOrganizationForm />
       <Suspense fallback={<OrganizationsTableLoading />}>
         <OrganizationsTable />
       </Suspense>

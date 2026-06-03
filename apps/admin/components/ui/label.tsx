@@ -1,3 +1,4 @@
+/* oxlint-disable jsx-a11y/label-has-associated-control */
 "use client";
 
 import * as React from "react";
@@ -6,7 +7,6 @@ import { cn } from "@/lib/utils";
 
 function Label({ className, ...props }: React.ComponentProps<"label">) {
   return (
-    // oxlint-disable-next-line jsx-a11y/label-has-associated-control -- Label association is provided by each call site through htmlFor or nested controls.
     <label
       data-slot="label"
       className={cn(
