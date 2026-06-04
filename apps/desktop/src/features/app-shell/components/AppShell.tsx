@@ -25,7 +25,6 @@ import { AppInspector } from "./AppInspector";
 import { AppSidebar } from "./AppSidebar";
 import { AppStatusBar } from "./AppStatusBar";
 import { AppWorkspace } from "./AppWorkspace";
-import { useDevThemeToggle } from "./useDevThemeToggle";
 
 type SettingsSurfaceState = "closed" | "opening" | "open" | "closing";
 
@@ -40,7 +39,6 @@ function fileTitle(filePath: string) {
 }
 
 function AppShell() {
-  useDevThemeToggle();
   const [activeWorkspace, setActiveWorkspace] = useState<ActiveWorkspaceState>({ status: "none" });
   const [sourceControlDiffRequest, setSourceControlDiffRequest] =
     useState<SourceControlDiffOpenRequest>();

@@ -1,34 +1,13 @@
-import { ArrowLeft, Monitor } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { Button } from "@/components/ui/button";
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarProvider,
-} from "@/components/ui/sidebar";
 import { AppWindowControls } from "@/features/app-shell/components/AppWindowControls";
 import { useTitleBarDrag } from "@/features/app-shell/components/useTitleBarDrag";
-
-type SettingsSectionId = "appearance";
-
-type SettingsSection = {
-  id: SettingsSectionId;
-  label: string;
-  description: string;
-};
-
-type SettingsGroup = {
-  label: string;
-  sections: SettingsSection[];
-};
+import { SettingsSidebar } from "@/features/settings/components/SettingsSidebar";
+import {
+  findSettingsSection,
+  settingsGroupLabelForSection,
+  type SettingsSectionId,
+} from "@/features/settings/settingsSections";
 
 type SettingsPageProps = {
   state: "opening" | "open" | "closing";
@@ -36,19 +15,6 @@ type SettingsPageProps = {
   onClosed: () => void;
   onEntered: () => void;
 };
-
-const settingsGroups = [
-  {
-    label: "Interface",
-    sections: [
-      {
-        id: "appearance",
-        label: "Appearance",
-        description: "Control how Kira looks and feels.",
-      },
-    ],
-  },
-] as const satisfies SettingsGroup[];
 
 function SettingsPage({ state, onClose, onClosed, onEntered }: SettingsPageProps) {
   const [activeSectionId, setActiveSectionId] = useState<SettingsSectionId>("appearance");
@@ -93,6 +59,7 @@ function SettingsPage({ state, onClose, onClosed, onEntered }: SettingsPageProps
   );
 
   const activeSection = findSettingsSection(activeSectionId);
+  const ActiveSettingsSection = activeSection.render;
 
   return (
     <dialog
@@ -115,59 +82,19 @@ function SettingsPage({ state, onClose, onClosed, onEntered }: SettingsPageProps
         }
       }}
     >
-      <SidebarProvider className="h-full min-h-0 text-sm">
-        <Sidebar collapsible="none" className="w-full border-r border-sidebar-border">
-          <SidebarHeader
-            role="toolbar"
-            aria-label="Settings title bar"
-            tabIndex={-1}
-            className="h-11 justify-center border-b border-sidebar-border px-2 py-0 select-none"
-            onDoubleClick={(event) => {
-              void handleTitleBarDoubleClick(event);
-            }}
-            onMouseDown={(event) => {
-              void handleTitleBarMouseDown(event);
-            }}
-          >
-            <Button
-              ref={backButtonRef}
-              type="button"
-              variant="ghost"
-              className="w-full justify-start"
-              onClick={onClose}
-            >
-              <ArrowLeft aria-hidden="true" />
-              Back to Kira
-            </Button>
-            {titleBarError === undefined ? undefined : (
-              <output className="sr-only">{titleBarError}</output>
-            )}
-          </SidebarHeader>
-          <SidebarContent className="scrollbar-sleek">
-            {settingsGroups.map((group) => (
-              <SidebarGroup key={group.label} aria-label={group.label}>
-                <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
-                <SidebarGroupContent>
-                  <SidebarMenu>
-                    {group.sections.map((section) => (
-                      <SidebarMenuItem key={section.id}>
-                        <SidebarMenuButton
-                          type="button"
-                          isActive={activeSectionId === section.id}
-                          onClick={() => setActiveSectionId(section.id)}
-                        >
-                          <Monitor aria-hidden="true" />
-                          <span>{section.label}</span>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    ))}
-                  </SidebarMenu>
-                </SidebarGroupContent>
-              </SidebarGroup>
-            ))}
-          </SidebarContent>
-        </Sidebar>
-      </SidebarProvider>
+      <SettingsSidebar
+        activeSectionId={activeSectionId}
+        backButtonRef={backButtonRef}
+        titleBarError={titleBarError}
+        onBack={onClose}
+        onSectionSelect={setActiveSectionId}
+        onTitleBarDoubleClick={(event) => {
+          void handleTitleBarDoubleClick(event);
+        }}
+        onTitleBarMouseDown={(event) => {
+          void handleTitleBarMouseDown(event);
+        }}
+      />
 
       <main className="flex min-h-0 flex-col bg-background">
         <div
@@ -198,66 +125,12 @@ function SettingsPage({ state, onClose, onClosed, onEntered }: SettingsPageProps
                 <p className="text-sm text-muted-foreground">{activeSection.description}</p>
               </div>
             </header>
-            {settingsContent(activeSectionId)}
+            <ActiveSettingsSection />
           </div>
         </div>
       </main>
     </dialog>
   );
-}
-
-function settingsContent(sectionId: SettingsSectionId) {
-  if (sectionId === "appearance") {
-    return <AppearanceSettings />;
-  }
-
-  return assertNever(sectionId);
-}
-
-function AppearanceSettings() {
-  return (
-    <section className="rounded-xl border border-border bg-card text-card-foreground">
-      <div className="border-b border-border p-4">
-        <h2 className="text-sm font-medium">Appearance</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Appearance preferences will live here once Kira has a durable settings store.
-        </p>
-      </div>
-      <div className="grid gap-4 p-4">
-        <div className="rounded-lg border border-dashed border-border p-4">
-          <div className="text-sm font-medium">Theme</div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Light, dark, and system theme controls are planned for this section.
-          </p>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function findSettingsSection(sectionId: SettingsSectionId) {
-  for (const group of settingsGroups) {
-    const section = group.sections.find((currentSection) => currentSection.id === sectionId);
-    if (section !== undefined) {
-      return section;
-    }
-  }
-
-  throw new Error(`Unknown settings section: ${sectionId}`);
-}
-
-function settingsGroupLabelForSection(sectionId: SettingsSectionId) {
-  for (const group of settingsGroups) {
-    if (group.sections.some((section) => section.id === sectionId)) {
-      return group.label;
-    }
-  }
-
-  throw new Error(`Unknown settings section group: ${sectionId}`);
-}
-
-function assertNever(value: never): never {
-  throw new Error(`Unhandled settings section: ${value}`);
 }
 
 export { SettingsPage };

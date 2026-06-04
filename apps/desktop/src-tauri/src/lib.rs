@@ -12,6 +12,7 @@ mod editor;
 mod explorer;
 mod persistence;
 mod projects;
+mod settings;
 mod source_control;
 mod terminal;
 
@@ -46,6 +47,8 @@ pub fn run() -> tauri::Result<()> {
             greet,
             projects::agent_thread_message_save,
             projects::agent_thread_messages_list,
+            settings::appearance_settings_get,
+            settings::appearance_settings_update,
             agent_runtime::prepare_agent_thread,
             agent_runtime::start_agent_runtime,
             editor::editor_file_read,
