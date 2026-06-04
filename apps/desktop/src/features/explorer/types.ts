@@ -2,13 +2,17 @@ type ExplorerTreeInput = {
   folderPath: string;
 };
 
-type ExplorerPathMetadata = {
+type ExplorerEntryKind = "directory" | "file";
+
+type ExplorerEntry = {
+  path: string;
+  kind: ExplorerEntryKind;
   size: number | null;
   lastModified: number | null;
 };
 
 type ExplorerTreeResult = {
-  paths: Record<string, ExplorerPathMetadata>;
+  entries: ExplorerEntry[];
 };
 
-export type { ExplorerPathMetadata, ExplorerTreeInput, ExplorerTreeResult };
+export type { ExplorerEntry, ExplorerEntryKind, ExplorerTreeInput, ExplorerTreeResult };

@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::cmp::Ordering;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
@@ -15,14 +15,31 @@ pub struct ExplorerTreeInput {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExplorerTreeResult {
-    paths: BTreeMap<String, ExplorerPathMetadata>,
+    entries: Vec<ExplorerEntry>,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ExplorerPathMetadata {
+pub struct ExplorerEntry {
+    path: String,
+    kind: ExplorerEntryKind,
     size: Option<u64>,
     last_modified: Option<u128>,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ExplorerEntryKind {
+    Directory,
+    File,
+}
+
+#[derive(Debug)]
+struct ScannedExplorerEntry {
+    path: PathBuf,
+    name: String,
+    kind: ExplorerEntryKind,
+    metadata: fs::Metadata,
 }
 
 #[derive(Debug, Error)]
@@ -49,7 +66,7 @@ impl serde::Serialize for ExplorerError {
 #[tauri::command]
 pub async fn explorer_tree(input: ExplorerTreeInput) -> Result<ExplorerTreeResult, ExplorerError> {
     let folder_path = validate_project_folder(&input.folder_path)?;
-    tauri::async_runtime::spawn_blocking(move || collect_file_paths(&folder_path))
+    tauri::async_runtime::spawn_blocking(move || collect_explorer_entries(&folder_path))
         .await
         .map_err(|error| ExplorerError::InspectFolder {
             path: input.folder_path,
@@ -57,50 +74,112 @@ pub async fn explorer_tree(input: ExplorerTreeInput) -> Result<ExplorerTreeResul
         })?
 }
 
-fn collect_file_paths(root_path: &Path) -> Result<ExplorerTreeResult, ExplorerError> {
-    let mut paths = BTreeMap::new();
-    let mut pending_folders = vec![root_path.to_path_buf()];
+fn collect_explorer_entries(root_path: &Path) -> Result<ExplorerTreeResult, ExplorerError> {
+    let mut entries = Vec::new();
+    collect_folder_entries(root_path, root_path, &mut entries)?;
+    Ok(ExplorerTreeResult { entries })
+}
 
-    while let Some(folder_path) = pending_folders.pop() {
-        let entries = fs::read_dir(&folder_path).map_err(|error| ExplorerError::InspectFolder {
-            path: folder_path.to_string_lossy().to_string(),
-            message: error.to_string(),
-        })?;
+fn collect_folder_entries(
+    root_path: &Path,
+    folder_path: &Path,
+    entries: &mut Vec<ExplorerEntry>,
+) -> Result<(), ExplorerError> {
+    let mut scanned_entries = scan_folder(folder_path)?;
+    scanned_entries.sort_by(compare_scanned_entries);
 
-        for entry_result in entries {
-            let entry = entry_result.map_err(|error| ExplorerError::InspectFolder {
-                path: folder_path.to_string_lossy().to_string(),
-                message: error.to_string(),
-            })?;
-            let entry_path = entry.path();
-            let metadata = fs::symlink_metadata(&entry_path).map_err(|error| {
-                ExplorerError::InspectFolder {
-                    path: entry_path.to_string_lossy().to_string(),
-                    message: error.to_string(),
-                }
-            })?;
+    for scanned_entry in scanned_entries {
+        entries.push(to_explorer_entry(root_path, &scanned_entry)?);
 
-            if metadata.is_dir() {
-                pending_folders.push(entry_path);
-                continue;
-            }
-
-            if metadata.is_file() || metadata.file_type().is_symlink() {
-                insert_explorer_path(root_path, &entry_path, &metadata, &mut paths)?;
-            }
+        if scanned_entry.kind == ExplorerEntryKind::Directory {
+            collect_folder_entries(root_path, &scanned_entry.path, entries)?;
         }
     }
 
-    Ok(ExplorerTreeResult { paths })
+    Ok(())
 }
 
-fn insert_explorer_path(
+fn scan_folder(folder_path: &Path) -> Result<Vec<ScannedExplorerEntry>, ExplorerError> {
+    let mut entries = Vec::new();
+    let directory_entries = fs::read_dir(folder_path).map_err(|error| ExplorerError::InspectFolder {
+        path: folder_path.to_string_lossy().to_string(),
+        message: error.to_string(),
+    })?;
+
+    for entry_result in directory_entries {
+        let entry = entry_result.map_err(|error| ExplorerError::InspectFolder {
+            path: folder_path.to_string_lossy().to_string(),
+            message: error.to_string(),
+        })?;
+        let entry_path = entry.path();
+        let metadata = fs::symlink_metadata(&entry_path).map_err(|error| {
+            ExplorerError::InspectFolder {
+                path: entry_path.to_string_lossy().to_string(),
+                message: error.to_string(),
+            }
+        })?;
+        let file_type = metadata.file_type();
+        let kind = if metadata.is_dir() {
+            ExplorerEntryKind::Directory
+        } else if metadata.is_file() || file_type.is_symlink() {
+            ExplorerEntryKind::File
+        } else {
+            continue;
+        };
+        let name = entry.file_name().to_string_lossy().to_string();
+
+        entries.push(ScannedExplorerEntry {
+            path: entry_path,
+            name,
+            kind,
+            metadata,
+        });
+    }
+
+    Ok(entries)
+}
+
+fn compare_scanned_entries(left: &ScannedExplorerEntry, right: &ScannedExplorerEntry) -> Ordering {
+    match (left.kind, right.kind) {
+        (ExplorerEntryKind::Directory, ExplorerEntryKind::File) => Ordering::Less,
+        (ExplorerEntryKind::File, ExplorerEntryKind::Directory) => Ordering::Greater,
+        (ExplorerEntryKind::Directory, ExplorerEntryKind::Directory)
+        | (ExplorerEntryKind::File, ExplorerEntryKind::File) => compare_names(&left.name, &right.name),
+    }
+}
+
+fn compare_names(left: &str, right: &str) -> Ordering {
+    let left_lowercase = left.to_lowercase();
+    let right_lowercase = right.to_lowercase();
+    match left_lowercase.cmp(&right_lowercase) {
+        Ordering::Equal => left.cmp(right),
+        ordering => ordering,
+    }
+}
+
+fn to_explorer_entry(
+    root_path: &Path,
+    scanned_entry: &ScannedExplorerEntry,
+) -> Result<ExplorerEntry, ExplorerError> {
+    Ok(ExplorerEntry {
+        path: relative_explorer_path(root_path, &scanned_entry.path, scanned_entry.kind)?,
+        kind: scanned_entry.kind,
+        size: (scanned_entry.kind == ExplorerEntryKind::File).then_some(scanned_entry.metadata.len()),
+        last_modified: scanned_entry
+            .metadata
+            .modified()
+            .ok()
+            .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+            .map(|duration| duration.as_millis()),
+    })
+}
+
+fn relative_explorer_path(
     root_path: &Path,
     entry_path: &Path,
-    metadata: &fs::Metadata,
-    paths: &mut BTreeMap<String, ExplorerPathMetadata>,
-) -> Result<(), ExplorerError> {
-    let relative_path = entry_path
+    kind: ExplorerEntryKind,
+) -> Result<String, ExplorerError> {
+    let mut relative_path = entry_path
         .strip_prefix(root_path)
         .map_err(|error| ExplorerError::InspectFolder {
             path: entry_path.to_string_lossy().to_string(),
@@ -108,18 +187,12 @@ fn insert_explorer_path(
         })?
         .to_string_lossy()
         .replace('\\', "/");
-    paths.insert(
-        relative_path,
-        ExplorerPathMetadata {
-            size: metadata.is_file().then_some(metadata.len()),
-            last_modified: metadata
-                .modified()
-                .ok()
-                .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
-                .map(|duration| duration.as_millis()),
-        },
-    );
-    Ok(())
+
+    if kind == ExplorerEntryKind::Directory {
+        relative_path.push('/');
+    }
+
+    Ok(relative_path)
 }
 
 fn validate_project_folder(folder_path: &str) -> Result<PathBuf, ExplorerError> {
