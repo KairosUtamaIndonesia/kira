@@ -38,13 +38,15 @@ type WorkspacePanelBase = {
 type WorkspacePanel =
   | TerminalWorkspacePanel
   | SourceControlDiffWorkspacePanel
-  | FileEditorWorkspacePanel;
+  | FileEditorWorkspacePanel
+  | AgentThreadWorkspacePanel;
 
 type TerminalWorkspacePanel = WorkspacePanelBase & {
   kind: "terminal";
   terminalState: TerminalPanelState;
   sourceControlDiffState: null;
   fileEditorState: null;
+  agentThreadState: null;
 };
 
 type SourceControlDiffWorkspacePanel = WorkspacePanelBase & {
@@ -52,6 +54,7 @@ type SourceControlDiffWorkspacePanel = WorkspacePanelBase & {
   terminalState: null;
   sourceControlDiffState: SourceControlDiffPanelState;
   fileEditorState: null;
+  agentThreadState: null;
 };
 
 type FileEditorWorkspacePanel = WorkspacePanelBase & {
@@ -59,6 +62,19 @@ type FileEditorWorkspacePanel = WorkspacePanelBase & {
   terminalState: null;
   sourceControlDiffState: null;
   fileEditorState: FileEditorPanelState;
+  agentThreadState: null;
+};
+
+type AgentThreadWorkspacePanel = WorkspacePanelBase & {
+  kind: "agent_thread";
+  terminalState: null;
+  sourceControlDiffState: null;
+  fileEditorState: null;
+  agentThreadState: AgentThreadPanelState;
+};
+
+type AgentThreadPanelState = {
+  threadId: string;
 };
 
 type TerminalPanelState = {
@@ -82,6 +98,11 @@ type CreateTerminalPanelInput = {
   sessionId: string;
   title: string;
   workingDirectory: string;
+};
+
+type CreateAgentThreadPanelInput = {
+  sessionId: string;
+  title: string;
 };
 
 type OpenSourceControlDiffPanelInput = {
@@ -156,7 +177,10 @@ type OpenProject = {
 };
 
 export type {
+  AgentThreadPanelState,
+  AgentThreadWorkspacePanel,
   CreatedProject,
+  CreateAgentThreadPanelInput,
   CreateProjectInput,
   OpenProject,
   CreateTerminalPanelInput,

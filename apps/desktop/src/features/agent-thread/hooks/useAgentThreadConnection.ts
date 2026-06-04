@@ -1,9 +1,13 @@
 import { createFlueClient, type AgentSocket } from "@flue/sdk";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { AgentThreadPanelParams } from "../types";
+import type { AgentThreadMessageKind, AgentThreadMessageRecord, AgentThreadPanelParams } from "../types";
 
-import { prepareAgentThread } from "../api/agentRuntimeApi";
+import {
+  listAgentThreadMessages,
+  prepareAgentThread,
+  saveAgentThreadMessage,
+} from "../api/agentRuntimeApi";
 
 type AgentThreadRuntimeState =
   | { status: "starting" }
@@ -13,20 +17,11 @@ type AgentThreadRuntimeState =
   | { status: "error"; message: string }
   | { status: "stopped" };
 
-type AgentThreadMessageRecord = {
-  id: string;
-  receivedAt: string;
-  kind: "event" | "result";
-  requestId: string;
-  message: unknown;
-};
-
 function useAgentThreadConnection(params: AgentThreadPanelParams) {
   const [runtimeState, setRuntimeState] = useState<AgentThreadRuntimeState>({
     status: "starting",
   });
   const [messages, setMessages] = useState<AgentThreadMessageRecord[]>([]);
-  const messageSequenceRef = useRef(0);
   const socketRef = useRef<AgentSocket | undefined>(void 0);
   const runtimeStateRef = useRef(runtimeState);
   runtimeStateRef.current = runtimeState;
@@ -41,18 +36,14 @@ function useAgentThreadConnection(params: AgentThreadPanelParams) {
   );
 
   const appendMessage = useCallback(
-    (kind: AgentThreadMessageRecord["kind"], requestId: string, message: unknown) => {
-      messageSequenceRef.current += 1;
-      setMessages((currentMessages) => [
-        ...currentMessages,
-        {
-          id: `${params.threadId}:${messageSequenceRef.current}`,
-          receivedAt: new Date().toISOString(),
-          kind,
-          requestId,
-          message,
-        },
-      ]);
+    async (kind: AgentThreadMessageKind, requestId: string, message: unknown) => {
+      const savedMessage = await saveAgentThreadMessage({
+        threadId: params.threadId,
+        kind,
+        requestId,
+        message,
+      });
+      setMessages((currentMessages) => [...currentMessages, savedMessage]);
     },
     [params.threadId],
   );
@@ -64,6 +55,12 @@ function useAgentThreadConnection(params: AgentThreadPanelParams) {
 
     async function connectRuntime() {
       try {
+        const loadedMessages = await listAgentThreadMessages({ threadId: params.threadId });
+        if (disposed) {
+          return;
+        }
+        setMessages(loadedMessages);
+
         const runtime = await prepareAgentThread(runtimeInput);
         if (disposed) {
           return;
@@ -82,7 +79,7 @@ function useAgentThreadConnection(params: AgentThreadPanelParams) {
         socket = client.agents.connect("coding", params.threadId);
         socketRef.current = socket;
         unsubscribe = socket.onEvent((event, context) => {
-          appendMessage("event", context.requestId, event);
+          void appendMessage("event", context.requestId, event);
         });
         await socket.ready;
 
@@ -126,8 +123,10 @@ function useAgentThreadConnection(params: AgentThreadPanelParams) {
 
     setRuntimeState({ status: "sending", baseUrl: state.baseUrl });
     try {
+      const requestId = crypto.randomUUID();
+      await appendMessage("prompt", requestId, message);
       const result = await socket.prompt(message, { session: "default" });
-      appendMessage("result", "result", result.result);
+      await appendMessage("result", requestId, result.result);
       setRuntimeState({ status: "ready", baseUrl: state.baseUrl });
       return true;
     } catch (error) {

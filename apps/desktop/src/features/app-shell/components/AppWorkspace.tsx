@@ -29,6 +29,7 @@ import {
 import { AgentThreadPanel, type AgentThreadPanelParams } from "@/features/agent-thread";
 import { FileEditorPanel, type FileEditorPanelParams } from "@/features/editor";
 import {
+  createAgentThreadPanel,
   createTerminalPanel,
   deleteTerminalSnapshot,
   deleteWorkspacePanel,
@@ -41,6 +42,7 @@ import {
 
 import type {
   ActiveWorkspaceState,
+  AgentThreadOpenRequest,
   FileEditorOpenRequest,
   SourceControlDiffOpenRequest,
 } from "../types";
@@ -104,21 +106,30 @@ function WorkspaceHeaderActions({ containerApi, group }: IDockviewHeaderActionsP
     });
   }
 
-  function addAgentThreadPanel() {
-    const threadId = crypto.randomUUID();
-    containerApi.addPanel<AgentThreadPanelParams>({
-      id: threadId,
-      component: "agentThreadPanel",
+  async function addAgentThreadPanel() {
+    const panel = await createAgentThreadPanel({
+      sessionId,
       title: "Agent Thread",
+    });
+    const agentThreadState = requireAgentThreadState(panel);
+    onPanelCreated(panel);
+    containerApi.addPanel<AgentThreadPanelParams>({
+      id: panel.id,
+      component: "agentThreadPanel",
+      title: panel.title,
       params: {
         projectId,
         sessionId,
-        threadId,
+        threadId: agentThreadState.threadId,
       },
       position: {
         referenceGroup: group,
         direction: "within",
       },
+    });
+    await updateSessionLayout({
+      sessionId,
+      layoutJson: serializeWorkspaceLayoutForPersistence(containerApi.toJSON()),
     });
   }
 
@@ -132,7 +143,7 @@ function WorkspaceHeaderActions({ containerApi, group }: IDockviewHeaderActionsP
           <Plus className="size-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-auto min-w-44">
-          <DropdownMenuItem onClick={() => addAgentThreadPanel()}>
+          <DropdownMenuItem onClick={() => void addAgentThreadPanel()}>
             <Bot className="size-4 text-muted-foreground" />
             <span>New Agent Thread</span>
           </DropdownMenuItem>
@@ -154,7 +165,7 @@ const workspaceComponents = {
   agentThreadPanel: AgentThreadPanel,
 };
 
-const runtimeOnlyWorkspaceComponents = new Set(["agentThreadPanel"]);
+const runtimeOnlyWorkspaceComponents = new Set<string>();
 
 function requireTerminalState(panel: StoredWorkspacePanel) {
   if (panel.kind !== "terminal") {
@@ -178,6 +189,14 @@ function requireFileEditorState(panel: StoredWorkspacePanel) {
   }
 
   return panel.fileEditorState;
+}
+
+function requireAgentThreadState(panel: StoredWorkspacePanel) {
+  if (panel.kind !== "agent_thread") {
+    throw new Error(`Workspace panel ${panel.id} is not an Agent Thread panel.`);
+  }
+
+  return panel.agentThreadState;
 }
 
 function useWorkspaceRuntimeContext() {
@@ -223,7 +242,11 @@ function restoreWorkspacePanels(
       >[0];
       ensureSavedLayoutReferencesStoredPanels(serializedLayout, activeWorkspace.panels);
       event.api.fromJSON(serializedLayout);
-      const restoredMissingPanels = restoreMissingStoredPanels(event, activeWorkspace.panels);
+      const restoredMissingPanels = restoreMissingStoredPanels(
+        event,
+        activeWorkspace,
+        activeWorkspace.panels,
+      );
       if (restoredMissingPanels) {
         void saveWorkspaceLayoutIfActive(
           activeWorkspace.session.id,
@@ -232,11 +255,11 @@ function restoreWorkspacePanels(
         );
       }
     } catch {
-      restorePanelsWithoutLayout(event, activeWorkspace.panels);
+      restorePanelsWithoutLayout(event, activeWorkspace, activeWorkspace.panels);
       void saveWorkspaceLayoutIfActive(activeWorkspace.session.id, event, isWorkspaceDisposingRef);
     }
   } else {
-    restorePanelsWithoutLayout(event, activeWorkspace.panels);
+    restorePanelsWithoutLayout(event, activeWorkspace, activeWorkspace.panels);
     void saveWorkspaceLayoutIfActive(activeWorkspace.session.id, event, isWorkspaceDisposingRef);
   }
 
@@ -247,6 +270,11 @@ function restoreWorkspacePanels(
 
     const storedPanel = panelsRef.current.find((workspacePanel) => workspacePanel.id === panel.id);
     if (storedPanel === undefined) {
+      return;
+    }
+
+    if (storedPanel.kind === "agent_thread") {
+      void saveWorkspaceLayoutIfActive(activeWorkspace.session.id, event, isWorkspaceDisposingRef);
       return;
     }
 
@@ -299,28 +327,40 @@ function requireObjectRecord(value: unknown, label: string) {
   return value as Record<string, unknown>;
 }
 
-function restoreMissingStoredPanels(event: DockviewReadyEvent, panels: StoredWorkspacePanel[]) {
+function restoreMissingStoredPanels(
+  event: DockviewReadyEvent,
+  activeWorkspace: Extract<ActiveWorkspaceState, { status: "active" }>,
+  panels: StoredWorkspacePanel[],
+) {
   let restoredAnyPanel = false;
 
   for (const panel of panels) {
-    if (event.api.getPanel(panel.id) !== undefined) {
+    if (event.api.getPanel(panel.id) !== undefined || panel.kind === "agent_thread") {
       continue;
     }
 
-    restoreWorkspacePanel(event, panel);
+    restoreWorkspacePanel(event, activeWorkspace, panel);
     restoredAnyPanel = true;
   }
 
   return restoredAnyPanel;
 }
 
-function restorePanelsWithoutLayout(event: DockviewReadyEvent, panels: StoredWorkspacePanel[]) {
+function restorePanelsWithoutLayout(
+  event: DockviewReadyEvent,
+  activeWorkspace: Extract<ActiveWorkspaceState, { status: "active" }>,
+  panels: StoredWorkspacePanel[],
+) {
   for (const panel of panels) {
-    restoreWorkspacePanel(event, panel);
+    restoreWorkspacePanel(event, activeWorkspace, panel);
   }
 }
 
-function restoreWorkspacePanel(event: DockviewReadyEvent, panel: StoredWorkspacePanel) {
+function restoreWorkspacePanel(
+  event: DockviewReadyEvent,
+  activeWorkspace: Extract<ActiveWorkspaceState, { status: "active" }>,
+  panel: StoredWorkspacePanel,
+) {
   switch (panel.kind) {
     case "terminal": {
       const terminalState = requireTerminalState(panel);
@@ -352,6 +392,20 @@ function restoreWorkspacePanel(event: DockviewReadyEvent, panel: StoredWorkspace
         component: "fileEditorPanel",
         title: panel.title,
         params: fileEditorState,
+      });
+      return;
+    }
+    case "agent_thread": {
+      const agentThreadState = requireAgentThreadState(panel);
+      event.api.addPanel<AgentThreadPanelParams>({
+        id: panel.id,
+        component: "agentThreadPanel",
+        title: panel.title,
+        params: {
+          projectId: activeWorkspace.project.id,
+          sessionId: activeWorkspace.session.id,
+          threadId: agentThreadState.threadId,
+        },
       });
       return;
     }
@@ -387,6 +441,7 @@ type ActiveWorkspaceDockviewProps = {
   onPanelCreated: (panel: StoredWorkspacePanel) => void;
   sourceControlDiffRequest: SourceControlDiffOpenRequest | undefined;
   fileEditorRequest: FileEditorOpenRequest | undefined;
+  agentThreadRequest: AgentThreadOpenRequest | undefined;
   onPanelDeleted: (panelId: string) => void;
 };
 
@@ -396,6 +451,7 @@ function ActiveWorkspaceDockview({
   onPanelCreated,
   sourceControlDiffRequest,
   fileEditorRequest,
+  agentThreadRequest,
   onPanelDeleted,
 }: ActiveWorkspaceDockviewProps) {
   const [dockviewApi, setDockviewApi] = useState<DockviewReadyEvent["api"]>();
@@ -462,6 +518,36 @@ function ActiveWorkspaceDockview({
       params: panel.fileEditorState,
     });
   }, [activeWorkspace.panels, dockviewApi, fileEditorRequest]);
+
+  useEffect(() => {
+    if (dockviewApi === undefined || agentThreadRequest === undefined) {
+      return;
+    }
+
+    const panel = activeWorkspace.panels.find(
+      (workspacePanel) => workspacePanel.id === agentThreadRequest.panel.id,
+    );
+    if (panel === undefined || panel.kind !== "agent_thread") {
+      return;
+    }
+
+    const existingPanel = dockviewApi.getPanel(panel.id);
+    if (existingPanel !== undefined) {
+      existingPanel.api.setActive();
+      return;
+    }
+
+    dockviewApi.addPanel<AgentThreadPanelParams>({
+      id: panel.id,
+      component: "agentThreadPanel",
+      title: panel.title,
+      params: {
+        projectId: activeWorkspace.project.id,
+        sessionId: activeWorkspace.session.id,
+        threadId: panel.agentThreadState.threadId,
+      },
+    });
+  }, [activeWorkspace, agentThreadRequest, dockviewApi]);
 
   return (
     <div className="h-full min-h-0">
@@ -532,6 +618,7 @@ type AppWorkspaceProps = {
   activeWorkspace: ActiveWorkspaceState;
   sourceControlDiffRequest: SourceControlDiffOpenRequest | undefined;
   fileEditorRequest: FileEditorOpenRequest | undefined;
+  agentThreadRequest: AgentThreadOpenRequest | undefined;
   onPanelCreated: (panel: StoredWorkspacePanel) => void;
   onPanelDeleted: (panelId: string) => void;
 };
@@ -540,6 +627,7 @@ function AppWorkspace({
   activeWorkspace,
   sourceControlDiffRequest,
   fileEditorRequest,
+  agentThreadRequest,
   onPanelCreated,
   onPanelDeleted,
 }: AppWorkspaceProps) {
@@ -570,6 +658,7 @@ function AppWorkspace({
           onPanelCreated={onPanelCreated}
           sourceControlDiffRequest={sourceControlDiffRequest}
           fileEditorRequest={fileEditorRequest}
+          agentThreadRequest={agentThreadRequest}
           onPanelDeleted={onPanelDeleted}
         />
       ) : (

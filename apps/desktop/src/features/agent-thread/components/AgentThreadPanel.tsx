@@ -47,14 +47,14 @@ function AgentThreadPanel({ params }: AgentThreadPanelProps) {
       <div className="min-h-0 flex-1 overflow-auto p-3">
         {messages.length === 0 ? (
           <div className="flex h-full min-h-40 items-center justify-center rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-            Flue SDK events will appear here after this Agent Thread connects or responds.
+            Agent Thread messages will appear here after you send a prompt.
           </div>
         ) : (
           <ol className="space-y-3">
             {messages.map((message) => (
               <li key={message.id} className="space-y-1">
                 <div className="flex items-center gap-2 font-mono text-xs text-muted-foreground">
-                  <span>{formatTimestamp(message.receivedAt)}</span>
+                  <span>{formatTimestamp(message.createdAt)}</span>
                   <span>{message.kind}</span>
                   <span>{message.requestId}</span>
                 </div>

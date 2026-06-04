@@ -3,6 +3,7 @@ import { local } from "@flue/runtime/node";
 
 import { requireAgentThreadContext } from "../kira/agent-thread-context";
 import { KIRA_AGENT_MODEL } from "../kira/env";
+import { createKiraSessionStore } from "../kira/session-store";
 
 export const websocket: AgentWebSocketHandler = async (_context, next) => next();
 
@@ -15,12 +16,13 @@ const codingAgent = defineAgentProfile({
 });
 
 export default createAgent(({ id }) => {
-  const { projectPath } = requireAgentThreadContext(id);
+  const context = requireAgentThreadContext(id);
 
   return {
     profile: codingAgent,
     model: KIRA_AGENT_MODEL,
-    cwd: projectPath,
-    sandbox: local({ cwd: projectPath }),
+    cwd: context.projectPath,
+    sandbox: local({ cwd: context.projectPath }),
+    persist: createKiraSessionStore(context),
   };
 });

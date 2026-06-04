@@ -31,7 +31,8 @@ time = { version = "0.3.47", features = ["formatting"] }
 gix = "0.84.0"
 rand = "0.9"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-tokio = { version = "1", features = ["process", "sync", "time"] }
+tokio = { version = "1", features = ["net", "process", "sync", "time"] }
+axum = "0.8"
 
 [profile.dev]
 incremental = true

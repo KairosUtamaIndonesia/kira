@@ -44,6 +44,8 @@ pub fn run() -> tauri::Result<()> {
         .manage(agent_runtime::AgentRuntimeRegistry::default())
         .invoke_handler(tauri::generate_handler![
             greet,
+            projects::agent_thread_message_save,
+            projects::agent_thread_messages_list,
             agent_runtime::prepare_agent_thread,
             agent_runtime::start_agent_runtime,
             editor::editor_file_read,
@@ -63,6 +65,7 @@ pub fn run() -> tauri::Result<()> {
             terminal::terminal_resize,
             terminal::terminal_spawn,
             terminal::terminal_write,
+            projects::workspace_agent_thread_panel_create,
             projects::workspace_file_editor_panel_open,
             projects::workspace_panel_delete,
             projects::workspace_source_control_diff_panel_open,

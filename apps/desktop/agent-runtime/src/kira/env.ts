@@ -25,6 +25,14 @@ export function readProjectPath(): string {
   return readRequiredEnv("KIRA_AGENT_PROJECT_PATH");
 }
 
+export function readPersistenceBridgeUrl(): string {
+  return readRequiredEnv("KIRA_AGENT_PERSISTENCE_BRIDGE_URL");
+}
+
+export function readPersistenceBridgeToken(): string {
+  return readRequiredEnv("KIRA_AGENT_PERSISTENCE_BRIDGE_TOKEN");
+}
+
 export const KIRA_AGENT_MODEL = "cx/gpt-5.5";
 export const KIRA_AGENT_PROVIDER_ID = "cx";
 export const KIRA_AGENT_PROVIDER_BASE_URL = "https://router.kira.internal.kairos-it.com";

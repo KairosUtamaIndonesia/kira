@@ -16,6 +16,7 @@ import { SettingsPage } from "@/features/settings";
 
 import type {
   ActiveWorkspaceState,
+  AgentThreadOpenRequest,
   FileEditorOpenRequest,
   SourceControlDiffOpenRequest,
 } from "../types";
@@ -44,10 +45,12 @@ function AppShell() {
   const [sourceControlDiffRequest, setSourceControlDiffRequest] =
     useState<SourceControlDiffOpenRequest>();
   const [fileEditorRequest, setFileEditorRequest] = useState<FileEditorOpenRequest>();
+  const [agentThreadRequest, setAgentThreadRequest] = useState<AgentThreadOpenRequest>();
   const [settingsSurfaceState, setSettingsSurfaceState] = useState<SettingsSurfaceState>("closed");
   const projectSwitchSequenceRef = useRef(0);
   const sourceControlDiffSequenceRef = useRef(0);
   const fileEditorSequenceRef = useRef(0);
+  const agentThreadSequenceRef = useRef(0);
   const settingsReturnFocusRef = useRef<HTMLElement | undefined>(void 0);
 
   useEffect(() => {
@@ -273,6 +276,21 @@ function AppShell() {
     setFileEditorRequest({ sequence, panel });
   }
 
+  function handleAgentThreadOpen(panelId: string) {
+    if (activeWorkspace.status !== "active") {
+      return;
+    }
+
+    const panel = activeWorkspace.panels.find((workspacePanel) => workspacePanel.id === panelId);
+    if (panel === undefined || panel.kind !== "agent_thread") {
+      throw new Error(`Expected Agent Thread panel ${panelId}.`);
+    }
+
+    const sequence = agentThreadSequenceRef.current + 1;
+    agentThreadSequenceRef.current = sequence;
+    setAgentThreadRequest({ sequence, panel });
+  }
+
   function handlePanelDeleted(panelId: string) {
     setSourceControlDiffRequest((currentRequest) => {
       if (currentRequest === undefined) {
@@ -282,6 +300,13 @@ function AppShell() {
       return currentRequest.panel.id === panelId ? void 0 : currentRequest;
     });
     setFileEditorRequest((currentRequest) => {
+      if (currentRequest === undefined) {
+        return currentRequest;
+      }
+
+      return currentRequest.panel.id === panelId ? void 0 : currentRequest;
+    });
+    setAgentThreadRequest((currentRequest) => {
       if (currentRequest === undefined) {
         return currentRequest;
       }
@@ -354,6 +379,7 @@ function AppShell() {
             activeWorkspace={activeWorkspace}
             sourceControlDiffRequest={sourceControlDiffRequest}
             fileEditorRequest={fileEditorRequest}
+            agentThreadRequest={agentThreadRequest}
             onPanelCreated={handlePanelCreated}
             onPanelDeleted={handlePanelDeleted}
           />
@@ -368,6 +394,7 @@ function AppShell() {
         >
           <AppInspector
             activeWorkspace={activeWorkspace}
+            onAgentThreadOpen={handleAgentThreadOpen}
             onExplorerFileOpen={handleExplorerFileOpen}
             onSourceControlDiffOpen={handleSourceControlDiffOpen}
           />

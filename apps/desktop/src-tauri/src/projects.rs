@@ -73,6 +73,13 @@ pub struct WorkspacePanel {
     terminal_state: Option<TerminalPanelState>,
     source_control_diff_state: Option<SourceControlDiffPanelState>,
     file_editor_state: Option<FileEditorPanelState>,
+    agent_thread_state: Option<AgentThreadPanelState>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentThreadPanelState {
+    thread_id: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -137,6 +144,13 @@ pub struct CreateTerminalPanelInput {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CreateAgentThreadPanelInput {
+    session_id: String,
+    title: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OpenSourceControlDiffPanelInput {
     session_id: String,
     title: String,
@@ -196,6 +210,32 @@ pub struct DeleteTerminalSnapshotInput {
     terminal_id: String,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentThreadMessageRecord {
+    id: String,
+    thread_id: String,
+    kind: String,
+    request_id: String,
+    message: serde_json::Value,
+    created_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListAgentThreadMessagesInput {
+    thread_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveAgentThreadMessageInput {
+    thread_id: String,
+    kind: String,
+    request_id: String,
+    message: serde_json::Value,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenameProjectInput {
@@ -244,6 +284,12 @@ pub enum ProjectError {
     MissingWorkspacePanelState { kind: String, panel_id: String },
     #[error("terminal snapshot id is required")]
     MissingTerminalSnapshotId,
+    #[error("Agent Thread id is required")]
+    MissingAgentThreadId,
+    #[error("Agent Thread message kind is invalid: {0}")]
+    InvalidAgentThreadMessageKind(String),
+    #[error("Agent Thread message request id is required")]
+    MissingAgentThreadMessageRequestId,
     #[error("terminal snapshot payload is required")]
     MissingTerminalSnapshotPayload,
     #[error("terminal snapshot sequence must be at least 0, got {0}")]
@@ -375,6 +421,18 @@ pub async fn workspace_terminal_panel_create(
     clippy::needless_pass_by_value,
     reason = "Tauri commands require State by value"
 )]
+pub async fn workspace_agent_thread_panel_create(
+    input: CreateAgentThreadPanelInput,
+    store: tauri::State<'_, PersistenceStore>,
+) -> Result<WorkspacePanel, ProjectError> {
+    create_agent_thread_panel(store.pool(), input).await
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
 pub async fn workspace_source_control_diff_panel_open(
     input: OpenSourceControlDiffPanelInput,
     store: tauri::State<'_, PersistenceStore>,
@@ -422,9 +480,33 @@ pub async fn workspace_panel_delete(
     input: DeleteWorkspacePanelInput,
     store: tauri::State<'_, PersistenceStore>,
 ) -> Result<(), ProjectError> {
+    let thread_id = sqlx::query_scalar::<_, String>(
+        "SELECT thread_id FROM agent_thread_panel_state WHERE panel_id = ?",
+    )
+    .bind(&input.panel_id)
+    .fetch_optional(store.pool())
+    .await
+    .map_err(|error| ProjectError::Query(error.to_string()))?;
+
+    let mut transaction = store
+        .pool()
+        .begin()
+        .await
+        .map_err(|error| ProjectError::Query(error.to_string()))?;
     sqlx::query("DELETE FROM workspace_panels WHERE id = ?")
-        .bind(input.panel_id)
-        .execute(store.pool())
+        .bind(&input.panel_id)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|error| ProjectError::Query(error.to_string()))?;
+    if let Some(thread_id) = thread_id {
+        sqlx::query("DELETE FROM agent_threads WHERE id = ?")
+            .bind(thread_id)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|error| ProjectError::Query(error.to_string()))?;
+    }
+    transaction
+        .commit()
         .await
         .map_err(|error| ProjectError::Query(error.to_string()))?;
     Ok(())
@@ -492,6 +574,65 @@ pub async fn workspace_terminal_snapshot_save(
     clippy::needless_pass_by_value,
     reason = "Tauri commands require State by value"
 )]
+pub async fn agent_thread_messages_list(
+    input: ListAgentThreadMessagesInput,
+    store: tauri::State<'_, PersistenceStore>,
+) -> Result<Vec<AgentThreadMessageRecord>, ProjectError> {
+    let thread_id = validate_agent_thread_id(&input.thread_id)?;
+    let rows = sqlx::query(
+        "SELECT id, thread_id, kind, request_id, message_json, created_at FROM agent_thread_message_records WHERE thread_id = ? ORDER BY created_at ASC",
+    )
+    .bind(thread_id)
+    .fetch_all(store.pool())
+    .await
+    .map_err(|error| ProjectError::Query(error.to_string()))?;
+
+    rows.iter().map(agent_thread_message_from_row).collect()
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
+pub async fn agent_thread_message_save(
+    input: SaveAgentThreadMessageInput,
+    store: tauri::State<'_, PersistenceStore>,
+) -> Result<AgentThreadMessageRecord, ProjectError> {
+    let thread_id = validate_agent_thread_id(&input.thread_id)?;
+    let kind = validate_agent_thread_message_kind(&input.kind)?;
+    let request_id = validate_agent_thread_message_request_id(&input.request_id)?;
+    let id = Uuid::new_v4().to_string();
+    let now = current_timestamp()?;
+    let message_json = serde_json::to_string(&input.message)
+        .map_err(|error| ProjectError::Create(error.to_string()))?;
+
+    sqlx::query("INSERT INTO agent_thread_message_records (id, thread_id, kind, request_id, message_json, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+        .bind(&id)
+        .bind(&thread_id)
+        .bind(&kind)
+        .bind(&request_id)
+        .bind(message_json)
+        .bind(&now)
+        .execute(store.pool())
+        .await
+        .map_err(|error| ProjectError::Create(error.to_string()))?;
+
+    Ok(AgentThreadMessageRecord {
+        id,
+        thread_id,
+        kind,
+        request_id,
+        message: input.message,
+        created_at: now,
+    })
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
 pub async fn workspace_terminal_snapshot_delete(
     input: DeleteTerminalSnapshotInput,
     store: tauri::State<'_, PersistenceStore>,
@@ -503,6 +644,35 @@ pub async fn workspace_terminal_snapshot_delete(
         .await
         .map_err(|error| ProjectError::Query(error.to_string()))?;
     Ok(())
+}
+
+fn agent_thread_message_from_row(
+    row: &SqliteRow,
+) -> Result<AgentThreadMessageRecord, ProjectError> {
+    let message_json: String = row
+        .try_get("message_json")
+        .map_err(|error| ProjectError::Query(error.to_string()))?;
+    let message = serde_json::from_str(&message_json)
+        .map_err(|error| ProjectError::Query(error.to_string()))?;
+
+    Ok(AgentThreadMessageRecord {
+        id: row
+            .try_get("id")
+            .map_err(|error| ProjectError::Query(error.to_string()))?,
+        thread_id: row
+            .try_get("thread_id")
+            .map_err(|error| ProjectError::Query(error.to_string()))?,
+        kind: row
+            .try_get("kind")
+            .map_err(|error| ProjectError::Query(error.to_string()))?,
+        request_id: row
+            .try_get("request_id")
+            .map_err(|error| ProjectError::Query(error.to_string()))?,
+        message,
+        created_at: row
+            .try_get("created_at")
+            .map_err(|error| ProjectError::Query(error.to_string()))?,
+    })
 }
 
 async fn list_projects(pool: &SqlitePool) -> Result<Vec<Project>, ProjectError> {
@@ -582,7 +752,7 @@ async fn list_workspace_panels(
     session_id: &str,
 ) -> Result<Vec<WorkspacePanel>, ProjectError> {
     let rows = sqlx::query(
-        "SELECT workspace_panels.id, workspace_panels.session_id, workspace_panels.kind, workspace_panels.title, workspace_panels.position_index, workspace_panels.created_at, workspace_panels.updated_at, terminal_panel_state.working_directory, terminal_panel_state.shell, source_control_diff_panel_state.folder_path AS diff_folder_path, source_control_diff_panel_state.file_path AS diff_file_path, source_control_diff_panel_state.old_path AS diff_old_path, source_control_diff_panel_state.source AS diff_source, file_editor_panel_state.folder_path AS editor_folder_path, file_editor_panel_state.file_path AS editor_file_path FROM workspace_panels LEFT JOIN terminal_panel_state ON terminal_panel_state.panel_id = workspace_panels.id LEFT JOIN source_control_diff_panel_state ON source_control_diff_panel_state.panel_id = workspace_panels.id LEFT JOIN file_editor_panel_state ON file_editor_panel_state.panel_id = workspace_panels.id WHERE workspace_panels.session_id = ? ORDER BY workspace_panels.position_index ASC",
+        "SELECT workspace_panels.id, workspace_panels.session_id, workspace_panels.kind, workspace_panels.title, workspace_panels.position_index, workspace_panels.created_at, workspace_panels.updated_at, terminal_panel_state.working_directory, terminal_panel_state.shell, source_control_diff_panel_state.folder_path AS diff_folder_path, source_control_diff_panel_state.file_path AS diff_file_path, source_control_diff_panel_state.old_path AS diff_old_path, source_control_diff_panel_state.source AS diff_source, file_editor_panel_state.folder_path AS editor_folder_path, file_editor_panel_state.file_path AS editor_file_path, agent_thread_panel_state.thread_id AS agent_thread_id FROM workspace_panels LEFT JOIN terminal_panel_state ON terminal_panel_state.panel_id = workspace_panels.id LEFT JOIN source_control_diff_panel_state ON source_control_diff_panel_state.panel_id = workspace_panels.id LEFT JOIN file_editor_panel_state ON file_editor_panel_state.panel_id = workspace_panels.id LEFT JOIN agent_thread_panel_state ON agent_thread_panel_state.panel_id = workspace_panels.id WHERE workspace_panels.session_id = ? ORDER BY workspace_panels.position_index ASC",
     )
     .bind(session_id)
     .fetch_all(pool)
@@ -623,6 +793,9 @@ fn workspace_panel_from_row(row: &SqliteRow) -> Result<WorkspacePanel, ProjectEr
     let editor_file_path: Option<String> = row
         .try_get("editor_file_path")
         .map_err(|error| ProjectError::Query(error.to_string()))?;
+    let agent_thread_id: Option<String> = row
+        .try_get("agent_thread_id")
+        .map_err(|error| ProjectError::Query(error.to_string()))?;
 
     let terminal_state = match (kind.as_str(), working_directory) {
         ("terminal", Some(working_directory)) => Some(TerminalPanelState {
@@ -662,6 +835,14 @@ fn workspace_panel_from_row(row: &SqliteRow) -> Result<WorkspacePanel, ProjectEr
         _ => None,
     };
 
+    let agent_thread_state = match (kind.as_str(), agent_thread_id) {
+        ("agent_thread", Some(thread_id)) => Some(AgentThreadPanelState { thread_id }),
+        ("agent_thread", None) => {
+            return Err(ProjectError::MissingWorkspacePanelState { kind, panel_id: id });
+        }
+        _ => None,
+    };
+
     Ok(WorkspacePanel {
         id,
         session_id: row
@@ -683,6 +864,7 @@ fn workspace_panel_from_row(row: &SqliteRow) -> Result<WorkspacePanel, ProjectEr
         terminal_state,
         source_control_diff_state,
         file_editor_state,
+        agent_thread_state,
     })
 }
 
@@ -744,6 +926,73 @@ async fn create_terminal_panel(
         }),
         source_control_diff_state: None,
         file_editor_state: None,
+        agent_thread_state: None,
+    })
+}
+
+async fn create_agent_thread_panel(
+    pool: &SqlitePool,
+    input: CreateAgentThreadPanelInput,
+) -> Result<WorkspacePanel, ProjectError> {
+    let title = validate_panel_title(&input.title)?;
+    let panel_id = Uuid::new_v4().to_string();
+    let thread_id = Uuid::new_v4().to_string();
+    let now = current_timestamp()?;
+    let position_index = sqlx::query_scalar::<_, i64>(
+        "SELECT COALESCE(MAX(position_index), -1) + 1 FROM workspace_panels WHERE session_id = ?",
+    )
+    .bind(&input.session_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|error| ProjectError::Query(error.to_string()))?;
+
+    let mut transaction = pool
+        .begin()
+        .await
+        .map_err(|error| ProjectError::Create(error.to_string()))?;
+    sqlx::query("INSERT INTO agent_threads (id, session_id, title, created_at, updated_at, last_opened_at) VALUES (?, ?, ?, ?, ?, ?)")
+        .bind(&thread_id)
+        .bind(&input.session_id)
+        .bind(&title)
+        .bind(&now)
+        .bind(&now)
+        .bind(&now)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|error| ProjectError::Create(error.to_string()))?;
+    sqlx::query("INSERT INTO workspace_panels (id, session_id, kind, title, position_index, created_at, updated_at) VALUES (?, ?, 'agent_thread', ?, ?, ?, ?)")
+        .bind(&panel_id)
+        .bind(&input.session_id)
+        .bind(&title)
+        .bind(position_index)
+        .bind(&now)
+        .bind(&now)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|error| ProjectError::Create(error.to_string()))?;
+    sqlx::query("INSERT INTO agent_thread_panel_state (panel_id, thread_id) VALUES (?, ?)")
+        .bind(&panel_id)
+        .bind(&thread_id)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|error| ProjectError::Create(error.to_string()))?;
+    transaction
+        .commit()
+        .await
+        .map_err(|error| ProjectError::Create(error.to_string()))?;
+
+    Ok(WorkspacePanel {
+        id: panel_id,
+        session_id: input.session_id,
+        kind: "agent_thread".to_string(),
+        title,
+        position_index,
+        created_at: now.clone(),
+        updated_at: now,
+        terminal_state: None,
+        source_control_diff_state: None,
+        file_editor_state: None,
+        agent_thread_state: Some(AgentThreadPanelState { thread_id }),
     })
 }
 
@@ -814,6 +1063,7 @@ async fn open_source_control_diff_panel(
             source: input.source,
         }),
         file_editor_state: None,
+        agent_thread_state: None,
     })
 }
 
@@ -881,6 +1131,7 @@ async fn open_file_editor_panel(
             folder_path,
             file_path,
         }),
+        agent_thread_state: None,
     })
 }
 
@@ -889,7 +1140,7 @@ async fn get_workspace_panel(
     panel_id: &str,
 ) -> Result<Option<WorkspacePanel>, ProjectError> {
     let row = sqlx::query(
-        "SELECT workspace_panels.id, workspace_panels.session_id, workspace_panels.kind, workspace_panels.title, workspace_panels.position_index, workspace_panels.created_at, workspace_panels.updated_at, terminal_panel_state.working_directory, terminal_panel_state.shell, source_control_diff_panel_state.folder_path AS diff_folder_path, source_control_diff_panel_state.file_path AS diff_file_path, source_control_diff_panel_state.old_path AS diff_old_path, source_control_diff_panel_state.source AS diff_source, file_editor_panel_state.folder_path AS editor_folder_path, file_editor_panel_state.file_path AS editor_file_path FROM workspace_panels LEFT JOIN terminal_panel_state ON terminal_panel_state.panel_id = workspace_panels.id LEFT JOIN source_control_diff_panel_state ON source_control_diff_panel_state.panel_id = workspace_panels.id LEFT JOIN file_editor_panel_state ON file_editor_panel_state.panel_id = workspace_panels.id WHERE workspace_panels.id = ?",
+        "SELECT workspace_panels.id, workspace_panels.session_id, workspace_panels.kind, workspace_panels.title, workspace_panels.position_index, workspace_panels.created_at, workspace_panels.updated_at, terminal_panel_state.working_directory, terminal_panel_state.shell, source_control_diff_panel_state.folder_path AS diff_folder_path, source_control_diff_panel_state.file_path AS diff_file_path, source_control_diff_panel_state.old_path AS diff_old_path, source_control_diff_panel_state.source AS diff_source, file_editor_panel_state.folder_path AS editor_folder_path, file_editor_panel_state.file_path AS editor_file_path, agent_thread_panel_state.thread_id AS agent_thread_id FROM workspace_panels LEFT JOIN terminal_panel_state ON terminal_panel_state.panel_id = workspace_panels.id LEFT JOIN source_control_diff_panel_state ON source_control_diff_panel_state.panel_id = workspace_panels.id LEFT JOIN file_editor_panel_state ON file_editor_panel_state.panel_id = workspace_panels.id LEFT JOIN agent_thread_panel_state ON agent_thread_panel_state.panel_id = workspace_panels.id WHERE workspace_panels.id = ?",
     )
     .bind(panel_id)
     .fetch_optional(pool)
@@ -1026,6 +1277,34 @@ fn validate_file_editor_file_path(file_path: &str) -> Result<String, ProjectErro
     }
 
     Ok(trimmed_file_path.to_string())
+}
+
+fn validate_agent_thread_id(thread_id: &str) -> Result<String, ProjectError> {
+    let trimmed_thread_id = thread_id.trim();
+    if trimmed_thread_id.is_empty() {
+        return Err(ProjectError::MissingAgentThreadId);
+    }
+
+    Ok(trimmed_thread_id.to_string())
+}
+
+fn validate_agent_thread_message_kind(kind: &str) -> Result<String, ProjectError> {
+    let trimmed_kind = kind.trim();
+    match trimmed_kind {
+        "prompt" | "event" | "result" => Ok(trimmed_kind.to_string()),
+        _ => Err(ProjectError::InvalidAgentThreadMessageKind(
+            trimmed_kind.to_string(),
+        )),
+    }
+}
+
+fn validate_agent_thread_message_request_id(request_id: &str) -> Result<String, ProjectError> {
+    let trimmed_request_id = request_id.trim();
+    if trimmed_request_id.is_empty() {
+        return Err(ProjectError::MissingAgentThreadMessageRequestId);
+    }
+
+    Ok(trimmed_request_id.to_string())
 }
 
 fn validate_terminal_snapshot_id(terminal_id: &str) -> Result<String, ProjectError> {

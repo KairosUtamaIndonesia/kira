@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type {
   CreatedProject,
+  CreateAgentThreadPanelInput,
   CreateProjectInput,
   CreateTerminalPanelInput,
   DeleteTerminalSnapshotInput,
@@ -38,6 +39,10 @@ function openLastProject() {
 
 function createTerminalPanel(input: CreateTerminalPanelInput) {
   return invoke<WorkspacePanel>("workspace_terminal_panel_create", { input });
+}
+
+function createAgentThreadPanel(input: CreateAgentThreadPanelInput) {
+  return invoke<WorkspacePanel>("workspace_agent_thread_panel_create", { input });
 }
 
 function openSourceControlDiffPanel(input: OpenSourceControlDiffPanelInput) {
@@ -77,6 +82,7 @@ function updateSessionLayout(input: UpdateSessionLayoutInput) {
 }
 
 export {
+  createAgentThreadPanel,
   createProject,
   createTerminalPanel,
   deleteTerminalSnapshot,

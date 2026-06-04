@@ -1,4 +1,5 @@
 import type {
+  AgentThreadWorkspacePanel,
   FileEditorWorkspacePanel,
   OpenProject,
   SourceControlDiffWorkspacePanel,
@@ -25,4 +26,14 @@ type FileEditorOpenRequest = {
   panel: FileEditorWorkspacePanel;
 };
 
-export type { ActiveWorkspaceState, FileEditorOpenRequest, SourceControlDiffOpenRequest };
+type AgentThreadOpenRequest = {
+  sequence: number;
+  panel: AgentThreadWorkspacePanel;
+};
+
+export type {
+  ActiveWorkspaceState,
+  AgentThreadOpenRequest,
+  FileEditorOpenRequest,
+  SourceControlDiffOpenRequest,
+};

@@ -17,4 +17,34 @@ type AgentThreadPanelParams = {
   threadId: string;
 };
 
-export type { AgentRuntimeConnection, AgentThreadPanelParams, PrepareAgentThreadInput };
+type AgentThreadMessageKind = "prompt" | "event" | "result";
+
+type AgentThreadMessageRecord = {
+  id: string;
+  threadId: string;
+  kind: AgentThreadMessageKind;
+  requestId: string;
+  message: unknown;
+  createdAt: string;
+};
+
+type ListAgentThreadMessagesInput = {
+  threadId: string;
+};
+
+type SaveAgentThreadMessageInput = {
+  threadId: string;
+  kind: AgentThreadMessageKind;
+  requestId: string;
+  message: unknown;
+};
+
+export type {
+  AgentRuntimeConnection,
+  AgentThreadMessageKind,
+  AgentThreadMessageRecord,
+  AgentThreadPanelParams,
+  ListAgentThreadMessagesInput,
+  PrepareAgentThreadInput,
+  SaveAgentThreadMessageInput,
+};
