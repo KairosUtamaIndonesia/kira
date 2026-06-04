@@ -550,7 +550,7 @@ function ActiveWorkspaceDockview({
   }, [activeWorkspace, agentThreadRequest, dockviewApi]);
 
   return (
-    <div className="h-full min-h-0">
+    <div className="h-full min-h-0 min-w-0 overflow-hidden">
       <WorkspaceRuntimeContext.Provider value={workspaceRuntimeContext}>
         <DockviewReact
           key={activeWorkspace.session.id}
@@ -636,21 +636,7 @@ function AppWorkspace({
   isWorkspaceDisposingRef.current = activeWorkspace.status !== "active";
 
   return (
-    <main
-      className="relative h-full min-h-0 bg-editor-surface"
-      onPointerDownCapture={(event) => {
-        if (isElementInsideSelector(event.target, ".dv-void-container")) {
-          event.preventDefault();
-          event.stopPropagation();
-        }
-      }}
-      onDragStartCapture={(event) => {
-        if (isElementInsideSelector(event.target, ".dv-void-container")) {
-          event.preventDefault();
-          event.stopPropagation();
-        }
-      }}
-    >
+    <main className="relative h-full min-h-0 min-w-0 overflow-hidden bg-editor-surface">
       {activeWorkspace.status === "active" && activeWorkspace.panels.length > 0 ? (
         <ActiveWorkspaceDockview
           activeWorkspace={activeWorkspace}

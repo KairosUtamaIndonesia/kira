@@ -374,7 +374,7 @@ function AppShell() {
           />
         </ResizablePanel>
         <ResizableHandle />
-        <ResizablePanel className="min-h-0" minSize="24rem">
+        <ResizablePanel className="min-h-0 min-w-0 overflow-hidden" minSize="24rem">
           <AppWorkspace
             activeWorkspace={activeWorkspace}
             sourceControlDiffRequest={sourceControlDiffRequest}
