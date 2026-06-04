@@ -4,6 +4,7 @@ import type { CreatedProject, Project, WorkspacePanel } from "@/features/project
 import type { GitStatusEntry } from "@/features/source-control/types";
 
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { startAgentRuntime } from "@/features/agent-thread/api/agentRuntimeApi";
 import {
   openFileEditorPanel,
   openLastProject,
@@ -47,6 +48,18 @@ function AppShell() {
   const sourceControlDiffSequenceRef = useRef(0);
   const fileEditorSequenceRef = useRef(0);
   const settingsReturnFocusRef = useRef<HTMLElement | undefined>(void 0);
+
+  useEffect(() => {
+    async function startRuntime() {
+      try {
+        await startAgentRuntime();
+      } catch {
+        // Agent runtime startup is surfaced when an Agent Thread panel prepares a thread.
+      }
+    }
+
+    void startRuntime();
+  }, []);
 
   useEffect(() => {
     let ignoreResult = false;

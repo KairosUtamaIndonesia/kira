@@ -5,7 +5,7 @@ import {
   type IDockviewHeaderActionsProps,
   type IDockviewPanelProps,
 } from "dockview-react";
-import { Loader2, Plus, Terminal as TerminalIcon } from "lucide-react";
+import { Bot, Loader2, Plus, Terminal as TerminalIcon } from "lucide-react";
 import {
   createContext,
   useContext,
@@ -26,6 +26,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { AgentThreadPanel, type AgentThreadPanelParams } from "@/features/agent-thread";
 import { FileEditorPanel, type FileEditorPanelParams } from "@/features/editor";
 import {
   createTerminalPanel,
@@ -52,6 +53,7 @@ type WorkspacePanelParams = {
 };
 
 type WorkspaceRuntimeContextValue = {
+  projectId: string;
   sessionId: string;
   workingDirectory: string;
   onPanelCreated: (panel: StoredWorkspacePanel) => void;
@@ -73,7 +75,7 @@ function WorkspacePanel({ api, params }: IDockviewPanelProps<WorkspacePanelParam
 }
 
 function WorkspaceHeaderActions({ containerApi, group }: IDockviewHeaderActionsProps) {
-  const { onPanelCreated, sessionId, workingDirectory } = useWorkspaceRuntimeContext();
+  const { onPanelCreated, projectId, sessionId, workingDirectory } = useWorkspaceRuntimeContext();
 
   async function addTerminalPanel() {
     const panel = await createTerminalPanel({
@@ -102,6 +104,24 @@ function WorkspaceHeaderActions({ containerApi, group }: IDockviewHeaderActionsP
     });
   }
 
+  function addAgentThreadPanel() {
+    const threadId = crypto.randomUUID();
+    containerApi.addPanel<AgentThreadPanelParams>({
+      id: threadId,
+      component: "agentThreadPanel",
+      title: "Agent Thread",
+      params: {
+        projectId,
+        sessionId,
+        threadId,
+      },
+      position: {
+        referenceGroup: group,
+        direction: "within",
+      },
+    });
+  }
+
   return (
     <div className="flex h-full items-center px-1">
       <DropdownMenu>
@@ -112,6 +132,10 @@ function WorkspaceHeaderActions({ containerApi, group }: IDockviewHeaderActionsP
           <Plus className="size-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-auto min-w-44">
+          <DropdownMenuItem onClick={() => addAgentThreadPanel()}>
+            <Bot className="size-4 text-muted-foreground" />
+            <span>New Agent Thread</span>
+          </DropdownMenuItem>
           <DropdownMenuItem onClick={() => void addTerminalPanel()}>
             <TerminalIcon className="size-4 text-muted-foreground" />
             <span>New Terminal (shell)</span>
@@ -127,7 +151,10 @@ const workspaceComponents = {
   terminalPanel: TerminalPanel,
   sourceControlDiffPanel: SourceControlDiffPanel,
   fileEditorPanel: FileEditorPanel,
+  agentThreadPanel: AgentThreadPanel,
 };
+
+const runtimeOnlyWorkspaceComponents = new Set(["agentThreadPanel"]);
 
 function requireTerminalState(panel: StoredWorkspacePanel) {
   if (panel.kind !== "terminal") {
@@ -376,6 +403,7 @@ function ActiveWorkspaceDockview({
   panelsRef.current = activeWorkspace.panels;
   const workspaceRuntimeContext = useMemo(
     () => ({
+      projectId: activeWorkspace.project.id,
       sessionId: activeWorkspace.session.id,
       workingDirectory: activeWorkspace.project.folderPath,
       onPanelCreated,
@@ -463,7 +491,41 @@ function ActiveWorkspaceDockview({
 }
 
 function serializeWorkspaceLayoutForPersistence(value: unknown) {
-  return JSON.stringify(value);
+  return JSON.stringify(removeRuntimeOnlyWorkspacePanels(value));
+}
+
+function removeRuntimeOnlyWorkspacePanels(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => removeRuntimeOnlyWorkspacePanels(item));
+  }
+
+  if (!isRecord(value)) {
+    return value;
+  }
+
+  const nextRecord: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (isRuntimeOnlyWorkspacePanel(item)) {
+      continue;
+    }
+
+    nextRecord[key] = removeRuntimeOnlyWorkspacePanels(item);
+  }
+
+  return nextRecord;
+}
+
+function isRuntimeOnlyWorkspacePanel(value: unknown) {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  const component = value.component;
+  return typeof component === "string" && runtimeOnlyWorkspaceComponents.has(component);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 type AppWorkspaceProps = {

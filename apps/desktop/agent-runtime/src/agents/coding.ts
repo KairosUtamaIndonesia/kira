@@ -1,7 +1,8 @@
 import { createAgent, defineAgentProfile, type AgentWebSocketHandler } from "@flue/runtime";
 import { local } from "@flue/runtime/node";
 
-import { KIRA_AGENT_MODEL, readProjectPath } from "../kira/env";
+import { requireAgentThreadContext } from "../kira/agent-thread-context";
+import { KIRA_AGENT_MODEL } from "../kira/env";
 
 export const websocket: AgentWebSocketHandler = async (_context, next) => next();
 
@@ -13,8 +14,8 @@ const codingAgent = defineAgentProfile({
   ].join("\n"),
 });
 
-export default createAgent(() => {
-  const projectPath = readProjectPath();
+export default createAgent(({ id }) => {
+  const { projectPath } = requireAgentThreadContext(id);
 
   return {
     profile: codingAgent,

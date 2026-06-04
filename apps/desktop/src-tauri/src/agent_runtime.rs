@@ -1,116 +1,52 @@
-use std::{
-    collections::HashMap,
-    env,
-    net::TcpListener,
-    path::{Path, PathBuf},
-    time::Duration,
-};
+use std::{env, net::TcpListener, path::PathBuf, time::Duration};
 
-use futures_util::{SinkExt, StreamExt};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
-use tauri::{AppHandle, Emitter};
 use thiserror::Error;
 use tokio::{
     process::{Child, Command},
-    sync::{mpsc, Mutex},
-    task::JoinHandle,
+    sync::Mutex,
     time::{sleep, timeout},
 };
-use tokio_tungstenite::{connect_async, tungstenite::Message};
-use uuid::Uuid;
 
-const AGENT_RUNTIME_EVENT: &str = "agent_thread_event";
+use crate::persistence::PersistenceStore;
+
 const AGENT_RUNTIME_HEALTH_TIMEOUT: Duration = Duration::from_secs(10);
 const AGENT_RUNTIME_HEALTH_POLL_INTERVAL: Duration = Duration::from_millis(150);
-const AGENT_RUNTIME_SESSION: &str = "default";
 const AGENT_RUNTIME_PACKAGE_NAME: &str = "@kira/agent-runtime";
 const AGENT_RUNTIME_KIND: &str = "flue";
+const AGENT_RUNTIME_HOST: &str = "127.0.0.1";
 
 #[derive(Default)]
 pub struct AgentRuntimeRegistry {
-    inner: Mutex<AgentRuntimeRegistryInner>,
+    runtime: Mutex<Option<AppAgentRuntime>>,
 }
 
-#[derive(Default)]
-struct AgentRuntimeRegistryInner {
-    projects: HashMap<String, ProjectAgentRuntime>,
-    thread_index: HashMap<String, String>,
-}
-
-struct ProjectAgentRuntime {
+struct AppAgentRuntime {
     port: u16,
     token: String,
     process: Child,
-    threads: HashMap<String, AgentThreadSocket>,
-}
-
-struct AgentThreadSocket {
-    session_id: String,
-    sender: mpsc::UnboundedSender<String>,
-    read_task: JoinHandle<()>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StartAgentThreadInput {
-    project_id: String,
-    session_id: String,
-    project_path: String,
-    thread_id: String,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[allow(
     clippy::struct_field_names,
-    reason = "Agent Thread commands intentionally carry project, session, and thread ids"
+    reason = "Agent Thread preparation intentionally carries project, session, and thread ids"
 )]
-pub struct AgentThreadInput {
+pub struct PrepareAgentThreadInput {
     project_id: String,
     session_id: String,
     thread_id: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SendAgentPromptInput {
-    project_id: String,
-    session_id: String,
-    thread_id: String,
-    message: String,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AgentThreadStarted {
+pub struct AgentRuntimeConnection {
     project_id: String,
     session_id: String,
-    thread_id: String,
-    port: u16,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[allow(
-    clippy::struct_field_names,
-    reason = "Prompt acknowledgment intentionally returns project, session, thread, and request ids"
-)]
-pub struct AgentPromptSent {
-    project_id: String,
-    session_id: String,
-    thread_id: String,
-    request_id: String,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct AgentThreadEvent {
-    project_id: String,
-    session_id: String,
-    thread_id: String,
-    message: serde_json::Value,
+    base_url: String,
+    token: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -121,6 +57,13 @@ struct HealthResponse {
     runtime: String,
 }
 
+#[derive(Debug, sqlx::FromRow)]
+struct AgentThreadProjectContext {
+    project_id: String,
+    session_id: String,
+    project_path: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AgentRuntimeLaunchMode {
     Dev,
@@ -129,24 +72,23 @@ enum AgentRuntimeLaunchMode {
 
 #[derive(Debug, Error)]
 pub enum AgentRuntimeError {
-    #[error("Agent runtime is already running for Agent Thread {thread_id}")]
-    AlreadyRunning { thread_id: String },
-    #[error("Agent runtime is not running for Agent Thread {thread_id}")]
-    NotRunning { thread_id: String },
     #[error("Agent runtime project id is required")]
     MissingProjectId,
     #[error("Agent runtime session id is required")]
     MissingSessionId,
     #[error("Agent Thread id is required")]
     MissingThreadId,
-    #[error("Agent prompt message is required")]
-    MissingPromptMessage,
-    #[error("Agent runtime project path is required")]
-    MissingProjectPath,
-    #[error("Agent runtime project path does not exist: {path}")]
+    #[error("Project {project_id} with Session {session_id} was not found")]
+    ProjectSessionNotFound {
+        project_id: String,
+        session_id: String,
+    },
+    #[error("Project folder does not exist: {path}")]
     ProjectPathMissing { path: String },
-    #[error("Agent runtime project path is not a directory: {path}")]
+    #[error("Project folder is not a directory: {path}")]
     ProjectPathNotDirectory { path: String },
+    #[error("failed to query Project context for Agent Thread: {0}")]
+    QueryProjectContext(String),
     #[error("Agent runtime directory was not found: {path}")]
     RuntimeDirectoryMissing { path: String },
     #[error("failed to reserve an agent runtime port: {0}")]
@@ -157,14 +99,12 @@ pub enum AgentRuntimeError {
     HealthTimeout { port: u16, timeout_ms: u64 },
     #[error("Agent runtime returned invalid health response on port {port}: {reason}")]
     InvalidHealthResponse { port: u16, reason: String },
-    #[error("Failed to connect to Flue coding agent for Agent Thread {thread_id}: {reason}")]
-    WebSocketConnectFailed { thread_id: String, reason: String },
-    #[error("Failed to send prompt to Agent Thread {thread_id}: {reason}")]
-    PromptSendFailed { thread_id: String, reason: String },
-    #[error("Failed to stop agent runtime for Agent Thread {thread_id}: {reason}")]
-    StopFailed { thread_id: String, reason: String },
-    #[error("agent runtime registry is unavailable because its lock is poisoned")]
-    RegistryUnavailable,
+    #[error("Failed to register Agent Thread {thread_id} with agent runtime: {reason}")]
+    RegisterAgentThread { thread_id: String, reason: String },
+    #[error("Agent runtime is not running")]
+    NotRunning,
+    #[error("Failed to stop agent runtime: {0}")]
+    StopFailed(String),
 }
 
 impl serde::Serialize for AgentRuntimeError {
@@ -181,197 +121,13 @@ impl serde::Serialize for AgentRuntimeError {
     clippy::needless_pass_by_value,
     reason = "Tauri commands require State by value"
 )]
-pub async fn start_agent_thread(
-    app: AppHandle,
-    input: StartAgentThreadInput,
-    registry: tauri::State<'_, AgentRuntimeRegistry>,
-) -> Result<AgentThreadStarted, AgentRuntimeError> {
-    validate_required("project_id", &input.project_id)?;
-    validate_required("session_id", &input.session_id)?;
-    validate_required("thread_id", &input.thread_id)?;
-    let project_path = validate_project_path(&input.project_path)?;
-
-    {
-        let inner = registry.inner.lock().await;
-        if inner.thread_index.contains_key(&input.thread_id) {
-            return Err(AgentRuntimeError::AlreadyRunning {
-                thread_id: input.thread_id,
-            });
-        }
-    }
-
-    let project_id = input.project_id;
-    let session_id = input.session_id;
-    let thread_id = input.thread_id;
-
-    let mut new_runtime = None;
-    let runtime_connection = {
-        let inner = registry.inner.lock().await;
-        if let Some(runtime) = inner.projects.get(&project_id) {
-            RuntimeConnection {
-                port: runtime.port,
-                token: runtime.token.clone(),
-            }
-        } else {
-            drop(inner);
-            let runtime = start_project_runtime(&project_id, &project_path).await?;
-            let connection = RuntimeConnection {
-                port: runtime.port,
-                token: runtime.token.clone(),
-            };
-            new_runtime = Some(runtime);
-            connection
-        }
-    };
-
-    let socket = connect_agent_thread_socket(AgentThreadSocketConnection {
-        app: &app,
-        project_id: &project_id,
-        session_id: &session_id,
-        thread_id: &thread_id,
-        port: runtime_connection.port,
-        token: &runtime_connection.token,
-    })
-    .await?;
-
-    let mut inner = registry.inner.lock().await;
-    if inner.thread_index.contains_key(&thread_id) {
-        socket.read_task.abort();
-        return Err(AgentRuntimeError::AlreadyRunning { thread_id });
-    }
-
-    if let Some(runtime) = new_runtime {
-        inner.projects.insert(project_id.clone(), runtime);
-    }
-
-    let runtime = inner
-        .projects
-        .get_mut(&project_id)
-        .ok_or(AgentRuntimeError::RegistryUnavailable)?;
-
-    runtime.threads.insert(thread_id.clone(), socket);
-    inner
-        .thread_index
-        .insert(thread_id.clone(), project_id.clone());
-
-    Ok(AgentThreadStarted {
-        project_id,
-        session_id,
-        thread_id,
-        port: runtime_connection.port,
-    })
-}
-
-#[tauri::command]
-#[allow(
-    clippy::needless_pass_by_value,
-    reason = "Tauri commands require State by value"
-)]
-pub async fn send_agent_prompt(
-    input: SendAgentPromptInput,
-    registry: tauri::State<'_, AgentRuntimeRegistry>,
-) -> Result<AgentPromptSent, AgentRuntimeError> {
-    validate_required("project_id", &input.project_id)?;
-    validate_required("session_id", &input.session_id)?;
-    validate_required("thread_id", &input.thread_id)?;
-    if input.message.trim().is_empty() {
-        return Err(AgentRuntimeError::MissingPromptMessage);
-    }
-
-    let request_id = Uuid::new_v4().to_string();
-    let frame = json!({
-        "version": 1,
-        "type": "prompt",
-        "requestId": request_id,
-        "message": input.message,
-        "session": AGENT_RUNTIME_SESSION,
-    })
-    .to_string();
-
-    let inner = registry.inner.lock().await;
-    let runtime =
-        inner
-            .projects
-            .get(&input.project_id)
-            .ok_or_else(|| AgentRuntimeError::NotRunning {
-                thread_id: input.thread_id.clone(),
-            })?;
-    let socket =
-        runtime
-            .threads
-            .get(&input.thread_id)
-            .ok_or_else(|| AgentRuntimeError::NotRunning {
-                thread_id: input.thread_id.clone(),
-            })?;
-
-    if socket.session_id != input.session_id {
-        return Err(AgentRuntimeError::NotRunning {
-            thread_id: input.thread_id,
-        });
-    }
-
-    socket
-        .sender
-        .send(frame)
-        .map_err(|error| AgentRuntimeError::PromptSendFailed {
-            thread_id: input.thread_id.clone(),
-            reason: error.to_string(),
-        })?;
-
-    Ok(AgentPromptSent {
-        project_id: input.project_id,
-        session_id: input.session_id,
-        thread_id: input.thread_id,
-        request_id,
-    })
-}
-
-#[tauri::command]
-#[allow(
-    clippy::needless_pass_by_value,
-    reason = "Tauri commands require State by value"
-)]
-pub async fn stop_agent_thread(
-    input: AgentThreadInput,
+pub async fn start_agent_runtime(
     registry: tauri::State<'_, AgentRuntimeRegistry>,
 ) -> Result<(), AgentRuntimeError> {
-    validate_required("project_id", &input.project_id)?;
-    validate_required("session_id", &input.session_id)?;
-    validate_required("thread_id", &input.thread_id)?;
-
-    let mut runtime_to_stop = None;
-    let socket = {
-        let mut inner = registry.inner.lock().await;
-        let runtime = inner.projects.get_mut(&input.project_id).ok_or_else(|| {
-            AgentRuntimeError::NotRunning {
-                thread_id: input.thread_id.clone(),
-            }
-        })?;
-        let socket = runtime.threads.remove(&input.thread_id).ok_or_else(|| {
-            AgentRuntimeError::NotRunning {
-                thread_id: input.thread_id.clone(),
-            }
-        })?;
-        let should_stop_runtime = runtime.threads.is_empty();
-        inner.thread_index.remove(&input.thread_id);
-        if should_stop_runtime {
-            runtime_to_stop = inner.projects.remove(&input.project_id);
-        }
-        socket
-    };
-
-    socket.read_task.abort();
-    drop(socket.sender);
-
-    if let Some(runtime) = runtime_to_stop.as_mut() {
-        stop_process(&mut runtime.process).await.map_err(|reason| {
-            AgentRuntimeError::StopFailed {
-                thread_id: input.thread_id,
-                reason,
-            }
-        })?;
+    let mut runtime_guard = registry.runtime.lock().await;
+    if runtime_guard.is_none() {
+        *runtime_guard = Some(start_app_runtime().await?);
     }
-
     Ok(())
 }
 
@@ -380,48 +136,111 @@ pub async fn stop_agent_thread(
     clippy::needless_pass_by_value,
     reason = "Tauri commands require State by value"
 )]
+pub async fn prepare_agent_thread(
+    input: PrepareAgentThreadInput,
+    registry: tauri::State<'_, AgentRuntimeRegistry>,
+    store: tauri::State<'_, PersistenceStore>,
+) -> Result<AgentRuntimeConnection, AgentRuntimeError> {
+    validate_required_project_id(&input.project_id)?;
+    validate_required_session_id(&input.session_id)?;
+    validate_required_thread_id(&input.thread_id)?;
+
+    let context =
+        load_agent_thread_project_context(&store, &input.project_id, &input.session_id).await?;
+    validate_project_path(&context.project_path)?;
+
+    let runtime_guard = registry.runtime.lock().await;
+    let runtime = runtime_guard
+        .as_ref()
+        .ok_or(AgentRuntimeError::NotRunning)?;
+    register_agent_thread(runtime, &input.thread_id, &context).await?;
+
+    Ok(AgentRuntimeConnection {
+        project_id: context.project_id,
+        session_id: context.session_id,
+        base_url: runtime_base_url(runtime),
+        token: runtime.token.clone(),
+    })
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
 pub async fn stop_agent_runtime(
-    project_id: String,
     registry: tauri::State<'_, AgentRuntimeRegistry>,
 ) -> Result<(), AgentRuntimeError> {
-    validate_required("project_id", &project_id)?;
-
-    let mut runtime =
-        {
-            let mut inner = registry.inner.lock().await;
-            let runtime = inner.projects.remove(&project_id).ok_or_else(|| {
-                AgentRuntimeError::NotRunning {
-                    thread_id: project_id.clone(),
-                }
-            })?;
-            for thread_id in runtime.threads.keys() {
-                inner.thread_index.remove(thread_id);
-            }
-            runtime
-        };
-
-    for socket in runtime.threads.into_values() {
-        socket.read_task.abort();
-        drop(socket.sender);
-    }
+    let mut runtime = {
+        let mut runtime_guard = registry.runtime.lock().await;
+        runtime_guard.take().ok_or(AgentRuntimeError::NotRunning)?
+    };
 
     stop_process(&mut runtime.process)
         .await
-        .map_err(|reason| AgentRuntimeError::StopFailed {
-            thread_id: project_id,
-            reason,
-        })
+        .map_err(AgentRuntimeError::StopFailed)
 }
 
-struct RuntimeConnection {
-    port: u16,
-    token: String,
+async fn load_agent_thread_project_context(
+    store: &PersistenceStore,
+    project_id: &str,
+    session_id: &str,
+) -> Result<AgentThreadProjectContext, AgentRuntimeError> {
+    sqlx::query_as::<_, AgentThreadProjectContext>(
+        r"
+        SELECT projects.id AS project_id, sessions.id AS session_id, projects.folder_path AS project_path
+        FROM projects
+        INNER JOIN sessions ON sessions.project_id = projects.id
+        WHERE projects.id = ? AND sessions.id = ?
+        ",
+    )
+    .bind(project_id)
+    .bind(session_id)
+    .fetch_optional(store.pool())
+    .await
+    .map_err(|error| AgentRuntimeError::QueryProjectContext(error.to_string()))?
+    .ok_or_else(|| AgentRuntimeError::ProjectSessionNotFound {
+        project_id: project_id.to_string(),
+        session_id: session_id.to_string(),
+    })
 }
 
-async fn start_project_runtime(
-    _project_id: &str,
-    project_path: &Path,
-) -> Result<ProjectAgentRuntime, AgentRuntimeError> {
+async fn register_agent_thread(
+    runtime: &AppAgentRuntime,
+    thread_id: &str,
+    context: &AgentThreadProjectContext,
+) -> Result<(), AgentRuntimeError> {
+    let response = reqwest::Client::new()
+        .post(format!("{}/app/agent-threads", runtime_base_url(runtime)))
+        .bearer_auth(&runtime.token)
+        .json(&serde_json::json!({
+            "projectId": context.project_id,
+            "sessionId": context.session_id,
+            "threadId": thread_id,
+            "projectPath": context.project_path,
+        }))
+        .send()
+        .await
+        .map_err(|error| AgentRuntimeError::RegisterAgentThread {
+            thread_id: thread_id.to_string(),
+            reason: error.to_string(),
+        })?;
+
+    if !response.status().is_success() {
+        return Err(AgentRuntimeError::RegisterAgentThread {
+            thread_id: thread_id.to_string(),
+            reason: format!("runtime returned HTTP {}", response.status()),
+        });
+    }
+
+    Ok(())
+}
+
+fn runtime_base_url(runtime: &AppAgentRuntime) -> String {
+    format!("http://{AGENT_RUNTIME_HOST}:{}", runtime.port)
+}
+
+async fn start_app_runtime() -> Result<AppAgentRuntime, AgentRuntimeError> {
     let runtime_dir = resolve_runtime_dir()?;
     let mode = resolve_launch_mode();
     let port = reserve_port()?;
@@ -430,7 +249,12 @@ async fn start_project_runtime(
     let mut command = Command::new("bun");
     match mode {
         AgentRuntimeLaunchMode::Dev => {
-            command.arg("run").arg("dev");
+            command
+                .arg("run")
+                .arg("dev")
+                .arg("--")
+                .arg("--port")
+                .arg(port.to_string());
         }
         AgentRuntimeLaunchMode::Built => {
             command.arg("dist/server.mjs");
@@ -439,9 +263,10 @@ async fn start_project_runtime(
 
     command
         .current_dir(&runtime_dir)
+        .env("HOST", AGENT_RUNTIME_HOST)
+        .env("HOSTNAME", AGENT_RUNTIME_HOST)
         .env("PORT", port.to_string())
         .env("KIRA_AGENT_RUNTIME_TOKEN", &token)
-        .env("KIRA_AGENT_PROJECT_PATH", project_path)
         .kill_on_drop(true);
 
     if let Ok(provider_api_key) = env::var("KIRA_AGENT_PROVIDER_API_KEY") {
@@ -462,103 +287,15 @@ async fn start_project_runtime(
         return Err(error);
     }
 
-    Ok(ProjectAgentRuntime {
+    Ok(AppAgentRuntime {
         port,
         token,
         process,
-        threads: HashMap::new(),
-    })
-}
-
-struct AgentThreadSocketConnection<'a> {
-    app: &'a AppHandle,
-    project_id: &'a str,
-    session_id: &'a str,
-    thread_id: &'a str,
-    port: u16,
-    token: &'a str,
-}
-
-async fn connect_agent_thread_socket(
-    connection: AgentThreadSocketConnection<'_>,
-) -> Result<AgentThreadSocket, AgentRuntimeError> {
-    let encoded_thread_id = urlencoding::encode(connection.thread_id);
-    let encoded_token = urlencoding::encode(connection.token);
-    let url = format!(
-        "ws://localhost:{}/agents/coding/{encoded_thread_id}?token={encoded_token}",
-        connection.port
-    );
-    let (stream, _response) =
-        connect_async(&url)
-            .await
-            .map_err(|error| AgentRuntimeError::WebSocketConnectFailed {
-                thread_id: connection.thread_id.to_string(),
-                reason: error.to_string(),
-            })?;
-
-    let (mut writer, mut reader) = stream.split();
-    let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
-    tokio::spawn(async move {
-        while let Some(frame) = receiver.recv().await {
-            if writer.send(Message::Text(frame.into())).await.is_err() {
-                break;
-            }
-        }
-        let _close_result = writer.close().await;
-    });
-
-    let event_app = connection.app.clone();
-    let event_project_id = connection.project_id.to_string();
-    let event_session_id = connection.session_id.to_string();
-    let event_thread_id = connection.thread_id.to_string();
-    let read_task = tokio::spawn(async move {
-        while let Some(message_result) = reader.next().await {
-            match message_result {
-                Ok(Message::Text(text)) => {
-                    let parsed = serde_json::from_str::<serde_json::Value>(&text)
-                        .unwrap_or_else(|_| json!({ "type": "raw", "data": text.to_string() }));
-                    let event = AgentThreadEvent {
-                        project_id: event_project_id.clone(),
-                        session_id: event_session_id.clone(),
-                        thread_id: event_thread_id.clone(),
-                        message: parsed,
-                    };
-                    let _emit_result = event_app.emit(AGENT_RUNTIME_EVENT, event);
-                }
-                Ok(Message::Binary(bytes)) => {
-                    let event = AgentThreadEvent {
-                        project_id: event_project_id.clone(),
-                        session_id: event_session_id.clone(),
-                        thread_id: event_thread_id.clone(),
-                        message: json!({ "type": "binary", "byteLength": bytes.len() }),
-                    };
-                    let _emit_result = event_app.emit(AGENT_RUNTIME_EVENT, event);
-                }
-                Ok(Message::Close(_)) => break,
-                Ok(Message::Ping(_) | Message::Pong(_) | Message::Frame(_)) => {}
-                Err(error) => {
-                    let event = AgentThreadEvent {
-                        project_id: event_project_id.clone(),
-                        session_id: event_session_id.clone(),
-                        thread_id: event_thread_id.clone(),
-                        message: json!({ "type": "error", "message": error.to_string() }),
-                    };
-                    let _emit_result = event_app.emit(AGENT_RUNTIME_EVENT, event);
-                    break;
-                }
-            }
-        }
-    });
-
-    Ok(AgentThreadSocket {
-        session_id: connection.session_id.to_string(),
-        sender,
-        read_task,
     })
 }
 
 async fn wait_for_health(port: u16) -> Result<(), AgentRuntimeError> {
-    let health_url = format!("http://localhost:{port}/healthz");
+    let health_url = format!("http://{AGENT_RUNTIME_HOST}:{port}/healthz");
     let client = reqwest::Client::new();
 
     let check = async {
@@ -574,9 +311,7 @@ async fn wait_for_health(port: u16) -> Result<(), AgentRuntimeError> {
                     validate_health_response(port, &health)?;
                     return Ok(());
                 }
-                Ok(response) => {
-                    let _status = response.status();
-                }
+                Ok(_response) => {}
                 Err(_error) => {}
             }
             sleep(AGENT_RUNTIME_HEALTH_POLL_INTERVAL).await;
@@ -626,11 +361,6 @@ fn resolve_runtime_dir() -> Result<PathBuf, AgentRuntimeError> {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../agent-runtime")
     };
 
-    if !runtime_dir.exists() {
-        return Err(AgentRuntimeError::RuntimeDirectoryMissing {
-            path: runtime_dir.display().to_string(),
-        });
-    }
     if !runtime_dir.is_dir() {
         return Err(AgentRuntimeError::RuntimeDirectoryMissing {
             path: runtime_dir.display().to_string(),
@@ -648,10 +378,7 @@ fn resolve_launch_mode() -> AgentRuntimeLaunchMode {
     }
 }
 
-fn validate_project_path(project_path: &str) -> Result<PathBuf, AgentRuntimeError> {
-    if project_path.trim().is_empty() {
-        return Err(AgentRuntimeError::MissingProjectPath);
-    }
+fn validate_project_path(project_path: &str) -> Result<(), AgentRuntimeError> {
     let path = PathBuf::from(project_path);
     if !path.exists() {
         return Err(AgentRuntimeError::ProjectPathMissing {
@@ -663,23 +390,32 @@ fn validate_project_path(project_path: &str) -> Result<PathBuf, AgentRuntimeErro
             path: path.display().to_string(),
         });
     }
-    Ok(path)
+    Ok(())
 }
 
-fn validate_required(field: &str, value: &str) -> Result<(), AgentRuntimeError> {
-    if !value.trim().is_empty() {
-        return Ok(());
+fn validate_required_project_id(project_id: &str) -> Result<(), AgentRuntimeError> {
+    if project_id.trim().is_empty() {
+        return Err(AgentRuntimeError::MissingProjectId);
     }
-    match field {
-        "project_id" => Err(AgentRuntimeError::MissingProjectId),
-        "session_id" => Err(AgentRuntimeError::MissingSessionId),
-        "thread_id" => Err(AgentRuntimeError::MissingThreadId),
-        _ => Err(AgentRuntimeError::RegistryUnavailable),
+    Ok(())
+}
+
+fn validate_required_session_id(session_id: &str) -> Result<(), AgentRuntimeError> {
+    if session_id.trim().is_empty() {
+        return Err(AgentRuntimeError::MissingSessionId);
     }
+    Ok(())
+}
+
+fn validate_required_thread_id(thread_id: &str) -> Result<(), AgentRuntimeError> {
+    if thread_id.trim().is_empty() {
+        return Err(AgentRuntimeError::MissingThreadId);
+    }
+    Ok(())
 }
 
 fn reserve_port() -> Result<u16, AgentRuntimeError> {
-    let listener = TcpListener::bind(("127.0.0.1", 0))
+    let listener = TcpListener::bind((AGENT_RUNTIME_HOST, 0))
         .map_err(|error| AgentRuntimeError::ReservePort(error.to_string()))?;
     let address = listener
         .local_addr()

@@ -2,6 +2,7 @@ import { registerProvider } from "@flue/runtime";
 import { flue } from "@flue/runtime/routing";
 import { Hono } from "hono";
 
+import { appRoutes } from "./kira/app-routes";
 import { requireRuntimeToken } from "./kira/auth";
 import {
   KIRA_AGENT_PROVIDER_BASE_URL,
@@ -36,6 +37,8 @@ app.get("/healthz", (context) =>
     runtime: "flue",
   }),
 );
+
+app.route("/app", appRoutes);
 
 app.use("/agents/*", requireRuntimeToken);
 app.use("/workflows/*", requireRuntimeToken);

@@ -44,10 +44,9 @@ pub fn run() -> tauri::Result<()> {
         .manage(agent_runtime::AgentRuntimeRegistry::default())
         .invoke_handler(tauri::generate_handler![
             greet,
-            agent_runtime::send_agent_prompt,
-            agent_runtime::start_agent_thread,
+            agent_runtime::prepare_agent_thread,
+            agent_runtime::start_agent_runtime,
             agent_runtime::stop_agent_runtime,
-            agent_runtime::stop_agent_thread,
             editor::editor_file_read,
             explorer::explorer_directory_children,
             explorer::explorer_tree,
