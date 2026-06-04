@@ -10,8 +10,4 @@ function prepareAgentThread(input: PrepareAgentThreadInput) {
   return invoke<AgentRuntimeConnection>("prepare_agent_thread", { input });
 }
 
-function stopAgentRuntime() {
-  return invoke<void>("stop_agent_runtime");
-}
-
-export { prepareAgentThread, startAgentRuntime, stopAgentRuntime };
+export { prepareAgentThread, startAgentRuntime };

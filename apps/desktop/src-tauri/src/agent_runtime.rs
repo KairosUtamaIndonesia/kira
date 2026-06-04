@@ -19,13 +19,28 @@ const AGENT_RUNTIME_HOST: &str = "127.0.0.1";
 
 #[derive(Default)]
 pub struct AgentRuntimeRegistry {
-    runtime: Mutex<Option<AppAgentRuntime>>,
+    runtime: Mutex<AgentRuntimeState>,
+}
+
+#[derive(Default)]
+enum AgentRuntimeState {
+    #[default]
+    NotStarted,
+    Running(Box<AppAgentRuntime>),
+    Failed {
+        reason: String,
+    },
 }
 
 struct AppAgentRuntime {
-    port: u16,
+    connection: RuntimeConnection,
+    _process: Child,
+}
+
+#[derive(Clone)]
+struct RuntimeConnection {
+    base_url: String,
     token: String,
-    process: Child,
 }
 
 #[derive(Debug, Deserialize)]
@@ -101,10 +116,10 @@ pub enum AgentRuntimeError {
     InvalidHealthResponse { port: u16, reason: String },
     #[error("Failed to register Agent Thread {thread_id} with agent runtime: {reason}")]
     RegisterAgentThread { thread_id: String, reason: String },
-    #[error("Agent runtime is not running")]
+    #[error("Agent runtime is not running. Start the app-scoped agent runtime before preparing an Agent Thread.")]
     NotRunning,
-    #[error("Failed to stop agent runtime: {0}")]
-    StopFailed(String),
+    #[error("Agent runtime startup failed: {reason}")]
+    RuntimeStartFailed { reason: String },
 }
 
 impl serde::Serialize for AgentRuntimeError {
@@ -125,10 +140,25 @@ pub async fn start_agent_runtime(
     registry: tauri::State<'_, AgentRuntimeRegistry>,
 ) -> Result<(), AgentRuntimeError> {
     let mut runtime_guard = registry.runtime.lock().await;
-    if runtime_guard.is_none() {
-        *runtime_guard = Some(start_app_runtime().await?);
+    match &*runtime_guard {
+        AgentRuntimeState::Running(_) => Ok(()),
+        AgentRuntimeState::Failed { reason } => Err(AgentRuntimeError::RuntimeStartFailed {
+            reason: reason.clone(),
+        }),
+        AgentRuntimeState::NotStarted => match start_app_runtime().await {
+            Ok(runtime) => {
+                *runtime_guard = AgentRuntimeState::Running(Box::new(runtime));
+                Ok(())
+            }
+            Err(error) => {
+                let reason = error.to_string();
+                *runtime_guard = AgentRuntimeState::Failed {
+                    reason: reason.clone(),
+                };
+                Err(AgentRuntimeError::RuntimeStartFailed { reason })
+            }
+        },
     }
-    Ok(())
 }
 
 #[tauri::command]
@@ -149,36 +179,15 @@ pub async fn prepare_agent_thread(
         load_agent_thread_project_context(&store, &input.project_id, &input.session_id).await?;
     validate_project_path(&context.project_path)?;
 
-    let runtime_guard = registry.runtime.lock().await;
-    let runtime = runtime_guard
-        .as_ref()
-        .ok_or(AgentRuntimeError::NotRunning)?;
-    register_agent_thread(runtime, &input.thread_id, &context).await?;
+    let connection = runtime_connection(&registry).await?;
+    register_agent_thread(&connection, &input.thread_id, &context).await?;
 
     Ok(AgentRuntimeConnection {
         project_id: context.project_id,
         session_id: context.session_id,
-        base_url: runtime_base_url(runtime),
-        token: runtime.token.clone(),
+        base_url: connection.base_url,
+        token: connection.token,
     })
-}
-
-#[tauri::command]
-#[allow(
-    clippy::needless_pass_by_value,
-    reason = "Tauri commands require State by value"
-)]
-pub async fn stop_agent_runtime(
-    registry: tauri::State<'_, AgentRuntimeRegistry>,
-) -> Result<(), AgentRuntimeError> {
-    let mut runtime = {
-        let mut runtime_guard = registry.runtime.lock().await;
-        runtime_guard.take().ok_or(AgentRuntimeError::NotRunning)?
-    };
-
-    stop_process(&mut runtime.process)
-        .await
-        .map_err(AgentRuntimeError::StopFailed)
 }
 
 async fn load_agent_thread_project_context(
@@ -205,14 +214,27 @@ async fn load_agent_thread_project_context(
     })
 }
 
+async fn runtime_connection(
+    registry: &tauri::State<'_, AgentRuntimeRegistry>,
+) -> Result<RuntimeConnection, AgentRuntimeError> {
+    let runtime_guard = registry.runtime.lock().await;
+    match &*runtime_guard {
+        AgentRuntimeState::Running(runtime) => Ok(runtime.connection.clone()),
+        AgentRuntimeState::Failed { reason } => Err(AgentRuntimeError::RuntimeStartFailed {
+            reason: reason.clone(),
+        }),
+        AgentRuntimeState::NotStarted => Err(AgentRuntimeError::NotRunning),
+    }
+}
+
 async fn register_agent_thread(
-    runtime: &AppAgentRuntime,
+    connection: &RuntimeConnection,
     thread_id: &str,
     context: &AgentThreadProjectContext,
 ) -> Result<(), AgentRuntimeError> {
     let response = reqwest::Client::new()
-        .post(format!("{}/app/agent-threads", runtime_base_url(runtime)))
-        .bearer_auth(&runtime.token)
+        .post(format!("{}/app/agent-threads", connection.base_url))
+        .bearer_auth(&connection.token)
         .json(&serde_json::json!({
             "projectId": context.project_id,
             "sessionId": context.session_id,
@@ -236,8 +258,8 @@ async fn register_agent_thread(
     Ok(())
 }
 
-fn runtime_base_url(runtime: &AppAgentRuntime) -> String {
-    format!("http://{AGENT_RUNTIME_HOST}:{}", runtime.port)
+fn runtime_base_url(port: u16) -> String {
+    format!("http://{AGENT_RUNTIME_HOST}:{port}")
 }
 
 async fn start_app_runtime() -> Result<AppAgentRuntime, AgentRuntimeError> {
@@ -288,9 +310,11 @@ async fn start_app_runtime() -> Result<AppAgentRuntime, AgentRuntimeError> {
     }
 
     Ok(AppAgentRuntime {
-        port,
-        token,
-        process,
+        connection: RuntimeConnection {
+            base_url: runtime_base_url(port),
+            token,
+        },
+        _process: process,
     })
 }
 
@@ -433,12 +457,4 @@ fn generate_runtime_token() -> String {
         token.push(char::from(HEX[usize::from(byte & 0x0f)]));
     }
     token
-}
-
-async fn stop_process(process: &mut Child) -> Result<(), String> {
-    match process.try_wait() {
-        Ok(Some(_status)) => Ok(()),
-        Ok(None) => process.kill().await.map_err(|error| error.to_string()),
-        Err(error) => Err(error.to_string()),
-    }
 }

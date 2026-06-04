@@ -46,7 +46,6 @@ pub fn run() -> tauri::Result<()> {
             greet,
             agent_runtime::prepare_agent_thread,
             agent_runtime::start_agent_runtime,
-            agent_runtime::stop_agent_runtime,
             editor::editor_file_read,
             explorer::explorer_directory_children,
             explorer::explorer_tree,

@@ -4,6 +4,7 @@ import type { CreatedProject, Project, WorkspacePanel } from "@/features/project
 import type { GitStatusEntry } from "@/features/source-control/types";
 
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { toast } from "@/components/ui/sonner";
 import { startAgentRuntime } from "@/features/agent-thread/api/agentRuntimeApi";
 import {
   openFileEditorPanel,
@@ -53,8 +54,8 @@ function AppShell() {
     async function startRuntime() {
       try {
         await startAgentRuntime();
-      } catch {
-        // Agent runtime startup is surfaced when an Agent Thread panel prepares a thread.
+      } catch (error) {
+        toast.error(`Agent runtime failed to start: ${errorMessageFromUnknown(error)}`);
       }
     }
 
