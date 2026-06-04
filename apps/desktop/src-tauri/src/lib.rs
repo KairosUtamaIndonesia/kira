@@ -7,6 +7,7 @@
 #![deny(clippy::unwrap_used)]
 #![warn(clippy::pedantic)]
 
+mod agent_runtime;
 mod editor;
 mod explorer;
 mod persistence;
@@ -40,8 +41,13 @@ pub fn run() -> tauri::Result<()> {
             Ok(())
         })
         .manage(terminal::TerminalRegistry::default())
+        .manage(agent_runtime::AgentRuntimeRegistry::default())
         .invoke_handler(tauri::generate_handler![
             greet,
+            agent_runtime::send_agent_prompt,
+            agent_runtime::start_agent_thread,
+            agent_runtime::stop_agent_runtime,
+            agent_runtime::stop_agent_thread,
             editor::editor_file_read,
             explorer::explorer_tree,
             persistence::persistence_store_health,
