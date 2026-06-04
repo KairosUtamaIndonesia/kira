@@ -50,11 +50,35 @@ function ExplorerInspector({ folderPath, onOpenFile }: ExplorerInspectorProps) {
     return <ExplorerMessage message="Select a Project to view Explorer files." />;
   }
 
-  if (state.status === "idle" || state.status === "loading") {
+  if (state.status === "idle") {
+    return <ExplorerMessage message="Loading Explorer…" />;
+  }
+
+  if (state.status === "loading") {
+    if (state.previousResult !== undefined) {
+      return (
+        <ExplorerTreeView
+          entries={state.previousResult.entries}
+          onOpenFile={onOpenFile}
+          onRefresh={refresh}
+        />
+      );
+    }
+
     return <ExplorerMessage message="Loading Explorer…" />;
   }
 
   if (state.status === "error") {
+    if (state.previousResult !== undefined) {
+      return (
+        <ExplorerTreeView
+          entries={state.previousResult.entries}
+          onOpenFile={onOpenFile}
+          onRefresh={refresh}
+        />
+      );
+    }
+
     return <ExplorerMessage role="alert" message={state.message} />;
   }
 

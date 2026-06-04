@@ -1,66 +1,35 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
 
-import type { ExplorerTreeResult } from "../types";
-
-import { getExplorerTree } from "../api/explorerApi";
-
-type ExplorerTreeState =
-  | { status: "idle" }
-  | { status: "loading" }
-  | { status: "ready"; result: ExplorerTreeResult }
-  | { status: "error"; message: string };
+import { idleExplorerTreeState, useExplorerStore } from "../store/explorerStore";
 
 function useExplorerTree(folderPath: string | undefined) {
-  const [state, setState] = useState<ExplorerTreeState>({ status: "idle" });
-  const [refreshSequence, setRefreshSequence] = useState(0);
+  const state = useExplorerStore((storeState) => {
+    if (folderPath === undefined) {
+      return idleExplorerTreeState;
+    }
 
-  const refresh = useCallback(() => {
-    setRefreshSequence((currentSequence) => currentSequence + 1);
-  }, []);
+    return storeState.resources[folderPath] ?? idleExplorerTreeState;
+  });
+  const load = useExplorerStore((storeState) => storeState.load);
+  const refreshResource = useExplorerStore((storeState) => storeState.refresh);
 
   useEffect(() => {
     if (folderPath === undefined) {
-      setState({ status: "idle" });
       return;
     }
 
-    const projectFolderPath = folderPath;
-    let ignoreResult = false;
-    setState({ status: "loading" });
+    void load(folderPath);
+  }, [folderPath, load]);
 
-    async function loadTree() {
-      try {
-        const result = await getExplorerTree({ folderPath: projectFolderPath });
-        if (!ignoreResult) {
-          setState({ status: "ready", result });
-        }
-      } catch (error) {
-        if (!ignoreResult) {
-          setState({ status: "error", message: errorMessageFromUnknown(error) });
-        }
-      }
+  const refresh = useCallback(() => {
+    if (folderPath === undefined) {
+      return;
     }
 
-    void loadTree();
-
-    return () => {
-      ignoreResult = true;
-    };
-  }, [folderPath, refreshSequence]);
+    void refreshResource(folderPath);
+  }, [folderPath, refreshResource]);
 
   return { state, refresh };
-}
-
-function errorMessageFromUnknown(error: unknown) {
-  if (typeof error === "string") {
-    return error;
-  }
-
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return "Failed to load Explorer.";
 }
 
 export { useExplorerTree };
