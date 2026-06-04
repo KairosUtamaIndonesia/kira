@@ -1,14 +1,12 @@
-import { preparePresortedFileTreeInput } from "@pierre/trees";
+import { prepareFileTreeInput } from "@pierre/trees";
 import {
   FileTree,
   useFileTree,
   useFileTreeSearch,
   useFileTreeSelection,
 } from "@pierre/trees/react";
-import { File, RefreshCw, Search } from "lucide-react";
-import { useMemo, type CSSProperties } from "react";
-
-type FileTreeThemeStyle = CSSProperties & Record<`--${string}`, string>;
+import { ChevronsUp, File, RefreshCw, Search } from "lucide-react";
+import { useEffect, useMemo, type CSSProperties } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +15,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import type { ExplorerPathMetadata } from "../types";
 
 import { useExplorerTree } from "../hooks/useExplorerTree";
+
+type FileTreeThemeStyle = CSSProperties & Record<`--${string}`, string>;
 
 const fileTreeThemeStyle = {
   "--trees-bg-override": "var(--card)",
@@ -71,15 +71,22 @@ type ExplorerTreeViewProps = {
 
 function ExplorerTreeView({ pathMap, onOpenFile, onRefresh }: ExplorerTreeViewProps) {
   const sortedPaths = useMemo(() => sortedPathCopy(Object.keys(pathMap)), [pathMap]);
-  const preparedInput = useMemo(() => preparePresortedFileTreeInput(sortedPaths), [sortedPaths]);
+  const preparedInput = useMemo(
+    () => prepareFileTreeInput(sortedPaths, { sort: explorerPathSort }),
+    [sortedPaths],
+  );
   const { model } = useFileTree({
     preparedInput,
     flattenEmptyDirectories: true,
-    initialExpansion: 1,
+    initialExpansion: "closed",
     search: true,
     fileTreeSearchMode: "hide-non-matches",
     density: "compact",
   });
+  useEffect(() => {
+    model.resetPaths(sortedPaths, { preparedInput, initialExpandedPaths: [] });
+  }, [model, preparedInput, sortedPaths]);
+
   const search = useFileTreeSearch(model);
   const selectedPaths = useFileTreeSelection(model);
   const selectedPath = selectedPaths.length === 1 ? selectedPaths[0] : undefined;
@@ -91,6 +98,22 @@ function ExplorerTreeView({ pathMap, onOpenFile, onRefresh }: ExplorerTreeViewPr
         <div className="flex items-center gap-2 text-sm">
           <File className="size-4 text-muted-foreground" aria-hidden="true" />
           <span className="min-w-0 flex-1 truncate font-medium">Explorer</span>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Collapse all Explorer folders"
+                  onClick={() => model.resetPaths(sortedPaths, { preparedInput, initialExpandedPaths: [] })}
+                >
+                  <ChevronsUp aria-hidden="true" />
+                </Button>
+              }
+            />
+            <TooltipContent>Collapse all</TooltipContent>
+          </Tooltip>
           <Tooltip>
             <TooltipTrigger
               render={
@@ -149,6 +172,17 @@ function sortedPathCopy(paths: string[]) {
   // oxlint-disable-next-line unicorn/no-array-sort -- Sorting a local copy is non-mutating for callers and avoids O(n²) insertion sort on large trees.
   sortedPaths.sort(comparePaths);
   return sortedPaths;
+}
+
+function explorerPathSort(
+  left: { basename: string; isDirectory: boolean },
+  right: { basename: string; isDirectory: boolean },
+) {
+  if (left.isDirectory !== right.isDirectory) {
+    return left.isDirectory ? -1 : 1;
+  }
+
+  return comparePaths(left.basename, right.basename);
 }
 
 function comparePaths(left: string, right: string) {
