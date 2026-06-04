@@ -3,10 +3,9 @@ import {
   FileTree,
   useFileTree,
   useFileTreeSearch,
-  useFileTreeSelection,
 } from "@pierre/trees/react";
 import { ChevronsUp, File, RefreshCw, Search } from "lucide-react";
-import { useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useMemo, useState, type CSSProperties } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -129,6 +128,21 @@ function ExplorerTreeModel({
   onRefresh,
 }: ExplorerTreeModelProps) {
   const preparedInput = useMemo(() => preparePresortedFileTreeInput(treePaths), [treePaths]);
+  const handleSelectionChange = useCallback(
+    (selectedPaths: readonly string[]) => {
+      if (selectedPaths.length !== 1) {
+        return;
+      }
+
+      const selectedPath = selectedPaths[0];
+      if (selectedPath === undefined || !filePaths.has(selectedPath)) {
+        return;
+      }
+
+      void onOpenFile(selectedPath);
+    },
+    [filePaths, onOpenFile],
+  );
   const { model } = useFileTree({
     preparedInput,
     flattenEmptyDirectories: true,
@@ -136,11 +150,9 @@ function ExplorerTreeModel({
     search: true,
     fileTreeSearchMode: "hide-non-matches",
     density: "compact",
+    onSelectionChange: handleSelectionChange,
   });
   const search = useFileTreeSearch(model);
-  const selectedPaths = useFileTreeSelection(model);
-  const selectedPath = selectedPaths.length === 1 ? selectedPaths[0] : undefined;
-  const canOpenSelected = selectedPath !== undefined && filePaths.has(selectedPath);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -191,20 +203,6 @@ function ExplorerTreeModel({
             onChange={(event) => search.setValue(event.target.value)}
           />
         </div>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          className="w-full"
-          disabled={!canOpenSelected}
-          onClick={() => {
-            if (selectedPath !== undefined && filePaths.has(selectedPath)) {
-              void onOpenFile(selectedPath);
-            }
-          }}
-        >
-          Open selected file
-        </Button>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
         {treePaths.length === 0 ? (
