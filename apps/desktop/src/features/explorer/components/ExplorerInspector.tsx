@@ -76,7 +76,9 @@ function ExplorerTreeView({ pathMap, onOpenFile, onRefresh }: ExplorerTreeViewPr
     [sortedPaths],
   );
   const { model } = useFileTree({
+    paths: sortedPaths,
     preparedInput,
+    sort: explorerPathSort,
     flattenEmptyDirectories: true,
     initialExpansion: "closed",
     search: true,
@@ -84,8 +86,8 @@ function ExplorerTreeView({ pathMap, onOpenFile, onRefresh }: ExplorerTreeViewPr
     density: "compact",
   });
   useEffect(() => {
-    model.resetPaths(preparedInput.paths, { preparedInput, initialExpandedPaths: [] });
-  }, [model, preparedInput]);
+    model.resetPaths(sortedPaths, { preparedInput, initialExpandedPaths: [] });
+  }, [model, preparedInput, sortedPaths]);
 
   const search = useFileTreeSearch(model);
   const selectedPaths = useFileTreeSelection(model);
@@ -107,7 +109,7 @@ function ExplorerTreeView({ pathMap, onOpenFile, onRefresh }: ExplorerTreeViewPr
                   size="icon-sm"
                   aria-label="Collapse all Explorer folders"
                   onClick={() =>
-                    model.resetPaths(preparedInput.paths, { preparedInput, initialExpandedPaths: [] })
+                    model.resetPaths(sortedPaths, { preparedInput, initialExpandedPaths: [] })
                   }
                 >
                   <ChevronsUp aria-hidden="true" />
