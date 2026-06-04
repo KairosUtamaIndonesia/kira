@@ -1,9 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 
-import type { ExplorerTreeInput, ExplorerTreeResult } from "../types";
+import type { ExplorerDirectoryChildrenInput, ExplorerDirectoryChildrenResult } from "../types";
 
-function getExplorerTree(input: ExplorerTreeInput) {
-  return invoke<ExplorerTreeResult>("explorer_tree", { input });
+function getExplorerDirectoryChildren(input: ExplorerDirectoryChildrenInput) {
+  return invoke<ExplorerDirectoryChildrenResult>("explorer_directory_children", { input });
 }
 
-export { getExplorerTree };
+export { getExplorerDirectoryChildren };

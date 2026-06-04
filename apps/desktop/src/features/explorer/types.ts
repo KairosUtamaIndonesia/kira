@@ -1,5 +1,6 @@
-type ExplorerTreeInput = {
+type ExplorerDirectoryChildrenInput = {
   folderPath: string;
+  directoryPath: string;
 };
 
 type ExplorerEntryKind = "directory" | "file";
@@ -15,4 +16,15 @@ type ExplorerTreeResult = {
   entries: ExplorerEntry[];
 };
 
-export type { ExplorerEntry, ExplorerEntryKind, ExplorerTreeInput, ExplorerTreeResult };
+type ExplorerDirectoryChildrenResult = {
+  directoryPath: string;
+  entries: ExplorerEntry[];
+};
+
+export type {
+  ExplorerDirectoryChildrenInput,
+  ExplorerDirectoryChildrenResult,
+  ExplorerEntry,
+  ExplorerEntryKind,
+  ExplorerTreeResult,
+};

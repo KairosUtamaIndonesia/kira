@@ -11,6 +11,7 @@ function useExplorerTree(folderPath: string | undefined) {
     return storeState.resources[folderPath] ?? idleExplorerTreeState;
   });
   const load = useExplorerStore((storeState) => storeState.load);
+  const loadDirectoryResource = useExplorerStore((storeState) => storeState.loadDirectory);
   const refreshResource = useExplorerStore((storeState) => storeState.refresh);
 
   useEffect(() => {
@@ -21,6 +22,17 @@ function useExplorerTree(folderPath: string | undefined) {
     void load(folderPath);
   }, [folderPath, load]);
 
+  const loadDirectory = useCallback(
+    (directoryPath: string) => {
+      if (folderPath === undefined) {
+        return;
+      }
+
+      void loadDirectoryResource(folderPath, directoryPath);
+    },
+    [folderPath, loadDirectoryResource],
+  );
+
   const refresh = useCallback(() => {
     if (folderPath === undefined) {
       return;
@@ -29,7 +41,7 @@ function useExplorerTree(folderPath: string | undefined) {
     void refreshResource(folderPath);
   }, [folderPath, refreshResource]);
 
-  return { state, refresh };
+  return { state, loadDirectory, refresh };
 }
 
 export { useExplorerTree };

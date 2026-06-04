@@ -1,16 +1,13 @@
 import { preparePresortedFileTreeInput } from "@pierre/trees";
-import {
-  FileTree,
-  useFileTree,
-  useFileTreeSearch,
-} from "@pierre/trees/react";
+import { FileTree, useFileTree, useFileTreeSearch } from "@pierre/trees/react";
 import { ChevronsUp, File, RefreshCw, Search } from "lucide-react";
-import { useCallback, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
+import type { ExplorerDirectoryError } from "../store/explorerStore";
 import type { ExplorerEntry } from "../types";
 
 import { useExplorerTree } from "../hooks/useExplorerTree";
@@ -43,7 +40,7 @@ type ExplorerInspectorProps = {
 };
 
 function ExplorerInspector({ folderPath, onOpenFile }: ExplorerInspectorProps) {
-  const { state, refresh } = useExplorerTree(folderPath);
+  const { state, loadDirectory, refresh } = useExplorerTree(folderPath);
 
   if (folderPath === undefined) {
     return <ExplorerMessage message="Select a Project to view Explorer files." />;
@@ -58,6 +55,7 @@ function ExplorerInspector({ folderPath, onOpenFile }: ExplorerInspectorProps) {
       return (
         <ExplorerTreeView
           entries={state.previousResult.entries}
+          onLoadDirectory={loadDirectory}
           onOpenFile={onOpenFile}
           onRefresh={refresh}
         />
@@ -72,6 +70,7 @@ function ExplorerInspector({ folderPath, onOpenFile }: ExplorerInspectorProps) {
       return (
         <ExplorerTreeView
           entries={state.previousResult.entries}
+          onLoadDirectory={loadDirectory}
           onOpenFile={onOpenFile}
           onRefresh={refresh}
         />
@@ -82,30 +81,51 @@ function ExplorerInspector({ folderPath, onOpenFile }: ExplorerInspectorProps) {
   }
 
   return (
-    <ExplorerTreeView entries={state.result.entries} onOpenFile={onOpenFile} onRefresh={refresh} />
+    <ExplorerTreeView
+      directoryError={state.directoryError}
+      entries={state.result.entries}
+      onLoadDirectory={loadDirectory}
+      onOpenFile={onOpenFile}
+      onRefresh={refresh}
+    />
   );
 }
 
 type ExplorerTreeViewProps = {
+  directoryError?: ExplorerDirectoryError | undefined;
   entries: ExplorerEntry[];
+  onLoadDirectory: (directoryPath: string) => void;
   onOpenFile: (filePath: string) => Promise<void>;
   onRefresh: () => void;
 };
 
-function ExplorerTreeView({ entries, onOpenFile, onRefresh }: ExplorerTreeViewProps) {
+function ExplorerTreeView({
+  directoryError,
+  entries,
+  onLoadDirectory,
+  onOpenFile,
+  onRefresh,
+}: ExplorerTreeViewProps) {
   const [collapseSequence, setCollapseSequence] = useState(0);
   const treePaths = useMemo(() => entries.map((entry) => entry.path), [entries]);
   const filePaths = useMemo(
     () => new Set(entries.filter((entry) => entry.kind === "file").map((entry) => entry.path)),
     [entries],
   );
+  const directoryPaths = useMemo(
+    () => new Set(entries.filter((entry) => entry.kind === "directory").map((entry) => entry.path)),
+    [entries],
+  );
 
   return (
     <ExplorerTreeModel
       key={collapseSequence}
-      treePaths={treePaths}
+      directoryError={directoryError}
+      directoryPaths={directoryPaths}
       filePaths={filePaths}
+      treePaths={treePaths}
       onCollapseAll={() => setCollapseSequence((currentSequence) => currentSequence + 1)}
+      onLoadDirectory={onLoadDirectory}
       onOpenFile={onOpenFile}
       onRefresh={onRefresh}
     />
@@ -113,20 +133,28 @@ function ExplorerTreeView({ entries, onOpenFile, onRefresh }: ExplorerTreeViewPr
 }
 
 type ExplorerTreeModelProps = {
+  directoryError?: ExplorerDirectoryError | undefined;
+  directoryPaths: ReadonlySet<string>;
   treePaths: string[];
   filePaths: ReadonlySet<string>;
   onCollapseAll: () => void;
+  onLoadDirectory: (directoryPath: string) => void;
   onOpenFile: (filePath: string) => Promise<void>;
   onRefresh: () => void;
 };
 
 function ExplorerTreeModel({
+  directoryError,
+  directoryPaths,
   treePaths,
   filePaths,
   onCollapseAll,
+  onLoadDirectory,
   onOpenFile,
   onRefresh,
 }: ExplorerTreeModelProps) {
+  const expandedPathsRef = useRef<readonly string[]>([]);
+  const didInitializePathsRef = useRef(false);
   const preparedInput = useMemo(() => preparePresortedFileTreeInput(treePaths), [treePaths]);
   const handleSelectionChange = useCallback(
     (selectedPaths: readonly string[]) => {
@@ -135,13 +163,21 @@ function ExplorerTreeModel({
       }
 
       const selectedPath = selectedPaths[0];
-      if (selectedPath === undefined || !filePaths.has(selectedPath)) {
+      if (selectedPath === undefined) {
         return;
       }
 
-      void onOpenFile(selectedPath);
+      if (filePaths.has(selectedPath)) {
+        void onOpenFile(selectedPath);
+        return;
+      }
+
+      if (directoryPaths.has(selectedPath)) {
+        expandedPathsRef.current = includeExpandedPath(expandedPathsRef.current, selectedPath);
+        onLoadDirectory(selectedPath);
+      }
     },
-    [filePaths, onOpenFile],
+    [directoryPaths, filePaths, onLoadDirectory, onOpenFile],
   );
   const { model } = useFileTree({
     preparedInput,
@@ -153,6 +189,31 @@ function ExplorerTreeModel({
     onSelectionChange: handleSelectionChange,
   });
   const search = useFileTreeSearch(model);
+  const syncExpandedDirectories = useCallback(() => {
+    const expandedPaths = expandedDirectoryPathsFromModel(model, directoryPaths);
+    expandedPathsRef.current = expandedPaths;
+
+    for (const expandedPath of expandedPaths) {
+      onLoadDirectory(expandedPath);
+    }
+  }, [directoryPaths, model, onLoadDirectory]);
+
+  useEffect(() => {
+    syncExpandedDirectories();
+    return model.subscribe(syncExpandedDirectories);
+  }, [model, syncExpandedDirectories]);
+
+  useEffect(() => {
+    if (!didInitializePathsRef.current) {
+      didInitializePathsRef.current = true;
+      return;
+    }
+
+    model.resetPaths(treePaths, {
+      preparedInput,
+      initialExpandedPaths: currentExpandedPathsForTree(expandedPathsRef.current, directoryPaths),
+    });
+  }, [directoryPaths, model, preparedInput, treePaths]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -197,12 +258,17 @@ function ExplorerTreeModel({
           <Search className="size-3.5 text-muted-foreground" aria-hidden="true" />
           <Input
             value={search.value}
-            placeholder="Search files"
+            placeholder="Search loaded files"
             className="h-8"
             onFocus={() => search.open(search.value)}
             onChange={(event) => search.setValue(event.target.value)}
           />
         </div>
+        {directoryError !== undefined ? (
+          <ExplorerDirectoryErrorMessage error={directoryError} />
+        ) : (
+          false
+        )}
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
         {treePaths.length === 0 ? (
@@ -212,6 +278,44 @@ function ExplorerTreeModel({
         )}
       </div>
     </div>
+  );
+}
+
+function expandedDirectoryPathsFromModel(
+  model: ReturnType<typeof useFileTree>["model"],
+  directoryPaths: ReadonlySet<string>,
+) {
+  const expandedPaths: string[] = [];
+  for (const directoryPath of directoryPaths) {
+    const item = model.getItem(directoryPath);
+    if (item !== null && "isExpanded" in item && item.isExpanded()) {
+      expandedPaths.push(directoryPath);
+    }
+  }
+
+  return expandedPaths;
+}
+
+function includeExpandedPath(expandedPaths: readonly string[], selectedPath: string) {
+  if (expandedPaths.includes(selectedPath)) {
+    return expandedPaths;
+  }
+
+  return [...expandedPaths, selectedPath];
+}
+
+function currentExpandedPathsForTree(
+  expandedPaths: readonly string[],
+  directoryPaths: ReadonlySet<string>,
+) {
+  return expandedPaths.filter((expandedPath) => directoryPaths.has(expandedPath));
+}
+
+function ExplorerDirectoryErrorMessage({ error }: { error: ExplorerDirectoryError }) {
+  return (
+    <p role="alert" className="text-xs text-destructive">
+      Failed to load {error.directoryPath}: {error.message}
+    </p>
   );
 }
 

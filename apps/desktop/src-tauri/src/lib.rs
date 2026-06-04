@@ -49,6 +49,7 @@ pub fn run() -> tauri::Result<()> {
             agent_runtime::stop_agent_runtime,
             agent_runtime::stop_agent_thread,
             editor::editor_file_read,
+            explorer::explorer_directory_children,
             explorer::explorer_tree,
             persistence::persistence_store_health,
             projects::project_create,
