@@ -83,7 +83,8 @@ function ActivityBlock({ block, isStreaming }: { block: AgentThreadActivityBlock
         duration={block.tool.duration}
         changedFiles={block.tool.changedFiles}
         errorMessage={block.tool.errorMessage}
-        details={block.tool.details}
+        input={block.tool.input}
+        output={block.tool.output}
       />
     );
   }

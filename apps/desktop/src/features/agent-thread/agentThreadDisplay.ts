@@ -33,6 +33,8 @@ type AgentThreadToolCallDisplay = {
   duration: string | undefined;
   changedFiles: string[];
   errorMessage: string | undefined;
+  input: unknown;
+  output: unknown;
   details: unknown;
 };
 
@@ -281,6 +283,8 @@ function upsertTool(
     duration: durationMs === undefined ? existingDuration : formatDuration(durationMs),
     changedFiles: changedFilesFromUnknown(result) ?? existingChangedFiles,
     errorMessage: errorMessageFromUnknown(result) ?? firstString(value, ["error"]) ?? existingErrorMessage,
+    input: args,
+    output: result,
     details,
   };
 

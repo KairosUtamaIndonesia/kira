@@ -13,17 +13,19 @@ type AgentThreadToolCallProps = {
   duration: string | undefined;
   changedFiles: string[];
   errorMessage: string | undefined;
-  details: unknown;
+  input: unknown;
+  output: unknown;
 };
 
 function AgentThreadToolCall({
   changedFiles,
   command,
   cwd,
-  details,
   duration,
   errorMessage,
   exitCode,
+  input,
+  output,
   status,
   title,
 }: AgentThreadToolCallProps) {
@@ -62,16 +64,27 @@ function AgentThreadToolCall({
             </ul>
           </div>
         )}
-        <details className="group">
-          <summary className="cursor-pointer text-muted-foreground group-open:mb-2">
-            Raw details
-          </summary>
-          <pre className="max-h-72 overflow-auto rounded-md border border-border bg-editor-surface p-2 font-mono text-xs text-foreground">
-            {stringifyUnknown(details)}
-          </pre>
-        </details>
+        <ToolPayload label="Input" value={input} />
+        <ToolPayload label="Output" value={output} />
       </div>
     </article>
+  );
+}
+
+function ToolPayload({ label, value }: { label: string; value: unknown }) {
+  if (value === undefined) {
+    return;
+  }
+
+  return (
+    <details className="group rounded-md border border-border p-2">
+      <summary className="cursor-pointer font-medium text-muted-foreground group-open:mb-2">
+        {label}
+      </summary>
+      <pre className="max-h-72 overflow-auto rounded-md bg-editor-surface p-2 font-mono text-xs text-foreground">
+        {stringifyUnknown(value)}
+      </pre>
+    </details>
   );
 }
 
