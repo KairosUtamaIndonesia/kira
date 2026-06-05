@@ -33,8 +33,8 @@ export function readPersistenceBridgeToken(): string {
   return readRequiredEnv("KIRA_AGENT_PERSISTENCE_BRIDGE_TOKEN");
 }
 
-export const KIRA_AGENT_MODEL = "cx/gpt-5.5";
-export const KIRA_AGENT_PROVIDER_ID = "cx";
+export const KIRA_AGENT_MODEL = "gh/gpt-5.5";
+export const KIRA_AGENT_PROVIDER_ID = "gh";
 export const KIRA_AGENT_PROVIDER_BASE_URL = "https://router.kira.internal.kairos-it.com";
 
 export function readAgentProviderApiKey(): string | undefined {
