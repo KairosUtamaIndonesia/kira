@@ -8,9 +8,16 @@ import { readEditorFile } from "../api/editorApi";
 import { languageForPath } from "../language";
 import { MonacoFileEditor } from "./MonacoFileEditor";
 
+type FileEditorFocusRequest = {
+  sequence: number;
+  lineNumber: number;
+  column: number;
+};
+
 type FileEditorPanelParams = {
   folderPath: string;
   filePath: string;
+  focusRequest?: FileEditorFocusRequest | undefined;
 };
 
 type FileLoadState =
@@ -65,6 +72,7 @@ function FileEditorPanel({ params, api }: IDockviewPanelProps<FileEditorPanelPar
       <div className="min-h-0 flex-1">
         <MonacoFileEditor
           content={state.result.content}
+          focusRequest={params.focusRequest}
           language={languageForPath(params.filePath)}
           modelPath={`file-editor:${api.id}:${params.filePath}`}
         />

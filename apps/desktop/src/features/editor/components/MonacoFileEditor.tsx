@@ -5,13 +5,21 @@ import { useCallback, useEffect, useState } from "react";
 
 import { currentMonacoTheme, setupShiki } from "./monacoShiki";
 
+type MonacoFileEditorFocusRequest = {
+  sequence: number;
+  lineNumber: number;
+  column: number;
+};
+
 type MonacoFileEditorProps = {
   content: string;
+  focusRequest?: MonacoFileEditorFocusRequest | undefined;
   language: string;
   modelPath: string;
 };
 
-function MonacoFileEditor({ content, language, modelPath }: MonacoFileEditorProps) {
+function MonacoFileEditor({ content, focusRequest, language, modelPath }: MonacoFileEditorProps) {
+  const [editorInstance, setEditorInstance] = useState<Monaco.editor.IStandaloneCodeEditor>();
   const [monacoInstance, setMonacoInstance] = useState<typeof Monaco>();
   const [theme, setTheme] = useState(currentMonacoTheme());
 
@@ -29,7 +37,16 @@ function MonacoFileEditor({ content, language, modelPath }: MonacoFileEditorProp
     monacoInstance.editor.setTheme(theme);
   }, [monacoInstance, theme]);
 
+  useEffect(() => {
+    if (editorInstance === undefined || focusRequest === undefined) {
+      return;
+    }
+
+    focusEditorAtRequest(editorInstance, focusRequest);
+  }, [editorInstance, focusRequest]);
+
   const handleMount: OnMount = useCallback((editor, monaco) => {
+    setEditorInstance(editor);
     setMonacoInstance(monaco);
 
     async function configureHighlighting() {
@@ -61,6 +78,20 @@ function MonacoFileEditor({ content, language, modelPath }: MonacoFileEditorProp
       }}
     />
   );
+}
+
+function focusEditorAtRequest(
+  editor: Monaco.editor.IStandaloneCodeEditor,
+  focusRequest: MonacoFileEditorFocusRequest,
+) {
+  const position = {
+    lineNumber: focusRequest.lineNumber,
+    column: focusRequest.column,
+  };
+
+  editor.setPosition(position);
+  editor.revealPositionInCenter(position, 0);
+  editor.focus();
 }
 
 export { MonacoFileEditor };

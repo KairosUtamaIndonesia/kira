@@ -12,6 +12,7 @@ mod editor;
 mod explorer;
 mod persistence;
 mod projects;
+mod search;
 mod settings;
 mod source_control;
 mod terminal;
@@ -62,6 +63,7 @@ pub fn run() -> tauri::Result<()> {
             projects::project_remove,
             projects::project_rename,
             projects::session_layout_update,
+            search::project_search,
             terminal::terminal_attach,
             terminal::terminal_detach,
             terminal::terminal_kill,
