@@ -67,10 +67,11 @@ function removeAllowedToolsField(frontmatter: string) {
       continue;
     }
 
-    const fieldIndent = allowedToolsMatch[1]?.length;
-    if (fieldIndent === undefined) {
+    const fieldIndentMatch = allowedToolsMatch[1];
+    if (fieldIndentMatch === undefined) {
       throw new Error("allowed-tools frontmatter indentation was not captured.");
     }
+    const fieldIndent = fieldIndentMatch.length;
 
     index = skipIndentedYamlBlock(lines, index, fieldIndent);
   }

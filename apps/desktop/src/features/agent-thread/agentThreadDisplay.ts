@@ -9,192 +9,240 @@ type AgentThreadTranscriptItem =
       text: string;
     }
   | {
-      type: "assistant-message";
+      type: "assistant-activity";
       id: string;
       createdAt: string;
       requestId: string;
       markdown: string;
+      thinking: string;
+      tools: AgentThreadToolCallDisplay[];
+      errors: AgentThreadErrorDisplay[];
       isStreaming: boolean;
-      details: unknown;
-    }
-  | {
-      type: "tool-call";
-      id: string;
-      createdAt: string;
-      requestId: string;
-      title: string;
-      status: ToolCallStatus | undefined;
-      command: string | undefined;
-      cwd: string | undefined;
-      exitCode: number | undefined;
-      duration: string | undefined;
-      changedFiles: string[];
-      errorMessage: string | undefined;
-      details: unknown;
-    }
-  | {
-      type: "event";
-      id: string;
-      createdAt: string;
-      requestId: string;
-      label: string;
-      details: unknown;
-    }
-  | {
-      type: "error";
-      id: string;
-      createdAt: string;
-      requestId: string;
-      message: string;
-      details: unknown;
     };
+
+type AgentThreadToolCallDisplay = {
+  id: string;
+  title: string;
+  status: ToolCallStatus | undefined;
+  command: string | undefined;
+  cwd: string | undefined;
+  exitCode: number | undefined;
+  duration: string | undefined;
+  changedFiles: string[];
+  errorMessage: string | undefined;
+  details: unknown;
+};
+
+type AgentThreadErrorDisplay = {
+  id: string;
+  message: string;
+  details: unknown;
+};
 
 type ToolCallStatus = "queued" | "running" | "succeeded" | "failed" | "canceled";
 
 type ObjectRecord = Record<string, unknown>;
 
+type RequestActivity = {
+  id: string;
+  createdAt: string;
+  requestId: string;
+  markdownParts: string[];
+  thinkingParts: string[];
+  tools: Map<string, AgentThreadToolCallDisplay>;
+  errors: AgentThreadErrorDisplay[];
+  sawResult: boolean;
+};
+
 function buildAgentThreadTranscript(
   messages: AgentThreadMessageRecord[],
   runtimeIsSending: boolean,
 ): AgentThreadTranscriptItem[] {
-  const lastResultIndex = findLastResultIndex(messages);
+  const items: Array<AgentThreadTranscriptItem | RequestActivity> = [];
+  const activityByRequest = new Map<string, RequestActivity>();
+  const lastMessage = messages[messages.length - 1];
+  const lastRequestId = lastMessage === undefined ? undefined : lastMessage.requestId;
 
-  return messages.map((message, index) => {
+  for (const message of messages) {
     if (message.kind === "prompt") {
-      return {
+      items.push({
         type: "user-message",
         id: message.id,
         createdAt: message.createdAt,
         requestId: message.requestId,
         text: textFromUnknown(message.message),
-      };
+      });
+      continue;
+    }
+
+    const activity = ensureActivity(activityByRequest, items, message);
+
+    if (message.kind === "event") {
+      applyEventToActivity(activity, message);
+      continue;
     }
 
     if (message.kind === "result") {
-      const toolCall = toolCallFromMessage(message);
-      if (toolCall !== undefined) {
-        return toolCall;
-      }
-
-      const error = errorFromMessage(message);
-      if (error !== undefined) {
-        return error;
-      }
-
-      return {
-        type: "assistant-message",
-        id: message.id,
-        createdAt: message.createdAt,
-        requestId: message.requestId,
-        markdown: assistantMarkdownFromUnknown(message.message),
-        isStreaming: runtimeIsSending && index === lastResultIndex,
-        details: message.message,
-      };
+      activity.sawResult = true;
+      applyResultToActivity(activity, message);
+      continue;
     }
 
-    if (message.kind === "event") {
-      const toolCall = toolCallFromMessage(message);
-      if (toolCall !== undefined) {
-        return toolCall;
-      }
+    exhaustiveMessageKind(message.kind);
+  }
 
-      const error = errorFromMessage(message);
-      if (error !== undefined) {
-        return error;
-      }
-
-      return {
-        type: "event",
-        id: message.id,
-        createdAt: message.createdAt,
-        requestId: message.requestId,
-        label: eventLabelFromUnknown(message.message),
-        details: message.message,
-      };
+  return items.map((item) => {
+    if ("type" in item) {
+      return item;
     }
 
-    return exhaustiveMessageKind(message.kind);
+    const isStreaming = runtimeIsSending && item.requestId === lastRequestId;
+    return activityToTranscriptItem(item, isStreaming);
   });
 }
 
-function findLastResultIndex(messages: AgentThreadMessageRecord[]) {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (message !== undefined && message.kind === "result") {
-      return index;
-    }
-  }
-
-  return -1;
-}
-
-function toolCallFromMessage(
+function ensureActivity(
+  activityByRequest: Map<string, RequestActivity>,
+  items: Array<AgentThreadTranscriptItem | RequestActivity>,
   message: AgentThreadMessageRecord,
-): AgentThreadTranscriptItem | undefined {
-  const value = message.message;
-  if (!isObjectRecord(value) || !isToolLikeRecord(value)) {
-    return undefined;
+) {
+  const existing = activityByRequest.get(message.requestId);
+  if (existing !== undefined) {
+    return existing;
   }
 
-  const status = toolStatusFromUnknown(firstPresent(value, ["status", "state", "phase"]));
-  return {
-    type: "tool-call",
-    id: message.id,
+  const activity: RequestActivity = {
+    id: `${message.requestId}:assistant`,
     createdAt: message.createdAt,
     requestId: message.requestId,
-    title: firstString(value, ["toolName", "tool", "name", "command", "type"]) ?? "Tool call",
-    status,
-    command: firstString(value, ["command", "cmd", "input", "action"]),
-    cwd: firstString(value, ["cwd", "workingDirectory", "directory"]),
-    exitCode: firstNumber(value, ["exitCode", "code"]),
-    duration: firstString(value, ["duration", "elapsed", "elapsedTime"]),
-    changedFiles: stringArrayFromUnknown(
-      firstPresent(value, ["changedFiles", "files", "modifiedFiles"]),
-    ),
-    errorMessage: firstString(value, ["error", "errorMessage", "message"]),
-    details: value,
+    markdownParts: [],
+    thinkingParts: [],
+    tools: new Map(),
+    errors: [],
+    sawResult: false,
+  };
+  activityByRequest.set(message.requestId, activity);
+  items.push(activity);
+  return activity;
+}
+
+function activityToTranscriptItem(
+  activity: RequestActivity,
+  isStreaming: boolean,
+): AgentThreadTranscriptItem {
+  return {
+    type: "assistant-activity",
+    id: activity.id,
+    createdAt: activity.createdAt,
+    requestId: activity.requestId,
+    markdown: activity.markdownParts.join(""),
+    thinking: activity.thinkingParts.join(""),
+    tools: [...activity.tools.values()],
+    errors: activity.errors,
+    isStreaming,
   };
 }
 
-function isToolLikeRecord(value: ObjectRecord) {
-  return [
-    "toolName",
-    "tool",
-    "toolCallId",
-    "command",
-    "cmd",
-    "cwd",
-    "workingDirectory",
-    "exitCode",
-    "changedFiles",
-  ].some((key) => key in value);
-}
-
-function errorFromMessage(
-  message: AgentThreadMessageRecord,
-): AgentThreadTranscriptItem | undefined {
+function applyEventToActivity(activity: RequestActivity, message: AgentThreadMessageRecord) {
   const value = message.message;
-  if (typeof value === "string") {
-    return undefined;
-  }
-
   if (!isObjectRecord(value)) {
-    return undefined;
+    return;
   }
 
-  const messageText = firstString(value, ["error", "errorMessage"]);
-  if (messageText === undefined) {
-    return undefined;
+  const type = firstString(value, ["type"]);
+  if (type === "text_delta") {
+    const text = firstString(value, ["text"]);
+    if (text !== undefined) {
+      activity.markdownParts.push(text);
+    }
+    return;
   }
 
-  return {
-    type: "error",
-    id: message.id,
-    createdAt: message.createdAt,
-    requestId: message.requestId,
-    message: messageText,
-    details: value,
-  };
+  if (type === "thinking_delta") {
+    const text = firstString(value, ["delta"]);
+    if (text !== undefined) {
+      activity.thinkingParts.push(text);
+    }
+    return;
+  }
+
+  if (type === "thinking_end") {
+    const content = firstString(value, ["content"]);
+    if (content !== undefined && activity.thinkingParts.join("") !== content) {
+      activity.thinkingParts.push(content);
+    }
+    return;
+  }
+
+  if (type === "tool_start" || type === "tool_execution_start") {
+    upsertTool(activity, message, value, "running");
+    return;
+  }
+
+  if (type === "tool_execution_update") {
+    upsertTool(activity, message, value, "running");
+    return;
+  }
+
+  if (type === "tool_call" || type === "tool_execution_end") {
+    const isError = value.isError === true;
+    upsertTool(activity, message, value, isError ? "failed" : "succeeded");
+    return;
+  }
+
+  const error = errorFromRecord(message.id, value);
+  if (error !== undefined) {
+    activity.errors.push(error);
+  }
+}
+
+function applyResultToActivity(activity: RequestActivity, message: AgentThreadMessageRecord) {
+  const value = message.message;
+  const error = errorFromUnknown(message.id, value);
+  if (error !== undefined) {
+    activity.errors.push(error);
+    return;
+  }
+
+  const markdown = assistantMarkdownFromUnknown(value);
+  if (markdown.length > 0 && activity.markdownParts.join("").length === 0) {
+    activity.markdownParts.push(markdown);
+  }
+}
+
+function upsertTool(
+  activity: RequestActivity,
+  message: AgentThreadMessageRecord,
+  value: ObjectRecord,
+  status: ToolCallStatus,
+) {
+  const toolCallId = firstString(value, ["toolCallId", "operationId", "taskId"]) ?? message.id;
+  const existing = activity.tools.get(toolCallId);
+  const args = firstPresent(value, ["args"]);
+  const result = firstPresent(value, ["result", "partialResult"]);
+  const details = { event: value, args, result };
+  const durationMs = firstNumber(value, ["durationMs"]);
+
+  const existingTitle = existing === undefined ? undefined : existing.title;
+  const existingCommand = existing === undefined ? undefined : existing.command;
+  const existingCwd = existing === undefined ? undefined : existing.cwd;
+  const existingExitCode = existing === undefined ? undefined : existing.exitCode;
+  const existingDuration = existing === undefined ? undefined : existing.duration;
+  const existingChangedFiles = existing === undefined ? [] : existing.changedFiles;
+  const existingErrorMessage = existing === undefined ? undefined : existing.errorMessage;
+
+  activity.tools.set(toolCallId, {
+    id: toolCallId,
+    title: firstString(value, ["toolName", "tool", "name"]) ?? existingTitle ?? "Tool call",
+    status,
+    command: commandFromUnknown(args) ?? commandFromUnknown(result) ?? existingCommand,
+    cwd: cwdFromUnknown(args) ?? cwdFromUnknown(result) ?? existingCwd,
+    exitCode: exitCodeFromUnknown(result) ?? existingExitCode,
+    duration: durationMs === undefined ? existingDuration : formatDuration(durationMs),
+    changedFiles: changedFilesFromUnknown(result) ?? existingChangedFiles,
+    errorMessage: errorMessageFromUnknown(result) ?? firstString(value, ["error"]) ?? existingErrorMessage,
+    details,
+  });
 }
 
 function assistantMarkdownFromUnknown(value: unknown) {
@@ -209,22 +257,24 @@ function assistantMarkdownFromUnknown(value: unknown) {
     }
   }
 
-  return stringifyUnknown(value);
+  return "";
 }
 
-function eventLabelFromUnknown(value: unknown) {
-  if (isObjectRecord(value)) {
-    const label = firstString(value, ["label", "message", "type", "event", "name", "status"]);
-    if (label !== undefined) {
-      return label;
-    }
+function errorFromUnknown(id: string, value: unknown) {
+  if (!isObjectRecord(value)) {
+    return;
   }
 
-  if (typeof value === "string") {
-    return value;
+  return errorFromRecord(id, value);
+}
+
+function errorFromRecord(id: string, value: ObjectRecord): AgentThreadErrorDisplay | undefined {
+  const message = firstString(value, ["error", "errorMessage"]);
+  if (message === undefined) {
+    return undefined;
   }
 
-  return "Agent event";
+  return { id, message, details: value };
 }
 
 function textFromUnknown(value: unknown) {
@@ -241,6 +291,50 @@ function stringifyUnknown(value: unknown) {
   } catch {
     return String(value);
   }
+}
+
+function commandFromUnknown(value: unknown) {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (!isObjectRecord(value)) {
+    return;
+  }
+
+  return firstString(value, ["command", "cmd", "input", "action"]);
+}
+
+function cwdFromUnknown(value: unknown) {
+  if (!isObjectRecord(value)) {
+    return;
+  }
+
+  return firstString(value, ["cwd", "workingDirectory", "directory"]);
+}
+
+function exitCodeFromUnknown(value: unknown) {
+  if (!isObjectRecord(value)) {
+    return;
+  }
+
+  return firstNumber(value, ["exitCode", "code"]);
+}
+
+function errorMessageFromUnknown(value: unknown) {
+  if (!isObjectRecord(value)) {
+    return;
+  }
+
+  return firstString(value, ["error", "errorMessage", "message"]);
+}
+
+function changedFilesFromUnknown(value: unknown) {
+  if (!isObjectRecord(value)) {
+    return;
+  }
+
+  return stringArrayFromUnknown(firstPresent(value, ["changedFiles", "files", "modifiedFiles"]));
 }
 
 function firstString(record: ObjectRecord, keys: string[]) {
@@ -271,30 +365,12 @@ function stringArrayFromUnknown(value: unknown) {
   return value.filter((item): item is string => typeof item === "string");
 }
 
-function toolStatusFromUnknown(value: unknown): ToolCallStatus | undefined {
-  if (typeof value !== "string") {
-    return undefined;
+function formatDuration(durationMs: number) {
+  if (durationMs < 1000) {
+    return `${durationMs} ms`;
   }
 
-  if (
-    value === "queued" ||
-    value === "running" ||
-    value === "succeeded" ||
-    value === "failed" ||
-    value === "canceled"
-  ) {
-    return value;
-  }
-
-  if (value === "success" || value === "completed" || value === "complete") {
-    return "succeeded";
-  }
-
-  if (value === "error") {
-    return "failed";
-  }
-
-  return undefined;
+  return `${(durationMs / 1000).toFixed(1)} s`;
 }
 
 function isObjectRecord(value: unknown): value is ObjectRecord {
@@ -306,4 +382,4 @@ function exhaustiveMessageKind(value: never): never {
 }
 
 export { buildAgentThreadTranscript, stringifyUnknown };
-export type { AgentThreadTranscriptItem, ToolCallStatus };
+export type { AgentThreadToolCallDisplay, AgentThreadTranscriptItem, ToolCallStatus };

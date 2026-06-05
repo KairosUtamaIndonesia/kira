@@ -1,4 +1,4 @@
-import { Bot, User } from "lucide-react";
+import { Bot, Brain, User } from "lucide-react";
 
 import type { AgentThreadMessageRecord } from "../types";
 
@@ -23,7 +23,7 @@ function AgentThreadTranscript({ messages, runtimeIsSending }: AgentThreadTransc
   const transcript = buildAgentThreadTranscript(messages, runtimeIsSending);
 
   return (
-    <ol className="space-y-4">
+    <ol className="space-y-5">
       {transcript.map((item) => {
         if (item.type === "user-message") {
           return (
@@ -36,61 +36,44 @@ function AgentThreadTranscript({ messages, runtimeIsSending }: AgentThreadTransc
           );
         }
 
-        if (item.type === "assistant-message") {
+        if (item.type === "assistant-activity") {
           return (
             <li key={item.id} className="flex justify-start">
-              <article className="max-w-[min(48rem,92%)] rounded-xl border border-border bg-background p-3 text-foreground">
+              <article className="w-full max-w-[min(52rem,94%)] space-y-3 rounded-xl border border-border bg-background p-3 text-foreground">
                 <MessageHeader icon="assistant" label="Kira" createdAt={item.createdAt} />
-                <div className="mt-2">
+                {item.thinking.length === 0 ? undefined : <ThinkingBlock thinking={item.thinking} />}
+                {item.markdown.length === 0 && item.isStreaming ? (
+                  <p className="text-sm text-muted-foreground">Working…</p>
+                ) : undefined}
+                {item.markdown.length === 0 ? undefined : (
                   <AgentThreadMarkdown markdown={item.markdown} isStreaming={item.isStreaming} />
-                </div>
+                )}
+                {item.tools.length === 0 ? undefined : (
+                  <div className="space-y-2">
+                    {item.tools.map((tool) => (
+                      <AgentThreadToolCall
+                        key={tool.id}
+                        title={tool.title}
+                        status={tool.status}
+                        command={tool.command}
+                        cwd={tool.cwd}
+                        exitCode={tool.exitCode}
+                        duration={tool.duration}
+                        changedFiles={tool.changedFiles}
+                        errorMessage={tool.errorMessage}
+                        details={tool.details}
+                      />
+                    ))}
+                  </div>
+                )}
+                {item.errors.length === 0 ? undefined : (
+                  <div className="space-y-2">
+                    {item.errors.map((error) => (
+                      <ErrorBlock key={error.id} message={error.message} details={error.details} />
+                    ))}
+                  </div>
+                )}
               </article>
-            </li>
-          );
-        }
-
-        if (item.type === "tool-call") {
-          return (
-            <li key={item.id} className="max-w-[min(48rem,92%)]">
-              <AgentThreadToolCall
-                title={item.title}
-                status={item.status}
-                command={item.command}
-                cwd={item.cwd}
-                exitCode={item.exitCode}
-                duration={item.duration}
-                changedFiles={item.changedFiles}
-                errorMessage={item.errorMessage}
-                details={item.details}
-              />
-            </li>
-          );
-        }
-
-        if (item.type === "error") {
-          return (
-            <li key={item.id}>
-              <details className="rounded-xl border border-border bg-card p-3 text-card-foreground">
-                <summary className="cursor-pointer text-sm text-destructive">
-                  {item.message}
-                </summary>
-                <pre className="mt-2 max-h-72 overflow-auto rounded-md border border-border bg-editor-surface p-2 font-mono text-xs text-foreground">
-                  {stringifyUnknown(item.details)}
-                </pre>
-              </details>
-            </li>
-          );
-        }
-
-        if (item.type === "event") {
-          return (
-            <li key={item.id}>
-              <details className="rounded-lg border border-border bg-card/60 p-2 text-xs text-muted-foreground">
-                <summary className="cursor-pointer">{item.label}</summary>
-                <pre className="mt-2 max-h-72 overflow-auto rounded-md border border-border bg-editor-surface p-2 font-mono text-xs text-foreground">
-                  {stringifyUnknown(item.details)}
-                </pre>
-              </details>
             </li>
           );
         }
@@ -98,6 +81,29 @@ function AgentThreadTranscript({ messages, runtimeIsSending }: AgentThreadTransc
         return exhaustiveTranscriptItem(item);
       })}
     </ol>
+  );
+}
+
+function ThinkingBlock({ thinking }: { thinking: string }) {
+  return (
+    <details className="rounded-lg border border-border bg-card/60 p-3">
+      <summary className="flex cursor-pointer items-center gap-2 text-xs font-medium text-muted-foreground">
+        <Brain aria-hidden="true" className="size-3.5" />
+        Thinking
+      </summary>
+      <div className="mt-2 text-sm leading-6 whitespace-pre-wrap text-muted-foreground">{thinking}</div>
+    </details>
+  );
+}
+
+function ErrorBlock({ details, message }: { details: unknown; message: string }) {
+  return (
+    <details className="rounded-xl border border-border bg-card p-3 text-card-foreground">
+      <summary className="cursor-pointer text-sm text-destructive">{message}</summary>
+      <pre className="mt-2 max-h-72 overflow-auto rounded-md border border-border bg-editor-surface p-2 font-mono text-xs text-foreground">
+        {stringifyUnknown(details)}
+      </pre>
+    </details>
   );
 }
 
