@@ -15,6 +15,7 @@ import type {
   Project,
   RemoveProjectInput,
   RenameProjectInput,
+  RenameWorkspacePanelInput,
   SaveTerminalSnapshotInput,
   TerminalSnapshot,
   UpdateSessionLayoutInput,
@@ -57,6 +58,10 @@ function deleteWorkspacePanel(input: DeleteWorkspacePanelInput) {
   return invoke<void>("workspace_panel_delete", { input });
 }
 
+function renameWorkspacePanel(input: RenameWorkspacePanelInput) {
+  return invoke<WorkspacePanel>("workspace_panel_rename", { input });
+}
+
 function getTerminalSnapshot(input: GetTerminalSnapshotInput) {
   return invoke<TerminalSnapshot | null>("workspace_terminal_snapshot_get", { input });
 }
@@ -95,6 +100,7 @@ export {
   openSourceControlDiffPanel,
   removeProject,
   renameProject,
+  renameWorkspacePanel,
   saveTerminalSnapshot,
   updateSessionLayout,
 };

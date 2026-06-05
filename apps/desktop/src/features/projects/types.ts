@@ -125,6 +125,11 @@ type DeleteWorkspacePanelInput = {
   panelId: string;
 };
 
+type RenameWorkspacePanelInput = {
+  panelId: string;
+  title: string;
+};
+
 type RenameProjectInput = {
   projectId: string;
   name: string;
@@ -195,6 +200,7 @@ export type {
   Project,
   RemoveProjectInput,
   RenameProjectInput,
+  RenameWorkspacePanelInput,
   Session,
   SaveTerminalSnapshotInput,
   SourceControlDiffPanelState,
