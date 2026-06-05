@@ -15,8 +15,6 @@ function AgentThreadMarkdown({ isStreaming, markdown }: AgentThreadMarkdownProps
         table: { copy: true, download: false, fullscreen: false },
         mermaid: { copy: true, download: false, fullscreen: true, panZoom: true },
       }}
-      animated={{ animation: "slideUp" }}
-      isAnimating={isStreaming}
       mode={isStreaming ? "streaming" : "static"}
     >
       {markdown}
