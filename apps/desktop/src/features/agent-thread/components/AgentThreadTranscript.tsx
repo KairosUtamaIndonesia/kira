@@ -1,5 +1,6 @@
 import { Bot, Brain, User } from "lucide-react";
 
+import type { AgentThreadActivityBlock } from "../agentThreadDisplay";
 import type { AgentThreadMessageRecord } from "../types";
 
 import { buildAgentThreadTranscript, stringifyUnknown } from "../agentThreadDisplay";
@@ -41,38 +42,16 @@ function AgentThreadTranscript({ messages, runtimeIsSending }: AgentThreadTransc
             <li key={item.id} className="flex justify-start">
               <article className="w-full max-w-[min(52rem,94%)] space-y-3 rounded-xl border border-border bg-background p-3 text-foreground">
                 <MessageHeader icon="assistant" label="Kira" createdAt={item.createdAt} />
-                {item.thinking.length === 0 ? undefined : <ThinkingBlock thinking={item.thinking} />}
-                {item.markdown.length === 0 && item.isStreaming ? (
+                {item.blocks.length === 0 && item.isStreaming ? (
                   <p className="text-sm text-muted-foreground">Working…</p>
                 ) : undefined}
-                {item.markdown.length === 0 ? undefined : (
-                  <AgentThreadMarkdown markdown={item.markdown} isStreaming={item.isStreaming} />
-                )}
-                {item.tools.length === 0 ? undefined : (
-                  <div className="space-y-2">
-                    {item.tools.map((tool) => (
-                      <AgentThreadToolCall
-                        key={tool.id}
-                        title={tool.title}
-                        status={tool.status}
-                        command={tool.command}
-                        cwd={tool.cwd}
-                        exitCode={tool.exitCode}
-                        duration={tool.duration}
-                        changedFiles={tool.changedFiles}
-                        errorMessage={tool.errorMessage}
-                        details={tool.details}
-                      />
-                    ))}
-                  </div>
-                )}
-                {item.errors.length === 0 ? undefined : (
-                  <div className="space-y-2">
-                    {item.errors.map((error) => (
-                      <ErrorBlock key={error.id} message={error.message} details={error.details} />
-                    ))}
-                  </div>
-                )}
+                {item.blocks.map((block, index) => (
+                  <ActivityBlock
+                    key={blockKey(block)}
+                    block={block}
+                    isStreaming={item.isStreaming && index === item.blocks.length - 1}
+                  />
+                ))}
               </article>
             </li>
           );
@@ -82,6 +61,50 @@ function AgentThreadTranscript({ messages, runtimeIsSending }: AgentThreadTransc
       })}
     </ol>
   );
+}
+
+function ActivityBlock({ block, isStreaming }: { block: AgentThreadActivityBlock; isStreaming: boolean }) {
+  if (block.type === "thinking") {
+    return <ThinkingBlock thinking={block.thinking} />;
+  }
+
+  if (block.type === "markdown") {
+    return <AgentThreadMarkdown markdown={block.markdown} isStreaming={isStreaming} />;
+  }
+
+  if (block.type === "tool-call") {
+    return (
+      <AgentThreadToolCall
+        title={block.tool.title}
+        status={block.tool.status}
+        command={block.tool.command}
+        cwd={block.tool.cwd}
+        exitCode={block.tool.exitCode}
+        duration={block.tool.duration}
+        changedFiles={block.tool.changedFiles}
+        errorMessage={block.tool.errorMessage}
+        details={block.tool.details}
+      />
+    );
+  }
+
+  if (block.type === "error") {
+    return <ErrorBlock message={block.error.message} details={block.error.details} />;
+  }
+
+  return exhaustiveActivityBlock(block);
+}
+
+function blockKey(block: AgentThreadActivityBlock) {
+  if (block.type === "tool-call") {
+    return block.tool.id;
+  }
+
+  if (block.type === "error") {
+    return block.error.id;
+  }
+
+  return block.id;
 }
 
 function ThinkingBlock({ thinking }: { thinking: string }) {
@@ -137,6 +160,10 @@ function formatTimestamp(value: string) {
 
 function exhaustiveTranscriptItem(value: never): never {
   throw new Error(`Unknown Agent Thread transcript item: ${String(value)}`);
+}
+
+function exhaustiveActivityBlock(value: never): never {
+  throw new Error(`Unknown Agent Thread activity block: ${String(value)}`);
 }
 
 export { AgentThreadTranscript };

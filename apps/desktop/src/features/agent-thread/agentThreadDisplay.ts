@@ -13,12 +13,15 @@ type AgentThreadTranscriptItem =
       id: string;
       createdAt: string;
       requestId: string;
-      markdown: string;
-      thinking: string;
-      tools: AgentThreadToolCallDisplay[];
-      errors: AgentThreadErrorDisplay[];
+      blocks: AgentThreadActivityBlock[];
       isStreaming: boolean;
     };
+
+type AgentThreadActivityBlock =
+  | { type: "thinking"; id: string; thinking: string }
+  | { type: "markdown"; id: string; markdown: string }
+  | { type: "tool-call"; tool: AgentThreadToolCallDisplay }
+  | { type: "error"; error: AgentThreadErrorDisplay };
 
 type AgentThreadToolCallDisplay = {
   id: string;
@@ -47,12 +50,15 @@ type RequestActivity = {
   id: string;
   createdAt: string;
   requestId: string;
-  markdownParts: string[];
-  thinkingParts: string[];
-  tools: Map<string, AgentThreadToolCallDisplay>;
-  errors: AgentThreadErrorDisplay[];
-  sawResult: boolean;
+  blocks: MutableActivityBlock[];
+  toolBlockIndexes: Map<string, number>;
 };
+
+type MutableActivityBlock =
+  | { type: "thinking"; id: string; parts: string[] }
+  | { type: "markdown"; id: string; parts: string[] }
+  | { type: "tool-call"; tool: AgentThreadToolCallDisplay }
+  | { type: "error"; error: AgentThreadErrorDisplay };
 
 function buildAgentThreadTranscript(
   messages: AgentThreadMessageRecord[],
@@ -83,7 +89,6 @@ function buildAgentThreadTranscript(
     }
 
     if (message.kind === "result") {
-      activity.sawResult = true;
       applyResultToActivity(activity, message);
       continue;
     }
@@ -115,11 +120,8 @@ function ensureActivity(
     id: `${message.requestId}:assistant`,
     createdAt: message.createdAt,
     requestId: message.requestId,
-    markdownParts: [],
-    thinkingParts: [],
-    tools: new Map(),
-    errors: [],
-    sawResult: false,
+    blocks: [],
+    toolBlockIndexes: new Map(),
   };
   activityByRequest.set(message.requestId, activity);
   items.push(activity);
@@ -135,12 +137,21 @@ function activityToTranscriptItem(
     id: activity.id,
     createdAt: activity.createdAt,
     requestId: activity.requestId,
-    markdown: activity.markdownParts.join(""),
-    thinking: activity.thinkingParts.join(""),
-    tools: [...activity.tools.values()],
-    errors: activity.errors,
+    blocks: activity.blocks.map(activityBlockToTranscriptBlock),
     isStreaming,
   };
+}
+
+function activityBlockToTranscriptBlock(block: MutableActivityBlock): AgentThreadActivityBlock {
+  if (block.type === "thinking") {
+    return { type: "thinking", id: block.id, thinking: block.parts.join("") };
+  }
+
+  if (block.type === "markdown") {
+    return { type: "markdown", id: block.id, markdown: block.parts.join("") };
+  }
+
+  return block;
 }
 
 function applyEventToActivity(activity: RequestActivity, message: AgentThreadMessageRecord) {
@@ -153,7 +164,7 @@ function applyEventToActivity(activity: RequestActivity, message: AgentThreadMes
   if (type === "text_delta") {
     const text = firstString(value, ["text"]);
     if (text !== undefined) {
-      activity.markdownParts.push(text);
+      appendMarkdown(activity, message.id, text);
     }
     return;
   }
@@ -161,15 +172,15 @@ function applyEventToActivity(activity: RequestActivity, message: AgentThreadMes
   if (type === "thinking_delta") {
     const text = firstString(value, ["delta"]);
     if (text !== undefined) {
-      activity.thinkingParts.push(text);
+      appendThinking(activity, message.id, text);
     }
     return;
   }
 
   if (type === "thinking_end") {
     const content = firstString(value, ["content"]);
-    if (content !== undefined && activity.thinkingParts.join("") !== content) {
-      activity.thinkingParts.push(content);
+    if (content !== undefined && !activityHasThinking(activity, content)) {
+      appendThinking(activity, message.id, content);
     }
     return;
   }
@@ -192,7 +203,7 @@ function applyEventToActivity(activity: RequestActivity, message: AgentThreadMes
 
   const error = errorFromRecord(message.id, value);
   if (error !== undefined) {
-    activity.errors.push(error);
+    activity.blocks.push({ type: "error", error });
   }
 }
 
@@ -200,14 +211,42 @@ function applyResultToActivity(activity: RequestActivity, message: AgentThreadMe
   const value = message.message;
   const error = errorFromUnknown(message.id, value);
   if (error !== undefined) {
-    activity.errors.push(error);
+    activity.blocks.push({ type: "error", error });
     return;
   }
 
   const markdown = assistantMarkdownFromUnknown(value);
-  if (markdown.length > 0 && activity.markdownParts.join("").length === 0) {
-    activity.markdownParts.push(markdown);
+  if (markdown.length > 0 && !activityHasMarkdown(activity)) {
+    appendMarkdown(activity, message.id, markdown);
   }
+}
+
+function appendMarkdown(activity: RequestActivity, id: string, markdown: string) {
+  const lastBlock = activity.blocks[activity.blocks.length - 1];
+  if (lastBlock !== undefined && lastBlock.type === "markdown") {
+    lastBlock.parts.push(markdown);
+    return;
+  }
+
+  activity.blocks.push({ type: "markdown", id, parts: [markdown] });
+}
+
+function appendThinking(activity: RequestActivity, id: string, thinking: string) {
+  const lastBlock = activity.blocks[activity.blocks.length - 1];
+  if (lastBlock !== undefined && lastBlock.type === "thinking") {
+    lastBlock.parts.push(thinking);
+    return;
+  }
+
+  activity.blocks.push({ type: "thinking", id, parts: [thinking] });
+}
+
+function activityHasMarkdown(activity: RequestActivity) {
+  return activity.blocks.some((block) => block.type === "markdown" && block.parts.join("").length > 0);
+}
+
+function activityHasThinking(activity: RequestActivity, thinking: string) {
+  return activity.blocks.some((block) => block.type === "thinking" && block.parts.join("") === thinking);
 }
 
 function upsertTool(
@@ -217,7 +256,8 @@ function upsertTool(
   status: ToolCallStatus,
 ) {
   const toolCallId = firstString(value, ["toolCallId", "operationId", "taskId"]) ?? message.id;
-  const existing = activity.tools.get(toolCallId);
+  const existingBlockIndex = activity.toolBlockIndexes.get(toolCallId);
+  const existing = existingBlockIndex === undefined ? undefined : toolAtIndex(activity, existingBlockIndex);
   const args = firstPresent(value, ["args"]);
   const result = firstPresent(value, ["result", "partialResult"]);
   const details = { event: value, args, result };
@@ -231,7 +271,7 @@ function upsertTool(
   const existingChangedFiles = existing === undefined ? [] : existing.changedFiles;
   const existingErrorMessage = existing === undefined ? undefined : existing.errorMessage;
 
-  activity.tools.set(toolCallId, {
+  const tool: AgentThreadToolCallDisplay = {
     id: toolCallId,
     title: firstString(value, ["toolName", "tool", "name"]) ?? existingTitle ?? "Tool call",
     status,
@@ -242,7 +282,24 @@ function upsertTool(
     changedFiles: changedFilesFromUnknown(result) ?? existingChangedFiles,
     errorMessage: errorMessageFromUnknown(result) ?? firstString(value, ["error"]) ?? existingErrorMessage,
     details,
-  });
+  };
+
+  if (existingBlockIndex !== undefined) {
+    activity.blocks[existingBlockIndex] = { type: "tool-call", tool };
+    return;
+  }
+
+  activity.toolBlockIndexes.set(toolCallId, activity.blocks.length);
+  activity.blocks.push({ type: "tool-call", tool });
+}
+
+function toolAtIndex(activity: RequestActivity, index: number) {
+  const block = activity.blocks[index];
+  if (block === undefined || block.type !== "tool-call") {
+    throw new Error(`Agent Thread tool block index ${index} does not point to a tool call.`);
+  }
+
+  return block.tool;
 }
 
 function assistantMarkdownFromUnknown(value: unknown) {
@@ -382,4 +439,9 @@ function exhaustiveMessageKind(value: never): never {
 }
 
 export { buildAgentThreadTranscript, stringifyUnknown };
-export type { AgentThreadToolCallDisplay, AgentThreadTranscriptItem, ToolCallStatus };
+export type {
+  AgentThreadActivityBlock,
+  AgentThreadToolCallDisplay,
+  AgentThreadTranscriptItem,
+  ToolCallStatus,
+};
