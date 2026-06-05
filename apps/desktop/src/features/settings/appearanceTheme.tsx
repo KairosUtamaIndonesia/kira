@@ -10,9 +10,11 @@ import {
 
 type AppearanceThemeContextValue = {
   theme: AppearanceTheme;
+  agentThreadShowRawEventStream: boolean;
   status: "loading" | "ready" | "error";
   errorMessage: string | undefined;
   setTheme: (theme: AppearanceTheme) => Promise<void>;
+  setAgentThreadShowRawEventStream: (showRawEventStream: boolean) => Promise<void>;
 };
 
 type AppearanceThemeProviderProps = {
@@ -20,12 +22,16 @@ type AppearanceThemeProviderProps = {
 };
 
 const defaultAppearanceTheme: AppearanceTheme = "dark";
-const AppearanceThemeContext = createContext<AppearanceThemeContextValue | undefined>(undefined);
+const missingAppearanceThemeContext = Symbol("missing AppearanceThemeContext");
+const AppearanceThemeContext = createContext<
+  AppearanceThemeContextValue | typeof missingAppearanceThemeContext
+>(missingAppearanceThemeContext);
 
 function AppearanceThemeProvider({ children }: AppearanceThemeProviderProps) {
   const [theme, setThemeState] = useState<AppearanceTheme>(defaultAppearanceTheme);
+  const [agentThreadShowRawEventStream, setAgentThreadShowRawEventStreamState] = useState(false);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [errorMessage, setErrorMessage] = useState<string | undefined>(undefined);
+  const [errorMessage, setErrorMessage] = useState<string | undefined>();
 
   useEffect(() => {
     applyAppearanceTheme(theme);
@@ -42,6 +48,7 @@ function AppearanceThemeProvider({ children }: AppearanceThemeProviderProps) {
         }
 
         setThemeState(settings.theme);
+        setAgentThreadShowRawEventStreamState(settings.agentThreadShowRawEventStream);
         setStatus("ready");
         setErrorMessage(undefined);
       } catch (error) {
@@ -66,6 +73,7 @@ function AppearanceThemeProvider({ children }: AppearanceThemeProviderProps) {
   const value = useMemo<AppearanceThemeContextValue>(
     () => ({
       theme,
+      agentThreadShowRawEventStream,
       status,
       errorMessage,
       setTheme: async (nextTheme) => {
@@ -73,8 +81,12 @@ function AppearanceThemeProvider({ children }: AppearanceThemeProviderProps) {
         setThemeState(nextTheme);
 
         try {
-          const settings = await updateAppearanceSettings({ theme: nextTheme });
+          const settings = await updateAppearanceSettings({
+            theme: nextTheme,
+            agentThreadShowRawEventStream,
+          });
           setThemeState(settings.theme);
+          setAgentThreadShowRawEventStreamState(settings.agentThreadShowRawEventStream);
           setStatus("ready");
           setErrorMessage(undefined);
         } catch (error) {
@@ -85,8 +97,29 @@ function AppearanceThemeProvider({ children }: AppearanceThemeProviderProps) {
           toast.error(`Appearance theme failed to save: ${message}`);
         }
       },
+      setAgentThreadShowRawEventStream: async (showRawEventStream) => {
+        const previousShowRawEventStream = agentThreadShowRawEventStream;
+        setAgentThreadShowRawEventStreamState(showRawEventStream);
+
+        try {
+          const settings = await updateAppearanceSettings({
+            theme,
+            agentThreadShowRawEventStream: showRawEventStream,
+          });
+          setThemeState(settings.theme);
+          setAgentThreadShowRawEventStreamState(settings.agentThreadShowRawEventStream);
+          setStatus("ready");
+          setErrorMessage(undefined);
+        } catch (error) {
+          setAgentThreadShowRawEventStreamState(previousShowRawEventStream);
+          const message = errorMessageFromUnknown(error);
+          setStatus("error");
+          setErrorMessage(message);
+          toast.error(`Agent Thread display setting failed to save: ${message}`);
+        }
+      },
     }),
-    [errorMessage, status, theme],
+    [agentThreadShowRawEventStream, errorMessage, status, theme],
   );
 
   return (
@@ -96,7 +129,7 @@ function AppearanceThemeProvider({ children }: AppearanceThemeProviderProps) {
 
 function useAppearanceTheme() {
   const context = useContext(AppearanceThemeContext);
-  if (context === undefined) {
+  if (context === missingAppearanceThemeContext) {
     throw new Error("useAppearanceTheme must be used inside AppearanceThemeProvider");
   }
 
