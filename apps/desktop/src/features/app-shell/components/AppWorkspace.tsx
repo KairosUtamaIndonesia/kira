@@ -1,11 +1,24 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
   DockviewReact,
+  Orientation,
   type DockviewReadyEvent,
   type IDockviewHeaderActionsProps,
+  type IDockviewPanelHeaderProps,
   type IDockviewPanelProps,
 } from "dockview-react";
-import { Bot, Loader2, Plus, Terminal as TerminalIcon } from "lucide-react";
+import {
+  Bot,
+  LayoutPanelTop,
+  Loader2,
+  MoreHorizontal,
+  PanelBottom,
+  PanelRight,
+  PenLine,
+  Plus,
+  Terminal as TerminalIcon,
+  X,
+} from "lucide-react";
 import {
   createContext,
   useContext,
@@ -21,11 +34,28 @@ import type { WorkspacePanel as StoredWorkspacePanel } from "@/features/projects
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import { AgentThreadPanel, type AgentThreadPanelParams } from "@/features/agent-thread";
 import { FileEditorPanel, type FileEditorPanelParams } from "@/features/editor";
 import {
@@ -33,6 +63,7 @@ import {
   createTerminalPanel,
   deleteTerminalSnapshot,
   deleteWorkspacePanel,
+  renameWorkspacePanel,
   updateSessionLayout,
 } from "@/features/projects/api/projectsApi";
 import {
@@ -58,7 +89,9 @@ type WorkspaceRuntimeContextValue = {
   projectId: string;
   sessionId: string;
   workingDirectory: string;
+  panels: StoredWorkspacePanel[];
   onPanelCreated: (panel: StoredWorkspacePanel) => void;
+  onPanelUpdated: (panel: StoredWorkspacePanel) => void;
 };
 
 const WorkspaceRuntimeContext = createContext<WorkspaceRuntimeContextValue | undefined>(undefined);
@@ -79,60 +112,6 @@ function WorkspacePanel({ api, params }: IDockviewPanelProps<WorkspacePanelParam
 function WorkspaceHeaderActions({ containerApi, group }: IDockviewHeaderActionsProps) {
   const { onPanelCreated, projectId, sessionId, workingDirectory } = useWorkspaceRuntimeContext();
 
-  async function addTerminalPanel() {
-    const panel = await createTerminalPanel({
-      sessionId,
-      title: "Terminal",
-      workingDirectory,
-    });
-    const terminalState = requireTerminalState(panel);
-    onPanelCreated(panel);
-    containerApi.addPanel<TerminalPanelParams>({
-      id: panel.id,
-      component: "terminalPanel",
-      title: panel.title,
-      params: {
-        terminalId: panel.id,
-        workingDirectory: terminalState.workingDirectory,
-      },
-      position: {
-        referenceGroup: group,
-        direction: "within",
-      },
-    });
-    await updateSessionLayout({
-      sessionId,
-      layoutJson: serializeWorkspaceLayoutForPersistence(containerApi.toJSON()),
-    });
-  }
-
-  async function addAgentThreadPanel() {
-    const panel = await createAgentThreadPanel({
-      sessionId,
-      title: "Agent Thread",
-    });
-    const agentThreadState = requireAgentThreadState(panel);
-    onPanelCreated(panel);
-    containerApi.addPanel<AgentThreadPanelParams>({
-      id: panel.id,
-      component: "agentThreadPanel",
-      title: panel.title,
-      params: {
-        projectId,
-        sessionId,
-        threadId: agentThreadState.threadId,
-      },
-      position: {
-        referenceGroup: group,
-        direction: "within",
-      },
-    });
-    await updateSessionLayout({
-      sessionId,
-      layoutJson: serializeWorkspaceLayoutForPersistence(containerApi.toJSON()),
-    });
-  }
-
   return (
     <div className="flex h-full items-center px-1">
       <DropdownMenu>
@@ -143,18 +122,398 @@ function WorkspaceHeaderActions({ containerApi, group }: IDockviewHeaderActionsP
           <Plus className="size-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-auto min-w-44">
-          <DropdownMenuItem onClick={() => void addAgentThreadPanel()}>
+          <DropdownMenuItem
+            onClick={() =>
+              void addAgentThreadPanel({
+                containerApi,
+                group,
+                onPanelCreated,
+                projectId,
+                sessionId,
+              })
+            }
+          >
             <Bot className="size-4 text-muted-foreground" />
             <span>New Agent Thread</span>
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => void addTerminalPanel()}>
+          <DropdownMenuItem
+            onClick={() =>
+              void addTerminalPanel({
+                containerApi,
+                group,
+                onPanelCreated,
+                sessionId,
+                workingDirectory,
+              })
+            }
+          >
             <TerminalIcon className="size-4 text-muted-foreground" />
-            <span>New Terminal (shell)</span>
+            <span>New Terminal</span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
   );
+}
+
+function WorkspacePanelTab({ api, containerApi }: IDockviewPanelHeaderProps) {
+  const panel = containerApi.getPanel(api.id);
+  if (panel === undefined) {
+    throw new Error(`Workspace Panel tab ${api.id} is missing its Dockview panel.`);
+  }
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger render={<div className="flex h-full min-w-0 items-center px-2" />}>
+        <span className="truncate">{api.title ?? api.id}</span>
+      </ContextMenuTrigger>
+      <WorkspacePanelContextMenuContent containerApi={containerApi} panel={panel} />
+    </ContextMenu>
+  );
+}
+
+function WorkspacePanelContextMenuContent({
+  containerApi,
+  panel,
+}: {
+  containerApi: IDockviewHeaderActionsProps["containerApi"];
+  panel: NonNullable<IDockviewHeaderActionsProps["activePanel"]>;
+}) {
+  const {
+    onPanelUpdated,
+    panels: storedPanels,
+    projectId,
+    sessionId,
+  } = useWorkspaceRuntimeContext();
+  const [panelToRename, setPanelToRename] = useState<typeof panel>();
+  const [renameTitle, setRenameTitle] = useState("");
+  const [renameError, setRenameError] = useState<string>();
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (panelToRename !== undefined) {
+      const input = renameInputRef.current;
+      if (input !== null) {
+        input.focus();
+      }
+    }
+  }, [panelToRename]);
+
+  async function splitPanel(direction: "right" | "below") {
+    containerApi.addGroup({ referencePanel: panel, direction });
+    await persistWorkspaceLayout(containerApi, sessionId);
+  }
+
+  async function resetWorkspaceLayout() {
+    containerApi.fromJSON(createFlatWorkspaceLayout(storedPanels, projectId, sessionId, panel.id), {
+      reuseExistingPanels: true,
+    });
+    await persistWorkspaceLayout(containerApi, sessionId);
+  }
+
+  async function renamePanel() {
+    if (panelToRename === undefined) {
+      throw new Error("A Workspace Panel is required before it can be renamed.");
+    }
+
+    const title = renameTitle.trim();
+    if (title.length === 0) {
+      setRenameError("Panel title is required.");
+      return;
+    }
+
+    const updatedPanel = await renameWorkspacePanel({ panelId: panelToRename.id, title });
+    panelToRename.api.setTitle(updatedPanel.title);
+    onPanelUpdated(updatedPanel);
+    await persistWorkspaceLayout(containerApi, sessionId);
+    setPanelToRename(undefined);
+    setRenameTitle("");
+    setRenameError(undefined);
+  }
+
+  function openRenameDialog() {
+    setPanelToRename(panel);
+    setRenameTitle(panel.title ?? panel.id);
+    setRenameError(undefined);
+  }
+
+  function closeOtherPanels() {
+    for (const candidatePanel of panel.group.panels) {
+      if (candidatePanel.id !== panel.id) {
+        candidatePanel.api.close();
+      }
+    }
+  }
+
+  return (
+    <>
+      <ContextMenuContent className="w-auto min-w-48">
+        <ContextMenuItem onClick={openRenameDialog}>
+          <PenLine className="size-4 text-muted-foreground" />
+          <span>Rename Panel</span>
+        </ContextMenuItem>
+        <ContextMenuItem onClick={() => panel.api.close()}>
+          <X className="size-4 text-muted-foreground" />
+          <span>Close Panel</span>
+        </ContextMenuItem>
+        <ContextMenuItem onClick={closeOtherPanels}>
+          <X className="size-4 text-muted-foreground" />
+          <span>Close Others</span>
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onClick={() => void splitPanel("right")}>
+          <PanelRight className="size-4 text-muted-foreground" />
+          <span>Split Right</span>
+        </ContextMenuItem>
+        <ContextMenuItem onClick={() => void splitPanel("below")}>
+          <PanelBottom className="size-4 text-muted-foreground" />
+          <span>Split Down</span>
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onClick={() => panel.group.api.close()}>
+          <X className="size-4 text-muted-foreground" />
+          <span>Close All in Group</span>
+        </ContextMenuItem>
+        <ContextMenuItem onClick={() => void resetWorkspaceLayout()}>
+          <LayoutPanelTop className="size-4 text-muted-foreground" />
+          <span>Reset Workspace Layout</span>
+        </ContextMenuItem>
+      </ContextMenuContent>
+      <RenamePanelDialog
+        error={renameError}
+        inputRef={renameInputRef}
+        open={panelToRename !== undefined}
+        title={renameTitle}
+        onOpenChange={(open) => !open && setPanelToRename(undefined)}
+        onSubmit={() => void renamePanel()}
+        onTitleChange={(title) => {
+          setRenameTitle(title);
+          setRenameError(undefined);
+        }}
+      />
+    </>
+  );
+}
+
+type RenamePanelDialogProps = {
+  error: string | undefined;
+  inputRef: RefObject<HTMLInputElement | null>;
+  open: boolean;
+  title: string;
+  onOpenChange: (open: boolean) => void;
+  onSubmit: () => void;
+  onTitleChange: (title: string) => void;
+};
+
+function RenamePanelDialog({
+  error,
+  inputRef,
+  open,
+  title,
+  onOpenChange,
+  onSubmit,
+  onTitleChange,
+}: RenamePanelDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Rename Panel</DialogTitle>
+          <DialogDescription>Choose the title shown in the Workspace tab bar.</DialogDescription>
+        </DialogHeader>
+        <form
+          className="space-y-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSubmit();
+          }}
+        >
+          <Input
+            ref={inputRef}
+            aria-label="Panel title"
+            aria-invalid={error !== undefined}
+            value={title}
+            onChange={(event) => onTitleChange(event.target.value)}
+          />
+          {error === undefined ? undefined : <p className="text-sm text-destructive">{error}</p>}
+          <DialogFooter>
+            <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button type="submit">Rename</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function WorkspaceGroupActions({
+  activePanel,
+  containerApi,
+  group,
+  panels,
+}: IDockviewHeaderActionsProps) {
+  const {
+    onPanelUpdated,
+    panels: storedPanels,
+    projectId,
+    sessionId,
+  } = useWorkspaceRuntimeContext();
+  const [panelToRename, setPanelToRename] = useState<typeof activePanel>();
+  const [renameTitle, setRenameTitle] = useState("");
+  const [renameError, setRenameError] = useState<string>();
+
+  async function splitGroup(direction: "right" | "below") {
+    containerApi.addGroup({ referenceGroup: group, direction });
+    await persistWorkspaceLayout(containerApi, sessionId);
+  }
+
+  async function resetWorkspaceLayout() {
+    const activePanelId = activePanel === undefined ? undefined : activePanel.id;
+    containerApi.fromJSON(
+      createFlatWorkspaceLayout(storedPanels, projectId, sessionId, activePanelId),
+      {
+        reuseExistingPanels: true,
+      },
+    );
+    await persistWorkspaceLayout(containerApi, sessionId);
+  }
+
+  async function renamePanel() {
+    if (panelToRename === undefined) {
+      throw new Error("A Workspace Panel is required before it can be renamed.");
+    }
+
+    const title = renameTitle.trim();
+    if (title.length === 0) {
+      setRenameError("Panel title is required.");
+      return;
+    }
+
+    const panel = await renameWorkspacePanel({ panelId: panelToRename.id, title });
+    panelToRename.api.setTitle(panel.title);
+    onPanelUpdated(panel);
+    await persistWorkspaceLayout(containerApi, sessionId);
+    setPanelToRename(undefined);
+    setRenameTitle("");
+    setRenameError(undefined);
+  }
+
+  function openRenameDialog() {
+    if (activePanel === undefined) {
+      throw new Error("An active Workspace Panel is required before it can be renamed.");
+    }
+
+    setPanelToRename(activePanel);
+    setRenameTitle(activePanel.title ?? activePanel.id);
+    setRenameError(undefined);
+  }
+
+  function closeOtherPanels() {
+    if (activePanel === undefined) {
+      throw new Error("An active Workspace Panel is required before other panels can be closed.");
+    }
+
+    for (const panel of panels) {
+      if (panel.id !== activePanel.id) {
+        panel.api.close();
+      }
+    }
+  }
+
+  return (
+    <div className="flex h-full items-center px-1">
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          aria-label="Workspace panel actions"
+          className={buttonVariants({ variant: "ghost", size: "icon-sm" })}
+        >
+          <MoreHorizontal className="size-4" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-auto min-w-48">
+          <DropdownMenuItem disabled={activePanel === undefined} onClick={openRenameDialog}>
+            <PenLine className="size-4 text-muted-foreground" />
+            <span>Rename Panel</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={activePanel === undefined}
+            onClick={() => closeActivePanel(activePanel)}
+          >
+            <X className="size-4 text-muted-foreground" />
+            <span>Close Panel</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled={activePanel === undefined} onClick={closeOtherPanels}>
+            <X className="size-4 text-muted-foreground" />
+            <span>Close Others</span>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => void splitGroup("right")}>
+            <PanelRight className="size-4 text-muted-foreground" />
+            <span>Split Right</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => void splitGroup("below")}>
+            <PanelBottom className="size-4 text-muted-foreground" />
+            <span>Split Down</span>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => group.api.close()}>
+            <X className="size-4 text-muted-foreground" />
+            <span>Close All in Group</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => void resetWorkspaceLayout()}>
+            <LayoutPanelTop className="size-4 text-muted-foreground" />
+            <span>Reset Workspace Layout</span>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <Dialog
+        open={panelToRename !== undefined}
+        onOpenChange={(open) => !open && setPanelToRename(undefined)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename Panel</DialogTitle>
+            <DialogDescription>Choose the title shown in the Workspace tab bar.</DialogDescription>
+          </DialogHeader>
+          <form
+            className="space-y-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void renamePanel();
+            }}
+          >
+            <Input
+              aria-label="Panel title"
+              aria-invalid={renameError !== undefined}
+              value={renameTitle}
+              onChange={(event) => {
+                setRenameTitle(event.target.value);
+                setRenameError(undefined);
+              }}
+            />
+            {renameError === undefined ? undefined : (
+              <p className="text-sm text-destructive">{renameError}</p>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="secondary" onClick={() => setPanelToRename(undefined)}>
+                Cancel
+              </Button>
+              <Button type="submit">Rename</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function closeActivePanel(activePanel: IDockviewHeaderActionsProps["activePanel"]) {
+  if (activePanel === undefined) {
+    throw new Error("An active Workspace Panel is required before it can be closed.");
+  }
+
+  activePanel.api.close();
 }
 
 const workspaceComponents = {
@@ -206,6 +565,157 @@ function useWorkspaceRuntimeContext() {
   }
 
   return context;
+}
+
+type AddPanelActionInput = Pick<
+  WorkspaceRuntimeContextValue,
+  "onPanelCreated" | "projectId" | "sessionId" | "workingDirectory"
+> &
+  Pick<IDockviewHeaderActionsProps, "containerApi" | "group">;
+
+async function addTerminalPanel({
+  containerApi,
+  group,
+  onPanelCreated,
+  sessionId,
+  workingDirectory,
+}: Omit<AddPanelActionInput, "projectId">) {
+  const panel = await createTerminalPanel({
+    sessionId,
+    title: "Terminal",
+    workingDirectory,
+  });
+  const terminalState = requireTerminalState(panel);
+  onPanelCreated(panel);
+  containerApi.addPanel<TerminalPanelParams>({
+    id: panel.id,
+    component: "terminalPanel",
+    title: panel.title,
+    params: {
+      terminalId: panel.id,
+      workingDirectory: terminalState.workingDirectory,
+    },
+    position: {
+      referenceGroup: group,
+      direction: "within",
+    },
+  });
+  await persistWorkspaceLayout(containerApi, sessionId);
+}
+
+async function addAgentThreadPanel({
+  containerApi,
+  group,
+  onPanelCreated,
+  projectId,
+  sessionId,
+}: Omit<AddPanelActionInput, "workingDirectory">) {
+  const panel = await createAgentThreadPanel({
+    sessionId,
+    title: "Agent Thread",
+  });
+  const agentThreadState = requireAgentThreadState(panel);
+  onPanelCreated(panel);
+  containerApi.addPanel<AgentThreadPanelParams>({
+    id: panel.id,
+    component: "agentThreadPanel",
+    title: panel.title,
+    params: {
+      projectId,
+      sessionId,
+      threadId: agentThreadState.threadId,
+    },
+    position: {
+      referenceGroup: group,
+      direction: "within",
+    },
+  });
+  await persistWorkspaceLayout(containerApi, sessionId);
+}
+
+async function persistWorkspaceLayout(
+  containerApi: IDockviewHeaderActionsProps["containerApi"],
+  sessionId: string,
+) {
+  await updateSessionLayout({
+    sessionId,
+    layoutJson: serializeWorkspaceLayoutForPersistence(containerApi.toJSON()),
+  });
+}
+
+function createFlatWorkspaceLayout(
+  panels: StoredWorkspacePanel[],
+  projectId: string,
+  sessionId: string,
+  activePanelId: string | undefined,
+): Parameters<IDockviewHeaderActionsProps["containerApi"]["fromJSON"]>[0] {
+  const panelStates = Object.fromEntries(
+    panels.map((panel) => [panel.id, createStoredPanelState(panel, projectId, sessionId)]),
+  );
+  const panelIds = panels.map((panel) => panel.id);
+  const activeView = activePanelId ?? panelIds[0];
+  const groupState =
+    activeView === undefined
+      ? { id: "workspace-reset-group", views: panelIds }
+      : { id: "workspace-reset-group", views: panelIds, activeView };
+
+  return {
+    grid: {
+      root: {
+        type: "leaf",
+        data: groupState,
+      },
+      height: 0,
+      width: 0,
+      orientation: Orientation.HORIZONTAL,
+    },
+    panels: panelStates,
+    activeGroup: "workspace-reset-group",
+  };
+}
+
+function createStoredPanelState(panel: StoredWorkspacePanel, projectId: string, sessionId: string) {
+  switch (panel.kind) {
+    case "terminal": {
+      const terminalState = requireTerminalState(panel);
+      return {
+        id: panel.id,
+        contentComponent: "terminalPanel",
+        title: panel.title,
+        params: {
+          terminalId: panel.id,
+          workingDirectory: terminalState.workingDirectory,
+        },
+      };
+    }
+    case "source_control_diff":
+      return {
+        id: panel.id,
+        contentComponent: "sourceControlDiffPanel",
+        title: panel.title,
+        params: requireSourceControlDiffState(panel),
+      };
+    case "file_editor":
+      return {
+        id: panel.id,
+        contentComponent: "fileEditorPanel",
+        title: panel.title,
+        params: requireFileEditorState(panel),
+      };
+    case "agent_thread": {
+      const agentThreadState = requireAgentThreadState(panel);
+      return {
+        id: panel.id,
+        contentComponent: "agentThreadPanel",
+        title: panel.title,
+        params: {
+          projectId,
+          sessionId,
+          threadId: agentThreadState.threadId,
+        },
+      };
+    }
+  }
 }
 
 function isElementInsideSelector(target: EventTarget | null, selector: string) {
@@ -439,6 +949,7 @@ type ActiveWorkspaceDockviewProps = {
   activeWorkspace: Extract<ActiveWorkspaceState, { status: "active" }>;
   isWorkspaceDisposingRef: RefObject<boolean>;
   onPanelCreated: (panel: StoredWorkspacePanel) => void;
+  onPanelUpdated: (panel: StoredWorkspacePanel) => void;
   sourceControlDiffRequest: SourceControlDiffOpenRequest | undefined;
   fileEditorRequest: FileEditorOpenRequest | undefined;
   agentThreadRequest: AgentThreadOpenRequest | undefined;
@@ -449,6 +960,7 @@ function ActiveWorkspaceDockview({
   activeWorkspace,
   isWorkspaceDisposingRef,
   onPanelCreated,
+  onPanelUpdated,
   sourceControlDiffRequest,
   fileEditorRequest,
   agentThreadRequest,
@@ -462,9 +974,11 @@ function ActiveWorkspaceDockview({
       projectId: activeWorkspace.project.id,
       sessionId: activeWorkspace.session.id,
       workingDirectory: activeWorkspace.project.folderPath,
+      panels: activeWorkspace.panels,
       onPanelCreated,
+      onPanelUpdated,
     }),
-    [activeWorkspace, onPanelCreated],
+    [activeWorkspace, onPanelCreated, onPanelUpdated],
   );
 
   useEffect(() => {
@@ -557,6 +1071,7 @@ function ActiveWorkspaceDockview({
           className="dockview-theme-dark kira-dockview"
           components={workspaceComponents}
           defaultHeaderPosition="top"
+          defaultTabComponent={WorkspacePanelTab}
           dndStrategy="pointer"
           hideBorders
           onReady={(event) => {
@@ -570,6 +1085,7 @@ function ActiveWorkspaceDockview({
             );
           }}
           leftHeaderActionsComponent={WorkspaceHeaderActions}
+          rightHeaderActionsComponent={WorkspaceGroupActions}
         />
       </WorkspaceRuntimeContext.Provider>
     </div>
@@ -620,6 +1136,7 @@ type AppWorkspaceProps = {
   fileEditorRequest: FileEditorOpenRequest | undefined;
   agentThreadRequest: AgentThreadOpenRequest | undefined;
   onPanelCreated: (panel: StoredWorkspacePanel) => void;
+  onPanelUpdated: (panel: StoredWorkspacePanel) => void;
   onPanelDeleted: (panelId: string) => void;
 };
 
@@ -629,6 +1146,7 @@ function AppWorkspace({
   fileEditorRequest,
   agentThreadRequest,
   onPanelCreated,
+  onPanelUpdated,
   onPanelDeleted,
 }: AppWorkspaceProps) {
   const { handleTitleBarDoubleClick, handleTitleBarMouseDown, titleBarError } = useTitleBarDrag();
@@ -642,6 +1160,7 @@ function AppWorkspace({
           activeWorkspace={activeWorkspace}
           isWorkspaceDisposingRef={isWorkspaceDisposingRef}
           onPanelCreated={onPanelCreated}
+          onPanelUpdated={onPanelUpdated}
           sourceControlDiffRequest={sourceControlDiffRequest}
           fileEditorRequest={fileEditorRequest}
           agentThreadRequest={agentThreadRequest}

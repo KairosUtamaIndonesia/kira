@@ -200,6 +200,21 @@ function AppShell() {
     });
   }
 
+  function handlePanelUpdated(panel: WorkspacePanel) {
+    setActiveWorkspace((currentWorkspace) => {
+      if (currentWorkspace.status !== "active") {
+        return currentWorkspace;
+      }
+
+      return {
+        ...currentWorkspace,
+        panels: currentWorkspace.panels.map((workspacePanel) =>
+          workspacePanel.id === panel.id ? panel : workspacePanel,
+        ),
+      };
+    });
+  }
+
   async function handleSourceControlDiffOpen(entry: GitStatusEntry) {
     if (activeWorkspace.status !== "active") {
       return;
@@ -383,6 +398,7 @@ function AppShell() {
             fileEditorRequest={fileEditorRequest}
             agentThreadRequest={agentThreadRequest}
             onPanelCreated={handlePanelCreated}
+            onPanelUpdated={handlePanelUpdated}
             onPanelDeleted={handlePanelDeleted}
           />
         </ResizablePanel>
