@@ -242,6 +242,44 @@
   }
 }
 
+.kira-icon-swap {
+  --icon-swap-duration: 200ms;
+  --icon-swap-blur: 0.125rem;
+  --icon-swap-start-scale: 0.25;
+  --icon-swap-easing: ease-in-out;
+
+  display: inline-grid;
+}
+
+.kira-icon-swap__icon {
+  grid-area: 1 / 1;
+  transition:
+    opacity var(--icon-swap-duration) var(--icon-swap-easing),
+    filter var(--icon-swap-duration) var(--icon-swap-easing),
+    transform var(--icon-swap-duration) var(--icon-swap-easing);
+  will-change: opacity, filter, transform;
+}
+
+.kira-icon-swap[data-state="idle"] .kira-icon-swap__icon[data-icon="idle"],
+.kira-icon-swap[data-state="playing"] .kira-icon-swap__icon[data-icon="playing"] {
+  opacity: 1;
+  filter: blur(0);
+  transform: scale(1);
+}
+
+.kira-icon-swap[data-state="idle"] .kira-icon-swap__icon[data-icon="playing"],
+.kira-icon-swap[data-state="playing"] .kira-icon-swap__icon[data-icon="idle"] {
+  opacity: 0;
+  filter: blur(var(--icon-swap-blur));
+  transform: scale(var(--icon-swap-start-scale));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kira-icon-swap__icon {
+    transition: none;
+  }
+}
+
 .kira-xterm {
   overflow-anchor: none;
 
