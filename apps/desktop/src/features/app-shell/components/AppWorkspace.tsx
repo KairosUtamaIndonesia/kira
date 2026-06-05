@@ -587,7 +587,9 @@ const workspaceComponents = {
   agentThreadPanel: AgentThreadPanel,
 };
 
-const runtimeOnlyWorkspaceComponents = new Set<string>();
+const emptyWorkspacePanelId = "workspace-empty-state";
+
+const runtimeOnlyWorkspaceComponents = new Set<string>(["workspacePanel"]);
 
 function requireTerminalState(panel: StoredWorkspacePanel) {
   if (panel.kind !== "terminal") {
@@ -663,6 +665,7 @@ async function addTerminalPanel({
       direction: "within",
     },
   });
+  removeEmptyWorkspacePanel(containerApi);
   await persistWorkspaceLayout(containerApi, sessionId);
 }
 
@@ -693,6 +696,7 @@ async function addAgentThreadPanel({
       direction: "within",
     },
   });
+  removeEmptyWorkspacePanel(containerApi);
   await persistWorkspaceLayout(containerApi, sessionId);
 }
 
@@ -808,7 +812,9 @@ function restoreWorkspacePanels(
 ) {
   preventHeaderSpaceDrag(event);
 
-  if (activeWorkspace.session.layoutJson !== null) {
+  if (activeWorkspace.panels.length === 0) {
+    addEmptyWorkspacePanel(event.api);
+  } else if (activeWorkspace.session.layoutJson !== null) {
     try {
       const serializedLayout = JSON.parse(activeWorkspace.session.layoutJson) as Parameters<
         typeof event.api.fromJSON
@@ -843,10 +849,12 @@ function restoreWorkspacePanels(
 
     const storedPanel = panelsRef.current.find((workspacePanel) => workspacePanel.id === panel.id);
     if (storedPanel === undefined) {
+      addEmptyWorkspacePanelWhenWorkspaceHasNoVisiblePanels(event);
       return;
     }
 
     if (storedPanel.kind === "agent_thread") {
+      addEmptyWorkspacePanelWhenWorkspaceHasNoVisiblePanels(event);
       void saveWorkspaceLayoutIfActive(activeWorkspace.session.id, event, isWorkspaceDisposingRef);
       return;
     }
@@ -858,6 +866,7 @@ function restoreWorkspacePanels(
 
     onPanelDeleted(panel.id);
     void deleteWorkspacePanel({ panelId: panel.id });
+    addEmptyWorkspacePanelWhenWorkspaceHasNoVisiblePanels(event);
     void saveWorkspaceLayoutIfActive(activeWorkspace.session.id, event, isWorkspaceDisposingRef);
   });
   event.api.onDidMovePanel(
@@ -872,6 +881,44 @@ function restoreWorkspacePanels(
     () =>
       void saveWorkspaceLayoutIfActive(activeWorkspace.session.id, event, isWorkspaceDisposingRef),
   );
+}
+
+function addEmptyWorkspacePanelWhenWorkspaceHasNoVisiblePanels(event: DockviewReadyEvent) {
+  if (hasVisibleWorkspacePanel(event.api)) {
+    return;
+  }
+
+  addEmptyWorkspacePanel(event.api);
+}
+
+function addEmptyWorkspacePanel(containerApi: IDockviewHeaderActionsProps["containerApi"]) {
+  if (containerApi.getPanel(emptyWorkspacePanelId) !== undefined || hasVisibleWorkspacePanel(containerApi)) {
+    return;
+  }
+
+  containerApi.addPanel<WorkspacePanelParams>({
+    id: emptyWorkspacePanelId,
+    component: "workspacePanel",
+    title: "Workspace",
+    params: {
+      description: "Create a panel from the tab bar to start working in this Project.",
+    },
+  });
+}
+
+function hasVisibleWorkspacePanel(containerApi: IDockviewHeaderActionsProps["containerApi"]) {
+  const layout = requireObjectRecord(containerApi.toJSON(), "Workspace layout");
+  const panels = requireObjectRecord(layout.panels, "Workspace layout panels");
+  return Object.keys(panels).some((panelId) => panelId !== emptyWorkspacePanelId);
+}
+
+function removeEmptyWorkspacePanel(containerApi: IDockviewHeaderActionsProps["containerApi"]) {
+  const emptyPanel = containerApi.getPanel(emptyWorkspacePanelId);
+  if (emptyPanel === undefined) {
+    return;
+  }
+
+  emptyPanel.api.close();
 }
 
 function ensureSavedLayoutReferencesStoredPanels(layout: unknown, panels: StoredWorkspacePanel[]) {
@@ -1068,6 +1115,7 @@ function ActiveWorkspaceDockview({
       title: panel.title,
       params: panel.sourceControlDiffState,
     });
+    removeEmptyWorkspacePanel(dockviewApi);
   }, [activeWorkspace.panels, dockviewApi, sourceControlDiffRequest]);
 
   useEffect(() => {
@@ -1094,6 +1142,7 @@ function ActiveWorkspaceDockview({
       title: panel.title,
       params: panel.fileEditorState,
     });
+    removeEmptyWorkspacePanel(dockviewApi);
   }, [activeWorkspace.panels, dockviewApi, fileEditorRequest]);
 
   useEffect(() => {
@@ -1124,6 +1173,7 @@ function ActiveWorkspaceDockview({
         threadId: panel.agentThreadState.threadId,
       },
     });
+    removeEmptyWorkspacePanel(dockviewApi);
   }, [activeWorkspace, agentThreadRequest, dockviewApi]);
 
   return (
@@ -1185,7 +1235,7 @@ function isRuntimeOnlyWorkspacePanel(value: unknown) {
     return false;
   }
 
-  const component = value.component;
+  const component = value.component ?? value.contentComponent;
   return typeof component === "string" && runtimeOnlyWorkspaceComponents.has(component);
 }
 
@@ -1218,7 +1268,7 @@ function AppWorkspace({
 
   return (
     <main className="relative h-full min-h-0 min-w-0 overflow-hidden bg-editor-surface">
-      {activeWorkspace.status === "active" && activeWorkspace.panels.length > 0 ? (
+      {activeWorkspace.status === "active" ? (
         <ActiveWorkspaceDockview
           activeWorkspace={activeWorkspace}
           isWorkspaceDisposingRef={isWorkspaceDisposingRef}
