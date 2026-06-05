@@ -9,6 +9,9 @@ use uuid::Uuid;
 use crate::persistence::PersistenceStore;
 
 const DEFAULT_SESSION_NAME: &str = "Default";
+const HEX_DIGITS: [char; 16] = [
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F',
+];
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1156,13 +1159,33 @@ fn source_control_diff_panel_id(
     file_path: &str,
 ) -> String {
     format!(
-        "source-control-diff:{session_id}:{}:{file_path}",
-        source.as_str()
+        "source-control-diff:{session_id}:{}:{}",
+        source.as_str(),
+        panel_id_path_segment(file_path)
     )
 }
 
 fn file_editor_panel_id(session_id: &str, file_path: &str) -> String {
-    format!("file-editor:{session_id}:{file_path}")
+    format!(
+        "file-editor:{session_id}:{}",
+        panel_id_path_segment(file_path)
+    )
+}
+
+fn panel_id_path_segment(file_path: &str) -> String {
+    let mut segment = String::with_capacity(file_path.len());
+    for byte in file_path.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-') {
+            segment.push(char::from(byte));
+            continue;
+        }
+
+        segment.push('~');
+        segment.push(HEX_DIGITS[usize::from(byte >> 4)]);
+        segment.push(HEX_DIGITS[usize::from(byte & 0x0F)]);
+    }
+
+    segment
 }
 
 async fn create_project(

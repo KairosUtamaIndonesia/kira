@@ -243,35 +243,39 @@ function AppShell() {
       return;
     }
 
-    const panel = await openFileEditorPanel({
-      sessionId: activeWorkspace.session.id,
-      title: fileTitle(filePath),
-      folderPath: activeWorkspace.project.folderPath,
-      filePath,
-    });
+    try {
+      const panel = await openFileEditorPanel({
+        sessionId: activeWorkspace.session.id,
+        title: fileTitle(filePath),
+        folderPath: activeWorkspace.project.folderPath,
+        filePath,
+      });
 
-    if (panel.kind !== "file_editor") {
-      throw new Error(`Expected file editor panel, received ${panel.kind}.`);
+      if (panel.kind !== "file_editor") {
+        throw new Error(`Expected file editor panel, received ${panel.kind}.`);
+      }
+
+      setActiveWorkspace((currentWorkspace) => {
+        if (currentWorkspace.status !== "active") {
+          return currentWorkspace;
+        }
+
+        const existingPanel = currentWorkspace.panels.find(
+          (workspacePanel) => workspacePanel.id === panel.id,
+        );
+        if (existingPanel !== undefined) {
+          return currentWorkspace;
+        }
+
+        return { ...currentWorkspace, panels: [...currentWorkspace.panels, panel] };
+      });
+
+      const sequence = fileEditorSequenceRef.current + 1;
+      fileEditorSequenceRef.current = sequence;
+      setFileEditorRequest({ sequence, panel });
+    } catch (error) {
+      toast.error(`Failed to open ${filePath}: ${errorMessageFromUnknown(error)}`);
     }
-
-    setActiveWorkspace((currentWorkspace) => {
-      if (currentWorkspace.status !== "active") {
-        return currentWorkspace;
-      }
-
-      const existingPanel = currentWorkspace.panels.find(
-        (workspacePanel) => workspacePanel.id === panel.id,
-      );
-      if (existingPanel !== undefined) {
-        return currentWorkspace;
-      }
-
-      return { ...currentWorkspace, panels: [...currentWorkspace.panels, panel] };
-    });
-
-    const sequence = fileEditorSequenceRef.current + 1;
-    fileEditorSequenceRef.current = sequence;
-    setFileEditorRequest({ sequence, panel });
   }
 
   function handleAgentThreadOpen(panelId: string) {

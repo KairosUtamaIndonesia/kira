@@ -1,4 +1,4 @@
-import { preparePresortedFileTreeInput } from "@pierre/trees";
+import { prepareFileTreeInput } from "@pierre/trees";
 import { FileTree, useFileTree, useFileTreeSearch } from "@pierre/trees/react";
 import { ChevronsUp, File, RefreshCw, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
@@ -155,33 +155,33 @@ function ExplorerTreeModel({
 }: ExplorerTreeModelProps) {
   const expandedPathsRef = useRef<readonly string[]>([]);
   const didInitializePathsRef = useRef(false);
-  const preparedInput = useMemo(() => preparePresortedFileTreeInput(treePaths), [treePaths]);
-  const handleSelectionChange = useCallback(
-    (selectedPaths: readonly string[]) => {
-      if (selectedPaths.length !== 1) {
-        return;
-      }
+  const runtimeRef = useRef({ directoryPaths, filePaths, onLoadDirectory, onOpenFile });
+  runtimeRef.current = { directoryPaths, filePaths, onLoadDirectory, onOpenFile };
+  const preparedInput = useMemo(() => prepareFileTreeInput(treePaths), [treePaths]);
+  const handleSelectionChange = useCallback((selectedPaths: readonly string[]) => {
+    if (selectedPaths.length !== 1) {
+      return;
+    }
 
-      const selectedPath = selectedPaths[0];
-      if (selectedPath === undefined) {
-        return;
-      }
+    const selectedPath = selectedPaths[0];
+    if (selectedPath === undefined) {
+      return;
+    }
 
-      if (filePaths.has(selectedPath)) {
-        void onOpenFile(selectedPath);
-        return;
-      }
+    const runtime = runtimeRef.current;
+    if (runtime.filePaths.has(selectedPath)) {
+      void runtime.onOpenFile(selectedPath);
+      return;
+    }
 
-      if (directoryPaths.has(selectedPath)) {
-        expandedPathsRef.current = includeExpandedPath(expandedPathsRef.current, selectedPath);
-        onLoadDirectory(selectedPath);
-      }
-    },
-    [directoryPaths, filePaths, onLoadDirectory, onOpenFile],
-  );
+    if (runtime.directoryPaths.has(selectedPath)) {
+      expandedPathsRef.current = includeExpandedPath(expandedPathsRef.current, selectedPath);
+      runtime.onLoadDirectory(selectedPath);
+    }
+  }, []);
   const { model } = useFileTree({
     preparedInput,
-    flattenEmptyDirectories: true,
+    flattenEmptyDirectories: false,
     initialExpansion: "closed",
     fileTreeSearchMode: "hide-non-matches",
     density: "compact",
@@ -189,13 +189,14 @@ function ExplorerTreeModel({
   });
   const search = useFileTreeSearch(model);
   const syncExpandedDirectories = useCallback(() => {
-    const expandedPaths = expandedDirectoryPathsFromModel(model, directoryPaths);
+    const runtime = runtimeRef.current;
+    const expandedPaths = expandedDirectoryPathsFromModel(model, runtime.directoryPaths);
     expandedPathsRef.current = expandedPaths;
 
     for (const expandedPath of expandedPaths) {
-      onLoadDirectory(expandedPath);
+      runtime.onLoadDirectory(expandedPath);
     }
-  }, [directoryPaths, model, onLoadDirectory]);
+  }, [model]);
 
   useEffect(() => {
     syncExpandedDirectories();
