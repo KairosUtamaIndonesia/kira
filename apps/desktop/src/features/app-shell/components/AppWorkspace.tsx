@@ -164,11 +164,11 @@ function WorkspacePanelTab({ api, containerApi }: IDockviewPanelHeaderProps) {
 
   return (
     <ContextMenu>
-      <ContextMenuTrigger render={<div className="group flex h-full min-w-0 items-center gap-1 px-2" />}>
+      <ContextMenuTrigger render={<div className="group relative flex h-full min-w-0 items-center px-2 pr-6" />}>
         <span className="truncate">{api.title ?? api.id}</span>
         <button
           aria-label={`Close ${api.title ?? api.id}`}
-          className="-mr-1 rounded-sm p-0.5 text-muted-foreground opacity-0 hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100"
+          className="absolute right-1 rounded-sm p-0.5 text-muted-foreground opacity-0 hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100"
           type="button"
           onClick={(event) => closePanelFromTab(event, panel)}
           onContextMenu={(event) => event.stopPropagation()}
