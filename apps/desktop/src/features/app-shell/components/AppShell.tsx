@@ -7,16 +7,19 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { toast } from "@/components/ui/sonner";
 import { startAgentRuntime } from "@/features/agent-thread/api/agentRuntimeApi";
 import {
+  deleteWorkspacePanel,
   openFileEditorPanel,
   openLastProject,
   openProject,
   openSourceControlDiffPanel,
+  renameWorkspacePanel,
 } from "@/features/projects/api/projectsApi";
 import { SettingsPage } from "@/features/settings";
 
 import type {
   ActiveWorkspaceState,
   AgentThreadOpenRequest,
+  AgentThreadOperationRequest,
   FileEditorOpenRequest,
   SourceControlDiffOpenRequest,
 } from "../types";
@@ -44,6 +47,8 @@ function AppShell() {
     useState<SourceControlDiffOpenRequest>();
   const [fileEditorRequest, setFileEditorRequest] = useState<FileEditorOpenRequest>();
   const [agentThreadRequest, setAgentThreadRequest] = useState<AgentThreadOpenRequest>();
+  const [agentThreadOperationRequest, setAgentThreadOperationRequest] =
+    useState<AgentThreadOperationRequest>();
   const [settingsSurfaceState, setSettingsSurfaceState] = useState<SettingsSurfaceState>("closed");
   const projectSwitchSequenceRef = useRef(0);
   const sourceControlDiffSequenceRef = useRef(0);
@@ -253,7 +258,7 @@ function AppShell() {
     setSourceControlDiffRequest({ sequence, panel });
   }
 
-  async function handleExplorerFileOpen(filePath: string) {
+  async function handleExplorerFileOpen(filePath: string, lineNumber?: number) {
     if (activeWorkspace.status !== "active") {
       return;
     }
@@ -287,25 +292,75 @@ function AppShell() {
 
       const sequence = fileEditorSequenceRef.current + 1;
       fileEditorSequenceRef.current = sequence;
-      setFileEditorRequest({ sequence, panel });
+      setFileEditorRequest({
+        sequence,
+        panel,
+        focusRequest: lineNumber === undefined ? undefined : { sequence, lineNumber, column: 1 },
+      });
     } catch (error) {
       toast.error(`Failed to open ${filePath}: ${errorMessageFromUnknown(error)}`);
     }
   }
 
   function handleAgentThreadOpen(panelId: string) {
-    if (activeWorkspace.status !== "active") {
-      return;
-    }
-
-    const panel = activeWorkspace.panels.find((workspacePanel) => workspacePanel.id === panelId);
-    if (panel === undefined || panel.kind !== "agent_thread") {
-      throw new Error(`Expected Agent Thread panel ${panelId}.`);
-    }
+    const panel = requireActiveAgentThreadPanel(activeWorkspace, panelId);
 
     const sequence = agentThreadSequenceRef.current + 1;
     agentThreadSequenceRef.current = sequence;
     setAgentThreadRequest({ sequence, panel });
+  }
+
+  function handleAgentThreadClose(panelId: string) {
+    requireActiveAgentThreadPanel(activeWorkspace, panelId);
+
+    const sequence = agentThreadSequenceRef.current + 1;
+    agentThreadSequenceRef.current = sequence;
+    setAgentThreadOperationRequest({ sequence, panelId, operation: "close" });
+  }
+
+  async function handleAgentThreadDelete(panelId: string) {
+    requireActiveAgentThreadPanel(activeWorkspace, panelId);
+
+    try {
+      await deleteWorkspacePanel({ panelId });
+      const sequence = agentThreadSequenceRef.current + 1;
+      agentThreadSequenceRef.current = sequence;
+      setAgentThreadOperationRequest({ sequence, panelId, operation: "delete" });
+      handlePanelDeleted(panelId);
+    } catch (error) {
+      toast.error(`Failed to delete Agent Thread: ${errorMessageFromUnknown(error)}`);
+    }
+  }
+
+  async function handleAgentThreadRename(panelId: string, title: string) {
+    requireActiveAgentThreadPanel(activeWorkspace, panelId);
+
+    try {
+      const panel = await renameWorkspacePanel({ panelId, title });
+      if (panel.kind !== "agent_thread") {
+        throw new Error(`Expected renamed Agent Thread panel, received ${panel.kind}.`);
+      }
+
+      setActiveWorkspace((currentWorkspace) => {
+        if (currentWorkspace.status !== "active") {
+          return currentWorkspace;
+        }
+
+        return {
+          ...currentWorkspace,
+          panels: currentWorkspace.panels.map((workspacePanel) =>
+            workspacePanel.id === panel.id ? panel : workspacePanel,
+          ),
+        };
+      });
+
+      const sequence = agentThreadSequenceRef.current + 1;
+      agentThreadSequenceRef.current = sequence;
+      setAgentThreadOperationRequest({ sequence, panelId, operation: "rename", title: panel.title });
+    } catch (error) {
+      toast.error(`Failed to rename Agent Thread: ${errorMessageFromUnknown(error)}`);
+      throw error;
+    }
   }
 
   function handlePanelDeleted(panelId: string) {
@@ -397,6 +452,7 @@ function AppShell() {
             sourceControlDiffRequest={sourceControlDiffRequest}
             fileEditorRequest={fileEditorRequest}
             agentThreadRequest={agentThreadRequest}
+            agentThreadOperationRequest={agentThreadOperationRequest}
             onPanelCreated={handlePanelCreated}
             onPanelUpdated={handlePanelUpdated}
             onPanelDeleted={handlePanelDeleted}
@@ -412,7 +468,10 @@ function AppShell() {
         >
           <AppInspector
             activeWorkspace={activeWorkspace}
+            onAgentThreadClose={handleAgentThreadClose}
+            onAgentThreadDelete={handleAgentThreadDelete}
             onAgentThreadOpen={handleAgentThreadOpen}
+            onAgentThreadRename={handleAgentThreadRename}
             onExplorerFileOpen={handleExplorerFileOpen}
             onSourceControlDiffOpen={handleSourceControlDiffOpen}
           />
@@ -429,6 +488,19 @@ function AppShell() {
       )}
     </div>
   );
+}
+
+function requireActiveAgentThreadPanel(activeWorkspace: ActiveWorkspaceState, panelId: string) {
+  if (activeWorkspace.status !== "active") {
+    throw new Error("An active Workspace is required before Agent Thread operations can run.");
+  }
+
+  const panel = activeWorkspace.panels.find((workspacePanel) => workspacePanel.id === panelId);
+  if (panel === undefined || panel.kind !== "agent_thread") {
+    throw new Error(`Expected Agent Thread panel ${panelId}.`);
+  }
+
+  return panel;
 }
 
 function errorMessageFromUnknown(error: unknown) {

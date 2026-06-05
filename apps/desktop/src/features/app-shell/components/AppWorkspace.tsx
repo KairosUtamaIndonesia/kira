@@ -74,6 +74,7 @@ import {
 import type {
   ActiveWorkspaceState,
   AgentThreadOpenRequest,
+  AgentThreadOperationRequest,
   FileEditorOpenRequest,
   SourceControlDiffOpenRequest,
 } from "../types";
@@ -164,11 +165,13 @@ function WorkspacePanelTab({ api, containerApi }: IDockviewPanelHeaderProps) {
 
   return (
     <ContextMenu>
-      <ContextMenuTrigger render={<div className="group relative flex h-full min-w-0 items-center px-2 pr-6" />}>
+      <ContextMenuTrigger
+        render={<div className="group relative flex h-full min-w-0 items-center px-2 pr-6" />}
+      >
         <span className="truncate">{api.title ?? api.id}</span>
         <button
           aria-label={`Close ${api.title ?? api.id}`}
-          className="absolute right-1 rounded-sm p-0.5 text-muted-foreground opacity-0 hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100"
+          className="absolute right-1 rounded-sm p-0.5 text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-ring"
           type="button"
           onClick={(event) => closePanelFromTab(event, panel)}
           onContextMenu={(event) => event.stopPropagation()}
@@ -442,7 +445,9 @@ function WorkspaceGroupActions({
 
   function closeActivePanelsToRight() {
     if (activePanel === undefined) {
-      throw new Error("An active Workspace Panel is required before panels to the right can be closed.");
+      throw new Error(
+        "An active Workspace Panel is required before panels to the right can be closed.",
+      );
     }
 
     closePanelsAfter(activePanel);
@@ -473,7 +478,10 @@ function WorkspaceGroupActions({
             <X className="size-4 text-muted-foreground" />
             <span>Close Others</span>
           </DropdownMenuItem>
-          <DropdownMenuItem disabled={!hasPanelsAfter(activePanel)} onClick={closeActivePanelsToRight}>
+          <DropdownMenuItem
+            disabled={!hasPanelsAfter(activePanel)}
+            onClick={closeActivePanelsToRight}
+          >
             <X className="size-4 text-muted-foreground" />
             <span>Close Panels to the Right</span>
           </DropdownMenuItem>
@@ -571,7 +579,9 @@ function closePanelsAfter(panel: NonNullable<IDockviewHeaderActionsProps["active
 }
 
 function panelIndexInGroup(panel: NonNullable<IDockviewHeaderActionsProps["activePanel"]>) {
-  const panelIndex = panel.group.panels.findIndex((candidatePanel) => candidatePanel.id === panel.id);
+  const panelIndex = panel.group.panels.findIndex(
+    (candidatePanel) => candidatePanel.id === panel.id,
+  );
   if (panelIndex === -1) {
     throw new Error(`Workspace Panel ${panel.id} is missing from its Dockview group.`);
   }
@@ -809,6 +819,7 @@ function restoreWorkspacePanels(
   panelsRef: RefObject<StoredWorkspacePanel[]>,
   onPanelDeleted: (panelId: string) => void,
   isWorkspaceDisposingRef: RefObject<boolean>,
+  deletedPanelIdsRef: RefObject<Set<string>>,
 ) {
   preventHeaderSpaceDrag(event);
 
@@ -854,6 +865,10 @@ function restoreWorkspacePanels(
     }
 
     if (storedPanel.kind === "agent_thread") {
+      if (deletedPanelIdsRef.current.has(panel.id)) {
+        deletedPanelIdsRef.current.delete(panel.id);
+        onPanelDeleted(panel.id);
+      }
       addEmptyWorkspacePanelWhenWorkspaceHasNoVisiblePanels(event);
       void saveWorkspaceLayoutIfActive(activeWorkspace.session.id, event, isWorkspaceDisposingRef);
       return;
@@ -892,7 +907,10 @@ function addEmptyWorkspacePanelWhenWorkspaceHasNoVisiblePanels(event: DockviewRe
 }
 
 function addEmptyWorkspacePanel(containerApi: IDockviewHeaderActionsProps["containerApi"]) {
-  if (containerApi.getPanel(emptyWorkspacePanelId) !== undefined || hasVisibleWorkspacePanel(containerApi)) {
+  if (
+    containerApi.getPanel(emptyWorkspacePanelId) !== undefined ||
+    hasVisibleWorkspacePanel(containerApi)
+  ) {
     return;
   }
 
@@ -1063,6 +1081,7 @@ type ActiveWorkspaceDockviewProps = {
   sourceControlDiffRequest: SourceControlDiffOpenRequest | undefined;
   fileEditorRequest: FileEditorOpenRequest | undefined;
   agentThreadRequest: AgentThreadOpenRequest | undefined;
+  agentThreadOperationRequest: AgentThreadOperationRequest | undefined;
   onPanelDeleted: (panelId: string) => void;
 };
 
@@ -1074,11 +1093,13 @@ function ActiveWorkspaceDockview({
   sourceControlDiffRequest,
   fileEditorRequest,
   agentThreadRequest,
+  agentThreadOperationRequest,
   onPanelDeleted,
 }: ActiveWorkspaceDockviewProps) {
   const [dockviewApi, setDockviewApi] = useState<DockviewReadyEvent["api"]>();
   const panelsRef = useRef(activeWorkspace.panels);
   panelsRef.current = activeWorkspace.panels;
+  const deletedPanelIdsRef = useRef<Set<string>>(new Set());
   const workspaceRuntimeContext = useMemo(
     () => ({
       projectId: activeWorkspace.project.id,
@@ -1130,8 +1151,14 @@ function ActiveWorkspaceDockview({
       return;
     }
 
+    const params = {
+      ...panel.fileEditorState,
+      focusRequest: fileEditorRequest.focusRequest,
+    } satisfies FileEditorPanelParams;
+
     const existingPanel = dockviewApi.getPanel(panel.id);
     if (existingPanel !== undefined) {
+      existingPanel.api.updateParameters(params);
       existingPanel.api.setActive();
       return;
     }
@@ -1140,7 +1167,7 @@ function ActiveWorkspaceDockview({
       id: panel.id,
       component: "fileEditorPanel",
       title: panel.title,
-      params: panel.fileEditorState,
+      params,
     });
     removeEmptyWorkspacePanel(dockviewApi);
   }, [activeWorkspace.panels, dockviewApi, fileEditorRequest]);
@@ -1176,6 +1203,54 @@ function ActiveWorkspaceDockview({
     removeEmptyWorkspacePanel(dockviewApi);
   }, [activeWorkspace, agentThreadRequest, dockviewApi]);
 
+  useEffect(() => {
+    if (dockviewApi === undefined || agentThreadOperationRequest === undefined) {
+      return;
+    }
+
+    const panel = activeWorkspace.panels.find(
+      (workspacePanel) => workspacePanel.id === agentThreadOperationRequest.panelId,
+    );
+    if (panel === undefined && agentThreadOperationRequest.operation !== "delete") {
+      throw new Error(`Expected Agent Thread panel ${agentThreadOperationRequest.panelId}.`);
+    }
+    if (panel !== undefined && panel.kind !== "agent_thread") {
+      throw new Error(`Expected Agent Thread panel ${agentThreadOperationRequest.panelId}.`);
+    }
+
+    const dockviewPanel = dockviewApi.getPanel(agentThreadOperationRequest.panelId);
+
+    if (agentThreadOperationRequest.operation === "rename") {
+      if (agentThreadOperationRequest.title === undefined) {
+        throw new Error("A title is required to rename an Agent Thread panel.");
+      }
+      if (dockviewPanel !== undefined) {
+        dockviewPanel.api.setTitle(agentThreadOperationRequest.title);
+      }
+      return;
+    }
+
+    if (agentThreadOperationRequest.operation === "close") {
+      if (dockviewPanel !== undefined) {
+        dockviewPanel.api.close();
+      }
+      return;
+    }
+
+    if (agentThreadOperationRequest.operation === "delete") {
+      deletedPanelIdsRef.current.add(agentThreadOperationRequest.panelId);
+      if (dockviewPanel !== undefined) {
+        dockviewPanel.api.close();
+      }
+      if (dockviewPanel === undefined) {
+        deletedPanelIdsRef.current.delete(agentThreadOperationRequest.panelId);
+      }
+      return;
+    }
+
+    assertNever(agentThreadOperationRequest.operation);
+  }, [activeWorkspace.panels, agentThreadOperationRequest, dockviewApi]);
+
   return (
     <div className="h-full min-h-0 min-w-0 overflow-hidden">
       <WorkspaceRuntimeContext.Provider value={workspaceRuntimeContext}>
@@ -1195,6 +1270,7 @@ function ActiveWorkspaceDockview({
               panelsRef,
               onPanelDeleted,
               isWorkspaceDisposingRef,
+              deletedPanelIdsRef,
             );
           }}
           leftHeaderActionsComponent={WorkspaceHeaderActions}
@@ -1243,11 +1319,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function assertNever(value: never): never {
+  throw new Error(`Unhandled Agent Thread operation: ${value}`);
+}
+
 type AppWorkspaceProps = {
   activeWorkspace: ActiveWorkspaceState;
   sourceControlDiffRequest: SourceControlDiffOpenRequest | undefined;
   fileEditorRequest: FileEditorOpenRequest | undefined;
   agentThreadRequest: AgentThreadOpenRequest | undefined;
+  agentThreadOperationRequest: AgentThreadOperationRequest | undefined;
   onPanelCreated: (panel: StoredWorkspacePanel) => void;
   onPanelUpdated: (panel: StoredWorkspacePanel) => void;
   onPanelDeleted: (panelId: string) => void;
@@ -1258,6 +1339,7 @@ function AppWorkspace({
   sourceControlDiffRequest,
   fileEditorRequest,
   agentThreadRequest,
+  agentThreadOperationRequest,
   onPanelCreated,
   onPanelUpdated,
   onPanelDeleted,
@@ -1277,6 +1359,7 @@ function AppWorkspace({
           sourceControlDiffRequest={sourceControlDiffRequest}
           fileEditorRequest={fileEditorRequest}
           agentThreadRequest={agentThreadRequest}
+          agentThreadOperationRequest={agentThreadOperationRequest}
           onPanelDeleted={onPanelDeleted}
         />
       ) : (
