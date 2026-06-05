@@ -40,7 +40,7 @@ function AgentThreadTranscript({ messages, runtimeIsSending }: AgentThreadTransc
         if (item.type === "assistant-activity") {
           return (
             <li key={item.id} className="flex justify-start">
-              <article className="w-full max-w-[min(52rem,94%)] space-y-3 rounded-xl border border-border bg-background p-3 text-foreground">
+              <article className="w-full max-w-[min(52rem,94%)] space-y-3 rounded-xl p-3 text-foreground">
                 <MessageHeader icon="assistant" label="Kira" createdAt={item.createdAt} />
                 {item.blocks.length === 0 && item.isStreaming ? (
                   <p className="text-sm text-muted-foreground">Working…</p>
@@ -63,7 +63,13 @@ function AgentThreadTranscript({ messages, runtimeIsSending }: AgentThreadTransc
   );
 }
 
-function ActivityBlock({ block, isStreaming }: { block: AgentThreadActivityBlock; isStreaming: boolean }) {
+function ActivityBlock({
+  block,
+  isStreaming,
+}: {
+  block: AgentThreadActivityBlock;
+  isStreaming: boolean;
+}) {
   if (block.type === "thinking") {
     return <ThinkingBlock thinking={block.thinking} />;
   }
@@ -103,7 +109,9 @@ function ThinkingBlock({ thinking }: { thinking: string }) {
         <Brain aria-hidden="true" className="size-3.5" />
         Thinking
       </summary>
-      <div className="mt-2 text-sm leading-6 whitespace-pre-wrap text-muted-foreground">{thinking}</div>
+      <div className="mt-2 text-sm leading-6 whitespace-pre-wrap text-muted-foreground">
+        {thinking}
+      </div>
     </details>
   );
 }
@@ -140,10 +148,11 @@ function MessageHeader({
 }
 
 function formatTimestamp(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    hour: "2-digit",
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
     minute: "2-digit",
     second: "2-digit",
+    hour12: true,
   }).format(new Date(value));
 }
 
