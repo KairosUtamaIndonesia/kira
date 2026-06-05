@@ -245,6 +245,10 @@ function WorkspacePanelContextMenuContent({
     }
   }
 
+  function closePanelsToRight() {
+    closePanelsAfter(panel);
+  }
+
   return (
     <>
       <ContextMenuContent className="w-auto min-w-48">
@@ -259,6 +263,10 @@ function WorkspacePanelContextMenuContent({
         <ContextMenuItem onClick={closeOtherPanels}>
           <X className="size-4 text-muted-foreground" />
           <span>Close Others</span>
+        </ContextMenuItem>
+        <ContextMenuItem disabled={!hasPanelsAfter(panel)} onClick={closePanelsToRight}>
+          <X className="size-4 text-muted-foreground" />
+          <span>Close Panels to the Right</span>
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem onClick={() => void splitPanel("right")}>
@@ -422,6 +430,14 @@ function WorkspaceGroupActions({
     }
   }
 
+  function closeActivePanelsToRight() {
+    if (activePanel === undefined) {
+      throw new Error("An active Workspace Panel is required before panels to the right can be closed.");
+    }
+
+    closePanelsAfter(activePanel);
+  }
+
   return (
     <div className="flex h-full items-center px-1">
       <DropdownMenu>
@@ -446,6 +462,10 @@ function WorkspaceGroupActions({
           <DropdownMenuItem disabled={activePanel === undefined} onClick={closeOtherPanels}>
             <X className="size-4 text-muted-foreground" />
             <span>Close Others</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled={!hasPanelsAfter(activePanel)} onClick={closeActivePanelsToRight}>
+            <X className="size-4 text-muted-foreground" />
+            <span>Close Panels to the Right</span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => void splitGroup("right")}>
@@ -514,6 +534,30 @@ function closeActivePanel(activePanel: IDockviewHeaderActionsProps["activePanel"
   }
 
   activePanel.api.close();
+}
+
+function hasPanelsAfter(panel: IDockviewHeaderActionsProps["activePanel"]) {
+  if (panel === undefined) {
+    return false;
+  }
+
+  return panelIndexInGroup(panel) < panel.group.panels.length - 1;
+}
+
+function closePanelsAfter(panel: NonNullable<IDockviewHeaderActionsProps["activePanel"]>) {
+  const startIndex = panelIndexInGroup(panel) + 1;
+  for (const panelToClose of panel.group.panels.slice(startIndex)) {
+    panelToClose.api.close();
+  }
+}
+
+function panelIndexInGroup(panel: NonNullable<IDockviewHeaderActionsProps["activePanel"]>) {
+  const panelIndex = panel.group.panels.findIndex((candidatePanel) => candidatePanel.id === panel.id);
+  if (panelIndex === -1) {
+    throw new Error(`Workspace Panel ${panel.id} is missing from its Dockview group.`);
+  }
+
+  return panelIndex;
 }
 
 const workspaceComponents = {
