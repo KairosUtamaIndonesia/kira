@@ -1,9 +1,10 @@
 import { appearanceSettingsSection } from "@/features/settings/sections/appearance/appearanceSettingsSection";
+import { notificationSettingsSection } from "@/features/settings/sections/notifications/notificationSettingsSection";
 
 const settingsGroups = [
   {
     label: "Interface",
-    sections: [appearanceSettingsSection],
+    sections: [appearanceSettingsSection, notificationSettingsSection],
   },
 ] as const;
 

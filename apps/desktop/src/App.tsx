@@ -1,12 +1,14 @@
 import { Toaster } from "@/components/ui/sonner";
 import { AppShell } from "@/features/app-shell";
-import { AppearanceThemeProvider } from "@/features/settings";
+import { AppearanceThemeProvider, NotificationSettingsProvider } from "@/features/settings";
 
 function App() {
   return (
     <AppearanceThemeProvider>
-      <AppShell />
-      <Toaster />
+      <NotificationSettingsProvider>
+        <AppShell />
+        <Toaster />
+      </NotificationSettingsProvider>
     </AppearanceThemeProvider>
   );
 }
