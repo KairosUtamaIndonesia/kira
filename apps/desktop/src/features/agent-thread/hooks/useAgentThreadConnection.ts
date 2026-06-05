@@ -28,6 +28,9 @@ function useAgentThreadConnection(params: AgentThreadPanelParams) {
   const [messages, setMessages] = useState<AgentThreadMessageRecord[]>([]);
   const socketRef = useRef<AgentSocket | undefined>(void 0);
   const runtimeStateRef = useRef(runtimeState);
+  const appendQueueRef = useRef(Promise.resolve());
+  const pendingPromptRequestIdRef = useRef<string | undefined>(void 0);
+  const runtimeRequestIdsRef = useRef(new Map<string, string>());
   runtimeStateRef.current = runtimeState;
 
   const runtimeInput = useMemo(
@@ -40,14 +43,13 @@ function useAgentThreadConnection(params: AgentThreadPanelParams) {
   );
 
   const appendMessage = useCallback(
-    async (kind: AgentThreadMessageKind, requestId: string, message: unknown) => {
-      const savedMessage = await saveAgentThreadMessage({
-        threadId: params.threadId,
-        kind,
-        requestId,
-        message,
+    (kind: AgentThreadMessageKind, requestId: string, message: unknown) => {
+      const previousAppend = appendQueueRef.current;
+      const appendOperation = appendMessageAfter(previousAppend, params.threadId, kind, requestId, message, (savedMessage) => {
+        setMessages((currentMessages) => [...currentMessages, savedMessage]);
       });
-      setMessages((currentMessages) => [...currentMessages, savedMessage]);
+      appendQueueRef.current = settleAppendOperation(appendOperation);
+      return appendOperation;
     },
     [params.threadId],
   );
@@ -59,6 +61,8 @@ function useAgentThreadConnection(params: AgentThreadPanelParams) {
 
     async function connectRuntime() {
       try {
+        runtimeRequestIdsRef.current = new Map();
+        pendingPromptRequestIdRef.current = undefined;
         const loadedMessages = await listAgentThreadMessages({ threadId: params.threadId });
         if (disposed) {
           return;
@@ -83,7 +87,12 @@ function useAgentThreadConnection(params: AgentThreadPanelParams) {
         socket = client.agents.connect("coding", params.threadId);
         socketRef.current = socket;
         unsubscribe = socket.onEvent((event, context) => {
-          void appendMessage("event", context.requestId, event);
+          const requestId = requestIdForRuntimeEvent(
+            context.requestId,
+            runtimeRequestIdsRef.current,
+            pendingPromptRequestIdRef.current,
+          );
+          void appendMessage("event", requestId, event);
         });
         await socket.ready;
 
@@ -128,18 +137,65 @@ function useAgentThreadConnection(params: AgentThreadPanelParams) {
     setRuntimeState({ status: "sending", baseUrl: state.baseUrl });
     try {
       const requestId = crypto.randomUUID();
+      pendingPromptRequestIdRef.current = requestId;
       await appendMessage("prompt", requestId, message);
       const result = await socket.prompt(message, { session: "default" });
       await appendMessage("result", requestId, result.result);
+      pendingPromptRequestIdRef.current = undefined;
       setRuntimeState({ status: "ready", baseUrl: state.baseUrl });
       return true;
     } catch (error) {
+      pendingPromptRequestIdRef.current = undefined;
       setRuntimeState({ status: "error", message: errorMessageFromUnknown(error) });
       return false;
     }
   }
 
   return { messages, runtimeState, sendPrompt };
+}
+
+async function appendMessageAfter(
+  previousAppend: Promise<void>,
+  threadId: string,
+  kind: AgentThreadMessageKind,
+  requestId: string,
+  message: unknown,
+  appendSavedMessage: (message: AgentThreadMessageRecord) => void,
+) {
+  await previousAppend;
+  const savedMessage = await saveAgentThreadMessage({
+    threadId,
+    kind,
+    requestId,
+    message,
+  });
+  appendSavedMessage(savedMessage);
+}
+
+async function settleAppendOperation(appendOperation: Promise<void>) {
+  try {
+    await appendOperation;
+  } catch {
+    return;
+  }
+}
+
+function requestIdForRuntimeEvent(
+  runtimeRequestId: string,
+  runtimeRequestIds: Map<string, string>,
+  pendingPromptRequestId: string | undefined,
+) {
+  const existingRequestId = runtimeRequestIds.get(runtimeRequestId);
+  if (existingRequestId !== undefined) {
+    return existingRequestId;
+  }
+
+  if (pendingPromptRequestId === undefined) {
+    return runtimeRequestId;
+  }
+
+  runtimeRequestIds.set(runtimeRequestId, pendingPromptRequestId);
+  return pendingPromptRequestId;
 }
 
 function errorMessageFromUnknown(error: unknown) {
