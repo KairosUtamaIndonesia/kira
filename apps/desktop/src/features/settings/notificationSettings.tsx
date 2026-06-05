@@ -1,4 +1,3 @@
-import { convertFileSrc } from "@tauri-apps/api/core";
 import {
   createContext,
   useCallback,
@@ -22,6 +21,7 @@ import { toast } from "@/components/ui/sonner";
 import {
   getNotificationSettings,
   importNotificationSound,
+  readNotificationSound,
   removeNotificationSound,
   updateNotificationSettings,
 } from "@/features/settings/api/settingsApi";
@@ -246,41 +246,54 @@ async function playNotificationSound(
   audioRef: MutableRefObject<HTMLAudioElement | undefined>,
   setPlayingSoundId: (soundId: string | undefined) => void,
 ) {
-  const source = sound.kind === "custom" ? convertFileSrc(sound.path) : sound.url;
+  const source = await notificationSoundSource(sound);
   if (audioRef.current !== undefined) {
     audioRef.current.pause();
   }
 
-  const audio = new Audio(source);
+  const audio = new Audio(source.url);
   audio.volume = volume;
   audioRef.current = audio;
   audio.addEventListener("ended", () => {
-    if (audioRef.current !== audio) {
-      return;
-    }
-
-    setPlayingSoundId(undefined);
-    audioRef.current = undefined;
+    cleanupPlayedSound(audio, source, audioRef, setPlayingSoundId);
   });
   audio.addEventListener("error", () => {
-    if (audioRef.current !== audio) {
-      return;
-    }
-
-    setPlayingSoundId(undefined);
-    audioRef.current = undefined;
+    cleanupPlayedSound(audio, source, audioRef, setPlayingSoundId);
   });
 
   setPlayingSoundId(sound.id);
   try {
     await audio.play();
   } catch (error) {
-    if (audioRef.current === audio) {
-      setPlayingSoundId(undefined);
-      audioRef.current = undefined;
-    }
-
+    cleanupPlayedSound(audio, source, audioRef, setPlayingSoundId);
     throw error;
+  }
+}
+
+async function notificationSoundSource(sound: NotificationSound) {
+  if (sound.kind === "bundled") {
+    return { url: sound.url, objectUrl: undefined };
+  }
+
+  const bytes = await readNotificationSound(sound.id);
+  const objectUrl = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: "audio/mpeg" }));
+  return { url: objectUrl, objectUrl };
+}
+
+function cleanupPlayedSound(
+  audio: HTMLAudioElement,
+  source: { url: string; objectUrl: string | undefined },
+  audioRef: MutableRefObject<HTMLAudioElement | undefined>,
+  setPlayingSoundId: (soundId: string | undefined) => void,
+) {
+  if (audioRef.current !== audio) {
+    return;
+  }
+
+  setPlayingSoundId(undefined);
+  audioRef.current = undefined;
+  if (source.objectUrl !== undefined) {
+    URL.revokeObjectURL(source.objectUrl);
   }
 }
 

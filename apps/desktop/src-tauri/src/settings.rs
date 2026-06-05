@@ -139,6 +139,8 @@ pub enum SettingsError {
     Update(String),
     #[error("failed to import notification sound: {0}")]
     ImportNotificationSound(String),
+    #[error("failed to read notification sound: {0}")]
+    ReadNotificationSound(String),
     #[error("failed to remove notification sound: {0}")]
     RemoveNotificationSound(String),
 }
@@ -222,6 +224,19 @@ pub async fn notification_sound_remove(
     store: tauri::State<'_, PersistenceStore>,
 ) -> Result<NotificationSettings, SettingsError> {
     remove_notification_sound(&app, store.pool(), &sound_id).await
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State and AppHandle by value"
+)]
+pub async fn notification_sound_read(
+    app: tauri::AppHandle,
+    sound_id: String,
+    store: tauri::State<'_, PersistenceStore>,
+) -> Result<Vec<u8>, SettingsError> {
+    read_notification_sound(&app, store.pool(), &sound_id).await
 }
 
 async fn get_appearance_settings(pool: &SqlitePool) -> Result<AppearanceSettings, SettingsError> {
@@ -409,6 +424,27 @@ async fn import_notification_sound(
     Ok(sound)
 }
 
+async fn read_notification_sound(
+    app: &tauri::AppHandle,
+    pool: &SqlitePool,
+    sound_id: &str,
+) -> Result<Vec<u8>, SettingsError> {
+    let custom_sounds = get_custom_notification_sounds(pool).await?;
+    let sound = custom_sounds
+        .iter()
+        .find(|custom_sound| custom_sound.id == sound_id)
+        .ok_or_else(|| SettingsError::UnknownNotificationSound(sound_id.to_string()))?;
+    validate_app_owned_notification_sound_path(
+        app,
+        &sound.path,
+        SettingsError::ReadNotificationSound,
+    )?;
+
+    tokio::fs::read(&sound.path)
+        .await
+        .map_err(|error| SettingsError::ReadNotificationSound(error.to_string()))
+}
+
 async fn remove_notification_sound(
     app: &tauri::AppHandle,
     pool: &SqlitePool,
@@ -471,27 +507,41 @@ async fn remove_app_owned_notification_sound_file(
     app: &tauri::AppHandle,
     sound_path: &str,
 ) -> Result<(), SettingsError> {
-    let app_sound_directory = app
-        .path()
-        .app_data_dir()
-        .map_err(|error| SettingsError::RemoveNotificationSound(error.to_string()))?
-        .join(CUSTOM_NOTIFICATION_SOUND_DIRECTORY);
-    let canonical_directory = tokio::fs::canonicalize(&app_sound_directory)
-        .await
-        .map_err(|error| SettingsError::RemoveNotificationSound(error.to_string()))?;
-    let canonical_sound_path = tokio::fs::canonicalize(sound_path)
-        .await
-        .map_err(|error| SettingsError::RemoveNotificationSound(error.to_string()))?;
-
-    if !canonical_sound_path.starts_with(canonical_directory) {
-        return Err(SettingsError::RemoveNotificationSound(format!(
-            "refusing to remove a sound outside Kira app data: {sound_path}"
-        )));
-    }
+    let canonical_sound_path = validate_app_owned_notification_sound_path(
+        app,
+        sound_path,
+        SettingsError::RemoveNotificationSound,
+    )?;
 
     tokio::fs::remove_file(canonical_sound_path)
         .await
         .map_err(|error| SettingsError::RemoveNotificationSound(error.to_string()))
+}
+
+fn validate_app_owned_notification_sound_path(
+    app: &tauri::AppHandle,
+    sound_path: &str,
+    error: fn(String) -> SettingsError,
+) -> Result<std::path::PathBuf, SettingsError> {
+    let app_sound_directory = app
+        .path()
+        .app_data_dir()
+        .map_err(|path_error| error(path_error.to_string()))?
+        .join(CUSTOM_NOTIFICATION_SOUND_DIRECTORY);
+    let canonical_directory = app_sound_directory
+        .canonicalize()
+        .map_err(|path_error| error(path_error.to_string()))?;
+    let canonical_sound_path = Path::new(sound_path)
+        .canonicalize()
+        .map_err(|path_error| error(path_error.to_string()))?;
+
+    if !canonical_sound_path.starts_with(canonical_directory) {
+        return Err(error(format!(
+            "refusing to access a sound outside Kira app data: {sound_path}"
+        )));
+    }
+
+    Ok(canonical_sound_path)
 }
 
 async fn get_notification_volume(pool: &SqlitePool) -> Result<f32, SettingsError> {

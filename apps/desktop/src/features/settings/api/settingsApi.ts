@@ -33,10 +33,15 @@ function removeNotificationSound(soundId: string) {
   return invoke<NotificationSettings>("notification_sound_remove", { soundId });
 }
 
+function readNotificationSound(soundId: string) {
+  return invoke<number[]>("notification_sound_read", { soundId });
+}
+
 export {
   getAppearanceSettings,
   getNotificationSettings,
   importNotificationSound,
+  readNotificationSound,
   removeNotificationSound,
   updateAppearanceSettings,
   updateNotificationSettings,

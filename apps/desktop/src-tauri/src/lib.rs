@@ -53,6 +53,7 @@ pub fn run() -> tauri::Result<()> {
             settings::notification_settings_get,
             settings::notification_settings_update,
             settings::notification_sound_import,
+            settings::notification_sound_read,
             settings::notification_sound_remove,
             agent_runtime::prepare_agent_thread,
             agent_runtime::start_agent_runtime,
