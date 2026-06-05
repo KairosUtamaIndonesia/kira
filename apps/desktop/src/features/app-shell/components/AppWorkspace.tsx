@@ -200,7 +200,8 @@ function WorkspacePanelContextMenuContent({
   }, [panelToRename]);
 
   async function splitPanel(direction: "right" | "below") {
-    containerApi.addGroup({ referencePanel: panel, direction });
+    const splitGroup = containerApi.addGroup({ referencePanel: panel, direction });
+    panel.api.moveTo({ group: splitGroup });
     await persistWorkspaceLayout(containerApi, sessionId);
   }
 
