@@ -77,11 +77,11 @@ function ToolPayload({ label, value }: { label: string; value: unknown }) {
   }
 
   return (
-    <details className="group rounded-md border border-border p-2">
+    <details className="group min-w-0 rounded-md border border-border p-2">
       <summary className="cursor-pointer font-medium text-muted-foreground group-open:mb-2">
         {label}
       </summary>
-      <pre className="max-h-72 overflow-auto rounded-md bg-editor-surface p-2 font-mono text-xs text-foreground">
+      <pre className="max-h-72 min-w-0 overflow-auto whitespace-pre-wrap break-words rounded-md bg-editor-surface p-2 font-mono text-xs text-foreground">
         {stringifyUnknown(value)}
       </pre>
     </details>
