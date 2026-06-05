@@ -25,6 +25,7 @@ type AgentThreadActivityBlock =
 
 type AgentThreadToolCallDisplay = {
   id: string;
+  toolName: string;
   title: string;
   status: ToolCallStatus | undefined;
   command: string | undefined;
@@ -265,6 +266,7 @@ function upsertTool(
   const details = { event: value, args, result };
   const durationMs = firstNumber(value, ["durationMs"]);
 
+  const existingToolName = existing === undefined ? undefined : existing.toolName;
   const existingTitle = existing === undefined ? undefined : existing.title;
   const existingCommand = existing === undefined ? undefined : existing.command;
   const existingCwd = existing === undefined ? undefined : existing.cwd;
@@ -272,19 +274,26 @@ function upsertTool(
   const existingDuration = existing === undefined ? undefined : existing.duration;
   const existingChangedFiles = existing === undefined ? [] : existing.changedFiles;
   const existingErrorMessage = existing === undefined ? undefined : existing.errorMessage;
+  const existingInput = existing === undefined ? undefined : existing.input;
+  const existingOutput = existing === undefined ? undefined : existing.output;
+  const effectiveArgs = args === undefined ? existingInput : args;
+  const effectiveResult = result === undefined ? existingOutput : result;
+
+  const toolName = firstString(value, ["toolName", "tool", "name"]) ?? existingToolName ?? "unknown";
 
   const tool: AgentThreadToolCallDisplay = {
     id: toolCallId,
-    title: firstString(value, ["toolName", "tool", "name"]) ?? existingTitle ?? "Tool call",
+    toolName,
+    title: humanizeToolName(toolName) ?? existingTitle ?? "Tool call",
     status,
-    command: commandFromUnknown(args) ?? commandFromUnknown(result) ?? existingCommand,
-    cwd: cwdFromUnknown(args) ?? cwdFromUnknown(result) ?? existingCwd,
-    exitCode: exitCodeFromUnknown(result) ?? existingExitCode,
+    command: commandFromUnknown(effectiveArgs) ?? commandFromUnknown(effectiveResult) ?? existingCommand,
+    cwd: cwdFromUnknown(effectiveArgs) ?? cwdFromUnknown(effectiveResult) ?? existingCwd,
+    exitCode: exitCodeFromUnknown(effectiveResult) ?? existingExitCode,
     duration: durationMs === undefined ? existingDuration : formatDuration(durationMs),
-    changedFiles: changedFilesFromUnknown(result) ?? existingChangedFiles,
-    errorMessage: errorMessageFromUnknown(result) ?? firstString(value, ["error"]) ?? existingErrorMessage,
-    input: args,
-    output: result,
+    changedFiles: changedFilesFromUnknown(effectiveResult) ?? existingChangedFiles,
+    errorMessage: errorMessageFromUnknown(effectiveResult) ?? firstString(value, ["error"]) ?? existingErrorMessage,
+    input: effectiveArgs,
+    output: effectiveResult,
     details,
   };
 
@@ -436,6 +445,21 @@ function formatDuration(durationMs: number) {
 
 function isObjectRecord(value: unknown): value is ObjectRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function humanizeToolName(name: string) {
+  const labels: Record<string, string> = {
+    read: "Read file",
+    write: "Write file",
+    edit: "Edit file",
+    bash: "Run command",
+    grep: "Search files",
+    glob: "Find files",
+    task: "Delegate task",
+    activate_skill: "Activate skill",
+  };
+
+  return labels[name];
 }
 
 function exhaustiveMessageKind(value: never): never {

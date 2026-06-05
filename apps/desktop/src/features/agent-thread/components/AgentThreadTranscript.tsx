@@ -5,7 +5,7 @@ import type { AgentThreadMessageRecord } from "../types";
 
 import { buildAgentThreadTranscript, stringifyUnknown } from "../agentThreadDisplay";
 import { AgentThreadMarkdown } from "./AgentThreadMarkdown";
-import { AgentThreadToolCall } from "./AgentThreadToolCall";
+import { toolComponentForName } from "./tools";
 
 type AgentThreadTranscriptProps = {
   messages: AgentThreadMessageRecord[];
@@ -73,20 +73,8 @@ function ActivityBlock({ block, isStreaming }: { block: AgentThreadActivityBlock
   }
 
   if (block.type === "tool-call") {
-    return (
-      <AgentThreadToolCall
-        title={block.tool.title}
-        status={block.tool.status}
-        command={block.tool.command}
-        cwd={block.tool.cwd}
-        exitCode={block.tool.exitCode}
-        duration={block.tool.duration}
-        changedFiles={block.tool.changedFiles}
-        errorMessage={block.tool.errorMessage}
-        input={block.tool.input}
-        output={block.tool.output}
-      />
-    );
+    const Component = toolComponentForName(block.tool.toolName);
+    return <Component tool={block.tool} />;
   }
 
   if (block.type === "error") {
