@@ -164,8 +164,17 @@ function WorkspacePanelTab({ api, containerApi }: IDockviewPanelHeaderProps) {
 
   return (
     <ContextMenu>
-      <ContextMenuTrigger render={<div className="flex h-full min-w-0 items-center px-2" />}>
+      <ContextMenuTrigger render={<div className="group flex h-full min-w-0 items-center gap-1 px-2" />}>
         <span className="truncate">{api.title ?? api.id}</span>
+        <button
+          aria-label={`Close ${api.title ?? api.id}`}
+          className="-mr-1 rounded-sm p-0.5 text-muted-foreground opacity-0 hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100"
+          type="button"
+          onClick={(event) => closePanelFromTab(event, panel)}
+          onContextMenu={(event) => event.stopPropagation()}
+        >
+          <X className="size-3" />
+        </button>
       </ContextMenuTrigger>
       <WorkspacePanelContextMenuContent containerApi={containerApi} panel={panel} />
     </ContextMenu>
@@ -535,6 +544,15 @@ function closeActivePanel(activePanel: IDockviewHeaderActionsProps["activePanel"
   }
 
   activePanel.api.close();
+}
+
+function closePanelFromTab(
+  event: MouseEvent<HTMLButtonElement>,
+  panel: NonNullable<IDockviewHeaderActionsProps["activePanel"]>,
+) {
+  event.preventDefault();
+  event.stopPropagation();
+  panel.api.close();
 }
 
 function hasPanelsAfter(panel: IDockviewHeaderActionsProps["activePanel"]) {
