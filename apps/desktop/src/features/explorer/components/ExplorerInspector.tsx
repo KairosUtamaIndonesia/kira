@@ -254,12 +254,15 @@ function ExplorerTreeModel({
             <TooltipContent>Refresh</TooltipContent>
           </Tooltip>
         </div>
-        <div className="flex items-center gap-2">
-          <Search className="size-3.5 text-muted-foreground" aria-hidden="true" />
+        <div className="relative">
+          <Search
+            className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
+            aria-hidden="true"
+          />
           <Input
             value={search.value}
             placeholder="Search loaded files"
-            className="h-8"
+            className="h-8 pl-8"
             onChange={(event) => search.setValue(event.target.value)}
           />
         </div>
