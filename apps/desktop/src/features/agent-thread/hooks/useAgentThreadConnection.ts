@@ -1,7 +1,11 @@
 import { createFlueClient, type AgentSocket } from "@flue/sdk";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { AgentThreadMessageKind, AgentThreadMessageRecord, AgentThreadPanelParams } from "../types";
+import type {
+  AgentThreadMessageKind,
+  AgentThreadMessageRecord,
+  AgentThreadPanelParams,
+} from "../types";
 
 import {
   listAgentThreadMessages,
