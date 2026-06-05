@@ -87,7 +87,9 @@ impl serde::Serialize for ProjectSearchError {
 }
 
 #[tauri::command]
-pub async fn project_search(input: ProjectSearchInput) -> Result<ProjectSearchResult, ProjectSearchError> {
+pub async fn project_search(
+    input: ProjectSearchInput,
+) -> Result<ProjectSearchResult, ProjectSearchError> {
     let folder_path = validate_project_folder(&input.folder_path)?;
     let query = input.query.trim().to_string();
     if query.is_empty() {
@@ -115,7 +117,10 @@ pub async fn project_search(input: ProjectSearchInput) -> Result<ProjectSearchRe
         })?
 }
 
-fn search_project_folder(root_path: &Path, regex: &regex::Regex) -> Result<ProjectSearchResult, ProjectSearchError> {
+fn search_project_folder(
+    root_path: &Path,
+    regex: &regex::Regex,
+) -> Result<ProjectSearchResult, ProjectSearchError> {
     let mut files = Vec::new();
     let mut match_count = 0;
     let mut searched_file_count = 0;
@@ -139,14 +144,19 @@ fn search_project_folder(root_path: &Path, regex: &regex::Regex) -> Result<Proje
             path: root_path.to_string_lossy().to_string(),
             message: error.to_string(),
         })?;
-        if !entry.file_type().is_some_and(|file_type| file_type.is_file()) {
+        if !entry
+            .file_type()
+            .is_some_and(|file_type| file_type.is_file())
+        {
             continue;
         }
 
-        let metadata = entry.metadata().map_err(|error| ProjectSearchError::SearchFolder {
-            path: entry.path().to_string_lossy().to_string(),
-            message: error.to_string(),
-        })?;
+        let metadata = entry
+            .metadata()
+            .map_err(|error| ProjectSearchError::SearchFolder {
+                path: entry.path().to_string_lossy().to_string(),
+                message: error.to_string(),
+            })?;
         if metadata.len() > MAX_SEARCH_FILE_BYTES {
             skipped_file_count += 1;
             continue;
@@ -174,7 +184,11 @@ fn search_project_folder(root_path: &Path, regex: &regex::Regex) -> Result<Proje
                 break;
             }
 
-            matches.push(search_match_from_byte_range(&text, regex_match.start(), regex_match.end()));
+            matches.push(search_match_from_byte_range(
+                &text,
+                regex_match.start(),
+                regex_match.end(),
+            ));
             match_count += 1;
         }
 
@@ -208,7 +222,10 @@ fn should_visit_entry(entry: &DirEntry) -> bool {
 }
 
 fn is_binary_content(content: &[u8]) -> bool {
-    content.iter().take(BINARY_SAMPLE_BYTES).any(|byte| *byte == 0)
+    content
+        .iter()
+        .take(BINARY_SAMPLE_BYTES)
+        .any(|byte| *byte == 0)
 }
 
 fn search_match_from_byte_range(text: &str, start: usize, end: usize) -> ProjectSearchMatch {
@@ -274,7 +291,10 @@ fn preview_for_match(text: &str, start_line_number: usize, end_line_number: usiz
     preview
 }
 
-fn relative_project_path(root_path: &Path, entry_path: &Path) -> Result<String, ProjectSearchError> {
+fn relative_project_path(
+    root_path: &Path,
+    entry_path: &Path,
+) -> Result<String, ProjectSearchError> {
     entry_path
         .strip_prefix(root_path)
         .map(|relative_path| relative_path.to_string_lossy().replace('\\', "/"))
@@ -292,10 +312,14 @@ fn validate_project_folder(folder_path: &str) -> Result<PathBuf, ProjectSearchEr
 
     let path = PathBuf::from(trimmed_path);
     if !path.exists() {
-        return Err(ProjectSearchError::FolderDoesNotExist(trimmed_path.to_string()));
+        return Err(ProjectSearchError::FolderDoesNotExist(
+            trimmed_path.to_string(),
+        ));
     }
     if !path.is_dir() {
-        return Err(ProjectSearchError::FolderIsNotDirectory(trimmed_path.to_string()));
+        return Err(ProjectSearchError::FolderIsNotDirectory(
+            trimmed_path.to_string(),
+        ));
     }
 
     path.canonicalize()
