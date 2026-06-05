@@ -21,9 +21,16 @@ type SourceControlDiffOpenRequest = {
   panel: SourceControlDiffWorkspacePanel;
 };
 
+type FileEditorFocusRequest = {
+  sequence: number;
+  lineNumber: number;
+  column: number;
+};
+
 type FileEditorOpenRequest = {
   sequence: number;
   panel: FileEditorWorkspacePanel;
+  focusRequest: FileEditorFocusRequest | undefined;
 };
 
 type AgentThreadOpenRequest = {
@@ -31,9 +38,18 @@ type AgentThreadOpenRequest = {
   panel: AgentThreadWorkspacePanel;
 };
 
+type AgentThreadOperationRequest = {
+  sequence: number;
+  panelId: string;
+  operation: "close" | "delete" | "rename";
+  title?: string;
+};
+
 export type {
   ActiveWorkspaceState,
   AgentThreadOpenRequest,
+  AgentThreadOperationRequest,
+  FileEditorFocusRequest,
   FileEditorOpenRequest,
   SourceControlDiffOpenRequest,
 };

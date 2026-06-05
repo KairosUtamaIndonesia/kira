@@ -1,27 +1,31 @@
-import { Bot, Files, GitBranch, type LucideIcon } from "lucide-react";
+import { Bot, Files, GitBranch, Search, type LucideIcon } from "lucide-react";
 import { useState } from "react";
 
-import type { AgentThreadWorkspacePanel, WorkspacePanel } from "@/features/projects/types";
 import type { GitStatusEntry } from "@/features/source-control/types";
 
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ExplorerInspector } from "@/features/explorer";
+import { SearchInspector } from "@/features/search";
 import { SourceControlInspector } from "@/features/source-control/components/SourceControlInspector";
 
 import type { ActiveWorkspaceState } from "../types";
 
+import { AgentThreadsInspector } from "./AgentThreadsInspector";
 import { AppWindowControls } from "./AppWindowControls";
 import { useTitleBarDrag } from "./useTitleBarDrag";
 
 type AppInspectorProps = {
   activeWorkspace: ActiveWorkspaceState;
+  onAgentThreadClose: (panelId: string) => void;
+  onAgentThreadDelete: (panelId: string) => Promise<void>;
   onAgentThreadOpen: (panelId: string) => void;
-  onExplorerFileOpen: (filePath: string) => Promise<void>;
+  onAgentThreadRename: (panelId: string, title: string) => Promise<void>;
+  onExplorerFileOpen: (filePath: string, lineNumber?: number) => Promise<void>;
   onSourceControlDiffOpen: (entry: GitStatusEntry) => Promise<void>;
 };
 
-type InspectorView = "explorer" | "sourceControl" | "agentThreads";
+type InspectorView = "explorer" | "search" | "sourceControl" | "agentThreads";
 
 type InspectorViewAction = {
   view: InspectorView;
@@ -31,13 +35,17 @@ type InspectorViewAction = {
 
 const inspectorViewActions: InspectorViewAction[] = [
   { view: "explorer", label: "Explorer", icon: Files },
+  { view: "search", label: "Search", icon: Search },
   { view: "sourceControl", label: "Source Control", icon: GitBranch },
   { view: "agentThreads", label: "Agent Threads", icon: Bot },
 ];
 
 function AppInspector({
   activeWorkspace,
+  onAgentThreadClose,
+  onAgentThreadDelete,
   onAgentThreadOpen,
+  onAgentThreadRename,
   onExplorerFileOpen,
   onSourceControlDiffOpen,
 }: AppInspectorProps) {
@@ -91,25 +99,55 @@ function AppInspector({
         })}
       </div>
       <div className="flex min-h-0 flex-1 scrollbar-sleek flex-col gap-3 overflow-auto">
-        {inspectorContent(
-          activeWorkspace,
+        {inspectorContent({
           activeView,
+          activeWorkspace,
+          onAgentThreadClose,
+          onAgentThreadDelete,
           onAgentThreadOpen,
+          onAgentThreadRename,
           onExplorerFileOpen,
           onSourceControlDiffOpen,
-        )}
+        })}
       </div>
     </aside>
   );
 }
 
-function inspectorContent(
-  activeWorkspace: ActiveWorkspaceState,
-  activeView: InspectorView,
-  onAgentThreadOpen: (panelId: string) => void,
-  onExplorerFileOpen: (filePath: string) => Promise<void>,
-  onSourceControlDiffOpen: (entry: GitStatusEntry) => Promise<void>,
-) {
+type InspectorContentProps = Pick<
+  AppInspectorProps,
+  | "activeWorkspace"
+  | "onAgentThreadClose"
+  | "onAgentThreadDelete"
+  | "onAgentThreadOpen"
+  | "onAgentThreadRename"
+  | "onExplorerFileOpen"
+  | "onSourceControlDiffOpen"
+> & {
+  activeView: InspectorView;
+};
+
+function inspectorContent({
+  activeView,
+  activeWorkspace,
+  onAgentThreadClose,
+  onAgentThreadDelete,
+  onAgentThreadOpen,
+  onAgentThreadRename,
+  onExplorerFileOpen,
+  onSourceControlDiffOpen,
+}: InspectorContentProps) {
+  if (activeView === "search") {
+    return (
+      <SearchInspector
+        folderPath={
+          activeWorkspace.status === "active" ? activeWorkspace.project.folderPath : undefined
+        }
+        onOpenFile={onExplorerFileOpen}
+      />
+    );
+  }
+
   if (activeView === "sourceControl") {
     return (
       <SourceControlInspector
@@ -125,7 +163,10 @@ function inspectorContent(
     return (
       <AgentThreadsInspector
         activeWorkspace={activeWorkspace}
+        onAgentThreadClose={onAgentThreadClose}
+        onAgentThreadDelete={onAgentThreadDelete}
         onAgentThreadOpen={onAgentThreadOpen}
+        onAgentThreadRename={onAgentThreadRename}
       />
     );
   }
@@ -141,97 +182,7 @@ function inspectorContent(
     );
   }
 
-  if (activeView !== "explorer") {
-    return assertNever(activeView);
-  }
-
-  if (activeWorkspace.status === "loading") {
-    return (
-      <div className="rounded-xl border border-border p-3 text-muted-foreground">
-        Opening project…
-      </div>
-    );
-  }
-
-  if (activeWorkspace.status === "error") {
-    return (
-      <div role="alert" className="rounded-xl border border-border p-3 text-muted-foreground">
-        {activeWorkspace.message}
-      </div>
-    );
-  }
-
-  return (
-    <div className="rounded-xl border border-border p-3 text-muted-foreground">
-      Select a Project to view its details.
-    </div>
-  );
-}
-
-type AgentThreadsInspectorProps = {
-  activeWorkspace: ActiveWorkspaceState;
-  onAgentThreadOpen: (panelId: string) => void;
-};
-
-function AgentThreadsInspector({ activeWorkspace, onAgentThreadOpen }: AgentThreadsInspectorProps) {
-  if (activeWorkspace.status === "loading") {
-    return <InspectorNotice>Opening project…</InspectorNotice>;
-  }
-
-  if (activeWorkspace.status === "error") {
-    return <InspectorNotice role="alert">{activeWorkspace.message}</InspectorNotice>;
-  }
-
-  if (activeWorkspace.status !== "active") {
-    return <InspectorNotice>Select a Project to view Agent Threads.</InspectorNotice>;
-  }
-
-  const agentThreadPanels = activeWorkspace.panels.filter(isAgentThreadPanel);
-  if (agentThreadPanels.length === 0) {
-    return <InspectorNotice>This Session has no Agent Threads.</InspectorNotice>;
-  }
-
-  return (
-    <section className="space-y-2 p-3" aria-labelledby="agent-threads-heading">
-      <div className="space-y-1">
-        <h2 id="agent-threads-heading" className="text-sm font-medium text-foreground">
-          Agent Threads
-        </h2>
-        <p className="text-xs text-muted-foreground">Reopen Agent Thread panels in this Session.</p>
-      </div>
-      <ol className="space-y-1">
-        {agentThreadPanels.map((panel) => (
-          <li key={panel.id}>
-            <Button
-              type="button"
-              variant="ghost"
-              className="h-auto w-full justify-start px-2 py-2 text-left"
-              onClick={() => onAgentThreadOpen(panel.id)}
-            >
-              <span className="flex min-w-0 flex-col gap-0.5">
-                <span className="truncate text-sm font-medium">{panel.title}</span>
-                <span className="truncate font-mono text-xs text-muted-foreground">
-                  {panel.agentThreadState.threadId}
-                </span>
-              </span>
-            </Button>
-          </li>
-        ))}
-      </ol>
-    </section>
-  );
-}
-
-function InspectorNotice({ children, role }: { children: string; role?: "alert" }) {
-  return (
-    <div role={role} className="m-3 rounded-xl border border-border p-3 text-muted-foreground">
-      {children}
-    </div>
-  );
-}
-
-function isAgentThreadPanel(panel: WorkspacePanel): panel is AgentThreadWorkspacePanel {
-  return panel.kind === "agent_thread";
+  return assertNever(activeView);
 }
 
 function assertNever(value: never): never {
