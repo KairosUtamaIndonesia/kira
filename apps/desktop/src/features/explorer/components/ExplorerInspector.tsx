@@ -183,7 +183,6 @@ function ExplorerTreeModel({
     preparedInput,
     flattenEmptyDirectories: true,
     initialExpansion: "closed",
-    search: true,
     fileTreeSearchMode: "hide-non-matches",
     density: "compact",
     onSelectionChange: handleSelectionChange,
@@ -260,7 +259,6 @@ function ExplorerTreeModel({
             value={search.value}
             placeholder="Search loaded files"
             className="h-8"
-            onFocus={() => search.open(search.value)}
             onChange={(event) => search.setValue(event.target.value)}
           />
         </div>
