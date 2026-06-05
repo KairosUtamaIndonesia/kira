@@ -21,7 +21,6 @@ export default createAgent(({ id }) => {
   return {
     profile: codingAgent,
     model: KIRA_AGENT_MODEL,
-    cwd: context.projectPath,
     sandbox: local({ cwd: context.projectPath }),
     persist: createKiraSessionStore(context),
   };
