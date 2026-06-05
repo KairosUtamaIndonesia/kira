@@ -21,7 +21,14 @@ const themeOptions = [
 ] as const;
 
 function AppearanceSettings() {
-  const { errorMessage, setTheme, status, theme } = useAppearanceTheme();
+  const {
+    agentThreadShowRawEventStream,
+    errorMessage,
+    setAgentThreadShowRawEventStream,
+    setTheme,
+    status,
+    theme,
+  } = useAppearanceTheme();
 
   return (
     <section className="rounded-xl border border-border bg-card text-card-foreground">
@@ -39,7 +46,7 @@ function AppearanceSettings() {
               This setting applies immediately and persists across launches.
             </p>
           </div>
-          <div className="grid gap-2 sm:grid-cols-2" role="group" aria-label="Theme">
+          <fieldset className="grid gap-2 sm:grid-cols-2" aria-label="Theme">
             {themeOptions.map((option) => {
               const Icon = option.icon;
               const isActive = theme === option.value;
@@ -64,10 +71,32 @@ function AppearanceSettings() {
                 </Button>
               );
             })}
-          </div>
+          </fieldset>
           {status === "error" ? (
             <p className="text-xs text-destructive">Theme persistence failed: {errorMessage}</p>
           ) : undefined}
+        </div>
+        <div className="border-t border-border pt-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-1">
+              <h3 className="text-sm font-medium">Agent Threads</h3>
+              <p className="text-xs text-muted-foreground">
+                Show the raw persisted prompt, event, and result records below Agent Thread
+                transcripts.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant={agentThreadShowRawEventStream ? "default" : "outline"}
+              aria-pressed={agentThreadShowRawEventStream}
+              disabled={status === "loading"}
+              onClick={() => {
+                void setAgentThreadShowRawEventStream(!agentThreadShowRawEventStream);
+              }}
+            >
+              {agentThreadShowRawEventStream ? "Raw stream on" : "Raw stream off"}
+            </Button>
+          </div>
         </div>
       </div>
     </section>

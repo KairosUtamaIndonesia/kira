@@ -178,6 +178,13 @@ pub struct DeleteWorkspacePanelInput {
     panel_id: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameWorkspacePanelInput {
+    panel_id: String,
+    title: String,
+}
+
 #[derive(Debug, Serialize, FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct TerminalSnapshot {
@@ -277,6 +284,8 @@ pub enum ProjectError {
     MissingSession(String),
     #[error("workspace panel title is required")]
     MissingPanelTitle,
+    #[error("workspace panel was not found: {0}")]
+    MissingWorkspacePanel(String),
     #[error("source control diff file path is required")]
     MissingSourceControlDiffFilePath,
     #[error("file editor file path is required")]
@@ -472,6 +481,29 @@ pub async fn session_layout_update(
         .await
         .map_err(|error| ProjectError::Query(error.to_string()))?;
     Ok(())
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
+pub async fn workspace_panel_rename(
+    input: RenameWorkspacePanelInput,
+    store: tauri::State<'_, PersistenceStore>,
+) -> Result<WorkspacePanel, ProjectError> {
+    let title = validate_panel_title(&input.title)?;
+    sqlx::query("UPDATE workspace_panels SET title = ?, updated_at = ? WHERE id = ?")
+        .bind(title)
+        .bind(current_timestamp()?)
+        .bind(&input.panel_id)
+        .execute(store.pool())
+        .await
+        .map_err(|error| ProjectError::Query(error.to_string()))?;
+
+    get_workspace_panel(store.pool(), &input.panel_id)
+        .await?
+        .ok_or(ProjectError::MissingWorkspacePanel(input.panel_id))
 }
 
 #[tauri::command]

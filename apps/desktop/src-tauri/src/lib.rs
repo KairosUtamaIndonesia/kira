@@ -71,6 +71,7 @@ pub fn run() -> tauri::Result<()> {
             projects::workspace_agent_thread_panel_create,
             projects::workspace_file_editor_panel_open,
             projects::workspace_panel_delete,
+            projects::workspace_panel_rename,
             projects::workspace_source_control_diff_panel_open,
             projects::workspace_terminal_panel_create,
             projects::workspace_terminal_snapshot_delete,

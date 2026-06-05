@@ -197,9 +197,7 @@ function AgentThreadsInspector({ activeWorkspace, onAgentThreadOpen }: AgentThre
         <h2 id="agent-threads-heading" className="text-sm font-medium text-foreground">
           Agent Threads
         </h2>
-        <p className="text-xs text-muted-foreground">
-          Reopen Agent Thread panels in this Session.
-        </p>
+        <p className="text-xs text-muted-foreground">Reopen Agent Thread panels in this Session.</p>
       </div>
       <ol className="space-y-1">
         {agentThreadPanels.map((panel) => (
@@ -224,13 +222,7 @@ function AgentThreadsInspector({ activeWorkspace, onAgentThreadOpen }: AgentThre
   );
 }
 
-function InspectorNotice({
-  children,
-  role,
-}: {
-  children: string;
-  role?: "alert";
-}) {
+function InspectorNotice({ children, role }: { children: string; role?: "alert" }) {
   return (
     <div role={role} className="m-3 rounded-xl border border-border p-3 text-muted-foreground">
       {children}

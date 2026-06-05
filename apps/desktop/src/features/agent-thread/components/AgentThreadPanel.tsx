@@ -3,6 +3,7 @@ import { useState, type FormEvent, type KeyboardEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { useAppearanceTheme } from "@/features/settings";
 
 import type { AgentThreadPanelParams } from "../types";
 
@@ -10,6 +11,8 @@ import {
   useAgentThreadConnection,
   type AgentThreadRuntimeState,
 } from "../hooks/useAgentThreadConnection";
+import { AgentThreadRawEventStream } from "./AgentThreadRawEventStream";
+import { AgentThreadTranscript } from "./AgentThreadTranscript";
 
 type AgentThreadPanelProps = {
   params: AgentThreadPanelParams;
@@ -17,6 +20,7 @@ type AgentThreadPanelProps = {
 
 function AgentThreadPanel({ params }: AgentThreadPanelProps) {
   const [prompt, setPrompt] = useState("");
+  const { agentThreadShowRawEventStream } = useAppearanceTheme();
   const { messages, runtimeState, sendPrompt } = useAgentThreadConnection(params);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -45,26 +49,13 @@ function AgentThreadPanel({ params }: AgentThreadPanelProps) {
         <AgentThreadStatus state={runtimeState} />
       </header>
       <div className="min-h-0 flex-1 overflow-auto p-3">
-        {messages.length === 0 ? (
-          <div className="flex h-full min-h-40 items-center justify-center rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-            Agent Thread messages will appear here after you send a prompt.
-          </div>
-        ) : (
-          <ol className="space-y-3">
-            {messages.map((message) => (
-              <li key={message.id} className="space-y-1">
-                <div className="flex items-center gap-2 font-mono text-xs text-muted-foreground">
-                  <span>{formatTimestamp(message.createdAt)}</span>
-                  <span>{message.kind}</span>
-                  <span>{message.requestId}</span>
-                </div>
-                <pre className="max-h-80 overflow-auto rounded-md border border-border bg-card p-2 font-mono text-xs text-card-foreground">
-                  {stringifyMessage(message.message)}
-                </pre>
-              </li>
-            ))}
-          </ol>
-        )}
+        <AgentThreadTranscript
+          messages={messages}
+          runtimeIsSending={runtimeState.status === "sending"}
+        />
+        {agentThreadShowRawEventStream ? (
+          <AgentThreadRawEventStream messages={messages} />
+        ) : undefined}
       </div>
       <form
         className="shrink-0 border-t border-border p-3"
@@ -165,22 +156,6 @@ function handlePromptKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
   if (form instanceof HTMLFormElement) {
     form.requestSubmit();
   }
-}
-
-function stringifyMessage(message: unknown) {
-  try {
-    return JSON.stringify(message, undefined, 2);
-  } catch {
-    return String(message);
-  }
-}
-
-function formatTimestamp(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  }).format(new Date(value));
 }
 
 export { AgentThreadPanel };
