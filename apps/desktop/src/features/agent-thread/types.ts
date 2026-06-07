@@ -17,6 +17,32 @@ type AgentThreadPanelParams = {
   threadId: string;
 };
 
+type GetAgentThreadContextUsageInput = {
+  threadId: string;
+};
+
+type AgentThreadContextUsage = {
+  usedTokens: number;
+  contextWindow: number;
+  maxOutputTokens: number;
+  modelId: string;
+  usage: {
+    inputTokens: number;
+    outputTokens: number;
+    reasoningTokens: number;
+    cachedInputTokens: number;
+    cacheWriteTokens: number;
+  };
+  cost: {
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheWrite: number;
+    total: number;
+  };
+  updatedAt: string;
+};
+
 type AgentThreadMessageKind = "prompt" | "event" | "result";
 
 type AgentThreadMessageRecord = {
@@ -41,9 +67,11 @@ type SaveAgentThreadMessageInput = {
 
 export type {
   AgentRuntimeConnection,
+  AgentThreadContextUsage,
   AgentThreadMessageKind,
   AgentThreadMessageRecord,
   AgentThreadPanelParams,
+  GetAgentThreadContextUsageInput,
   ListAgentThreadMessagesInput,
   PrepareAgentThreadInput,
   SaveAgentThreadMessageInput,

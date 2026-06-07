@@ -2,12 +2,14 @@ import { createFlueClient, type AgentSocket } from "@flue/sdk";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
+  AgentThreadContextUsage,
   AgentThreadMessageKind,
   AgentThreadMessageRecord,
   AgentThreadPanelParams,
 } from "../types";
 
 import {
+  getAgentThreadContextUsage,
   listAgentThreadMessages,
   prepareAgentThread,
   saveAgentThreadMessage,
@@ -21,9 +23,18 @@ type AgentThreadRuntimeState =
   | { status: "error"; message: string }
   | { status: "stopped" };
 
+type AgentThreadContextUsageState =
+  | { status: "loading" }
+  | { status: "empty" }
+  | { status: "ready"; usage: AgentThreadContextUsage }
+  | { status: "error"; message: string };
+
 function useAgentThreadConnection(params: AgentThreadPanelParams) {
   const [runtimeState, setRuntimeState] = useState<AgentThreadRuntimeState>({
     status: "starting",
+  });
+  const [contextUsageState, setContextUsageState] = useState<AgentThreadContextUsageState>({
+    status: "loading",
   });
   const [messages, setMessages] = useState<AgentThreadMessageRecord[]>([]);
   const socketRef = useRef<AgentSocket | undefined>(void 0);
@@ -45,9 +56,16 @@ function useAgentThreadConnection(params: AgentThreadPanelParams) {
   const appendMessage = useCallback(
     (kind: AgentThreadMessageKind, requestId: string, message: unknown) => {
       const previousAppend = appendQueueRef.current;
-      const appendOperation = appendMessageAfter(previousAppend, params.threadId, kind, requestId, message, (savedMessage) => {
-        setMessages((currentMessages) => [...currentMessages, savedMessage]);
-      });
+      const appendOperation = appendMessageAfter(
+        previousAppend,
+        params.threadId,
+        kind,
+        requestId,
+        message,
+        (savedMessage) => {
+          setMessages((currentMessages) => [...currentMessages, savedMessage]);
+        },
+      );
       appendQueueRef.current = settleAppendOperation(appendOperation);
       return appendOperation;
     },
@@ -98,6 +116,7 @@ function useAgentThreadConnection(params: AgentThreadPanelParams) {
 
         if (!disposed) {
           setRuntimeState({ status: "ready", baseUrl: runtime.baseUrl });
+          await refreshContextUsage(params.threadId, setContextUsageState);
         }
       } catch (error) {
         if (!disposed) {
@@ -141,6 +160,7 @@ function useAgentThreadConnection(params: AgentThreadPanelParams) {
       await appendMessage("prompt", requestId, message);
       const result = await socket.prompt(message, { session: "default" });
       await appendMessage("result", requestId, result.result);
+      await refreshContextUsage(params.threadId, setContextUsageState);
       pendingPromptRequestIdRef.current = undefined;
       setRuntimeState({ status: "ready", baseUrl: state.baseUrl });
       return true;
@@ -151,7 +171,19 @@ function useAgentThreadConnection(params: AgentThreadPanelParams) {
     }
   }
 
-  return { messages, runtimeState, sendPrompt };
+  return { contextUsageState, messages, runtimeState, sendPrompt };
+}
+
+async function refreshContextUsage(
+  threadId: string,
+  setContextUsageState: (state: AgentThreadContextUsageState) => void,
+) {
+  try {
+    const usage = await getAgentThreadContextUsage({ threadId });
+    setContextUsageState(usage === null ? { status: "empty" } : { status: "ready", usage });
+  } catch (error) {
+    setContextUsageState({ status: "error", message: errorMessageFromUnknown(error) });
+  }
 }
 
 async function appendMessageAfter(
@@ -211,4 +243,4 @@ function errorMessageFromUnknown(error: unknown) {
 }
 
 export { useAgentThreadConnection };
-export type { AgentThreadMessageRecord, AgentThreadRuntimeState };
+export type { AgentThreadContextUsageState, AgentThreadMessageRecord, AgentThreadRuntimeState };
