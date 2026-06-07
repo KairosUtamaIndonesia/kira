@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 
-import type { CreatedProject, Project, WorkspacePanel } from "@/features/projects/types";
+import type {
+  CreatedProject,
+  OpenProject,
+  Project,
+  WorkspacePanel,
+} from "@/features/projects/types";
 import type { GitStatusEntry } from "@/features/source-control/types";
 
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
@@ -11,6 +16,7 @@ import {
   openFileEditorPanel,
   openLastProject,
   openProject,
+  openProjectSession,
   openSourceControlDiffPanel,
   renameWorkspacePanel,
 } from "@/features/projects/api/projectsApi";
@@ -98,12 +104,35 @@ function AppShell() {
   }, []);
 
   async function handleProjectSelect(projectId: string) {
+    await openWorkspaceProject(
+      projectId,
+      (currentWorkspace) => currentWorkspace.project.id === projectId,
+      () => openProject({ projectId }),
+    );
+  }
+
+  async function handleSessionSelect(projectId: string, sessionId: string) {
+    await openWorkspaceProject(
+      projectId,
+      (currentWorkspace) =>
+        currentWorkspace.project.id === projectId && currentWorkspace.session.id === sessionId,
+      () => openProjectSession({ projectId, sessionId }),
+    );
+  }
+
+  async function openWorkspaceProject(
+    projectId: string,
+    shouldSkipOpen: (
+      currentWorkspace: Extract<ActiveWorkspaceState, { status: "active" }>,
+    ) => boolean,
+    openProjectRequest: () => Promise<OpenProject>,
+  ) {
     let shouldOpenProject = true;
     const switchSequence = projectSwitchSequenceRef.current + 1;
 
     setActiveWorkspace((currentWorkspace) => {
       if (currentWorkspace.status === "active") {
-        if (currentWorkspace.project.id === projectId) {
+        if (shouldSkipOpen(currentWorkspace)) {
           shouldOpenProject = false;
           return currentWorkspace;
         }
@@ -124,7 +153,7 @@ function AppShell() {
     }
 
     try {
-      const openedProject = await openProject({ projectId });
+      const openedProject = await openProjectRequest();
       if (projectSwitchSequenceRef.current !== switchSequence) {
         return;
       }
@@ -356,7 +385,12 @@ function AppShell() {
 
       const sequence = agentThreadSequenceRef.current + 1;
       agentThreadSequenceRef.current = sequence;
-      setAgentThreadOperationRequest({ sequence, panelId, operation: "rename", title: panel.title });
+      setAgentThreadOperationRequest({
+        sequence,
+        panelId,
+        operation: "rename",
+        title: panel.title,
+      });
     } catch (error) {
       toast.error(`Failed to rename Agent Thread: ${errorMessageFromUnknown(error)}`);
       throw error;
@@ -442,6 +476,9 @@ function AppShell() {
             onProjectCreated={handleProjectCreated}
             onProjectRemoved={handleProjectRemoved}
             onProjectSelect={(projectId) => void handleProjectSelect(projectId)}
+            onSessionSelect={(projectId, sessionId) =>
+              void handleSessionSelect(projectId, sessionId)
+            }
             onSettingsOpen={handleSettingsOpen}
           />
         </ResizablePanel>

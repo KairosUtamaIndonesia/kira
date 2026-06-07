@@ -175,6 +175,15 @@ type OpenProjectInput = {
   projectId: string;
 };
 
+type ListProjectSessionsInput = {
+  projectId: string;
+};
+
+type OpenProjectSessionInput = {
+  projectId: string;
+  sessionId: string;
+};
+
 type OpenProject = {
   project: Project;
   session: Session;
@@ -196,7 +205,9 @@ export type {
   DeleteTerminalSnapshotInput,
   DeleteWorkspacePanelInput,
   GetTerminalSnapshotInput,
+  ListProjectSessionsInput,
   OpenProjectInput,
+  OpenProjectSessionInput,
   Project,
   RemoveProjectInput,
   RenameProjectInput,

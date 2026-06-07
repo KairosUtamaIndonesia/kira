@@ -9,14 +9,17 @@ import type {
   DeleteWorkspacePanelInput,
   GetTerminalSnapshotInput,
   OpenFileEditorPanelInput,
+  ListProjectSessionsInput,
   OpenProject,
   OpenProjectInput,
+  OpenProjectSessionInput,
   OpenSourceControlDiffPanelInput,
   Project,
   RemoveProjectInput,
   RenameProjectInput,
   RenameWorkspacePanelInput,
   SaveTerminalSnapshotInput,
+  Session,
   TerminalSnapshot,
   UpdateSessionLayoutInput,
   WorkspacePanel,
@@ -36,6 +39,14 @@ function openProject(input: OpenProjectInput) {
 
 function openLastProject() {
   return invoke<OpenProject | null>("project_open_last");
+}
+
+function listProjectSessions(input: ListProjectSessionsInput) {
+  return invoke<Session[]>("project_sessions_list", { input });
+}
+
+function openProjectSession(input: OpenProjectSessionInput) {
+  return invoke<OpenProject>("project_session_open", { input });
 }
 
 function createTerminalPanel(input: CreateTerminalPanelInput) {
@@ -93,10 +104,12 @@ export {
   deleteTerminalSnapshot,
   deleteWorkspacePanel,
   getTerminalSnapshot,
+  listProjectSessions,
   listProjects,
   openFileEditorPanel,
   openLastProject,
   openProject,
+  openProjectSession,
   openSourceControlDiffPanel,
   removeProject,
   renameProject,

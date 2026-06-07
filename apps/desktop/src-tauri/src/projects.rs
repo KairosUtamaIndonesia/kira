@@ -55,6 +55,19 @@ pub struct OpenProjectInput {
     project_id: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListProjectSessionsInput {
+    project_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenProjectSessionInput {
+    project_id: String,
+    session_id: String,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenProject {
@@ -369,6 +382,30 @@ pub async fn project_open_last(
     store: tauri::State<'_, PersistenceStore>,
 ) -> Result<Option<OpenProject>, ProjectError> {
     open_last_project(store.pool()).await
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
+pub async fn project_sessions_list(
+    input: ListProjectSessionsInput,
+    store: tauri::State<'_, PersistenceStore>,
+) -> Result<Vec<Session>, ProjectError> {
+    list_project_sessions(store.pool(), input).await
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
+pub async fn project_session_open(
+    input: OpenProjectSessionInput,
+    store: tauri::State<'_, PersistenceStore>,
+) -> Result<OpenProject, ProjectError> {
+    open_project_session(store.pool(), input).await
 }
 
 #[tauri::command]
@@ -735,19 +772,24 @@ async fn open_last_project(pool: &SqlitePool) -> Result<Option<OpenProject>, Pro
     }
 }
 
+async fn list_project_sessions(
+    pool: &SqlitePool,
+    input: ListProjectSessionsInput,
+) -> Result<Vec<Session>, ProjectError> {
+    ensure_project_exists(pool, &input.project_id).await?;
+    sqlx::query_as::<_, Session>(
+        "SELECT id, project_id, name, created_at, updated_at, last_opened_at, layout_json FROM sessions WHERE project_id = ? ORDER BY COALESCE(last_opened_at, created_at) DESC",
+    )
+    .bind(input.project_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|error| ProjectError::Query(error.to_string()))
+}
+
 async fn open_project(
     pool: &SqlitePool,
     input: OpenProjectInput,
 ) -> Result<OpenProject, ProjectError> {
-    let project = sqlx::query_as::<_, Project>(
-        "SELECT id, name, folder_path, created_at, updated_at FROM projects WHERE id = ?",
-    )
-    .bind(&input.project_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(|error| ProjectError::Query(error.to_string()))?
-    .ok_or_else(|| ProjectError::MissingProject(input.project_id.clone()))?;
-
     let session = sqlx::query_as::<_, Session>(
         "SELECT id, project_id, name, created_at, updated_at, last_opened_at, layout_json FROM sessions WHERE project_id = ? ORDER BY COALESCE(last_opened_at, created_at) DESC LIMIT 1",
     )
@@ -755,11 +797,37 @@ async fn open_project(
     .fetch_optional(pool)
     .await
     .map_err(|error| ProjectError::Query(error.to_string()))?
-    .ok_or(ProjectError::MissingSession(input.project_id))?;
+    .ok_or_else(|| ProjectError::MissingSession(input.project_id.clone()))?;
 
+    open_project_with_session(pool, &input.project_id, session).await
+}
+
+async fn open_project_session(
+    pool: &SqlitePool,
+    input: OpenProjectSessionInput,
+) -> Result<OpenProject, ProjectError> {
+    let session = sqlx::query_as::<_, Session>(
+        "SELECT id, project_id, name, created_at, updated_at, last_opened_at, layout_json FROM sessions WHERE project_id = ? AND id = ?",
+    )
+    .bind(&input.project_id)
+    .bind(&input.session_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|error| ProjectError::Query(error.to_string()))?
+    .ok_or(ProjectError::MissingSession(input.project_id.clone()))?;
+
+    open_project_with_session(pool, &input.project_id, session).await
+}
+
+async fn open_project_with_session(
+    pool: &SqlitePool,
+    project_id: &str,
+    session: Session,
+) -> Result<OpenProject, ProjectError> {
+    let project = ensure_project_exists(pool, project_id).await?;
     let panels = list_workspace_panels(pool, &session.id).await?;
-
     let now = current_timestamp()?;
+
     sqlx::query("UPDATE projects SET last_opened_at = ?, updated_at = ? WHERE id = ?")
         .bind(&now)
         .bind(&now)
@@ -780,6 +848,20 @@ async fn open_project(
         session,
         panels,
     })
+}
+
+async fn ensure_project_exists(
+    pool: &SqlitePool,
+    project_id: &str,
+) -> Result<Project, ProjectError> {
+    sqlx::query_as::<_, Project>(
+        "SELECT id, name, folder_path, created_at, updated_at FROM projects WHERE id = ?",
+    )
+    .bind(project_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|error| ProjectError::Query(error.to_string()))?
+    .ok_or_else(|| ProjectError::MissingProject(project_id.to_string()))
 }
 
 async fn list_workspace_panels(
