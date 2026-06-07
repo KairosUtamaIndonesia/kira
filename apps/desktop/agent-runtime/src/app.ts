@@ -4,25 +4,24 @@ import { Hono } from "hono";
 
 import { appRoutes } from "./kira/app-routes";
 import { requireRuntimeToken } from "./kira/auth";
+import { readAgentProviderApiKey } from "./kira/env";
 import {
+  KIRA_AGENT_CONTEXT_WINDOW,
+  KIRA_AGENT_MAX_OUTPUT_TOKENS,
   KIRA_AGENT_PROVIDER_BASE_URL,
   KIRA_AGENT_PROVIDER_ID,
-  readAgentProviderApiKey,
-} from "./kira/env";
+} from "./kira/model";
 
-const GPT_55_CONTEXT_WINDOW = 272_000;
-const GPT_55_MAX_TOKENS = 128_000;
 const providerApiKey = readAgentProviderApiKey();
 
 registerProvider(KIRA_AGENT_PROVIDER_ID, {
   api: "openai-responses",
   baseUrl: KIRA_AGENT_PROVIDER_BASE_URL,
-  contextWindow: GPT_55_CONTEXT_WINDOW,
-  maxTokens: GPT_55_MAX_TOKENS,
+  contextWindow: KIRA_AGENT_CONTEXT_WINDOW,
+  maxTokens: KIRA_AGENT_MAX_OUTPUT_TOKENS,
   models: {
     "gpt-5.5": {
-      contextWindow: GPT_55_CONTEXT_WINDOW,
-      maxTokens: GPT_55_MAX_TOKENS,
+      upstreamModelId: "gh/gpt-5.5",
     },
   },
   ...(providerApiKey !== undefined ? { apiKey: providerApiKey } : {}),
