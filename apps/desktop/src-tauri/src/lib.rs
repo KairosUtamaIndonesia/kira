@@ -65,6 +65,8 @@ pub fn run() -> tauri::Result<()> {
             projects::project_list,
             projects::project_open,
             projects::project_open_last,
+            projects::project_session_open,
+            projects::project_sessions_list,
             projects::project_remove,
             projects::project_rename,
             projects::session_layout_update,

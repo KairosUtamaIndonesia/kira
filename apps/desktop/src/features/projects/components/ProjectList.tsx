@@ -1,5 +1,5 @@
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { Copy, ExternalLink, Folder, Pencil, Trash } from "lucide-react";
+import { Copy, ExternalLink, FileText, Folder, Pencil, Trash } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
 
@@ -30,28 +30,47 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
+import {
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
+} from "@/components/ui/sidebar";
 
-import type { Project } from "../types";
+import type { Project, Session } from "../types";
 
 import { removeProject, renameProject } from "../api/projectsApi";
 
+type ProjectSessionsState = {
+  sessions: Session[];
+  status: "loading" | "ready" | "error";
+  message?: string;
+};
+
 type ProjectListProps = {
   activeProjectId: string;
+  activeSessionId: string;
   projects: Project[];
+  projectSessions: Record<string, ProjectSessionsState>;
   isProjectSwitching: boolean;
   onProjectChanged: (project: Project) => void;
   onProjectRemoved: (projectId: string) => void;
   onProjectSelect: (projectId: string) => void;
+  onSessionSelect: (projectId: string, sessionId: string) => void;
 };
 
 function ProjectList({
   activeProjectId,
+  activeSessionId,
   projects,
+  projectSessions,
   isProjectSwitching,
   onProjectChanged,
   onProjectRemoved,
   onProjectSelect,
+  onSessionSelect,
 }: ProjectListProps) {
   const [projectToRename, setProjectToRename] = useState<Project>();
   const [projectToRemove, setProjectToRemove] = useState<Project>();
@@ -102,6 +121,13 @@ function ProjectList({
                 </ContextMenuItem>
               </ContextMenuContent>
             </ContextMenu>
+            <ProjectSessions
+              activeSessionId={project.id === activeProjectId ? activeSessionId : ""}
+              isProjectSwitching={isProjectSwitching}
+              project={project}
+              sessionsState={projectSessions[project.id]}
+              onSessionSelect={onSessionSelect}
+            />
           </SidebarMenuItem>
         ))}
       </SidebarMenu>
@@ -124,6 +150,61 @@ function ProjectList({
         onProjectRemoved={onProjectRemoved}
       />
     </>
+  );
+}
+
+type ProjectSessionsProps = {
+  activeSessionId: string;
+  isProjectSwitching: boolean;
+  project: Project;
+  sessionsState: ProjectSessionsState | undefined;
+  onSessionSelect: (projectId: string, sessionId: string) => void;
+};
+
+function ProjectSessions({
+  activeSessionId,
+  isProjectSwitching,
+  project,
+  sessionsState,
+  onSessionSelect,
+}: ProjectSessionsProps) {
+  if (sessionsState === undefined || sessionsState.status === "loading") {
+    return <p className="px-9 py-1 text-xs text-sidebar-foreground/60">Loading Sessions…</p>;
+  }
+
+  if (sessionsState.status === "error") {
+    return (
+      <p role="alert" className="px-9 py-1 text-xs text-destructive">
+        {sessionsState.message}
+      </p>
+    );
+  }
+
+  if (sessionsState.sessions.length === 0) {
+    return <p className="px-9 py-1 text-xs text-destructive">Project has no Sessions.</p>;
+  }
+
+  return (
+    <SidebarMenuSub aria-label={`${project.name} Sessions`}>
+      {sessionsState.sessions.map((session) => (
+        <SidebarMenuSubItem key={session.id}>
+          <SidebarMenuSubButton
+            isActive={session.id === activeSessionId}
+            render={
+              <button
+                type="button"
+                aria-label={`${project.name} Session ${session.name}`}
+                disabled={isProjectSwitching}
+                onClick={() => onSessionSelect(project.id, session.id)}
+              />
+            }
+          >
+            <FileText aria-hidden="true" />
+            <span>{session.name}</span>
+          </SidebarMenuSubButton>
+        </SidebarMenuSubItem>
+      ))}
+    </SidebarMenuSub>
   );
 }
 
@@ -276,3 +357,4 @@ function errorMessageFromUnknown(error: unknown) {
 }
 
 export { ProjectList };
+export type { ProjectSessionsState };
