@@ -65,7 +65,106 @@ struct AgentRuntimePersistenceBridgeState {
 #[serde(rename_all = "camelCase")]
 struct SaveFlueSessionStateInput {
     agent_thread_id: String,
+    context_usage: Option<AgentThreadContextUsageSnapshot>,
     session_data: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AgentThreadContextUsageSnapshot {
+    used_tokens: i64,
+    context_window: i64,
+    max_output_tokens: i64,
+    model_id: String,
+    usage: AgentThreadContextTokenUsage,
+    cost: AgentThreadContextUsageCost,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(
+    clippy::struct_field_names,
+    reason = "Token usage fields intentionally mirror the frontend and Flue token vocabulary"
+)]
+struct AgentThreadContextTokenUsage {
+    input_tokens: i64,
+    output_tokens: i64,
+    reasoning_tokens: i64,
+    cached_input_tokens: i64,
+    cache_write_tokens: i64,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AgentThreadContextUsageCost {
+    input: f64,
+    output: f64,
+    cache_read: f64,
+    cache_write: f64,
+    total: f64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentThreadContextUsage {
+    used_tokens: i64,
+    context_window: i64,
+    max_output_tokens: i64,
+    model_id: String,
+    usage: AgentThreadContextTokenUsage,
+    cost: AgentThreadContextUsageCost,
+    updated_at: String,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+struct AgentThreadContextUsageRow {
+    used_tokens: i64,
+    context_window: i64,
+    max_output_tokens: i64,
+    model_id: String,
+    input_tokens: i64,
+    output_tokens: i64,
+    reasoning_tokens: i64,
+    cached_input_tokens: i64,
+    cache_write_tokens: i64,
+    input_cost: f64,
+    output_cost: f64,
+    cache_read_cost: f64,
+    cache_write_cost: f64,
+    total_cost: f64,
+    updated_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetAgentThreadContextUsageInput {
+    thread_id: String,
+}
+
+impl From<AgentThreadContextUsageRow> for AgentThreadContextUsage {
+    fn from(row: AgentThreadContextUsageRow) -> Self {
+        Self {
+            used_tokens: row.used_tokens,
+            context_window: row.context_window,
+            max_output_tokens: row.max_output_tokens,
+            model_id: row.model_id,
+            usage: AgentThreadContextTokenUsage {
+                input_tokens: row.input_tokens,
+                output_tokens: row.output_tokens,
+                reasoning_tokens: row.reasoning_tokens,
+                cached_input_tokens: row.cached_input_tokens,
+                cache_write_tokens: row.cache_write_tokens,
+            },
+            cost: AgentThreadContextUsageCost {
+                input: row.input_cost,
+                output: row.output_cost,
+                cache_read: row.cache_read_cost,
+                cache_write: row.cache_write_cost,
+                total: row.total_cost,
+            },
+            updated_at: row.updated_at,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -135,6 +234,8 @@ pub enum AgentRuntimeError {
     ProjectPathNotDirectory { path: String },
     #[error("failed to query Project context for Agent Thread: {0}")]
     QueryProjectContext(String),
+    #[error("failed to query Agent Thread context usage: {0}")]
+    QueryContextUsage(String),
     #[error("Agent runtime directory was not found: {path}")]
     RuntimeDirectoryMissing { path: String },
     #[error("failed to reserve an agent runtime port: {0}")]
@@ -226,6 +327,34 @@ pub async fn prepare_agent_thread(
         base_url: connection.base_url,
         token: connection.token,
     })
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
+pub async fn agent_thread_context_usage_get(
+    input: GetAgentThreadContextUsageInput,
+    store: tauri::State<'_, PersistenceStore>,
+) -> Result<Option<AgentThreadContextUsage>, AgentRuntimeError> {
+    validate_required_thread_id(&input.thread_id)?;
+
+    let row = sqlx::query_as::<_, AgentThreadContextUsageRow>(
+        r"
+        SELECT used_tokens, context_window, max_output_tokens, model_id,
+               input_tokens, output_tokens, reasoning_tokens, cached_input_tokens, cache_write_tokens,
+               input_cost, output_cost, cache_read_cost, cache_write_cost, total_cost, updated_at
+        FROM agent_thread_context_usage
+        WHERE agent_thread_id = ?
+        ",
+    )
+    .bind(input.thread_id)
+    .fetch_optional(store.pool())
+    .await
+    .map_err(|error| AgentRuntimeError::QueryContextUsage(error.to_string()))?;
+
+    Ok(row.map(AgentThreadContextUsage::from))
 }
 
 async fn load_agent_thread_project_context(
@@ -336,13 +465,49 @@ async fn save_flue_session_state(
     let now = current_bridge_timestamp()?;
     let session_data_json = serde_json::to_string(&input.session_data)
         .map_err(|error| (StatusCode::BAD_REQUEST, error.to_string()))?;
+    let mut transaction = state
+        .store
+        .pool()
+        .begin()
+        .await
+        .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?;
+
     sqlx::query("INSERT INTO flue_agent_session_state (storage_key, agent_thread_id, session_data_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(storage_key) DO UPDATE SET agent_thread_id = excluded.agent_thread_id, session_data_json = excluded.session_data_json, updated_at = excluded.updated_at")
-        .bind(storage_key)
-        .bind(input.agent_thread_id)
+        .bind(&storage_key)
+        .bind(&input.agent_thread_id)
         .bind(session_data_json)
         .bind(&now)
         .bind(&now)
-        .execute(state.store.pool())
+        .execute(&mut *transaction)
+        .await
+        .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?;
+
+    if let Some(context_usage) = input.context_usage {
+        sqlx::query("INSERT INTO agent_thread_context_usage (agent_thread_id, storage_key, used_tokens, context_window, max_output_tokens, model_id, input_tokens, output_tokens, reasoning_tokens, cached_input_tokens, cache_write_tokens, input_cost, output_cost, cache_read_cost, cache_write_cost, total_cost, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(agent_thread_id) DO UPDATE SET storage_key = excluded.storage_key, used_tokens = excluded.used_tokens, context_window = excluded.context_window, max_output_tokens = excluded.max_output_tokens, model_id = excluded.model_id, input_tokens = excluded.input_tokens, output_tokens = excluded.output_tokens, reasoning_tokens = excluded.reasoning_tokens, cached_input_tokens = excluded.cached_input_tokens, cache_write_tokens = excluded.cache_write_tokens, input_cost = excluded.input_cost, output_cost = excluded.output_cost, cache_read_cost = excluded.cache_read_cost, cache_write_cost = excluded.cache_write_cost, total_cost = excluded.total_cost, updated_at = excluded.updated_at")
+            .bind(&input.agent_thread_id)
+            .bind(&storage_key)
+            .bind(context_usage.used_tokens)
+            .bind(context_usage.context_window)
+            .bind(context_usage.max_output_tokens)
+            .bind(context_usage.model_id)
+            .bind(context_usage.usage.input_tokens)
+            .bind(context_usage.usage.output_tokens)
+            .bind(context_usage.usage.reasoning_tokens)
+            .bind(context_usage.usage.cached_input_tokens)
+            .bind(context_usage.usage.cache_write_tokens)
+            .bind(context_usage.cost.input)
+            .bind(context_usage.cost.output)
+            .bind(context_usage.cost.cache_read)
+            .bind(context_usage.cost.cache_write)
+            .bind(context_usage.cost.total)
+            .bind(&now)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?;
+    }
+
+    transaction
+        .commit()
         .await
         .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?;
     Ok(StatusCode::NO_CONTENT)

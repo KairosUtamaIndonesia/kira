@@ -2,6 +2,7 @@ import type { SessionData, SessionStore } from "@flue/runtime";
 
 import type { AgentThreadContext } from "./agent-thread-context";
 
+import { agentThreadContextUsageFromSessionData } from "./context-usage";
 import { readPersistenceBridgeToken, readPersistenceBridgeUrl } from "./env";
 
 type StoredSessionData = {
@@ -22,6 +23,7 @@ export function createKiraSessionStore(context: AgentThreadContext): SessionStor
         },
         body: JSON.stringify({
           agentThreadId: context.threadId,
+          contextUsage: safeAgentThreadContextUsageFromSessionData(context.threadId, data),
           sessionData: data,
         }),
       });
@@ -51,6 +53,24 @@ export function createKiraSessionStore(context: AgentThreadContext): SessionStor
       await requireSuccessfulBridgeResponse(response, "delete", id);
     },
   };
+}
+
+function safeAgentThreadContextUsageFromSessionData(threadId: string, data: SessionData) {
+  try {
+    return agentThreadContextUsageFromSessionData(data);
+  } catch (error) {
+    process.stderr.write(
+      `Failed to estimate Agent Thread context usage for ${threadId}: ${errorMessageFromUnknown(error)}\n`,
+    );
+    return;
+  }
+}
+
+function errorMessageFromUnknown(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
 }
 
 function isJsonNull(value: unknown): value is null {

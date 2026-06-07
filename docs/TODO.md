@@ -1,0 +1,46 @@
+# TODO
+
+## Agent Threads
+
+- Build a human-readable transcript UI instead of raw JSON event/result blocks.
+  - Render chat-like messages, tool calls, status rows, and errors.
+  - Keep raw event details behind an expandable debug view.
+- Add Agent Thread titles.
+  - Auto-title from the first prompt or a model-generated summary.
+  - Allow manual rename from the Inspector and panel header.
+- Model prompt/run lifecycle explicitly.
+  - Treat a user prompt as a durable Run with queued/running/succeeded/failed/canceled state.
+  - Surface active Runs in the Agent Thread and Status Bar.
+- Add cancel/stop generation.
+  - Keep the Flue call handle or socket request id and expose a Stop button.
+  - Persist canceled state.
+- Split close vs delete behavior.
+  - Closing a panel should hide the view.
+  - Deleting an Agent Thread should require explicit confirmation.
+  - Inspector actions should support open/reopen, rename, close, and delete.
+- Improve the display persistence model.
+  - Store typed display records instead of opaque `unknown` JSON.
+  - Separate prompt, assistant text, tool call, tool result, error, and lifecycle event records.
+- Render tool activity as a compact timeline.
+  - Include command, cwd, exit code, changed files, and errors where available.
+- Expose multiple Sessions per Project.
+  - Let users browse Project Sessions.
+  - Show Agent Threads per Session.
+- Add Agent Thread search.
+  - Search prompts, results, and tool activity across the active Session or Project.
+- Add context attachment to prompts.
+  - Support files, selected diffs, terminal output, and open editor content.
+- Add notifications for background Agent Threads.
+  - Notify when an Agent Thread finishes while its panel is closed.
+- Add safety controls.
+  - Require approval for destructive file changes or shell commands.
+  - Make autonomous edits vs suggested patches explicit.
+- Integrate Agent Threads with diffs and review.
+  - Link modified files back to the Agent Thread.
+  - Add a “Review changes from this thread” flow.
+- Add runtime health and recovery UI.
+  - Show Flue runtime state in the Inspector or Status Bar.
+  - Provide a restart action and clearer unavailable-runtime errors.
+- Add compaction and continuity indicators.
+  - Show when a thread was compacted or restored from persistence.
+  - Help users trust long-running Agent Threads.
