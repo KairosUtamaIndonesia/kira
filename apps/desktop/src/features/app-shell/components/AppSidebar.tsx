@@ -2,6 +2,7 @@ import { Settings } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import type { CreatedProject, Project } from "@/features/projects/types";
+import type { SourceControlStatusResult } from "@/features/source-control/types";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -19,7 +20,12 @@ import {
 } from "@/components/ui/sidebar";
 import { listProjectSessions, listProjects } from "@/features/projects/api/projectsApi";
 import { NewProjectButton } from "@/features/projects/components/NewProjectButton";
-import { ProjectList, type ProjectSessionsState } from "@/features/projects/components/ProjectList";
+import {
+  ProjectList,
+  type ProjectBranchState,
+  type ProjectSessionsState,
+} from "@/features/projects/components/ProjectList";
+import { getSourceControlStatus } from "@/features/source-control/api/sourceControlApi";
 
 import type { ActiveWorkspaceState } from "../types";
 
@@ -47,7 +53,54 @@ function AppSidebar({
   const { handleTitleBarDoubleClick, handleTitleBarMouseDown, titleBarError } = useTitleBarDrag();
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectSessions, setProjectSessions] = useState<Record<string, ProjectSessionsState>>({});
+  const [projectBranches, setProjectBranches] = useState<Record<string, ProjectBranchState>>({});
   const [projectsError, setProjectsError] = useState<string>();
+
+  async function loadSessions(project: Project, shouldIgnoreResult: () => boolean) {
+    try {
+      const sessions = await listProjectSessions({ projectId: project.id });
+      if (!shouldIgnoreResult()) {
+        setProjectSessions((currentProjectSessions) => ({
+          ...currentProjectSessions,
+          [project.id]: { status: "ready", sessions },
+        }));
+      }
+    } catch (error) {
+      if (!shouldIgnoreResult()) {
+        setProjectSessions((currentProjectSessions) => ({
+          ...currentProjectSessions,
+          [project.id]: {
+            status: "error",
+            sessions: [],
+            message: errorMessageFromUnknown(error),
+          },
+        }));
+      }
+    }
+  }
+
+  async function loadBranch(project: Project, shouldIgnoreResult: () => boolean) {
+    try {
+      const sourceControlStatus = await getSourceControlStatus({ folderPath: project.folderPath });
+      if (shouldIgnoreResult()) {
+        return;
+      }
+
+      setProjectBranches((currentProjectBranches) => ({
+        ...currentProjectBranches,
+        [project.id]: { branchLabel: branchLabelFromSourceControlStatus(sourceControlStatus) },
+      }));
+    } catch (error) {
+      if (shouldIgnoreResult()) {
+        return;
+      }
+
+      setProjectBranches((currentProjectBranches) => ({
+        ...currentProjectBranches,
+        [project.id]: { branchLabel: `Branch unavailable: ${errorMessageFromUnknown(error)}` },
+      }));
+    }
+  }
 
   useEffect(() => {
     let ignoreResult = false;
@@ -63,26 +116,10 @@ function AppSidebar({
 
         await Promise.all(
           loadedProjects.map(async (project) => {
-            try {
-              const sessions = await listProjectSessions({ projectId: project.id });
-              if (!ignoreResult) {
-                setProjectSessions((currentProjectSessions) => ({
-                  ...currentProjectSessions,
-                  [project.id]: { status: "ready", sessions },
-                }));
-              }
-            } catch (error) {
-              if (!ignoreResult) {
-                setProjectSessions((currentProjectSessions) => ({
-                  ...currentProjectSessions,
-                  [project.id]: {
-                    status: "error",
-                    sessions: [],
-                    message: errorMessageFromUnknown(error),
-                  },
-                }));
-              }
-            }
+            await Promise.all([
+              loadSessions(project, () => ignoreResult),
+              loadBranch(project, () => ignoreResult),
+            ]);
           }),
         );
       } catch (error) {
@@ -134,6 +171,7 @@ function AppSidebar({
                     sessions: [createdProject.defaultSession],
                   },
                 }));
+                void loadBranch(createdProject.project, () => false);
                 onProjectCreated(createdProject);
               }}
             />
@@ -144,6 +182,7 @@ function AppSidebar({
                   activeSessionId={activeSessionId(activeWorkspace)}
                   projects={projects}
                   projectSessions={projectSessions}
+                  projectBranches={projectBranches}
                   isProjectSwitching={isProjectSwitching(activeWorkspace)}
                   onProjectChanged={(project) => {
                     setProjects((currentProjects) =>
@@ -161,6 +200,9 @@ function AppSidebar({
                     );
                     setProjectSessions((currentProjectSessions) =>
                       omitProjectSessions(currentProjectSessions, projectId),
+                    );
+                    setProjectBranches((currentProjectBranches) =>
+                      omitProjectBranches(currentProjectBranches, projectId),
                     );
                     onProjectRemoved(projectId);
                   }}
@@ -231,6 +273,27 @@ function omitProjectSessions(
   const nextProjectSessions = { ...projectSessions };
   delete nextProjectSessions[projectId];
   return nextProjectSessions;
+}
+
+function omitProjectBranches(
+  projectBranches: Record<string, ProjectBranchState>,
+  projectId: string,
+) {
+  const nextProjectBranches = { ...projectBranches };
+  delete nextProjectBranches[projectId];
+  return nextProjectBranches;
+}
+
+function branchLabelFromSourceControlStatus(sourceControlStatus: SourceControlStatusResult) {
+  if (sourceControlStatus.kind === "notGitRepository") {
+    return "No Git branch";
+  }
+
+  if (sourceControlStatus.branch !== null) {
+    return sourceControlStatus.branch;
+  }
+
+  return "Detached HEAD";
 }
 
 function sortProjectsByName(projects: Project[]) {
