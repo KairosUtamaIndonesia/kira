@@ -1,6 +1,6 @@
 [package]
 name = "kira-v3"
-version = "0.1.0"
+version = "3.0.0" # x-release-please-version
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -35,6 +35,10 @@ tokio = { version = "1", features = ["net", "process", "sync", "time"] }
 axum = "0.8"
 ignore = "0.4"
 regex = "1"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 
 [profile.dev]
 incremental = true

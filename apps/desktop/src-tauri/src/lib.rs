@@ -33,9 +33,18 @@ fn greet(name: &str) -> String {
 /// the application event loop.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() -> tauri::Result<()> {
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_dialog::init());
+
+    #[cfg(desktop)]
+    {
+        builder = builder
+            .plugin(tauri_plugin_updater::Builder::new().build())
+            .plugin(tauri_plugin_process::init());
+    }
+
+    builder
         .setup(|app| {
             let persistence_store =
                 tauri::async_runtime::block_on(persistence::initialize(app.handle()))?;
