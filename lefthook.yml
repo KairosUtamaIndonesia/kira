@@ -1,0 +1,22 @@
+# Lefthook configuration
+# Install hooks: bun run setup:hooks
+# Docs: https://evilmartians.com/chronicles/lefthook-knock-your-teams-code-quality-into-shape
+
+pre-commit:
+  parallel: true
+  skip:
+    - merge
+    - squash
+  commands:
+    lint:
+      run: bun run lint
+    format-check:
+      run: bun run format:check
+
+pre-push:
+  skip:
+    - merge
+    - squash
+  commands:
+    check:
+      run: bun run check

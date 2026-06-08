@@ -14,6 +14,7 @@ import {
   prepareAgentThread,
   saveAgentThreadMessage,
 } from "../api/agentRuntimeApi";
+import { setAgentThreadTitleGenerationState } from "../agentThreadStatusStore";
 
 type AgentThreadRuntimeState =
   | { status: "starting" }
@@ -29,6 +30,11 @@ type AgentThreadContextUsageState =
   | { status: "ready"; usage: AgentThreadContextUsage }
   | { status: "error"; message: string };
 
+type AgentThreadTitleGenerationState =
+  | { status: "idle" }
+  | { status: "generating" }
+  | { status: "done" };
+
 type UseAgentThreadConnectionOptions = {
   onAutoTitled?: (title: string) => void;
 };
@@ -42,6 +48,9 @@ function useAgentThreadConnection(
   });
   const [contextUsageState, setContextUsageState] = useState<AgentThreadContextUsageState>({
     status: "loading",
+  });
+  const [titleGenerationState, setTitleGenerationState] = useState<AgentThreadTitleGenerationState>({
+    status: "idle",
   });
   const [messages, setMessages] = useState<AgentThreadMessageRecord[]>([]);
   const socketRef = useRef<AgentSocket | undefined>(void 0);
@@ -208,6 +217,9 @@ function useAgentThreadConnection(
       return;
     }
 
+    setTitleGenerationState({ status: "generating" });
+    setAgentThreadTitleGenerationState(params.threadId, { status: "generating" });
+
     try {
       const client = createFlueClient({
         baseUrl: runtime.baseUrl,
@@ -239,11 +251,14 @@ function useAgentThreadConnection(
       }
     } catch {
       // Title generation is cosmetic; silently fail.
+    } finally {
+      setTitleGenerationState({ status: "done" });
+      setAgentThreadTitleGenerationState(params.threadId, { status: "done" });
     }
   }
 
 
-  return { contextUsageState, messages, runtimeState, sendPrompt };
+  return { contextUsageState, messages, runtimeState, sendPrompt, titleGenerationState };
 }
 function extractTextFromUnknown(value: unknown): string {
   if (typeof value === "string") {
@@ -332,4 +347,9 @@ function errorMessageFromUnknown(error: unknown) {
 }
 
 export { useAgentThreadConnection };
-export type { AgentThreadContextUsageState, AgentThreadMessageRecord, AgentThreadRuntimeState };
+export type {
+  AgentThreadContextUsageState,
+  AgentThreadMessageRecord,
+  AgentThreadRuntimeState,
+  AgentThreadTitleGenerationState,
+};

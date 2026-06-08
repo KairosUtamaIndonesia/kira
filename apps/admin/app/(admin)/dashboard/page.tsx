@@ -125,64 +125,6 @@ async function DashboardData() {
           </div>
         )}
       </section>
-      <section className="rounded-xl border border-border bg-card p-4 text-card-foreground">
-        <div className="mb-4">
-          <h2 className="font-medium">Recent organizations</h2>
-          <p className="text-sm text-muted-foreground">Real Better Auth organization data.</p>
-        </div>
-        {organizations.length === 0 ? (
-          <Empty>
-            <EmptyHeader>
-              <EmptyTitle>No organizations found</EmptyTitle>
-              <EmptyDescription>
-                Create a Better Auth organization to populate this table.
-              </EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-border text-xs text-muted-foreground uppercase">
-                <tr>
-                  <th className="py-2 pr-4 font-medium">Organization</th>
-                  <th className="py-2 pr-4 font-medium">Slug</th>
-                  <th className="py-2 pr-4 font-medium">Members</th>
-                  <th className="py-2 pr-4 font-medium">SSO</th>
-                  <th className="py-2 pr-4 font-medium">Settings</th>
-                </tr>
-              </thead>
-              <tbody>
-                {organizations.map((organization) => (
-                  <tr key={organization.id} className="border-b border-border last:border-0">
-                    <td className="py-3 pr-4 font-medium">
-                      <Link href={`/organizations/${organization.id}`} className="hover:underline">
-                        {organization.name}
-                      </Link>
-                    </td>
-                    <td className="py-3 pr-4 text-muted-foreground">{organization.slug}</td>
-                    <td className="py-3 pr-4">{organization.memberCount}</td>
-                    <td className="py-3 pr-4">
-                      {ssoConnections.some(
-                        (connection) => connection.organizationId === organization.id,
-                      )
-                        ? "Configured"
-                        : "Not configured"}
-                    </td>
-                    <td className="py-3 pr-4">
-                      <Link
-                        href={`/organizations/${organization.id}/settings`}
-                        className="text-sm font-medium hover:underline"
-                      >
-                        Manage SSO
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
     </>
   );
 }

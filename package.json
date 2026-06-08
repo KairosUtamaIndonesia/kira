@@ -23,7 +23,8 @@
     "lint:fix": "turbo lint:fix",
     "tauri": "turbo tauri --filter=@kira/desktop",
     "test:rust": "turbo test:rust --filter=@kira/desktop",
-    "turbo": "turbo"
+    "turbo": "turbo",
+    "setup:hooks": "lefthook install"
   },
   "dependencies": {
     "nodemailer": "^8.0.10",
@@ -34,6 +35,7 @@
   },
   "devDependencies": {
     "@react-email/ui": "6.5.0",
+    "lefthook": "^2.1.9",
     "oxfmt": "^0.53.0",
     "oxlint": "^1.68.0",
     "turbo": "^2.6.3"
