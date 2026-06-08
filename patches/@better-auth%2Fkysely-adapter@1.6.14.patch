@@ -1,0 +1,36 @@
+diff --git a/dist/bun-sqlite-dialect-DzNwOpKv.mjs b/dist/bun-sqlite-dialect-DzNwOpKv.mjs
+index adfbfd3b7700e4aa10d5d63aef4d25c806c9cbb9..c695d82c054722e07a32e443dc0150289c1da1c9 100644
+--- a/dist/bun-sqlite-dialect-DzNwOpKv.mjs
++++ b/dist/bun-sqlite-dialect-DzNwOpKv.mjs
+@@ -1,4 +1,6 @@
+-import { CompiledQuery, DEFAULT_MIGRATION_LOCK_TABLE, DEFAULT_MIGRATION_TABLE, DefaultQueryCompiler, sql } from "kysely";
++import { CompiledQuery, DefaultQueryCompiler, sql } from "kysely";
++const DEFAULT_MIGRATION_TABLE = "kysely_migration";
++const DEFAULT_MIGRATION_LOCK_TABLE = "kysely_migration_lock";
+ //#region src/bun-sqlite-dialect.ts
+ var BunSqliteAdapter = class {
+ 	get supportsCreateIfNotExists() {
+diff --git a/dist/d1-sqlite-dialect-C2B7YsIT.mjs b/dist/d1-sqlite-dialect-C2B7YsIT.mjs
+index 1545e428a73da3747b96b142d7a0f40eaaa41b0e..6e900a2810961832d3e7f2db51e7e7da34c73601 100644
+--- a/dist/d1-sqlite-dialect-C2B7YsIT.mjs
++++ b/dist/d1-sqlite-dialect-C2B7YsIT.mjs
+@@ -1,4 +1,6 @@
+-import { DEFAULT_MIGRATION_LOCK_TABLE, DEFAULT_MIGRATION_TABLE, SqliteAdapter, SqliteQueryCompiler } from "kysely";
++import { SqliteAdapter, SqliteQueryCompiler } from "kysely";
++const DEFAULT_MIGRATION_TABLE = "kysely_migration";
++const DEFAULT_MIGRATION_LOCK_TABLE = "kysely_migration_lock";
+ //#region src/d1-sqlite-dialect.ts
+ var D1SqliteAdapter = class extends SqliteAdapter {};
+ var D1SqliteDriver = class {
+diff --git a/dist/node-sqlite-dialect.mjs b/dist/node-sqlite-dialect.mjs
+index 878100c374a231456d1965b1298bb7d8fa14df7c..9e0e61aeefe6f20beae760a3bab2e31c1dcf6543 100644
+--- a/dist/node-sqlite-dialect.mjs
++++ b/dist/node-sqlite-dialect.mjs
+@@ -1,4 +1,6 @@
+-import { CompiledQuery, DEFAULT_MIGRATION_LOCK_TABLE, DEFAULT_MIGRATION_TABLE, DefaultQueryCompiler, sql } from "kysely";
++import { CompiledQuery, DefaultQueryCompiler, sql } from "kysely";
++const DEFAULT_MIGRATION_TABLE = "kysely_migration";
++const DEFAULT_MIGRATION_LOCK_TABLE = "kysely_migration_lock";
+ //#region src/node-sqlite-dialect.ts
+ var NodeSqliteAdapter = class {
+ 	get supportsCreateIfNotExists() {
