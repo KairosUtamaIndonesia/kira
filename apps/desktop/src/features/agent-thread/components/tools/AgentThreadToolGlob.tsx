@@ -23,29 +23,50 @@ function AgentThreadToolGlob({ tool }: Props) {
 
   return (
     <div>
-      <ToolInlineRow
-        icon={<FolderSearch aria-hidden="true" className="size-3" />}
-        label={
-          <span className="truncate">
-            {actionLabel} {pattern !== undefined ? pattern : tool.title}
-          </span>
-        }
-      >
-        {tool.status === undefined ? undefined : <ToolStatusBadge status={tool.status} />}
-        {matchCount === undefined ? undefined : (
-          <span className="shrink-0 text-xs text-muted-foreground/60">
-            {matchCount} {matchCount === 1 ? "file" : "files"}
-          </span>
-        )}
-        <ToolDuration duration={tool.duration} />
-      </ToolInlineRow>
-      {tool.errorMessage === undefined ? undefined : (
-        <ToolErrorMessage message={tool.errorMessage} />
-      )}
-      {outputText === undefined ? undefined : (
-        <ToolExpandable summary="Show files">
+      {outputText === undefined ? (
+        <ToolInlineRow
+          icon={<FolderSearch aria-hidden="true" className="size-3" />}
+          label={
+            <span className="truncate">
+              {actionLabel} {pattern !== undefined ? pattern : tool.title}
+            </span>
+          }
+        >
+          {tool.status === undefined ? undefined : <ToolStatusBadge status={tool.status} />}
+          {matchCount === undefined ? undefined : (
+            <span className="shrink-0 text-xs text-muted-foreground/60">
+              {matchCount} {matchCount === 1 ? "file" : "files"}
+            </span>
+          )}
+          <ToolDuration duration={tool.duration} />
+        </ToolInlineRow>
+      ) : (
+        <ToolExpandable
+          summary="Show files"
+          trigger={
+            <ToolInlineRow
+              icon={<FolderSearch aria-hidden="true" className="size-3" />}
+              label={
+                <span className="truncate">
+                  {actionLabel} {pattern !== undefined ? pattern : tool.title}
+                </span>
+              }
+            >
+              {tool.status === undefined ? undefined : <ToolStatusBadge status={tool.status} />}
+              {matchCount === undefined ? undefined : (
+                <span className="shrink-0 text-xs text-muted-foreground/60">
+                  {matchCount} {matchCount === 1 ? "file" : "files"}
+                </span>
+              )}
+              <ToolDuration duration={tool.duration} />
+            </ToolInlineRow>
+          }
+        >
           <ToolCodeBlock content={outputText} />
         </ToolExpandable>
+      )}
+      {tool.errorMessage === undefined ? undefined : (
+        <ToolErrorMessage message={tool.errorMessage} />
       )}
     </div>
   );

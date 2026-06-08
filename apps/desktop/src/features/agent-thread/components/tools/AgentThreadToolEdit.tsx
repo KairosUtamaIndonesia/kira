@@ -22,18 +22,27 @@ function AgentThreadToolEdit({ tool }: Props) {
 
   return (
     <div>
-      <ToolInlineRow
-        icon={<FilePen aria-hidden="true" className="size-3" />}
-        label={<span className="truncate">Edited {filePath ?? tool.title}</span>}
-      >
-        {tool.status === undefined ? undefined : <ToolStatusBadge status={tool.status} />}
-        <ToolDuration duration={tool.duration} />
-      </ToolInlineRow>
-      {tool.errorMessage === undefined ? undefined : (
-        <ToolErrorMessage message={tool.errorMessage} />
-      )}
-      {oldText !== undefined && newText !== undefined ? (
-        <ToolExpandable summary="Show diff">
+      {oldText === undefined || newText === undefined ? (
+        <ToolInlineRow
+          icon={<FilePen aria-hidden="true" className="size-3" />}
+          label={<span className="truncate">Edited {filePath ?? tool.title}</span>}
+        >
+          {tool.status === undefined ? undefined : <ToolStatusBadge status={tool.status} />}
+          <ToolDuration duration={tool.duration} />
+        </ToolInlineRow>
+      ) : (
+        <ToolExpandable
+          summary="Show diff"
+          trigger={
+            <ToolInlineRow
+              icon={<FilePen aria-hidden="true" className="size-3" />}
+              label={<span className="truncate">Edited {filePath ?? tool.title}</span>}
+            >
+              {tool.status === undefined ? undefined : <ToolStatusBadge status={tool.status} />}
+              <ToolDuration duration={tool.duration} />
+            </ToolInlineRow>
+          }
+        >
           <AgentThreadToolDiff
             filePath={filePath}
             modelKey={`${tool.id}:${filePath ?? "unknown"}`}
@@ -41,7 +50,10 @@ function AgentThreadToolEdit({ tool }: Props) {
             modifiedContent={newText}
           />
         </ToolExpandable>
-      ) : undefined}
+      )}
+      {tool.errorMessage === undefined ? undefined : (
+        <ToolErrorMessage message={tool.errorMessage} />
+      )}
     </div>
   );
 }

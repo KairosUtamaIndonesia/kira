@@ -18,22 +18,34 @@ type Props = {
 function AgentThreadToolDefault({ tool }: Props) {
   return (
     <div>
-      <ToolInlineRow
-        icon={<Wrench aria-hidden="true" className="size-3" />}
-        label={<span className="truncate">Called {tool.title}</span>}
-      >
-        {tool.status === undefined ? undefined : <ToolStatusBadge status={tool.status} />}
-        <ToolDuration duration={tool.duration} />
-      </ToolInlineRow>
-      {tool.errorMessage === undefined ? undefined : (
-        <ToolErrorMessage message={tool.errorMessage} />
-      )}
-      {tool.command !== undefined || tool.exitCode !== undefined || tool.cwd !== undefined ? (
-        <ToolExpandable summary="Show details">
+      {tool.command === undefined && tool.exitCode === undefined && tool.cwd === undefined ? (
+        <ToolInlineRow
+          icon={<Wrench aria-hidden="true" className="size-3" />}
+          label={<span className="truncate">Called {tool.title}</span>}
+        >
+          {tool.status === undefined ? undefined : <ToolStatusBadge status={tool.status} />}
+          <ToolDuration duration={tool.duration} />
+        </ToolInlineRow>
+      ) : (
+        <ToolExpandable
+          summary="Show details"
+          trigger={
+            <ToolInlineRow
+              icon={<Wrench aria-hidden="true" className="size-3" />}
+              label={<span className="truncate">Called {tool.title}</span>}
+            >
+              {tool.status === undefined ? undefined : <ToolStatusBadge status={tool.status} />}
+              <ToolDuration duration={tool.duration} />
+            </ToolInlineRow>
+          }
+        >
           <ToolJsonBlock label="Input" value={tool.input} />
           <ToolJsonBlock label="Output" value={tool.output} />
         </ToolExpandable>
-      ) : undefined}
+      )}
+      {tool.errorMessage === undefined ? undefined : (
+        <ToolErrorMessage message={tool.errorMessage} />
+      )}
     </div>
   );
 }

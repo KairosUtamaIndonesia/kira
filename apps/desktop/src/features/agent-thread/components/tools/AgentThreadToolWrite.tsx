@@ -22,23 +22,38 @@ function AgentThreadToolWrite({ tool }: Props) {
 
   return (
     <div>
-      <ToolInlineRow
-        icon={<FileDown aria-hidden="true" className="size-3" />}
-        label={<span className="truncate">Wrote {filePath ?? tool.title}</span>}
-      >
-        {tool.status === undefined ? undefined : <ToolStatusBadge status={tool.status} />}
-        {size === undefined ? undefined : (
-          <span className="shrink-0 text-xs text-muted-foreground/60">{size}</span>
-        )}
-        <ToolDuration duration={tool.duration} />
-      </ToolInlineRow>
-      {tool.errorMessage === undefined ? undefined : (
-        <ToolErrorMessage message={tool.errorMessage} />
-      )}
-      {content === undefined ? undefined : (
-        <ToolExpandable summary="Show content">
+      {content === undefined ? (
+        <ToolInlineRow
+          icon={<FileDown aria-hidden="true" className="size-3" />}
+          label={<span className="truncate">Wrote {filePath ?? tool.title}</span>}
+        >
+          {tool.status === undefined ? undefined : <ToolStatusBadge status={tool.status} />}
+          {size === undefined ? undefined : (
+            <span className="shrink-0 text-xs text-muted-foreground/60">{size}</span>
+          )}
+          <ToolDuration duration={tool.duration} />
+        </ToolInlineRow>
+      ) : (
+        <ToolExpandable
+          summary="Show content"
+          trigger={
+            <ToolInlineRow
+              icon={<FileDown aria-hidden="true" className="size-3" />}
+              label={<span className="truncate">Wrote {filePath ?? tool.title}</span>}
+            >
+              {tool.status === undefined ? undefined : <ToolStatusBadge status={tool.status} />}
+              {size === undefined ? undefined : (
+                <span className="shrink-0 text-xs text-muted-foreground/60">{size}</span>
+              )}
+              <ToolDuration duration={tool.duration} />
+            </ToolInlineRow>
+          }
+        >
           <ToolCodeBlock content={content} />
         </ToolExpandable>
+      )}
+      {tool.errorMessage === undefined ? undefined : (
+        <ToolErrorMessage message={tool.errorMessage} />
       )}
     </div>
   );
