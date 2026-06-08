@@ -1,0 +1,98 @@
+name: Feature implementation
+description: Plan and track implementation work for a product feature.
+title: "[Feature]: "
+labels:
+  - feature
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for implementation-ready feature work. Keep the issue focused on the user-visible behavior and the concrete code paths that must change.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user or product problem does this feature solve?
+      placeholder: Describe the current gap and why it matters.
+    validations:
+      required: true
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: What should be true when the feature is complete?
+      placeholder: Describe the end state in user-visible terms.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: List the concrete surfaces, code paths, or systems expected to change.
+      placeholder: |
+        - Desktop App Shell...
+        - Workspace / Panel behavior...
+        - Persistence Store...
+    validations:
+      required: true
+
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: What should this issue explicitly not include?
+      placeholder: |
+        - No admin changes.
+        - No migration of existing data.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: Concrete, testable conditions that must all be satisfied before closing.
+      placeholder: |
+        - [ ] Given ..., when ..., then ...
+        - [ ] Error states are surfaced with actionable messages.
+        - [ ] Existing behavior for ... is unchanged.
+    validations:
+      required: true
+
+  - type: textarea
+    id: implementation-notes
+    attributes:
+      label: Implementation notes
+      description: Known constraints, relevant files, API contracts, data shapes, or design decisions.
+      placeholder: |
+        - Reuse existing ...
+        - Follow docs/domain-language.md terms.
+        - Relevant ADR: docs/adr/...
+    validations:
+      required: false
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies and blockers
+      description: List upstream decisions, issues, assets, credentials, or migrations required before implementation can finish.
+      placeholder: |
+        - Blocked by #...
+        - Needs design asset for ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification plan
+      description: Which targeted checks, tests, or manual scenarios prove the feature works?
+      placeholder: |
+        - Unit/integration test: ...
+        - Manual scenario: ...
+        - Command: bun run ...
+    validations:
+      required: true
