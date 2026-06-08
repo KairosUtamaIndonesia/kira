@@ -35,6 +35,7 @@
   },
   "devDependencies": {
     "@react-email/ui": "6.5.0",
+    "@typescript/native-preview": "^7.0.0-dev.20260607.1",
     "lefthook": "^2.1.9",
     "oxfmt": "^0.53.0",
     "oxlint": "^1.68.0",
