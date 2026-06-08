@@ -10,6 +10,7 @@ type MonacoDiffViewerProps = {
   modifiedContent: string;
   language: string;
   modelKey: string;
+  renderSideBySide: boolean;
 };
 
 function MonacoDiffViewer({
@@ -17,7 +18,9 @@ function MonacoDiffViewer({
   modifiedContent,
   language,
   modelKey,
+  renderSideBySide,
 }: MonacoDiffViewerProps) {
+  const [diffEditor, setDiffEditor] = useState<Monaco.editor.IStandaloneDiffEditor>();
   const [monacoInstance, setMonacoInstance] = useState<typeof Monaco>();
   const [theme, setTheme] = useState(currentMonacoTheme());
 
@@ -35,7 +38,16 @@ function MonacoDiffViewer({
     monacoInstance.editor.setTheme(theme);
   }, [monacoInstance, theme]);
 
-  const handleMount: DiffOnMount = useCallback((diffEditor, monaco) => {
+  useEffect(() => {
+    if (diffEditor === undefined) {
+      return;
+    }
+
+    diffEditor.updateOptions({ renderSideBySide });
+  }, [diffEditor, renderSideBySide]);
+
+  const handleMount: DiffOnMount = useCallback((mountedDiffEditor, monaco) => {
+    setDiffEditor(mountedDiffEditor);
     setMonacoInstance(monaco);
 
     async function configureHighlighting() {
@@ -44,7 +56,7 @@ function MonacoDiffViewer({
     }
 
     void configureHighlighting();
-    diffEditor.focus();
+    mountedDiffEditor.focus();
   }, []);
 
   return (
@@ -62,7 +74,7 @@ function MonacoDiffViewer({
       options={{
         readOnly: true,
         originalEditable: false,
-        renderSideBySide: true,
+        renderSideBySide,
         automaticLayout: true,
         minimap: { enabled: false },
         scrollBeyondLastLine: false,

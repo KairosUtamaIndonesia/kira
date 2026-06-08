@@ -1,7 +1,10 @@
 import type { IDockviewPanelProps } from "dockview-react";
 
+import { Columns2, Rows2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { languageForPath } from "@/features/editor/language";
 
 import type { SourceControlDiffResult, SourceControlDiffSource } from "../types";
@@ -26,6 +29,7 @@ function SourceControlDiffPanel({
   api,
 }: IDockviewPanelProps<SourceControlDiffPanelParams>) {
   const [state, setState] = useState<DiffLoadState>({ status: "loading" });
+  const [renderSideBySide, setRenderSideBySide] = useState(true);
 
   useEffect(() => {
     let ignoreResult = false;
@@ -69,6 +73,44 @@ function SourceControlDiffPanel({
         <span className="truncate">{state.result.originalPath}</span>
         <span aria-hidden="true">→</span>
         <span className="truncate text-foreground">{state.result.modifiedPath}</span>
+        <div className="ml-auto flex items-center gap-1">
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label="Show inline diff"
+                  aria-pressed={!renderSideBySide}
+                  className="aria-pressed:bg-accent aria-pressed:text-accent-foreground"
+                  onClick={() => setRenderSideBySide(false)}
+                >
+                  <Rows2 aria-hidden="true" />
+                </Button>
+              }
+            />
+            <TooltipContent>Inline diff</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label="Show side-by-side diff"
+                  aria-pressed={renderSideBySide}
+                  className="aria-pressed:bg-accent aria-pressed:text-accent-foreground"
+                  onClick={() => setRenderSideBySide(true)}
+                >
+                  <Columns2 aria-hidden="true" />
+                </Button>
+              }
+            />
+            <TooltipContent>Side-by-side diff</TooltipContent>
+          </Tooltip>
+        </div>
       </div>
       <div className="min-h-0 flex-1">
         <MonacoDiffViewer
@@ -76,6 +118,7 @@ function SourceControlDiffPanel({
           modifiedContent={state.result.modifiedContent}
           language={languageForPath(params.filePath)}
           modelKey={api.id}
+          renderSideBySide={renderSideBySide}
         />
       </div>
     </section>
