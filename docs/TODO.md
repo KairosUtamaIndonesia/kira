@@ -2,19 +2,19 @@
 
 ## Agent Threads
 
-- Add Agent Thread titles.
-  - Auto-title from the first prompt or a model-generated summary.
-  - Allow manual rename from the Inspector and panel header.
+- ~~Add Agent Thread titles.~~
+  - ~~Auto-title from the first prompt or a model-generated summary.~~
+  - ~~Allow manual rename from the Inspector and panel header.~~
 - Model prompt/run lifecycle explicitly.
   - Treat a user prompt as a durable Run with queued/running/succeeded/failed/canceled state.
-  - Surface active Runs in the Agent Thread and Status Bar.
+  - ~~Surface active Runs in the Agent Thread and Status Bar.~~
 - Add cancel/stop generation.
   - Keep the Flue call handle or socket request id and expose a Stop button.
   - Persist canceled state.
-- Split close vs delete behavior.
-  - Closing a panel should hide the view.
-  - Deleting an Agent Thread should require explicit confirmation.
-  - Inspector actions should support open/reopen, rename, close, and delete.
+- ~~Split close vs delete behavior.~~
+  - ~~Closing a panel should hide the view.~~
+  - ~~Deleting an Agent Thread should require explicit confirmation.~~
+  - ~~Inspector actions should support open/reopen, rename, close, and delete.~~
 - Improve the display persistence model.
   - Store typed display records instead of opaque `unknown` JSON.
   - Separate prompt, assistant text, tool call, tool result, error, and lifecycle event records.
@@ -34,9 +34,9 @@
   - Make autonomous edits vs suggested patches explicit.
 - Integrate Agent Threads with diffs and review.
   - Link modified files back to the Agent Thread.
-  - Add a “Review changes from this thread” flow.
-- Add runtime health and recovery UI.
-  - Show Flue runtime state in the Inspector or Status Bar.
+  - Add a "Review changes from this thread" flow.
+- ~~Add runtime health and recovery UI.~~
+  - ~~Show Flue runtime state in the Inspector or Status Bar.~~
   - Provide a restart action and clearer unavailable-runtime errors.
 - Add compaction and continuity indicators.
   - Show when a thread was compacted or restored from persistence.
