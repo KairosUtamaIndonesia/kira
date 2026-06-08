@@ -3,11 +3,15 @@
 # Docs: https://evilmartians.com/chronicles/lefthook-knock-your-teams-code-quality-into-shape
 
 pre-commit:
-  parallel: true
+  parallel: false
   skip:
     - merge
     - squash
   commands:
+    format:
+      glob: "*.{css,js,jsx,json,jsonc,md,mdx,ts,tsx}"
+      run: bunx oxfmt {staged_files}
+      stage_fixed: true
     lint:
       run: bun run lint
     format-check:
