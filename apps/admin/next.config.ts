@@ -8,6 +8,7 @@ const nextConfig: NextConfig = {
     "drizzle-orm",
     "pg",
   ],
+  allowedDevOrigins: ["admin.kira.localhost"],
 };
 
 export default nextConfig;

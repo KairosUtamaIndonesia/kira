@@ -245,11 +245,15 @@ function appendThinking(activity: RequestActivity, id: string, thinking: string)
 }
 
 function activityHasMarkdown(activity: RequestActivity) {
-  return activity.blocks.some((block) => block.type === "markdown" && block.parts.join("").length > 0);
+  return activity.blocks.some(
+    (block) => block.type === "markdown" && block.parts.join("").length > 0,
+  );
 }
 
 function activityHasThinking(activity: RequestActivity, thinking: string) {
-  return activity.blocks.some((block) => block.type === "thinking" && block.parts.join("") === thinking);
+  return activity.blocks.some(
+    (block) => block.type === "thinking" && block.parts.join("") === thinking,
+  );
 }
 
 function upsertTool(
@@ -260,7 +264,8 @@ function upsertTool(
 ) {
   const toolCallId = firstString(value, ["toolCallId", "operationId", "taskId"]) ?? message.id;
   const existingBlockIndex = activity.toolBlockIndexes.get(toolCallId);
-  const existing = existingBlockIndex === undefined ? undefined : toolAtIndex(activity, existingBlockIndex);
+  const existing =
+    existingBlockIndex === undefined ? undefined : toolAtIndex(activity, existingBlockIndex);
   const args = firstPresent(value, ["args"]);
   const result = firstPresent(value, ["result", "partialResult"]);
   const details = { event: value, args, result };
@@ -279,19 +284,24 @@ function upsertTool(
   const effectiveArgs = args === undefined ? existingInput : args;
   const effectiveResult = result === undefined ? existingOutput : result;
 
-  const toolName = firstString(value, ["toolName", "tool", "name"]) ?? existingToolName ?? "unknown";
+  const toolName =
+    firstString(value, ["toolName", "tool", "name"]) ?? existingToolName ?? "unknown";
 
   const tool: AgentThreadToolCallDisplay = {
     id: toolCallId,
     toolName,
     title: humanizeToolName(toolName) ?? existingTitle ?? "Tool call",
     status,
-    command: commandFromUnknown(effectiveArgs) ?? commandFromUnknown(effectiveResult) ?? existingCommand,
+    command:
+      commandFromUnknown(effectiveArgs) ?? commandFromUnknown(effectiveResult) ?? existingCommand,
     cwd: cwdFromUnknown(effectiveArgs) ?? cwdFromUnknown(effectiveResult) ?? existingCwd,
     exitCode: exitCodeFromUnknown(effectiveResult) ?? existingExitCode,
     duration: durationMs === undefined ? existingDuration : formatDuration(durationMs),
     changedFiles: changedFilesFromUnknown(effectiveResult) ?? existingChangedFiles,
-    errorMessage: errorMessageFromUnknown(effectiveResult) ?? firstString(value, ["error"]) ?? existingErrorMessage,
+    errorMessage:
+      errorMessageFromUnknown(effectiveResult) ??
+      firstString(value, ["error"]) ??
+      existingErrorMessage,
     input: effectiveArgs,
     output: effectiveResult,
     details,

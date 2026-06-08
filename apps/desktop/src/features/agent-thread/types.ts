@@ -15,6 +15,8 @@ type AgentThreadPanelParams = {
   projectId: string;
   sessionId: string;
   threadId: string;
+  panelId: string;
+  title: string;
 };
 
 type GetAgentThreadContextUsageInput = {

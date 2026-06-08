@@ -1,6 +1,5 @@
-import { useState, type ReactNode } from "react";
-
 import { ChevronRight } from "lucide-react";
+import { useState, type ReactNode } from "react";
 
 import type { ToolCallStatus } from "../../agentThreadDisplay";
 
@@ -34,7 +33,7 @@ function ToolStatusBadge({ status }: { status: ToolCallStatus }) {
   }
 
   if (status === "running") {
-    return <span className="shrink-0 text-xs text-muted-foreground animate-pulse">⋯</span>;
+    return <span className="shrink-0 animate-pulse text-xs text-muted-foreground">⋯</span>;
   }
 
   return <span className="shrink-0 text-xs text-muted-foreground">◦</span>;
@@ -73,9 +72,7 @@ function ToolExpandable({
         }`}
       >
         <div className="min-h-0 overflow-hidden">
-          <div className="mt-1 rounded-md border border-border bg-card/60 p-2">
-            {children}
-          </div>
+          <div className="mt-1 rounded-md border border-border bg-card/60 p-2">{children}</div>
         </div>
       </div>
     </div>
@@ -84,7 +81,7 @@ function ToolExpandable({
 
 function ToolCodeBlock({ content }: { content: string }) {
   return (
-    <pre className="max-h-72 min-w-0 overflow-auto whitespace-pre-wrap break-words rounded-md bg-editor-surface p-2 font-mono text-xs text-foreground">
+    <pre className="max-h-72 min-w-0 overflow-auto rounded-md bg-editor-surface p-2 font-mono text-xs break-words whitespace-pre-wrap text-foreground">
       {content}
     </pre>
   );
@@ -100,7 +97,7 @@ function ToolJsonBlock({ label, value }: { label: string; value: unknown }) {
       <summary className="cursor-pointer font-mono text-xs text-muted-foreground group-open:mb-1">
         {label}
       </summary>
-      <pre className="max-h-72 min-w-0 overflow-auto whitespace-pre-wrap break-words rounded-md bg-editor-surface p-2 font-mono text-xs text-foreground">
+      <pre className="max-h-72 min-w-0 overflow-auto rounded-md bg-editor-surface p-2 font-mono text-xs break-words whitespace-pre-wrap text-foreground">
         {stringifyUnknown(value)}
       </pre>
     </details>

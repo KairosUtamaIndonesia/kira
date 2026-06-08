@@ -327,6 +327,8 @@ pub enum ProjectError {
     Query(String),
     #[error("failed to create project: {0}")]
     Create(String),
+    #[error("failed to update project: {0}")]
+    Update(String),
 }
 
 impl serde::Serialize for ProjectError {
@@ -530,13 +532,38 @@ pub async fn workspace_panel_rename(
     store: tauri::State<'_, PersistenceStore>,
 ) -> Result<WorkspacePanel, ProjectError> {
     let title = validate_panel_title(&input.title)?;
+    let now = current_timestamp()?;
+
+    let mut transaction = store
+        .pool()
+        .begin()
+        .await
+        .map_err(|error| ProjectError::Update(error.to_string()))?;
+
     sqlx::query("UPDATE workspace_panels SET title = ?, updated_at = ? WHERE id = ?")
-        .bind(title)
-        .bind(current_timestamp()?)
+        .bind(&title)
+        .bind(&now)
         .bind(&input.panel_id)
-        .execute(store.pool())
+        .execute(&mut *transaction)
         .await
         .map_err(|error| ProjectError::Query(error.to_string()))?;
+
+    sqlx::query(
+        "UPDATE agent_threads SET title = ?, updated_at = ? WHERE id = (
+            SELECT thread_id FROM agent_thread_panel_state WHERE panel_id = ?
+        )",
+    )
+    .bind(&title)
+    .bind(&now)
+    .bind(&input.panel_id)
+    .execute(&mut *transaction)
+    .await
+    .map_err(|error| ProjectError::Query(error.to_string()))?;
+
+    transaction
+        .commit()
+        .await
+        .map_err(|error| ProjectError::Update(error.to_string()))?;
 
     get_workspace_panel(store.pool(), &input.panel_id)
         .await?

@@ -29,7 +29,14 @@ type AgentThreadContextUsageState =
   | { status: "ready"; usage: AgentThreadContextUsage }
   | { status: "error"; message: string };
 
-function useAgentThreadConnection(params: AgentThreadPanelParams) {
+type UseAgentThreadConnectionOptions = {
+  onAutoTitled?: (title: string) => void;
+};
+
+function useAgentThreadConnection(
+  params: AgentThreadPanelParams,
+  options?: UseAgentThreadConnectionOptions,
+) {
   const [runtimeState, setRuntimeState] = useState<AgentThreadRuntimeState>({
     status: "starting",
   });
@@ -42,6 +49,11 @@ function useAgentThreadConnection(params: AgentThreadPanelParams) {
   const appendQueueRef = useRef(Promise.resolve());
   const pendingPromptRequestIdRef = useRef<string | undefined>(void 0);
   const runtimeRequestIdsRef = useRef(new Map<string, string>());
+  const hasAutoTitledRef = useRef(false);
+  const isFirstPromptRef = useRef(true);
+  const runtimeInfoRef = useRef<{ baseUrl: string; token: string } | undefined>(void 0);
+  const onAutoTitledRef = useRef(options === undefined ? undefined : options.onAutoTitled);
+  onAutoTitledRef.current = options === undefined ? undefined : options.onAutoTitled;
   runtimeStateRef.current = runtimeState;
 
   const runtimeInput = useMemo(
@@ -91,6 +103,7 @@ function useAgentThreadConnection(params: AgentThreadPanelParams) {
         if (disposed) {
           return;
         }
+        runtimeInfoRef.current = { baseUrl: runtime.baseUrl, token: runtime.token };
 
         setRuntimeState({ status: "connecting", baseUrl: runtime.baseUrl });
         const client = createFlueClient({
@@ -160,6 +173,21 @@ function useAgentThreadConnection(params: AgentThreadPanelParams) {
       await appendMessage("prompt", requestId, message);
       const result = await socket.prompt(message, { session: "default" });
       await appendMessage("result", requestId, result.result);
+
+      if (isFirstPromptRef.current && !hasAutoTitledRef.current && params.title === "New Thread") {
+        isFirstPromptRef.current = false;
+        const trimmedPrompt = message.trim();
+        if (trimmedPrompt.length <= 50) {
+          hasAutoTitledRef.current = true;
+          const onAutoTitled = onAutoTitledRef.current;
+          if (onAutoTitled !== undefined) {
+            onAutoTitled(trimmedPrompt);
+          }
+        } else {
+          void generateTitleFromModel(trimmedPrompt, result.result);
+        }
+      }
+
       await refreshContextUsage(params.threadId, setContextUsageState);
       pendingPromptRequestIdRef.current = undefined;
       setRuntimeState({ status: "ready", baseUrl: state.baseUrl });
@@ -171,7 +199,68 @@ function useAgentThreadConnection(params: AgentThreadPanelParams) {
     }
   }
 
+  async function generateTitleFromModel(prompt: string, assistantResult: unknown) {
+    if (hasAutoTitledRef.current) {
+      return;
+    }
+    const runtime = runtimeInfoRef.current;
+    if (runtime === undefined) {
+      return;
+    }
+
+    try {
+      const client = createFlueClient({
+        baseUrl: runtime.baseUrl,
+        token: runtime.token,
+        websocketUrl: (url) => {
+          url.searchParams.set("token", runtime.token);
+          return url;
+        },
+      });
+
+      const titleSocket = client.agents.connect(
+        "title-generator",
+        `title-gen-${crypto.randomUUID()}`,
+      );
+      await titleSocket.ready;
+
+      const formatted = `User prompt:\n${prompt}\n\nAssistant response:\n${JSON.stringify(assistantResult, undefined, 2)}`;
+      const titleResult = await titleSocket.prompt(formatted, { session: "default" });
+      const title = extractTextFromUnknown(titleResult.result).trim();
+
+      titleSocket.close();
+
+      if (title.length > 0 && !hasAutoTitledRef.current) {
+        hasAutoTitledRef.current = true;
+        const onAutoTitled = onAutoTitledRef.current;
+        if (onAutoTitled !== undefined) {
+          onAutoTitled(title);
+        }
+      }
+    } catch {
+      // Title generation is cosmetic; silently fail.
+    }
+  }
+
+
   return { contextUsageState, messages, runtimeState, sendPrompt };
+}
+function extractTextFromUnknown(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+    for (const key of ["text", "content", "markdown", "message", "result", "output"]) {
+      const candidate = record[key];
+      if (typeof candidate === "string") {
+        return candidate;
+      }
+    }
+  }
+
+  return "";
 }
 
 async function refreshContextUsage(
