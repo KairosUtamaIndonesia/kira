@@ -263,11 +263,7 @@ function WorkspacePanelContextMenuContent({
   }
 
   function closeOtherPanels() {
-    for (const candidatePanel of panel.group.panels) {
-      if (candidatePanel.id !== panel.id) {
-        candidatePanel.api.close();
-      }
-    }
+    closePanelsExcept(panel);
   }
 
   function closePanelsToRight() {
@@ -381,12 +377,7 @@ function RenamePanelDialog({
   );
 }
 
-function WorkspaceGroupActions({
-  activePanel,
-  containerApi,
-  group,
-  panels,
-}: IDockviewHeaderActionsProps) {
+function WorkspaceGroupActions({ activePanel, containerApi, group }: IDockviewHeaderActionsProps) {
   const {
     onPanelUpdated,
     panels: storedPanels,
@@ -448,11 +439,7 @@ function WorkspaceGroupActions({
       throw new Error("An active Workspace Panel is required before other panels can be closed.");
     }
 
-    for (const panel of panels) {
-      if (panel.id !== activePanel.id) {
-        panel.api.close();
-      }
-    }
+    closePanelsExcept(activePanel);
   }
 
   function closeActivePanelsToRight() {
@@ -581,6 +568,15 @@ function hasPanelsAfter(panel: IDockviewHeaderActionsProps["activePanel"]) {
   }
 
   return panelIndexInGroup(panel) < panel.group.panels.length - 1;
+}
+
+function closePanelsExcept(panel: NonNullable<IDockviewHeaderActionsProps["activePanel"]>) {
+  const panelsToClose = panel.group.panels.filter(
+    (candidatePanel) => candidatePanel.id !== panel.id,
+  );
+  for (const panelToClose of panelsToClose) {
+    panelToClose.api.close();
+  }
 }
 
 function closePanelsAfter(panel: NonNullable<IDockviewHeaderActionsProps["activePanel"]>) {
