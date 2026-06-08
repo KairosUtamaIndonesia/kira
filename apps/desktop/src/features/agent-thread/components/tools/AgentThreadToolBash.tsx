@@ -20,11 +20,12 @@ function AgentThreadToolBash({ tool }: Props) {
   const exitCode = tool.exitCode;
 
   return (
-    <div>
+    <div className="min-w-0">
       {outputText === undefined || outputText.length === 0 ? (
         <ToolInlineRow
           icon={<Terminal aria-hidden="true" className="size-3" />}
-          label={<span className="truncate">Ran {tool.command ?? tool.title}</span>}
+          label={<span>Ran {tool.command ?? tool.title}</span>}
+          labelWrap
         >
           {tool.status === undefined ? undefined : <ToolStatusBadge status={tool.status} />}
           {exitCode !== undefined && exitCode !== 0 ? (
@@ -38,7 +39,8 @@ function AgentThreadToolBash({ tool }: Props) {
           trigger={
             <ToolInlineRow
               icon={<Terminal aria-hidden="true" className="size-3" />}
-              label={<span className="truncate">Ran {tool.command ?? tool.title}</span>}
+              label={<span>Ran {tool.command ?? tool.title}</span>}
+              labelWrap
             >
               {tool.status === undefined ? undefined : <ToolStatusBadge status={tool.status} />}
               {exitCode !== undefined && exitCode !== 0 ? (
