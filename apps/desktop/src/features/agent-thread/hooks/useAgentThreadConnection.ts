@@ -30,6 +30,7 @@ type AgentThreadContextUsageState =
   | { status: "ready"; usage: AgentThreadContextUsage }
   | { status: "error"; message: string };
 
+<<<<<<< New base: refactor(admin): move breadcrumbs into shell header
 type AgentThreadTitleGenerationState =
   | { status: "idle" }
   | { status: "generating" }
@@ -43,6 +44,18 @@ function useAgentThreadConnection(
   params: AgentThreadPanelParams,
   options?: UseAgentThreadConnectionOptions,
 ) {
+||||||| Common ancestor
+function useAgentThreadConnection(params: AgentThreadPanelParams) {
+=======
+type UseAgentThreadConnectionOptions = {
+  onAutoTitled?: (title: string) => void;
+};
+
+function useAgentThreadConnection(
+  params: AgentThreadPanelParams,
+  options?: UseAgentThreadConnectionOptions,
+) {
+>>>>>>> Current commit: feat(agent-thread): add auto-generated titles, inline rename, and status bar int
   const [runtimeState, setRuntimeState] = useState<AgentThreadRuntimeState>({
     status: "starting",
   });
@@ -208,6 +221,7 @@ function useAgentThreadConnection(
     }
   }
 
+<<<<<<< New base: refactor(admin): move breadcrumbs into shell header
   async function generateTitleFromModel(prompt: string, assistantResult: unknown) {
     if (hasAutoTitledRef.current) {
       return;
@@ -259,6 +273,72 @@ function useAgentThreadConnection(
 
 
   return { contextUsageState, messages, runtimeState, sendPrompt, titleGenerationState };
+}
+function extractTextFromUnknown(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+    for (const key of ["text", "content", "markdown", "message", "result", "output"]) {
+      const candidate = record[key];
+      if (typeof candidate === "string") {
+        return candidate;
+      }
+    }
+  }
+
+  return "";
+||||||| Common ancestor
+  return { contextUsageState, messages, runtimeState, sendPrompt };
+=======
+  async function generateTitleFromModel(prompt: string, assistantResult: unknown) {
+    if (hasAutoTitledRef.current) {
+      return;
+    }
+    const runtime = runtimeInfoRef.current;
+    if (runtime === undefined) {
+      return;
+    }
+
+    try {
+      const client = createFlueClient({
+        baseUrl: runtime.baseUrl,
+        token: runtime.token,
+        websocketUrl: (url) => {
+          url.searchParams.set("token", runtime.token);
+          return url;
+        },
+      });
+
+      const titleSocket = client.agents.connect(
+        "title-generator",
+        `title-gen-${crypto.randomUUID()}`,
+      );
+      await titleSocket.ready;
+
+      const formatted = `User prompt:\n${prompt}\n\nAssistant response:\n${JSON.stringify(assistantResult, undefined, 2)}`;
+      const titleResult = await titleSocket.prompt(formatted, { session: "default" });
+      const title = extractTextFromUnknown(titleResult.result).trim();
+
+      titleSocket.close();
+
+      if (title.length > 0 && !hasAutoTitledRef.current) {
+        hasAutoTitledRef.current = true;
+        const onAutoTitled = onAutoTitledRef.current;
+        if (onAutoTitled !== undefined) {
+          onAutoTitled(title);
+        }
+      }
+    } catch {
+      // Title generation is cosmetic; silently fail.
+    }
+  }
+
+
+  return { contextUsageState, messages, runtimeState, sendPrompt };
+>>>>>>> Current commit: feat(agent-thread): add auto-generated titles, inline rename, and status bar int
 }
 function extractTextFromUnknown(value: unknown): string {
   if (typeof value === "string") {

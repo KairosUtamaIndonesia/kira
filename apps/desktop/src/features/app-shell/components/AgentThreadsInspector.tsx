@@ -199,6 +199,7 @@ type AgentThreadRowProps = {
 };
 
 function AgentThreadRow({ panel, onClose, onDelete, onOpen, onRename }: AgentThreadRowProps) {
+<<<<<<< New base: refactor(admin): move breadcrumbs into shell header
   const titleGeneration = useAgentThreadTitleGenerationState(panel.agentThreadState.threadId);
   const isGeneratingTitle = titleGeneration.status === "generating";
 
@@ -210,6 +211,17 @@ function AgentThreadRow({ panel, onClose, onDelete, onOpen, onRename }: AgentThr
     }
   }
 
+||||||| Common ancestor
+=======
+  async function handleCopyThreadId() {
+    try {
+      await navigator.clipboard.writeText(panel.agentThreadState.threadId);
+    } catch {
+      // Clipboard access may be denied; fail silently.
+    }
+  }
+
+>>>>>>> Current commit: feat(agent-thread): add auto-generated titles, inline rename, and status bar int
   return (
     <ContextMenu>
       <ContextMenuTrigger render={<div className="group relative" />}>
@@ -219,6 +231,7 @@ function AgentThreadRow({ panel, onClose, onDelete, onOpen, onRename }: AgentThr
           className="h-auto w-full justify-start px-2 py-2 pr-9 text-left"
           onClick={onOpen}
         >
+<<<<<<< New base: refactor(admin): move breadcrumbs into shell header
           {isGeneratingTitle ? (
             <span
               className="kira-shimmer truncate text-sm font-medium"
@@ -229,6 +242,16 @@ function AgentThreadRow({ panel, onClose, onDelete, onOpen, onRename }: AgentThr
           ) : (
             <span className="truncate text-sm font-medium">{panel.title}</span>
           )}
+||||||| Common ancestor
+          <span className="flex min-w-0 flex-col gap-0.5">
+            <span className="truncate text-sm font-medium">{panel.title}</span>
+            <span className="truncate font-mono text-xs text-muted-foreground">
+              {panel.agentThreadState.threadId}
+            </span>
+          </span>
+=======
+          <span className="truncate text-sm font-medium">{panel.title}</span>
+>>>>>>> Current commit: feat(agent-thread): add auto-generated titles, inline rename, and status bar int
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger
