@@ -1,4 +1,4 @@
-import { Bot, Brain, User } from "lucide-react";
+import { Brain } from "lucide-react";
 
 import type { AgentThreadActivityBlock } from "../agentThreadDisplay";
 import type { AgentThreadMessageRecord } from "../types";
@@ -30,7 +30,7 @@ function AgentThreadTranscript({ messages, runtimeIsSending }: AgentThreadTransc
           return (
             <li key={item.id} className="flex justify-end">
               <article className="max-w-[min(42rem,85%)] rounded-xl border border-border bg-card p-3 text-card-foreground">
-                <MessageHeader icon="user" label="You" createdAt={item.createdAt} />
+                <MessageHeader label="You" createdAt={item.createdAt} />
                 <p className="mt-2 text-sm leading-6 whitespace-pre-wrap">{item.text}</p>
               </article>
             </li>
@@ -41,7 +41,7 @@ function AgentThreadTranscript({ messages, runtimeIsSending }: AgentThreadTransc
           return (
             <li key={item.id} className="flex justify-start">
               <article className="w-full max-w-[min(52rem,94%)] space-y-3 rounded-xl p-3 text-foreground">
-                <MessageHeader icon="assistant" label="Kira" createdAt={item.createdAt} />
+                <MessageHeader label="Kira" createdAt={item.createdAt} />
                 {item.blocks.length === 0 && item.isStreaming ? (
                   <p className="text-sm text-muted-foreground">Working…</p>
                 ) : undefined}
@@ -127,20 +127,9 @@ function ErrorBlock({ details, message }: { details: unknown; message: string })
   );
 }
 
-function MessageHeader({
-  createdAt,
-  icon,
-  label,
-}: {
-  createdAt: string;
-  icon: "assistant" | "user";
-  label: string;
-}) {
-  const Icon = icon === "user" ? User : Bot;
-
+function MessageHeader({ createdAt, label }: { createdAt: string; label: string }) {
   return (
     <div className="flex items-center gap-2 text-xs text-muted-foreground">
-      <Icon aria-hidden="true" className="size-3.5" />
       <span className="font-medium text-foreground">{label}</span>
       <time dateTime={createdAt}>{formatTimestamp(createdAt)}</time>
     </div>
