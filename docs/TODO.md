@@ -2,9 +2,6 @@
 
 ## Agent Threads
 
-- Build a human-readable transcript UI instead of raw JSON event/result blocks.
-  - Render chat-like messages, tool calls, status rows, and errors.
-  - Keep raw event details behind an expandable debug view.
 - Add Agent Thread titles.
   - Auto-title from the first prompt or a model-generated summary.
   - Allow manual rename from the Inspector and panel header.

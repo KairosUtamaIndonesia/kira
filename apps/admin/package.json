@@ -12,7 +12,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "dev": "next dev",
+    "dev": "portless admin.kira next dev",
     "email": "email dev",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",

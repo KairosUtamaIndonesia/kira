@@ -1,4 +1,4 @@
-import { MoreVertical, PenLine, RotateCcw, Trash2, X } from "lucide-react";
+import { Copy, MoreVertical, PenLine, RotateCcw, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState, type RefObject } from "react";
 
 import type { AgentThreadWorkspacePanel, WorkspacePanel } from "@/features/projects/types";
@@ -198,6 +198,14 @@ type AgentThreadRowProps = {
 };
 
 function AgentThreadRow({ panel, onClose, onDelete, onOpen, onRename }: AgentThreadRowProps) {
+  async function handleCopyThreadId() {
+    try {
+      await navigator.clipboard.writeText(panel.agentThreadState.threadId);
+    } catch {
+      // Clipboard access may be denied; fail silently.
+    }
+  }
+
   return (
     <ContextMenu>
       <ContextMenuTrigger render={<div className="group relative" />}>
@@ -207,12 +215,7 @@ function AgentThreadRow({ panel, onClose, onDelete, onOpen, onRename }: AgentThr
           className="h-auto w-full justify-start px-2 py-2 pr-9 text-left"
           onClick={onOpen}
         >
-          <span className="flex min-w-0 flex-col gap-0.5">
-            <span className="truncate text-sm font-medium">{panel.title}</span>
-            <span className="truncate font-mono text-xs text-muted-foreground">
-              {panel.agentThreadState.threadId}
-            </span>
-          </span>
+          <span className="truncate text-sm font-medium">{panel.title}</span>
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger
@@ -224,6 +227,7 @@ function AgentThreadRow({ panel, onClose, onDelete, onOpen, onRename }: AgentThr
           </DropdownMenuTrigger>
           <AgentThreadDropdownMenuContent
             onClose={onClose}
+            onCopyThreadId={handleCopyThreadId}
             onDelete={onDelete}
             onOpen={onOpen}
             onRename={onRename}
@@ -232,6 +236,7 @@ function AgentThreadRow({ panel, onClose, onDelete, onOpen, onRename }: AgentThr
       </ContextMenuTrigger>
       <AgentThreadContextMenuContent
         onClose={onClose}
+        onCopyThreadId={handleCopyThreadId}
         onDelete={onDelete}
         onOpen={onOpen}
         onRename={onRename}
@@ -240,12 +245,21 @@ function AgentThreadRow({ panel, onClose, onDelete, onOpen, onRename }: AgentThr
   );
 }
 
+type AgentThreadMenuContentProps = {
+  onClose: () => void;
+  onCopyThreadId: () => void;
+  onDelete: () => void;
+  onOpen: () => void;
+  onRename: () => void;
+};
+
 function AgentThreadContextMenuContent({
   onClose,
+  onCopyThreadId,
   onDelete,
   onOpen,
   onRename,
-}: Omit<AgentThreadRowProps, "panel">) {
+}: AgentThreadMenuContentProps) {
   return (
     <ContextMenuContent className="w-auto min-w-48">
       <ContextMenuItem onClick={onOpen}>
@@ -255,6 +269,10 @@ function AgentThreadContextMenuContent({
       <ContextMenuItem onClick={onRename}>
         <PenLine className="size-4 text-muted-foreground" />
         <span>Rename Agent Thread</span>
+      </ContextMenuItem>
+      <ContextMenuItem onClick={onCopyThreadId}>
+        <Copy className="size-4 text-muted-foreground" />
+        <span>Copy Thread ID</span>
       </ContextMenuItem>
       <ContextMenuItem onClick={onClose}>
         <X className="size-4 text-muted-foreground" />
@@ -271,10 +289,11 @@ function AgentThreadContextMenuContent({
 
 function AgentThreadDropdownMenuContent({
   onClose,
+  onCopyThreadId,
   onDelete,
   onOpen,
   onRename,
-}: Omit<AgentThreadRowProps, "panel">) {
+}: AgentThreadMenuContentProps) {
   return (
     <DropdownMenuContent align="end" className="w-auto min-w-48">
       <DropdownMenuItem onClick={onOpen}>
@@ -284,6 +303,10 @@ function AgentThreadDropdownMenuContent({
       <DropdownMenuItem onClick={onRename}>
         <PenLine className="size-4 text-muted-foreground" />
         <span>Rename Agent Thread</span>
+      </DropdownMenuItem>
+      <DropdownMenuItem onClick={onCopyThreadId}>
+        <Copy className="size-4 text-muted-foreground" />
+        <span>Copy Thread ID</span>
       </DropdownMenuItem>
       <DropdownMenuItem onClick={onClose}>
         <X className="size-4 text-muted-foreground" />
@@ -297,7 +320,6 @@ function AgentThreadDropdownMenuContent({
     </DropdownMenuContent>
   );
 }
-
 type RenameAgentThreadDialogProps = {
   error: string | undefined;
   inputRef: RefObject<HTMLInputElement | null>;

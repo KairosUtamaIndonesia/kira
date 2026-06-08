@@ -3,8 +3,8 @@ import type * as Monaco from "monaco-editor";
 import { DiffEditor, type DiffOnMount } from "@monaco-editor/react";
 import { useCallback, useEffect, useState } from "react";
 
-import { languageForPath } from "@/features/editor/language";
 import { currentMonacoTheme, setupShiki } from "@/features/editor/components/monacoShiki";
+import { languageForPath } from "@/features/editor/language";
 
 type AgentThreadToolDiffProps = {
   filePath: string | undefined;

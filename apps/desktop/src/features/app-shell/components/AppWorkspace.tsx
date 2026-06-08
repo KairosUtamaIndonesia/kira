@@ -589,17 +589,23 @@ function panelIndexInGroup(panel: NonNullable<IDockviewHeaderActionsProps["activ
   return panelIndex;
 }
 
-const workspaceComponents = {
-  workspacePanel: WorkspacePanel,
-  terminalPanel: TerminalPanel,
-  sourceControlDiffPanel: SourceControlDiffPanel,
-  fileEditorPanel: FileEditorPanel,
-  agentThreadPanel: AgentThreadPanel,
-};
-
 const emptyWorkspacePanelId = "workspace-empty-state";
 
 const runtimeOnlyWorkspaceComponents = new Set<string>(["workspacePanel"]);
+const agentThreadRenameRef = {
+  current: undefined as ((panelId: string, title: string) => Promise<void>) | undefined,
+};
+
+function AgentThreadPanelWrapper(props: IDockviewPanelProps<AgentThreadPanelParams>) {
+  const onRename = agentThreadRenameRef.current;
+  return (
+    <AgentThreadPanel
+      api={props.api}
+      params={props.params}
+      {...(onRename === undefined ? {} : { onRename })}
+    />
+  );
+}
 
 function requireTerminalState(panel: StoredWorkspacePanel) {
   if (panel.kind !== "terminal") {
@@ -688,7 +694,7 @@ async function addAgentThreadPanel({
 }: Omit<AddPanelActionInput, "workingDirectory">) {
   const panel = await createAgentThreadPanel({
     sessionId,
-    title: "Agent Thread",
+    title: "New Thread",
   });
   const agentThreadState = requireAgentThreadState(panel);
   onPanelCreated(panel);
@@ -700,6 +706,8 @@ async function addAgentThreadPanel({
       projectId,
       sessionId,
       threadId: agentThreadState.threadId,
+      panelId: panel.id,
+      title: panel.title,
     },
     position: {
       referenceGroup: group,
@@ -789,6 +797,8 @@ function createStoredPanelState(panel: StoredWorkspacePanel, projectId: string, 
           projectId,
           sessionId,
           threadId: agentThreadState.threadId,
+          panelId: panel.id,
+          title: panel.title,
         },
       };
     }
@@ -1043,6 +1053,8 @@ function restoreWorkspacePanel(
           projectId: activeWorkspace.project.id,
           sessionId: activeWorkspace.session.id,
           threadId: agentThreadState.threadId,
+          panelId: panel.id,
+          title: panel.title,
         },
       });
       return;
@@ -1110,6 +1122,28 @@ function ActiveWorkspaceDockview({
       onPanelUpdated,
     }),
     [activeWorkspace, onPanelCreated, onPanelUpdated],
+  );
+  const onPanelUpdatedRef = useRef(onPanelUpdated);
+  onPanelUpdatedRef.current = onPanelUpdated;
+
+  agentThreadRenameRef.current = async (panelId: string, title: string) => {
+    const updatedPanel = await renameWorkspacePanel({ panelId, title });
+    onPanelUpdatedRef.current(updatedPanel);
+    const dockviewPanel = dockviewApi === undefined ? undefined : dockviewApi.getPanel(panelId);
+    if (dockviewPanel !== undefined) {
+      dockviewPanel.api.setTitle(title);
+    }
+  };
+
+  const components = useMemo(
+    () => ({
+      workspacePanel: WorkspacePanel,
+      terminalPanel: TerminalPanel,
+      sourceControlDiffPanel: SourceControlDiffPanel,
+      fileEditorPanel: FileEditorPanel,
+      agentThreadPanel: AgentThreadPanelWrapper,
+    }),
+    [],
   );
 
   useEffect(() => {
@@ -1198,6 +1232,8 @@ function ActiveWorkspaceDockview({
         projectId: activeWorkspace.project.id,
         sessionId: activeWorkspace.session.id,
         threadId: panel.agentThreadState.threadId,
+        panelId: panel.id,
+        title: panel.title,
       },
     });
     removeEmptyWorkspacePanel(dockviewApi);
@@ -1257,7 +1293,7 @@ function ActiveWorkspaceDockview({
         <DockviewReact
           key={activeWorkspace.session.id}
           className="dockview-theme-dark kira-dockview"
-          components={workspaceComponents}
+          components={components}
           defaultHeaderPosition="top"
           defaultTabComponent={WorkspacePanelTab}
           dndStrategy="pointer"

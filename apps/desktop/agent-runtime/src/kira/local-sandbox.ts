@@ -1,6 +1,6 @@
-import { local } from "@flue/runtime/node";
-
 import type { SandboxFactory, SessionEnv } from "@flue/runtime";
+
+import { local } from "@flue/runtime/node";
 
 function createKiraLocalSandbox(projectPath: string): SandboxFactory {
   const sandbox = local({ cwd: projectPath });

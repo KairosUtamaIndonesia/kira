@@ -2,6 +2,7 @@ import { FilePen } from "lucide-react";
 
 import type { AgentThreadToolCallDisplay } from "../../agentThreadDisplay";
 
+import { AgentThreadToolDiff } from "./AgentThreadToolDiff";
 import {
   ToolDuration,
   ToolErrorMessage,
@@ -9,7 +10,6 @@ import {
   ToolInlineRow,
   ToolStatusBadge,
 } from "./ToolPrimitives";
-import { AgentThreadToolDiff } from "./AgentThreadToolDiff";
 
 type Props = {
   tool: AgentThreadToolCallDisplay;
