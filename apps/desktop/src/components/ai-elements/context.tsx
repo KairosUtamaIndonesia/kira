@@ -202,7 +202,7 @@ export const ContextContentFooter = ({
   const content = children ?? (showTotalCost ? <ContextTotalCost value={totalCost} /> : undefined);
 
   if (content === undefined) {
-    return null;
+    return;
   }
 
   return (
