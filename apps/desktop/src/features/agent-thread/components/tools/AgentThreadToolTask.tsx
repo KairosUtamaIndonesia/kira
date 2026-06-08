@@ -22,29 +22,50 @@ function AgentThreadToolTask({ tool }: Props) {
 
   return (
     <div>
-      <ToolInlineRow
-        icon={<Network aria-hidden="true" className="size-3" />}
-        label={
-          <span className="truncate">
-            Delegated {description !== undefined ? description : tool.title}
-          </span>
-        }
-      >
-        {tool.status === undefined ? undefined : <ToolStatusBadge status={tool.status} />}
-        {agent === undefined ? undefined : (
-          <span className="shrink-0 rounded-full border border-border px-1.5 py-px font-mono text-[10px] text-muted-foreground">
-            {agent}
-          </span>
-        )}
-        <ToolDuration duration={tool.duration} />
-      </ToolInlineRow>
-      {tool.errorMessage === undefined ? undefined : (
-        <ToolErrorMessage message={tool.errorMessage} />
-      )}
-      {outputText === undefined ? undefined : (
-        <ToolExpandable summary="Show result">
+      {outputText === undefined ? (
+        <ToolInlineRow
+          icon={<Network aria-hidden="true" className="size-3" />}
+          label={
+            <span className="truncate">
+              Delegated {description !== undefined ? description : tool.title}
+            </span>
+          }
+        >
+          {tool.status === undefined ? undefined : <ToolStatusBadge status={tool.status} />}
+          {agent === undefined ? undefined : (
+            <span className="shrink-0 rounded-full border border-border px-1.5 py-px font-mono text-[10px] text-muted-foreground">
+              {agent}
+            </span>
+          )}
+          <ToolDuration duration={tool.duration} />
+        </ToolInlineRow>
+      ) : (
+        <ToolExpandable
+          summary="Show result"
+          trigger={
+            <ToolInlineRow
+              icon={<Network aria-hidden="true" className="size-3" />}
+              label={
+                <span className="truncate">
+                  Delegated {description !== undefined ? description : tool.title}
+                </span>
+              }
+            >
+              {tool.status === undefined ? undefined : <ToolStatusBadge status={tool.status} />}
+              {agent === undefined ? undefined : (
+                <span className="shrink-0 rounded-full border border-border px-1.5 py-px font-mono text-[10px] text-muted-foreground">
+                  {agent}
+                </span>
+              )}
+              <ToolDuration duration={tool.duration} />
+            </ToolInlineRow>
+          }
+        >
           <ToolCodeBlock content={outputText} />
         </ToolExpandable>
+      )}
+      {tool.errorMessage === undefined ? undefined : (
+        <ToolErrorMessage message={tool.errorMessage} />
       )}
     </div>
   );

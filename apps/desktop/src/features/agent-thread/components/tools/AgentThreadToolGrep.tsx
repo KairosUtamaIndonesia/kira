@@ -22,29 +22,50 @@ function AgentThreadToolGrep({ tool }: Props) {
 
   return (
     <div>
-      <ToolInlineRow
-        icon={<Search aria-hidden="true" className="size-3" />}
-        label={
-          <span className="truncate">
-            Searched {pattern !== undefined ? `"${pattern}"` : tool.title}
-          </span>
-        }
-      >
-        {tool.status === undefined ? undefined : <ToolStatusBadge status={tool.status} />}
-        {matchCount === undefined ? undefined : (
-          <span className="shrink-0 text-xs text-muted-foreground/60">
-            {matchCount} {matchCount === 1 ? "match" : "matches"}
-          </span>
-        )}
-        <ToolDuration duration={tool.duration} />
-      </ToolInlineRow>
-      {tool.errorMessage === undefined ? undefined : (
-        <ToolErrorMessage message={tool.errorMessage} />
-      )}
-      {outputText === undefined ? undefined : (
-        <ToolExpandable summary="Show results">
+      {outputText === undefined ? (
+        <ToolInlineRow
+          icon={<Search aria-hidden="true" className="size-3" />}
+          label={
+            <span className="truncate">
+              Searched {pattern !== undefined ? `"${pattern}"` : tool.title}
+            </span>
+          }
+        >
+          {tool.status === undefined ? undefined : <ToolStatusBadge status={tool.status} />}
+          {matchCount === undefined ? undefined : (
+            <span className="shrink-0 text-xs text-muted-foreground/60">
+              {matchCount} {matchCount === 1 ? "match" : "matches"}
+            </span>
+          )}
+          <ToolDuration duration={tool.duration} />
+        </ToolInlineRow>
+      ) : (
+        <ToolExpandable
+          summary="Show results"
+          trigger={
+            <ToolInlineRow
+              icon={<Search aria-hidden="true" className="size-3" />}
+              label={
+                <span className="truncate">
+                  Searched {pattern !== undefined ? `"${pattern}"` : tool.title}
+                </span>
+              }
+            >
+              {tool.status === undefined ? undefined : <ToolStatusBadge status={tool.status} />}
+              {matchCount === undefined ? undefined : (
+                <span className="shrink-0 text-xs text-muted-foreground/60">
+                  {matchCount} {matchCount === 1 ? "match" : "matches"}
+                </span>
+              )}
+              <ToolDuration duration={tool.duration} />
+            </ToolInlineRow>
+          }
+        >
           <ToolCodeBlock content={outputText} />
         </ToolExpandable>
+      )}
+      {tool.errorMessage === undefined ? undefined : (
+        <ToolErrorMessage message={tool.errorMessage} />
       )}
     </div>
   );

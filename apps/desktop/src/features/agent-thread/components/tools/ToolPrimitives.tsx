@@ -1,4 +1,6 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+
+import { ChevronRight } from "lucide-react";
 
 import type { ToolCallStatus } from "../../agentThreadDisplay";
 
@@ -38,16 +40,45 @@ function ToolStatusBadge({ status }: { status: ToolCallStatus }) {
   return <span className="shrink-0 text-xs text-muted-foreground">◦</span>;
 }
 
-function ToolExpandable({ children, summary }: { children: ReactNode; summary: ReactNode }) {
+function ToolExpandable({
+  children,
+  summary,
+  trigger,
+}: {
+  children: ReactNode;
+  summary: string;
+  trigger: ReactNode;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
   return (
-    <details className="group mt-1">
-      <summary className="cursor-pointer text-xs text-muted-foreground group-open:mb-2">
-        {summary}
-      </summary>
-      <div className="rounded-md border border-border bg-card/60 p-2">
-        {children}
+    <div>
+      <button
+        aria-expanded={isOpen}
+        className="flex min-w-0 cursor-pointer items-center text-left"
+        type="button"
+        onClick={() => setIsOpen((current) => !current)}
+      >
+        <div className="min-w-0">{trigger}</div>
+        <span className="ml-1 shrink-0 text-muted-foreground" title={summary}>
+          <ChevronRight
+            aria-hidden="true"
+            className={`size-3 transition-transform ${isOpen ? "rotate-90" : ""}`}
+          />
+        </span>
+      </button>
+      <div
+        className={`grid overflow-hidden transition-[grid-template-rows,opacity] duration-150 ease-out ${
+          isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+        }`}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <div className="mt-1 rounded-md border border-border bg-card/60 p-2">
+            {children}
+          </div>
+        </div>
       </div>
-    </details>
+    </div>
   );
 }
 

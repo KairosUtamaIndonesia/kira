@@ -21,23 +21,38 @@ function AgentThreadToolBash({ tool }: Props) {
 
   return (
     <div>
-      <ToolInlineRow
-        icon={<Terminal aria-hidden="true" className="size-3" />}
-        label={<span className="truncate">Ran {tool.command ?? tool.title}</span>}
-      >
-        {tool.status === undefined ? undefined : <ToolStatusBadge status={tool.status} />}
-        {exitCode !== undefined && exitCode !== 0 ? (
-          <span className="shrink-0 text-xs text-destructive">exit {exitCode}</span>
-        ) : undefined}
-        <ToolDuration duration={tool.duration} />
-      </ToolInlineRow>
-      {tool.errorMessage === undefined ? undefined : (
-        <ToolErrorMessage message={tool.errorMessage} />
-      )}
-      {outputText === undefined || outputText.length === 0 ? undefined : (
-        <ToolExpandable summary="Show output">
+      {outputText === undefined || outputText.length === 0 ? (
+        <ToolInlineRow
+          icon={<Terminal aria-hidden="true" className="size-3" />}
+          label={<span className="truncate">Ran {tool.command ?? tool.title}</span>}
+        >
+          {tool.status === undefined ? undefined : <ToolStatusBadge status={tool.status} />}
+          {exitCode !== undefined && exitCode !== 0 ? (
+            <span className="shrink-0 text-xs text-destructive">exit {exitCode}</span>
+          ) : undefined}
+          <ToolDuration duration={tool.duration} />
+        </ToolInlineRow>
+      ) : (
+        <ToolExpandable
+          summary="Show output"
+          trigger={
+            <ToolInlineRow
+              icon={<Terminal aria-hidden="true" className="size-3" />}
+              label={<span className="truncate">Ran {tool.command ?? tool.title}</span>}
+            >
+              {tool.status === undefined ? undefined : <ToolStatusBadge status={tool.status} />}
+              {exitCode !== undefined && exitCode !== 0 ? (
+                <span className="shrink-0 text-xs text-destructive">exit {exitCode}</span>
+              ) : undefined}
+              <ToolDuration duration={tool.duration} />
+            </ToolInlineRow>
+          }
+        >
           <ToolCodeBlock content={outputText} />
         </ToolExpandable>
+      )}
+      {tool.errorMessage === undefined ? undefined : (
+        <ToolErrorMessage message={tool.errorMessage} />
       )}
     </div>
   );
