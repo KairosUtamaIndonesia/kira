@@ -1,7 +1,6 @@
 {
   "extends": "@kira/tsconfig/react.json",
   "compilerOptions": {
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
     }
