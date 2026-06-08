@@ -26,6 +26,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type MouseEvent,
   type RefObject,
 } from "react";
@@ -57,6 +58,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { AgentThreadPanel, type AgentThreadPanelParams } from "@/features/agent-thread";
+import { useAgentThreadTitleGenerationState } from "@/features/agent-thread/agentThreadStatusStore";
 import { FileEditorPanel, type FileEditorPanelParams } from "@/features/editor";
 import {
   createAgentThreadPanel,
@@ -80,6 +82,7 @@ import type {
 } from "../types";
 
 import { TerminalPanel, type TerminalPanelParams } from "./TerminalPanel";
+import { ThreadTitleText } from "./ThreadTitleText";
 import { useTitleBarDrag } from "./useTitleBarDrag";
 
 type WorkspacePanelParams = {
@@ -156,8 +159,17 @@ function WorkspaceHeaderActions({ containerApi, group }: IDockviewHeaderActionsP
     </div>
   );
 }
-
-function WorkspacePanelTab({ api, containerApi }: IDockviewPanelHeaderProps) {
+function WorkspacePanelTab({ api, containerApi, params }: IDockviewPanelHeaderProps) {
+  const title = useSyncExternalStore(
+    (callback) => {
+      const disposable = api.onDidTitleChange(() => callback());
+      return () => disposable.dispose();
+    },
+    () => api.title ?? api.id,
+  );
+  const threadId = agentThreadIdFromPanelParams(params);
+  const titleGeneration = useAgentThreadTitleGenerationState(threadId);
+  const isGeneratingTitle = titleGeneration.status === "generating";
   const panel = containerApi.getPanel(api.id);
   if (panel === undefined) {
     throw new Error(`Workspace Panel tab ${api.id} is missing its Dockview panel.`);
@@ -168,9 +180,9 @@ function WorkspacePanelTab({ api, containerApi }: IDockviewPanelHeaderProps) {
       <ContextMenuTrigger
         render={<div className="group relative flex h-full min-w-0 items-center px-2 pr-6" />}
       >
-        <span className="truncate">{api.title ?? api.id}</span>
+        <ThreadTitleText isGenerating={isGeneratingTitle} text={title} />
         <button
-          aria-label={`Close ${api.title ?? api.id}`}
+          aria-label={`Close ${title}`}
           className="absolute right-1 rounded-sm p-0.5 text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-ring"
           type="button"
           onClick={(event) => closePanelFromTab(event, panel)}
@@ -821,6 +833,18 @@ function preventHeaderSpaceDrag(event: DockviewReadyEvent) {
       dragEvent.nativeEvent.preventDefault();
     }
   });
+}
+function agentThreadIdFromPanelParams(params: unknown): string | undefined {
+  if (!isRecord(params)) {
+    return void 0;
+  }
+
+  const threadId = params.threadId;
+  if (typeof threadId === "string") {
+    return threadId;
+  }
+
+  return void 0;
 }
 
 function restoreWorkspacePanels(

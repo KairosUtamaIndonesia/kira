@@ -446,7 +446,6 @@
   }
 }
 
-
 /* Shimmer text animation for title generation indication */
 .kira-shimmer {
   position: relative;
@@ -482,8 +481,34 @@
     background-position: 0% 0;
   }
 }
+
+.kira-text-swap {
+  display: inline-block;
+  transform: translateY(0);
+  filter: blur(0);
+  opacity: 1;
+  transition:
+    transform 150ms ease-in-out,
+    filter 150ms ease-in-out,
+    opacity 150ms ease-in-out;
+  will-change: transform, filter, opacity;
+}
+.kira-text-swap.is-exit {
+  transform: translateY(-0.25rem);
+  filter: blur(0.125rem);
+  opacity: 0;
+}
+.kira-text-swap.is-enter-start {
+  transform: translateY(0.25rem);
+  filter: blur(0.125rem);
+  opacity: 0;
+  transition: none;
+}
 @media (prefers-reduced-motion: reduce) {
   .kira-shimmer::before {
     animation: none !important;
+  }
+  .kira-text-swap {
+    transition: none !important;
   }
 }
