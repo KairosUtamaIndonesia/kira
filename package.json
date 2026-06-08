@@ -21,10 +21,10 @@
     "lint": "turbo lint",
     "lint:all": "turbo lint:all",
     "lint:fix": "turbo lint:fix",
+    "setup:hooks": "lefthook install",
     "tauri": "turbo tauri --filter=@kira/desktop",
     "test:rust": "turbo test:rust --filter=@kira/desktop",
-    "turbo": "turbo",
-    "setup:hooks": "lefthook install"
+    "turbo": "turbo"
   },
   "dependencies": {
     "nodemailer": "^8.0.10",
