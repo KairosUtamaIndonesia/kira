@@ -9,15 +9,23 @@ function ToolInlineRow({
   children,
   icon,
   label,
+  labelWrap = false,
 }: {
   children?: ReactNode;
   icon: ReactNode;
   label: ReactNode;
+  labelWrap?: boolean;
 }) {
   return (
     <div className="flex items-center gap-2 py-0.5 text-xs">
       <span className="shrink-0 text-muted-foreground">{icon}</span>
-      <span className="min-w-0 truncate font-mono text-muted-foreground">{label}</span>
+      <span
+        className={`min-w-0 font-mono text-muted-foreground ${
+          labelWrap ? "break-words whitespace-normal" : "truncate"
+        }`}
+      >
+        {label}
+      </span>
       {children}
     </div>
   );
@@ -54,7 +62,7 @@ function ToolExpandable({
     <div>
       <button
         aria-expanded={isOpen}
-        className="flex min-w-0 cursor-pointer items-center text-left"
+        className="flex max-w-full min-w-0 cursor-pointer items-center text-left"
         type="button"
         onClick={() => setIsOpen((current) => !current)}
       >

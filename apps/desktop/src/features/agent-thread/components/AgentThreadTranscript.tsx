@@ -40,7 +40,7 @@ function AgentThreadTranscript({ messages, runtimeIsSending }: AgentThreadTransc
         if (item.type === "assistant-activity") {
           return (
             <li key={item.id} className="flex justify-start">
-              <article className="w-full max-w-[min(52rem,94%)] space-y-3 rounded-xl p-3 text-foreground">
+              <article className="w-full space-y-3 rounded-xl p-3 text-foreground">
                 <MessageHeader label="Kira" createdAt={item.createdAt} />
                 {item.blocks.length === 0 && item.isStreaming ? (
                   <p className="text-sm text-muted-foreground">Working…</p>
