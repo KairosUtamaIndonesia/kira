@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc && vite build",
+    "build": "tsgo && vite build",
     "check": "bun run check:rust && bun run build",
     "check:rust": "cd src-tauri && cargo check",
     "dev": "vite",
