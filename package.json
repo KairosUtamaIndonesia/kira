@@ -11,6 +11,7 @@
   "scripts": {
     "build": "turbo build",
     "check": "turbo check",
+    "check:hook": "turbo check --ui=stream --no-color",
     "dev": "turbo dev",
     "dev:admin": "turbo dev --filter=@kira/admin",
     "dev:desktop": "turbo tauri:dev --filter=@kira/desktop",

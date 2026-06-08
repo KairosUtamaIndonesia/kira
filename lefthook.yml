@@ -19,4 +19,4 @@ pre-push:
     - squash
   commands:
     check:
-      run: bun run check
+      run: bun run check:hook
