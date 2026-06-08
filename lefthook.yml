@@ -17,6 +17,11 @@ pre-commit:
     format-check:
       run: bun run format:check
 
+commit-msg:
+  commands:
+    commitlint:
+      run: bunx commitlint --edit {1}
+
 pre-push:
   skip:
     - merge

@@ -1,6 +1,6 @@
 [package]
 name = "kira-v3"
-version = "0.1.0"
+version = "3.0.0" # x-release-please-version
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
