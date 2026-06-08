@@ -1,6 +1,5 @@
 import { Suspense } from "react";
 
-import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { listPlatformUsersForAdmin } from "@/features/users/data/users";
 
@@ -12,7 +11,6 @@ export default function UsersPage() {
           <p className="text-sm text-muted-foreground">Platform administration</p>
           <h1 className="text-2xl font-semibold tracking-tight">Users</h1>
         </div>
-        <Button disabled>Create user</Button>
       </div>
       <Suspense fallback={<UsersTableLoading />}>
         <UsersTable />
@@ -59,7 +57,7 @@ async function UsersTable() {
                 <tr key={user.id} className="border-b border-border last:border-0">
                   <td className="py-3 pr-4 font-medium">{user.name}</td>
                   <td className="py-3 pr-4 text-muted-foreground">{user.email}</td>
-                  <td className="py-3 pr-4 font-mono text-xs">{user.platformRole}</td>
+                  <td className="py-3 pr-4 capitalize">{user.platformRole}</td>
                   <td className="py-3 pr-4">{user.organizationCount}</td>
                   <td className="py-3 pr-4 capitalize">{user.status}</td>
                   <td className="py-3 pr-4 text-muted-foreground">{user.createdAt}</td>

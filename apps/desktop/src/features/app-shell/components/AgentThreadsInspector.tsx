@@ -2,6 +2,7 @@ import { Copy, MoreVertical, PenLine, RotateCcw, Trash2, X } from "lucide-react"
 import { useEffect, useRef, useState, type RefObject } from "react";
 
 import type { AgentThreadWorkspacePanel, WorkspacePanel } from "@/features/projects/types";
+import { useAgentThreadTitleGenerationState } from "@/features/agent-thread/agentThreadStatusStore";
 
 import {
   AlertDialog,
@@ -198,6 +199,9 @@ type AgentThreadRowProps = {
 };
 
 function AgentThreadRow({ panel, onClose, onDelete, onOpen, onRename }: AgentThreadRowProps) {
+  const titleGeneration = useAgentThreadTitleGenerationState(panel.agentThreadState.threadId);
+  const isGeneratingTitle = titleGeneration.status === "generating";
+
   async function handleCopyThreadId() {
     try {
       await navigator.clipboard.writeText(panel.agentThreadState.threadId);
@@ -215,7 +219,16 @@ function AgentThreadRow({ panel, onClose, onDelete, onOpen, onRename }: AgentThr
           className="h-auto w-full justify-start px-2 py-2 pr-9 text-left"
           onClick={onOpen}
         >
-          <span className="truncate text-sm font-medium">{panel.title}</span>
+          {isGeneratingTitle ? (
+            <span
+              className="kira-shimmer truncate text-sm font-medium"
+              data-text="Naming thread…"
+            >
+              Naming thread…
+            </span>
+          ) : (
+            <span className="truncate text-sm font-medium">{panel.title}</span>
+          )}
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger

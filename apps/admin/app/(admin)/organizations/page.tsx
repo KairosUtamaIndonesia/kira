@@ -27,22 +27,13 @@ async function OrganizationsTable() {
 
   return (
     <section className="rounded-xl border border-border bg-card p-4 text-card-foreground">
-      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mb-4">
         <div>
           <h2 className="font-medium">Managed organizations</h2>
           <p className="text-sm text-muted-foreground">
             Real Better Auth organization data for Kira SaaS administration.
           </p>
         </div>
-        <label className="w-full max-w-xs text-sm">
-          <span className="sr-only">Search organizations</span>
-          <input
-            className="h-8 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            aria-label="Search organizations"
-            placeholder="Search organizations"
-            disabled
-          />
-        </label>
       </div>
       {organizations.length === 0 ? (
         <Empty>

@@ -26,13 +26,6 @@ export default async function OrganizationPage({ params }: OrganizationPagePrope
       <Suspense fallback={<SummaryLoading />}>
         <OrganizationSummary organizationId={organization.id} status={organization.status} />
       </Suspense>
-      <section className="rounded-xl border border-border bg-card p-4 text-card-foreground">
-        <h2 className="font-medium">Desktop access policy</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          The phone-home endpoint will validate organization-owned API keys and fail closed when
-          access cannot be confirmed.
-        </p>
-      </section>
     </div>
   );
 }
