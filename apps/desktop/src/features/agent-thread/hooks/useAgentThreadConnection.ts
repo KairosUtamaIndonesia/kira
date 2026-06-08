@@ -8,13 +8,13 @@ import type {
   AgentThreadPanelParams,
 } from "../types";
 
+import { setAgentThreadTitleGenerationState } from "../agentThreadStatusStore";
 import {
   getAgentThreadContextUsage,
   listAgentThreadMessages,
   prepareAgentThread,
   saveAgentThreadMessage,
 } from "../api/agentRuntimeApi";
-import { setAgentThreadTitleGenerationState } from "../agentThreadStatusStore";
 
 type AgentThreadRuntimeState =
   | { status: "starting" }
@@ -30,7 +30,6 @@ type AgentThreadContextUsageState =
   | { status: "ready"; usage: AgentThreadContextUsage }
   | { status: "error"; message: string };
 
-<<<<<<< New base: refactor(admin): move breadcrumbs into shell header
 type AgentThreadTitleGenerationState =
   | { status: "idle" }
   | { status: "generating" }
@@ -40,31 +39,23 @@ type UseAgentThreadConnectionOptions = {
   onAutoTitled?: (title: string) => void;
 };
 
-function useAgentThreadConnection(
-  params: AgentThreadPanelParams,
-  options?: UseAgentThreadConnectionOptions,
-) {
-||||||| Common ancestor
-function useAgentThreadConnection(params: AgentThreadPanelParams) {
-=======
-type UseAgentThreadConnectionOptions = {
-  onAutoTitled?: (title: string) => void;
-};
+const minimumTitleGenerationVisibleMs = 1200;
 
 function useAgentThreadConnection(
   params: AgentThreadPanelParams,
   options?: UseAgentThreadConnectionOptions,
 ) {
->>>>>>> Current commit: feat(agent-thread): add auto-generated titles, inline rename, and status bar int
   const [runtimeState, setRuntimeState] = useState<AgentThreadRuntimeState>({
     status: "starting",
   });
   const [contextUsageState, setContextUsageState] = useState<AgentThreadContextUsageState>({
     status: "loading",
   });
-  const [titleGenerationState, setTitleGenerationState] = useState<AgentThreadTitleGenerationState>({
-    status: "idle",
-  });
+  const [titleGenerationState, setTitleGenerationState] = useState<AgentThreadTitleGenerationState>(
+    {
+      status: "idle",
+    },
+  );
   const [messages, setMessages] = useState<AgentThreadMessageRecord[]>([]);
   const socketRef = useRef<AgentSocket | undefined>(void 0);
   const runtimeStateRef = useRef(runtimeState);
@@ -196,7 +187,11 @@ function useAgentThreadConnection(
       const result = await socket.prompt(message, { session: "default" });
       await appendMessage("result", requestId, result.result);
 
-      if (isFirstPromptRef.current && !hasAutoTitledRef.current && params.title === "New Thread") {
+      if (
+        isFirstPromptRef.current &&
+        !hasAutoTitledRef.current &&
+        isUntitledAgentThreadTitle(params.title)
+      ) {
         isFirstPromptRef.current = false;
         const trimmedPrompt = message.trim();
         if (trimmedPrompt.length <= 50) {
@@ -221,7 +216,6 @@ function useAgentThreadConnection(
     }
   }
 
-<<<<<<< New base: refactor(admin): move breadcrumbs into shell header
   async function generateTitleFromModel(prompt: string, assistantResult: unknown) {
     if (hasAutoTitledRef.current) {
       return;
@@ -233,6 +227,9 @@ function useAgentThreadConnection(
 
     setTitleGenerationState({ status: "generating" });
     setAgentThreadTitleGenerationState(params.threadId, { status: "generating" });
+    const generationStartedAt = performance.now();
+    let generatedTitle = "";
+    let titleSocket: AgentSocket | undefined;
 
     try {
       const client = createFlueClient({
@@ -244,36 +241,34 @@ function useAgentThreadConnection(
         },
       });
 
-      const titleSocket = client.agents.connect(
-        "title-generator",
-        `title-gen-${crypto.randomUUID()}`,
-      );
+      titleSocket = client.agents.connect("title-generator", `title-gen-${crypto.randomUUID()}`);
       await titleSocket.ready;
 
       const formatted = `User prompt:\n${prompt}\n\nAssistant response:\n${JSON.stringify(assistantResult, undefined, 2)}`;
       const titleResult = await titleSocket.prompt(formatted, { session: "default" });
-      const title = extractTextFromUnknown(titleResult.result).trim();
-
-      titleSocket.close();
-
-      if (title.length > 0 && !hasAutoTitledRef.current) {
-        hasAutoTitledRef.current = true;
-        const onAutoTitled = onAutoTitledRef.current;
-        if (onAutoTitled !== undefined) {
-          onAutoTitled(title);
-        }
-      }
+      generatedTitle = extractTextFromUnknown(titleResult.result).trim();
     } catch {
       // Title generation is cosmetic; silently fail.
     } finally {
+      if (titleSocket !== undefined) {
+        titleSocket.close();
+      }
+      await waitForMinimumTitleGenerationDuration(generationStartedAt);
+      if (generatedTitle.length > 0 && !hasAutoTitledRef.current) {
+        hasAutoTitledRef.current = true;
+        const onAutoTitled = onAutoTitledRef.current;
+        if (onAutoTitled !== undefined) {
+          await onAutoTitled(generatedTitle);
+        }
+      }
       setTitleGenerationState({ status: "done" });
       setAgentThreadTitleGenerationState(params.threadId, { status: "done" });
     }
   }
 
-
   return { contextUsageState, messages, runtimeState, sendPrompt, titleGenerationState };
 }
+
 function extractTextFromUnknown(value: unknown): string {
   if (typeof value === "string") {
     return value;
@@ -290,72 +285,19 @@ function extractTextFromUnknown(value: unknown): string {
   }
 
   return "";
-||||||| Common ancestor
-  return { contextUsageState, messages, runtimeState, sendPrompt };
-=======
-  async function generateTitleFromModel(prompt: string, assistantResult: unknown) {
-    if (hasAutoTitledRef.current) {
-      return;
-    }
-    const runtime = runtimeInfoRef.current;
-    if (runtime === undefined) {
-      return;
-    }
-
-    try {
-      const client = createFlueClient({
-        baseUrl: runtime.baseUrl,
-        token: runtime.token,
-        websocketUrl: (url) => {
-          url.searchParams.set("token", runtime.token);
-          return url;
-        },
-      });
-
-      const titleSocket = client.agents.connect(
-        "title-generator",
-        `title-gen-${crypto.randomUUID()}`,
-      );
-      await titleSocket.ready;
-
-      const formatted = `User prompt:\n${prompt}\n\nAssistant response:\n${JSON.stringify(assistantResult, undefined, 2)}`;
-      const titleResult = await titleSocket.prompt(formatted, { session: "default" });
-      const title = extractTextFromUnknown(titleResult.result).trim();
-
-      titleSocket.close();
-
-      if (title.length > 0 && !hasAutoTitledRef.current) {
-        hasAutoTitledRef.current = true;
-        const onAutoTitled = onAutoTitledRef.current;
-        if (onAutoTitled !== undefined) {
-          onAutoTitled(title);
-        }
-      }
-    } catch {
-      // Title generation is cosmetic; silently fail.
-    }
-  }
-
-
-  return { contextUsageState, messages, runtimeState, sendPrompt };
->>>>>>> Current commit: feat(agent-thread): add auto-generated titles, inline rename, and status bar int
 }
-function extractTextFromUnknown(value: unknown): string {
-  if (typeof value === "string") {
-    return value;
+
+function isUntitledAgentThreadTitle(title: string) {
+  return title === "New Thread" || title === "Agent Thread";
+}
+
+async function waitForMinimumTitleGenerationDuration(startedAt: number) {
+  const remainingMs = minimumTitleGenerationVisibleMs - (performance.now() - startedAt);
+  if (remainingMs <= 0) {
+    return;
   }
 
-  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-    const record = value as Record<string, unknown>;
-    for (const key of ["text", "content", "markdown", "message", "result", "output"]) {
-      const candidate = record[key];
-      if (typeof candidate === "string") {
-        return candidate;
-      }
-    }
-  }
-
-  return "";
+  await new Promise((resolve) => setTimeout(resolve, remainingMs));
 }
 
 async function refreshContextUsage(
