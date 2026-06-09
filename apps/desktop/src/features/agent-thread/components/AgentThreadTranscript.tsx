@@ -1,7 +1,7 @@
 import { Brain } from "lucide-react";
 
 import type { AgentThreadActivityBlock } from "../agentThreadDisplay";
-import type { AgentThreadMessageRecord } from "../types";
+import type { AgentThreadMessageRecord, RespondToHumanRequest } from "../types";
 
 import { buildAgentThreadTranscript, stringifyUnknown } from "../agentThreadDisplay";
 import { AgentThreadMarkdown } from "./AgentThreadMarkdown";
@@ -10,9 +10,14 @@ import { toolComponentForName } from "./tools";
 type AgentThreadTranscriptProps = {
   messages: AgentThreadMessageRecord[];
   runtimeIsSending: boolean;
+  respond: RespondToHumanRequest;
 };
 
-function AgentThreadTranscript({ messages, runtimeIsSending }: AgentThreadTranscriptProps) {
+function AgentThreadTranscript({
+  messages,
+  runtimeIsSending,
+  respond,
+}: AgentThreadTranscriptProps) {
   if (messages.length === 0) {
     return (
       <div className="flex h-full min-h-40 items-center justify-center rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
@@ -50,6 +55,7 @@ function AgentThreadTranscript({ messages, runtimeIsSending }: AgentThreadTransc
                     key={blockKey(block)}
                     block={block}
                     isStreaming={item.isStreaming && index === item.blocks.length - 1}
+                    respond={respond}
                   />
                 ))}
               </article>
@@ -66,9 +72,11 @@ function AgentThreadTranscript({ messages, runtimeIsSending }: AgentThreadTransc
 function ActivityBlock({
   block,
   isStreaming,
+  respond,
 }: {
   block: AgentThreadActivityBlock;
   isStreaming: boolean;
+  respond: RespondToHumanRequest;
 }) {
   if (block.type === "thinking") {
     return <ThinkingBlock thinking={block.thinking} />;
@@ -80,7 +88,7 @@ function ActivityBlock({
 
   if (block.type === "tool-call") {
     const Component = toolComponentForName(block.tool.toolName);
-    return <Component tool={block.tool} />;
+    return <Component tool={block.tool} respond={respond} />;
   }
 
   if (block.type === "error") {

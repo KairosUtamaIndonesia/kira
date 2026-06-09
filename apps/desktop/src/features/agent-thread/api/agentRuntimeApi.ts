@@ -7,6 +7,7 @@ import type {
   GetAgentThreadContextUsageInput,
   ListAgentThreadMessagesInput,
   PrepareAgentThreadInput,
+  RespondToHumanRequestInput,
   SaveAgentThreadMessageInput,
 } from "../types";
 
@@ -30,10 +31,15 @@ function saveAgentThreadMessage(input: SaveAgentThreadMessageInput) {
   return invoke<AgentThreadMessageRecord>("agent_thread_message_save", { input });
 }
 
+function respondToHumanRequest(input: RespondToHumanRequestInput) {
+  return invoke<void>("respond_to_agent_thread_request", { input });
+}
+
 export {
   getAgentThreadContextUsage,
   listAgentThreadMessages,
   prepareAgentThread,
+  respondToHumanRequest,
   saveAgentThreadMessage,
   startAgentRuntime,
 };
