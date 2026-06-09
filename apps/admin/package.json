@@ -10,7 +10,6 @@
     "check": "bun run typecheck && bun run lint && bun run format:check",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "dev": "portless admin.kira vite dev",
     "email": "email dev",
