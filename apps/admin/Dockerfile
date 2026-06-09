@@ -14,6 +14,7 @@ FROM oven/bun:1.3.12-alpine AS builder
 WORKDIR /repo
 
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV SKIP_ENV_VALIDATION=1
 
 COPY --from=deps /repo/node_modules ./node_modules
 COPY --from=deps /repo/apps ./apps

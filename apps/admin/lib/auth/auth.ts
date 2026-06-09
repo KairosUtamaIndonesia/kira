@@ -7,13 +7,13 @@ import { admin, organization } from "better-auth/plugins";
 
 import * as authSchema from "@/lib/db/auth-schema";
 import { db } from "@/lib/db/postgres";
-import { requireEnvironmentVariable } from "@/lib/env";
+import { env } from "@/lib/env";
 
-const betterAuthUrl = requireEnvironmentVariable("BETTER_AUTH_URL");
+const betterAuthUrl = env.BETTER_AUTH_URL;
 
 const auth = betterAuth({
   baseURL: betterAuthUrl,
-  secret: requireEnvironmentVariable("BETTER_AUTH_SECRET"),
+  secret: env.BETTER_AUTH_SECRET,
   database: drizzleAdapter(db, {
     provider: "pg",
     schema: authSchema,

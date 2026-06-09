@@ -28,7 +28,7 @@ import { auth } from "@/lib/auth/auth";
 import { invitation, member, organization, session, user } from "@/lib/db/auth-schema";
 import { db } from "@/lib/db/postgres";
 import { sendInvitationEmail } from "@/lib/email/smtp";
-import { requireEnvironmentVariable } from "@/lib/env";
+import { env } from "@/lib/env";
 
 type ActionResult = CreateOrganizationResult;
 
@@ -78,7 +78,7 @@ function success(message: string): ActionResult {
 }
 
 function invitationUrl(invitationId: string) {
-  const baseUrl = requireEnvironmentVariable("BETTER_AUTH_URL");
+  const baseUrl = env.BETTER_AUTH_URL;
   return `${baseUrl}/sign-in?invitationId=${invitationId}`;
 }
 
