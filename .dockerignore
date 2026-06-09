@@ -1,0 +1,16 @@
+.git
+.github
+.next
+dist
+node_modules
+coverage
+.env
+.env.*
+!.env.example
+apps/desktop/src-tauri/target
+apps/desktop/dist
+apps/admin/.next
+apps/admin/node_modules
+apps/desktop/node_modules
+apps/desktop/agent-runtime/node_modules
+packages/*/node_modules
