@@ -67,6 +67,13 @@ type SaveAgentThreadMessageInput = {
   message: unknown;
 };
 
+type RespondToHumanRequestInput = {
+  threadId: string;
+  response: unknown;
+};
+
+type RespondToHumanRequest = (response: unknown) => Promise<boolean>;
+
 export type {
   AgentRuntimeConnection,
   AgentThreadContextUsage,
@@ -76,5 +83,7 @@ export type {
   GetAgentThreadContextUsageInput,
   ListAgentThreadMessagesInput,
   PrepareAgentThreadInput,
+  RespondToHumanRequest,
+  RespondToHumanRequestInput,
   SaveAgentThreadMessageInput,
 };

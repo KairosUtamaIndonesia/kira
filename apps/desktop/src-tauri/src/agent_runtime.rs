@@ -196,6 +196,13 @@ pub struct AgentRuntimeConnection {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RespondToAgentThreadRequestInput {
+    thread_id: String,
+    response: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct HealthResponse {
     status: String,
     package_name: String,
@@ -250,6 +257,8 @@ pub enum AgentRuntimeError {
     InvalidHealthResponse { port: u16, reason: String },
     #[error("Failed to register Agent Thread {thread_id} with agent runtime: {reason}")]
     RegisterAgentThread { thread_id: String, reason: String },
+    #[error("Failed to deliver human response for Agent Thread {thread_id}: {reason}")]
+    DeliverHumanResponse { thread_id: String, reason: String },
     #[error("Agent runtime is not running. Start the app-scoped agent runtime before preparing an Agent Thread.")]
     NotRunning,
     #[error("Agent runtime startup failed: {reason}")]
@@ -327,6 +336,21 @@ pub async fn prepare_agent_thread(
         base_url: connection.base_url,
         token: connection.token,
     })
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
+pub async fn respond_to_agent_thread_request(
+    input: RespondToAgentThreadRequestInput,
+    registry: tauri::State<'_, AgentRuntimeRegistry>,
+) -> Result<(), AgentRuntimeError> {
+    validate_required_thread_id(&input.thread_id)?;
+
+    let connection = runtime_connection(&registry).await?;
+    deliver_human_response(&connection, &input.thread_id, &input.response).await
 }
 
 #[tauri::command]
@@ -422,6 +446,35 @@ async fn register_agent_thread(
         return Err(AgentRuntimeError::RegisterAgentThread {
             thread_id: thread_id.to_string(),
             reason: format!("runtime returned HTTP {}", response.status()),
+        });
+    }
+
+    Ok(())
+}
+
+async fn deliver_human_response(
+    connection: &RuntimeConnection,
+    thread_id: &str,
+    response: &serde_json::Value,
+) -> Result<(), AgentRuntimeError> {
+    let http_response = reqwest::Client::new()
+        .post(format!(
+            "{}/app/agent-threads/{thread_id}/human-response",
+            connection.base_url
+        ))
+        .bearer_auth(&connection.token)
+        .json(&serde_json::json!({ "response": response }))
+        .send()
+        .await
+        .map_err(|error| AgentRuntimeError::DeliverHumanResponse {
+            thread_id: thread_id.to_string(),
+            reason: error.to_string(),
+        })?;
+
+    if !http_response.status().is_success() {
+        return Err(AgentRuntimeError::DeliverHumanResponse {
+            thread_id: thread_id.to_string(),
+            reason: format!("runtime returned HTTP {}", http_response.status()),
         });
     }
 

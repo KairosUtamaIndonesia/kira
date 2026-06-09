@@ -13,6 +13,7 @@ import {
   getAgentThreadContextUsage,
   listAgentThreadMessages,
   prepareAgentThread,
+  respondToHumanRequest,
   saveAgentThreadMessage,
 } from "../api/agentRuntimeApi";
 
@@ -93,6 +94,18 @@ function useAgentThreadConnection(
       );
       appendQueueRef.current = settleAppendOperation(appendOperation);
       return appendOperation;
+    },
+    [params.threadId],
+  );
+
+  const respondToRequest = useCallback(
+    async (response: unknown): Promise<boolean> => {
+      try {
+        await respondToHumanRequest({ threadId: params.threadId, response });
+        return true;
+      } catch {
+        return false;
+      }
     },
     [params.threadId],
   );
@@ -266,7 +279,14 @@ function useAgentThreadConnection(
     }
   }
 
-  return { contextUsageState, messages, runtimeState, sendPrompt, titleGenerationState };
+  return {
+    contextUsageState,
+    messages,
+    respondToRequest,
+    runtimeState,
+    sendPrompt,
+    titleGenerationState,
+  };
 }
 
 function extractTextFromUnknown(value: unknown): string {

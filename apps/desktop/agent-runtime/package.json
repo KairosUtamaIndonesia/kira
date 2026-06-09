@@ -10,7 +10,8 @@
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "lint": "oxlint",
-    "start": "bun dist/server.mjs"
+    "start": "bun dist/server.mjs",
+    "test": "bun test"
   },
   "dependencies": {
     "@flue/runtime": "^0.9.1",

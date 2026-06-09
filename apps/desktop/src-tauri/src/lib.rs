@@ -67,6 +67,7 @@ pub fn run() -> tauri::Result<()> {
             settings::notification_sound_remove,
             agent_runtime::agent_thread_context_usage_get,
             agent_runtime::prepare_agent_thread,
+            agent_runtime::respond_to_agent_thread_request,
             agent_runtime::start_agent_runtime,
             editor::editor_file_read,
             explorer::explorer_directory_children,
