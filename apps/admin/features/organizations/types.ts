@@ -42,10 +42,24 @@ type OrganizationApiKey = {
   status: "active" | "expired" | "disabled";
 };
 
+type OrganizationModel = {
+  id: string;
+  organizationId: string;
+  label: string;
+  upstreamModelId: string;
+  providerId: string;
+  providerBaseUrl: string;
+  contextWindow: number;
+  maxOutputTokens: number;
+  isDefault: boolean;
+  createdAt: string;
+};
+
 export type {
   Organization,
   OrganizationApiKey,
   OrganizationInvitation,
   OrganizationMember,
+  OrganizationModel,
   OrganizationStatus,
 };

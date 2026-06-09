@@ -1,4 +1,14 @@
-import { index, jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  integer,
+  jsonb,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 
 const desktopAccessPolicyStatus = pgEnum("desktop_access_policy_status", ["active", "disabled"]);
 
@@ -37,20 +47,43 @@ const desktopAccessChecks = pgTable(
   ],
 );
 
+const organizationModels = pgTable(
+  "organization_models",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: text("organization_id").notNull(),
+    label: text("label").notNull(),
+    upstreamModelId: text("upstream_model_id").notNull(),
+    providerId: text("provider_id").notNull(),
+    providerBaseUrl: text("provider_base_url").notNull(),
+    contextWindow: integer("context_window").notNull(),
+    maxOutputTokens: integer("max_output_tokens").notNull(),
+    isDefault: boolean("is_default").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("organization_models_organization_id_idx").on(table.organizationId)],
+);
+
 type DesktopAccessPolicy = typeof desktopAccessPolicies.$inferSelect;
 type NewDesktopAccessPolicy = typeof desktopAccessPolicies.$inferInsert;
 type DesktopAccessCheck = typeof desktopAccessChecks.$inferSelect;
 type NewDesktopAccessCheck = typeof desktopAccessChecks.$inferInsert;
+type OrganizationModel = typeof organizationModels.$inferSelect;
+type NewOrganizationModel = typeof organizationModels.$inferInsert;
 
 export {
   desktopAccessCheckDecision,
   desktopAccessChecks,
   desktopAccessPolicies,
   desktopAccessPolicyStatus,
+  organizationModels,
 };
 export type {
   DesktopAccessCheck,
   DesktopAccessPolicy,
   NewDesktopAccessCheck,
   NewDesktopAccessPolicy,
+  NewOrganizationModel,
+  OrganizationModel,
 };

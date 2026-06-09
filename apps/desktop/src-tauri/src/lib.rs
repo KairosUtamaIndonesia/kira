@@ -10,6 +10,7 @@
 mod agent_runtime;
 mod editor;
 mod explorer;
+mod org_config;
 mod persistence;
 mod projects;
 mod search;
@@ -34,15 +35,13 @@ fn greet(name: &str) -> String {
 /// the application event loop.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() -> tauri::Result<()> {
-    let mut builder = tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init());
 
     #[cfg(desktop)]
     {
-        builder = builder
-            .plugin(tauri_plugin_updater::Builder::new().build())
-            .plugin(tauri_plugin_process::init());
+        // Single instance plugin can be added here if needed.
     }
 
     builder
@@ -69,6 +68,8 @@ pub fn run() -> tauri::Result<()> {
             agent_runtime::prepare_agent_thread,
             agent_runtime::respond_to_agent_thread_request,
             agent_runtime::start_agent_runtime,
+            org_config::desktop_org_models_get,
+            org_config::desktop_org_models_refresh,
             editor::editor_file_read,
             explorer::explorer_directory_children,
             explorer::explorer_tree,

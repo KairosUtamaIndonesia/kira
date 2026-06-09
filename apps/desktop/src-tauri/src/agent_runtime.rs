@@ -697,8 +697,12 @@ async fn start_app_runtime(store: PersistenceStore) -> Result<AppAgentRuntime, A
     let bridge_token = generate_runtime_token();
     let bridge_port = reserve_port()?;
     let persistence_bridge =
-        start_persistence_bridge(store, bridge_port, bridge_token.clone()).await?;
-
+        start_persistence_bridge(store.clone(), bridge_port, bridge_token.clone()).await?;
+    let catalog = crate::org_config::get_or_refresh_model_catalog(store.pool())
+        .await
+        .map_err(|error| AgentRuntimeError::StartFailed {
+            reason: format!("failed to fetch organization model catalog: {error}"),
+        })?;
     let mut command = Command::new("bun");
     match mode {
         AgentRuntimeLaunchMode::Dev => {
@@ -713,7 +717,6 @@ async fn start_app_runtime(store: PersistenceStore) -> Result<AppAgentRuntime, A
             command.arg("dist/server.mjs");
         }
     }
-
     command
         .current_dir(&runtime_dir)
         .env("HOST", AGENT_RUNTIME_HOST)
@@ -725,12 +728,16 @@ async fn start_app_runtime(store: PersistenceStore) -> Result<AppAgentRuntime, A
             runtime_base_url(bridge_port),
         )
         .env("KIRA_AGENT_PERSISTENCE_BRIDGE_TOKEN", bridge_token)
+        .env(
+            "KIRA_AGENT_MODEL_CATALOG",
+            serde_json::to_string(&catalog).map_err(|error| AgentRuntimeError::StartFailed {
+                reason: format!("failed to serialize model catalog: {error}"),
+            })?,
+        )
         .kill_on_drop(true);
-
     if let Ok(provider_api_key) = env::var("KIRA_AGENT_PROVIDER_API_KEY") {
         command.env("KIRA_AGENT_PROVIDER_API_KEY", provider_api_key);
     }
-
     let mut process = command
         .spawn()
         .map_err(|error| AgentRuntimeError::StartFailed {
@@ -739,13 +746,11 @@ async fn start_app_runtime(store: PersistenceStore) -> Result<AppAgentRuntime, A
                 runtime_dir.display()
             ),
         })?;
-
     if let Err(error) = wait_for_health(port).await {
         let _kill_result = process.kill().await;
         persistence_bridge.abort();
         return Err(error);
     }
-
     Ok(AppAgentRuntime {
         connection: RuntimeConnection {
             base_url: runtime_base_url(port),

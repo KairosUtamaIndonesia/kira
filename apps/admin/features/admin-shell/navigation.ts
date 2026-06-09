@@ -1,6 +1,14 @@
 import type { ComponentType, SVGProps } from "react";
 
-import { Building2, KeyRound, LayoutDashboard, Settings, ShieldCheck, Users } from "lucide-react";
+import {
+  BrainCircuit,
+  Building2,
+  KeyRound,
+  LayoutDashboard,
+  Settings,
+  ShieldCheck,
+  Users,
+} from "lucide-react";
 
 type NavigationItem = {
   href: string;
@@ -54,6 +62,12 @@ const organizationNavigation: NavigationItem[] = [
     label: "API Keys",
     description: "Desktop access credentials",
     icon: KeyRound,
+  },
+  {
+    href: "models",
+    label: "Models",
+    description: "Organization AI models",
+    icon: BrainCircuit,
   },
   {
     href: "access-control",
