@@ -1,12 +1,14 @@
-import { Bot, Files, GitBranch, Search, type LucideIcon } from "lucide-react";
+import { Bot, Boxes, Files, GitBranch, Search, type LucideIcon } from "lucide-react";
 import { useState } from "react";
 
+import type { InstalledSkill } from "@/features/skills";
 import type { GitStatusEntry } from "@/features/source-control/types";
 
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ExplorerInspector } from "@/features/explorer";
 import { SearchInspector } from "@/features/search";
+import { SkillsInspector } from "@/features/skills";
 import { SourceControlInspector } from "@/features/source-control/components/SourceControlInspector";
 
 import type { ActiveWorkspaceState } from "../types";
@@ -22,10 +24,11 @@ type AppInspectorProps = {
   onAgentThreadOpen: (panelId: string) => void;
   onAgentThreadRename: (panelId: string, title: string) => Promise<void>;
   onExplorerFileOpen: (filePath: string, lineNumber?: number) => Promise<void>;
+  onSkillOpen: (skill: InstalledSkill) => Promise<void>;
   onSourceControlDiffOpen: (entry: GitStatusEntry) => Promise<void>;
 };
 
-type InspectorView = "explorer" | "search" | "sourceControl" | "agentThreads";
+type InspectorView = "explorer" | "search" | "sourceControl" | "skills" | "agentThreads";
 
 type InspectorViewAction = {
   view: InspectorView;
@@ -37,6 +40,7 @@ const inspectorViewActions: InspectorViewAction[] = [
   { view: "explorer", label: "Explorer", icon: Files },
   { view: "search", label: "Search", icon: Search },
   { view: "sourceControl", label: "Source Control", icon: GitBranch },
+  { view: "skills", label: "Skills", icon: Boxes },
   { view: "agentThreads", label: "Agent Threads", icon: Bot },
 ];
 
@@ -47,6 +51,7 @@ function AppInspector({
   onAgentThreadOpen,
   onAgentThreadRename,
   onExplorerFileOpen,
+  onSkillOpen,
   onSourceControlDiffOpen,
 }: AppInspectorProps) {
   const [activeView, setActiveView] = useState<InspectorView>("explorer");
@@ -107,6 +112,7 @@ function AppInspector({
           onAgentThreadOpen,
           onAgentThreadRename,
           onExplorerFileOpen,
+          onSkillOpen,
           onSourceControlDiffOpen,
         })}
       </div>
@@ -122,6 +128,7 @@ type InspectorContentProps = Pick<
   | "onAgentThreadOpen"
   | "onAgentThreadRename"
   | "onExplorerFileOpen"
+  | "onSkillOpen"
   | "onSourceControlDiffOpen"
 > & {
   activeView: InspectorView;
@@ -135,6 +142,7 @@ function inspectorContent({
   onAgentThreadOpen,
   onAgentThreadRename,
   onExplorerFileOpen,
+  onSkillOpen,
   onSourceControlDiffOpen,
 }: InspectorContentProps) {
   if (activeView === "search") {
@@ -155,6 +163,17 @@ function inspectorContent({
           activeWorkspace.status === "active" ? activeWorkspace.project.folderPath : undefined
         }
         onOpenDiff={onSourceControlDiffOpen}
+      />
+    );
+  }
+
+  if (activeView === "skills") {
+    return (
+      <SkillsInspector
+        folderPath={
+          activeWorkspace.status === "active" ? activeWorkspace.project.folderPath : undefined
+        }
+        onOpenSkill={(skill) => void onSkillOpen(skill)}
       />
     );
   }

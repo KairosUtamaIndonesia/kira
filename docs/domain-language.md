@@ -69,3 +69,19 @@ _Avoid_: Tenant when referring only to the email domain routing key
 **Identity Provider**:
 The external system that authenticates a user for Single Sign-On.
 _Avoid_: Authorization provider when Kira still owns organization access decisions
+
+**Skill**:
+A reusable Agent Skill, defined by a `SKILL.md` and optional supporting files, that guides agent behavior for specialized, repeatable work.
+_Avoid_: Plugin, extension
+
+**Skill Scope**:
+The provenance of an installed Skill: `Bundled` (compiled into the agent-runtime), `Project` (discovered from the Project's `.agents/skills/`), or `Global` (installed at the machine-level `.agents/skills/` root).
+_Avoid_: Skill location
+
+**Bundled Skill**:
+A Skill compiled into Kira's agent-runtime and always loaded by Kira's agent, independent of any Project workspace.
+_Avoid_: Built-in plugin
+
+**Skill Conflict**:
+A Bundled Skill and a Project Skill sharing a declared name, which fails Flue session initialization rather than resolving implicitly.
+_Avoid_: Skill override when the result is a hard initialization failure

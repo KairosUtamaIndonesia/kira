@@ -1,6 +1,7 @@
 import { createAgent, defineAgentProfile, type AgentWebSocketHandler } from "@flue/runtime";
 
 import { requireAgentThreadContext } from "../kira/agent-thread-context";
+import { bundledSkills } from "../kira/bundled-skills";
 import { KIRA_AGENT_MODEL } from "../kira/env";
 import { createKiraLocalSandbox } from "../kira/local-sandbox";
 import { createKiraSessionStore } from "../kira/session-store";
@@ -21,6 +22,7 @@ export default createAgent(({ id }) => {
   return {
     profile: codingAgent,
     model: KIRA_AGENT_MODEL,
+    skills: [...bundledSkills],
     sandbox: createKiraLocalSandbox(context.projectPath),
     persist: createKiraSessionStore(context),
   };

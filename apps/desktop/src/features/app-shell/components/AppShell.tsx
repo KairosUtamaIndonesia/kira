@@ -6,6 +6,7 @@ import type {
   Project,
   WorkspacePanel,
 } from "@/features/projects/types";
+import type { InstalledSkill } from "@/features/skills";
 import type { GitStatusEntry } from "@/features/source-control/types";
 
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
@@ -45,6 +46,17 @@ function fileTitle(filePath: string) {
   }
 
   return title;
+}
+
+function projectRelativePath(folderPath: string, absolutePath: string) {
+  const normalizedFolder = folderPath.replace(/\\/g, "/").replace(/\/+$/, "");
+  const normalizedAbsolute = absolutePath.replace(/\\/g, "/");
+  const prefix = `${normalizedFolder}/`;
+  if (!normalizedAbsolute.startsWith(prefix)) {
+    return;
+  }
+
+  return normalizedAbsolute.slice(prefix.length);
 }
 
 function AppShell() {
@@ -331,6 +343,20 @@ function AppShell() {
     }
   }
 
+  async function handleSkillOpen(skill: InstalledSkill) {
+    if (activeWorkspace.status !== "active" || skill.skillPath === null) {
+      return;
+    }
+
+    const relativePath = projectRelativePath(activeWorkspace.project.folderPath, skill.skillPath);
+    if (relativePath === undefined) {
+      toast.error(`Skill ${skill.name} is not inside the active Project.`);
+      return;
+    }
+
+    await handleExplorerFileOpen(relativePath);
+  }
+
   function handleAgentThreadOpen(panelId: string) {
     const panel = requireActiveAgentThreadPanel(activeWorkspace, panelId);
 
@@ -510,6 +536,7 @@ function AppShell() {
             onAgentThreadOpen={handleAgentThreadOpen}
             onAgentThreadRename={handleAgentThreadRename}
             onExplorerFileOpen={handleExplorerFileOpen}
+            onSkillOpen={handleSkillOpen}
             onSourceControlDiffOpen={handleSourceControlDiffOpen}
           />
         </ResizablePanel>
