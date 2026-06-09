@@ -3,7 +3,16 @@ import { eq } from "drizzle-orm";
 import { auth } from "@/lib/auth/auth";
 import { user } from "@/lib/db/auth-schema";
 import { db } from "@/lib/db/postgres";
-import { requireEnvironmentVariable } from "@/lib/env";
+
+function requireEnvironmentVariable(name: string) {
+  const value = process.env[name];
+
+  if (value === undefined || value.length === 0) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+
+  return value;
+}
 
 const seedAdminEmail = requireEnvironmentVariable("SEED_ADMIN_EMAIL");
 const seedAdminPassword = requireEnvironmentVariable("SEED_ADMIN_PASSWORD");
