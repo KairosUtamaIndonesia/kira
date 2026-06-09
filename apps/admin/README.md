@@ -1,20 +1,32 @@
-# Next.js template
+# Kira Admin
 
-This is a Next.js template with shadcn/ui.
+Hosted admin panel and API, built with TanStack Start (TanStack Router + Vite +
+Nitro) running in **SPA mode** (client-rendered; server functions and server
+routes still execute on the Nitro server).
 
-## Adding components
-
-To add components to your app, run the following command:
+## Develop
 
 ```bash
-npx shadcn@latest add button
+bun run dev:admin
 ```
 
-This will place the ui components in the `components` directory.
+This runs `portless admin.kira vite dev` and serves the app at
+`https://admin.kira.localhost`.
 
-## Using components
+## Routing
 
-To use the components in your app, import them as follows:
+File-based routes live in `app/`. The `_admin` pathless layout route guards
+authenticated admin pages (`beforeLoad` runs on the client). Data is loaded in
+route `loader`s via `createServerFn`; mutations are server functions called as
+`fn({ data })` and the client calls `router.invalidate()` after success.
+
+## Adding shadcn/ui components
+
+```bash
+bunx shadcn@latest add button
+```
+
+Components land in `components/`. Import with the `@/*` alias:
 
 ```tsx
 import { Button } from "@/components/ui/button";

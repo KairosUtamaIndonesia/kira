@@ -1,7 +1,4 @@
-"use client";
-
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { Link, useLocation } from "@tanstack/react-router";
 import { useMemo } from "react";
 
 import type { Organization } from "@/features/organizations/types";
@@ -15,21 +12,19 @@ type OrganizationHeaderProperties = {
 };
 
 function OrganizationHeader({ organization }: OrganizationHeaderProperties) {
-  const pathname = usePathname();
+  const pathname = useLocation({ select: (location) => location.pathname });
 
-  const activeTab = organizationNavigation.find((item) => {
-    const tabHref =
-      item.href.length === 0
-        ? `/organizations/${organization.id}`
-        : `/organizations/${organization.id}/${item.href}`;
-    return pathname === tabHref;
-  });
+  const activeTab = organizationNavigation.find(
+    (item) => pathname === item.to.replace("$organizationId", organization.id),
+  );
 
   const breadcrumbItems = useMemo(
     () => [
       { label: "Organizations", href: "/organizations" },
       { label: organization.name, href: `/organizations/${organization.id}` },
-      ...(activeTab !== undefined && activeTab.href.length > 0 ? [{ label: activeTab.label }] : []),
+      ...(activeTab !== undefined && activeTab.to !== "/organizations/$organizationId"
+        ? [{ label: activeTab.label }]
+        : []),
     ],
     [activeTab, organization.id, organization.name],
   );
@@ -48,15 +43,12 @@ function OrganizationHeader({ organization }: OrganizationHeaderProperties) {
         <nav aria-label="Organization sections" className="flex flex-wrap gap-2">
           {organizationNavigation.map((item) => {
             const Icon = item.icon;
-            const href =
-              item.href.length === 0
-                ? `/organizations/${organization.id}`
-                : `/organizations/${organization.id}/${item.href}`;
-            const isActive = pathname === href;
+            const isActive = pathname === item.to.replace("$organizationId", organization.id);
             return (
               <Link
-                key={item.label}
-                href={href}
+                key={item.to}
+                to={item.to}
+                params={{ organizationId: organization.id }}
                 className={cn(
                   "inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
                   isActive

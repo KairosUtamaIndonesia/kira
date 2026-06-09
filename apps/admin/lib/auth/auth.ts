@@ -2,7 +2,6 @@ import { apiKey } from "@better-auth/api-key";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { sso } from "@better-auth/sso";
 import { betterAuth } from "better-auth";
-import { nextCookies } from "better-auth/next-js";
 import { admin, organization } from "better-auth/plugins";
 
 import * as authSchema from "@/lib/db/auth-schema";
@@ -61,7 +60,6 @@ const auth = betterAuth({
         defaultRole: "member",
       },
     }),
-    nextCookies(),
   ],
 });
 

@@ -1,6 +1,4 @@
-"use client";
-
-import { useRouter } from "next/navigation";
+import { useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -19,8 +17,8 @@ function SignOutButton() {
       onClick={async () => {
         setIsSigningOut(true);
         await authClient.signOut();
-        router.replace("/sign-in");
-        router.refresh();
+        await router.invalidate();
+        await router.navigate({ to: "/sign-in", replace: true });
       }}
     >
       {isSigningOut ? "Signing out…" : "Sign out"}

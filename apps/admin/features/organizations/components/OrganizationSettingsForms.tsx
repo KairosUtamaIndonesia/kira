@@ -1,6 +1,5 @@
-"use client";
-
 import { useForm } from "@tanstack/react-form";
+import { useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 
 import type { CreateOrganizationResult } from "@/features/organizations/actions/types";
@@ -75,6 +74,7 @@ function ActiveOrganizationForm({
   isCurrentActiveOrganization,
 }: ActiveOrganizationFormProperties) {
   const [result, setResult] = useState<CreateOrganizationResult>(emptyResult);
+  const router = useRouter();
 
   return (
     <section className="rounded-xl border border-border bg-card p-4 text-card-foreground">
@@ -90,7 +90,14 @@ function ActiveOrganizationForm({
           variant={isCurrentActiveOrganization ? "secondary" : "default"}
           disabled={isCurrentActiveOrganization}
           onClick={async () => {
-            setResult(await setActiveOrganizationAction({ organizationId: organization.id }));
+            const actionResult = await setActiveOrganizationAction({
+              data: { organizationId: organization.id },
+            });
+            setResult(actionResult);
+
+            if (actionResult.status === "success") {
+              await router.invalidate();
+            }
           }}
         >
           {isCurrentActiveOrganization ? "Currently active" : "Set active"}
@@ -117,6 +124,7 @@ type SingleSignOnFormProperties = OrganizationFormProperties & {
 
 function SingleSignOnForm({ organization, ssoConnection }: SingleSignOnFormProperties) {
   const [result, setResult] = useState<SsoActionResult>(emptySsoResult);
+  const router = useRouter();
   const form = useForm({
     defaultValues: {
       organizationId: organization.id,
@@ -126,7 +134,14 @@ function SingleSignOnForm({ organization, ssoConnection }: SingleSignOnFormPrope
       clientId: "",
       clientSecret: "",
     },
-    onSubmit: async ({ value }) => setResult(await registerAzureSsoProviderAction(value)),
+    onSubmit: async ({ value }) => {
+      const actionResult = await registerAzureSsoProviderAction({ data: value });
+      setResult(actionResult);
+
+      if (actionResult.status === "success") {
+        await router.invalidate();
+      }
+    },
   });
 
   if (ssoConnection !== undefined) {
@@ -178,12 +193,17 @@ function SingleSignOnForm({ organization, ssoConnection }: SingleSignOnFormPrope
             variant="secondary"
             disabled={ssoConnection.domainVerified}
             onClick={async () => {
-              setResult(
-                await verifySsoDomainAction({
+              const actionResult = await verifySsoDomainAction({
+                data: {
                   organizationId: organization.id,
                   providerId: ssoConnection.providerId,
-                }),
-              );
+                },
+              });
+              setResult(actionResult);
+
+              if (actionResult.status === "success") {
+                await router.invalidate();
+              }
             }}
           >
             {ssoConnection.domainVerified ? "Domain verified" : "Verify domain"}
@@ -193,12 +213,17 @@ function SingleSignOnForm({ organization, ssoConnection }: SingleSignOnFormPrope
               type="button"
               variant="outline"
               onClick={async () => {
-                setResult(
-                  await requestSsoDomainVerificationAction({
+                const actionResult = await requestSsoDomainVerificationAction({
+                  data: {
                     organizationId: organization.id,
                     providerId: ssoConnection.providerId,
-                  }),
-                );
+                  },
+                });
+                setResult(actionResult);
+
+                if (actionResult.status === "success") {
+                  await router.invalidate();
+                }
               }}
             >
               Request TXT record
@@ -351,10 +376,18 @@ function DomainVerificationRecord({ record }: DomainVerificationRecordProperties
 
 function RenameOrganizationForm({ organization }: OrganizationFormProperties) {
   const [result, setResult] = useState<CreateOrganizationResult>(emptyResult);
+  const router = useRouter();
   const form = useForm({
     defaultValues: { organizationId: organization.id, name: organization.name },
     validators: { onSubmit: renameOrganizationSchema },
-    onSubmit: async ({ value }) => setResult(await renameOrganizationAction(value)),
+    onSubmit: async ({ value }) => {
+      const actionResult = await renameOrganizationAction({ data: value });
+      setResult(actionResult);
+
+      if (actionResult.status === "success") {
+        await router.invalidate();
+      }
+    },
   });
 
   return (
@@ -425,7 +458,7 @@ function DeleteOrganizationForm({ organization }: OrganizationFormProperties) {
   const form = useForm({
     defaultValues: { organizationId: organization.id, confirmationName: "" },
     validators: { onSubmit: deleteOrganizationSchema },
-    onSubmit: async ({ value }) => setResult(await deleteOrganizationAction(value)),
+    onSubmit: async ({ value }) => setResult(await deleteOrganizationAction({ data: value })),
   });
 
   return (

@@ -1,8 +1,6 @@
-"use server";
-
+import { createServerFn } from "@tanstack/react-start";
+import { getRequest } from "@tanstack/react-start/server";
 import { eq } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
-import { headers } from "next/headers";
 
 import type { CreateOrganizationResult } from "@/features/organizations/actions/types";
 import type { CreateOrganizationInput } from "@/features/organizations/validation/createOrganization";
@@ -27,59 +25,57 @@ async function ensureOrganizationSlugAvailable(slug: string) {
   }
 }
 
-async function createOrganizationAction(
-  input: CreateOrganizationInput,
-): Promise<CreateOrganizationResult> {
-  const requestHeaders = await headers();
-  const session = await auth.api.getSession({ headers: requestHeaders });
+const createOrganizationAction = createServerFn({ method: "POST" })
+  .validator((input: CreateOrganizationInput) => input)
+  .handler(async ({ data: input }): Promise<CreateOrganizationResult> => {
+    const requestHeaders = getRequest().headers;
+    const session = await auth.api.getSession({ headers: requestHeaders });
 
-  if (session === null) {
-    return {
-      status: "error",
-      message: "Sign in before creating an organization.",
-    };
-  }
-
-  if (session.user.role !== "admin") {
-    return {
-      status: "error",
-      message: "Only platform admins can create organizations.",
-    };
-  }
-
-  try {
-    const parsedInput = createOrganizationSchema.parse(input);
-    const slug = createOrganizationSlug(parsedInput.name);
-    await ensureOrganizationSlugAvailable(slug);
-
-    await auth.api.createOrganization({
-      headers: requestHeaders,
-      body: {
-        name: parsedInput.name,
-        slug,
-        keepCurrentActiveOrganization: true,
-      },
-    });
-
-    revalidatePath("/organizations");
-
-    return {
-      status: "success",
-      message: `Created ${parsedInput.name}.`,
-    };
-  } catch (error) {
-    if (error instanceof Error) {
+    if (session === null) {
       return {
         status: "error",
-        message: error.message,
+        message: "Sign in before creating an organization.",
       };
     }
 
-    return {
-      status: "error",
-      message: "Organization could not be created.",
-    };
-  }
-}
+    if (session.user.role !== "admin") {
+      return {
+        status: "error",
+        message: "Only platform admins can create organizations.",
+      };
+    }
+
+    try {
+      const parsedInput = createOrganizationSchema.parse(input);
+      const slug = createOrganizationSlug(parsedInput.name);
+      await ensureOrganizationSlugAvailable(slug);
+
+      await auth.api.createOrganization({
+        headers: requestHeaders,
+        body: {
+          name: parsedInput.name,
+          slug,
+          keepCurrentActiveOrganization: true,
+        },
+      });
+
+      return {
+        status: "success",
+        message: `Created ${parsedInput.name}.`,
+      };
+    } catch (error) {
+      if (error instanceof Error) {
+        return {
+          status: "error",
+          message: error.message,
+        };
+      }
+
+      return {
+        status: "error",
+        message: "Organization could not be created.",
+      };
+    }
+  });
 
 export { createOrganizationAction };

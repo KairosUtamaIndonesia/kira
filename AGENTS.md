@@ -19,7 +19,7 @@
 Kira v3 is a Bun/Turborepo monorepo.
 
 - Desktop app: `apps/desktop/` — Tauri 2 app with a Vite React frontend and Rust backend.
-- Admin app: `apps/admin/` — hosted Next.js admin panel/API.
+- Admin app: `apps/admin/` — hosted TanStack Start (SPA) admin panel/API.
 - Shared TypeScript configs: `packages/tsconfig/`.
 
 Desktop paths:
@@ -138,7 +138,7 @@ bun run check
 Do not edit generated or build output unless explicitly asked.
 
 - `dist/`
-- `.next/`
+- `.output/`
 - `node_modules/`
 - `apps/desktop/src-tauri/target/`
 - `apps/desktop/src-tauri/gen/`

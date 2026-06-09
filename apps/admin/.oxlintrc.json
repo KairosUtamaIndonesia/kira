@@ -5,7 +5,6 @@
     "react",
     "react-hooks",
     "jsx-a11y",
-    "nextjs",
     "import",
     "promise",
     "unicorn",
@@ -69,5 +68,5 @@
       "version": "19.2"
     }
   },
-  "ignorePatterns": [".next", "node_modules", "next-env.d.ts"]
+  "ignorePatterns": [".output", ".nitro", "node_modules", "routeTree.gen.ts", "dist"]
 }

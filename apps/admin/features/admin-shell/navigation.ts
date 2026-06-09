@@ -10,73 +10,92 @@ import {
   Users,
 } from "lucide-react";
 
-type NavigationItem = {
-  href: string;
+type PrimaryNavigationRoute = "/dashboard" | "/organizations" | "/users" | "/settings";
+
+type OrganizationNavigationRoute =
+  | "/organizations/$organizationId"
+  | "/organizations/$organizationId/members"
+  | "/organizations/$organizationId/api-keys"
+  | "/organizations/$organizationId/models"
+  | "/organizations/$organizationId/access-control"
+  | "/organizations/$organizationId/settings";
+
+type NavigationIcon = ComponentType<SVGProps<SVGSVGElement>>;
+
+type PrimaryNavigationItem = {
+  to: PrimaryNavigationRoute;
   label: string;
   description: string;
-  icon: ComponentType<SVGProps<SVGSVGElement>>;
+  icon: NavigationIcon;
 };
 
-const primaryNavigation: NavigationItem[] = [
+type OrganizationNavigationItem = {
+  to: OrganizationNavigationRoute;
+  label: string;
+  description: string;
+  icon: NavigationIcon;
+};
+
+const primaryNavigation: PrimaryNavigationItem[] = [
   {
-    href: "/dashboard",
+    to: "/dashboard",
     label: "Dashboard",
     description: "SaaS operations overview",
     icon: LayoutDashboard,
   },
   {
-    href: "/organizations",
+    to: "/organizations",
     label: "Organizations",
     description: "Manage customer workspaces",
     icon: Building2,
   },
   {
-    href: "/users",
+    to: "/users",
     label: "Users",
     description: "Manage platform accounts",
     icon: Users,
   },
   {
-    href: "/settings",
+    to: "/settings",
     label: "Settings",
     description: "Admin configuration",
     icon: Settings,
   },
 ];
 
-const organizationNavigation: NavigationItem[] = [
+const organizationNavigation: OrganizationNavigationItem[] = [
   {
-    href: "",
+    to: "/organizations/$organizationId",
     label: "Overview",
     description: "Organization summary",
     icon: Building2,
   },
   {
-    href: "members",
+    to: "/organizations/$organizationId/members",
     label: "Members",
     description: "Organization users and roles",
     icon: Users,
   },
   {
-    href: "api-keys",
+    to: "/organizations/$organizationId/api-keys",
     label: "API Keys",
     description: "Desktop access credentials",
     icon: KeyRound,
   },
   {
-    href: "models",
+    to: "/organizations/$organizationId/models",
     label: "Models",
     description: "Organization AI models",
     icon: BrainCircuit,
   },
   {
-    href: "access-control",
+    to: "/organizations/$organizationId/access-control",
     label: "Access Control",
     description: "Role permissions",
     icon: ShieldCheck,
   },
   {
-    href: "settings",
+    to: "/organizations/$organizationId/settings",
     label: "Settings",
     description: "Organization settings",
     icon: Settings,
@@ -84,4 +103,4 @@ const organizationNavigation: NavigationItem[] = [
 ];
 
 export { organizationNavigation, primaryNavigation };
-export type { NavigationItem };
+export type { OrganizationNavigationItem, PrimaryNavigationItem };

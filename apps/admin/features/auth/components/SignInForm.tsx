@@ -1,7 +1,5 @@
-"use client";
-
+import { useRouter } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -55,7 +53,7 @@ function SignInForm({ invitationId, invitationContext }: SignInFormProperties) {
       }
 
       setIsSubmitting(true);
-      const verificationResult = await verifyInvitedEmailAction(pendingInvitationId);
+      const verificationResult = await verifyInvitedEmailAction({ data: pendingInvitationId });
 
       if (cancelled) {
         return;
@@ -83,8 +81,8 @@ function SignInForm({ invitationId, invitationContext }: SignInFormProperties) {
         return;
       }
 
-      router.replace("/invitation-accepted");
-      router.refresh();
+      await router.navigate({ to: "/invitation-accepted", replace: true });
+      await router.invalidate();
     }
 
     void acceptSsoInvitation();
@@ -153,7 +151,7 @@ function SignInForm({ invitationId, invitationContext }: SignInFormProperties) {
     }
 
     if (invitationId !== undefined) {
-      const verificationResult = await verifyInvitedEmailAction(invitationId);
+      const verificationResult = await verifyInvitedEmailAction({ data: invitationId });
 
       if (verificationResult.status === "error") {
         setIsSubmitting(false);
@@ -175,13 +173,13 @@ function SignInForm({ invitationId, invitationContext }: SignInFormProperties) {
     }
 
     if (result.data.user.role === "admin") {
-      router.replace("/dashboard");
-      router.refresh();
+      await router.navigate({ to: "/dashboard", replace: true });
+      await router.invalidate();
       return;
     }
 
-    router.replace("/invitation-accepted");
-    router.refresh();
+    await router.navigate({ to: "/invitation-accepted", replace: true });
+    await router.invalidate();
   }
 
   if (ssoOnlyInvite && invitationContext !== undefined) {
