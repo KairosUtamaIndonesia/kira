@@ -33,8 +33,6 @@ export function readPersistenceBridgeToken(): string {
   return readRequiredEnv("KIRA_AGENT_PERSISTENCE_BRIDGE_TOKEN");
 }
 
-export { KIRA_AGENT_MODEL, KIRA_AGENT_PROVIDER_BASE_URL, KIRA_AGENT_PROVIDER_ID } from "./model";
-
 export function readAgentProviderApiKey(): string | undefined {
   return readOptionalEnv("KIRA_AGENT_PROVIDER_API_KEY");
 }

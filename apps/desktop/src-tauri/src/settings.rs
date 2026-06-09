@@ -669,7 +669,7 @@ fn path_to_string(path: &Path) -> Result<String, SettingsError> {
     })
 }
 
-async fn app_setting_value(pool: &SqlitePool, key: &str) -> Result<Option<String>, String> {
+pub async fn app_setting_value(pool: &SqlitePool, key: &str) -> Result<Option<String>, String> {
     sqlx::query_scalar::<_, String>("SELECT value FROM app_settings WHERE key = ?")
         .bind(key)
         .fetch_optional(pool)
@@ -677,7 +677,7 @@ async fn app_setting_value(pool: &SqlitePool, key: &str) -> Result<Option<String
         .map_err(|error| error.to_string())
 }
 
-async fn upsert_app_setting(pool: &SqlitePool, key: &str, value: &str) -> Result<(), String> {
+pub async fn upsert_app_setting(pool: &SqlitePool, key: &str, value: &str) -> Result<(), String> {
     sqlx::query(
         "INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
     )
@@ -690,7 +690,7 @@ async fn upsert_app_setting(pool: &SqlitePool, key: &str, value: &str) -> Result
     Ok(())
 }
 
-async fn upsert_app_setting_in_transaction(
+pub async fn upsert_app_setting_in_transaction(
     transaction: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     key: &str,
     value: &str,

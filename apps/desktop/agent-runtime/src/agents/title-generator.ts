@@ -1,6 +1,6 @@
 import { createAgent, defineAgentProfile, type AgentWebSocketHandler } from "@flue/runtime";
 
-import { KIRA_AGENT_MODEL } from "../kira/env";
+import { getDefaultModel } from "../kira/model-catalog";
 
 export const websocket: AgentWebSocketHandler = async (_context, next) => next();
 
@@ -15,5 +15,5 @@ const titleGeneratorAgent = defineAgentProfile({
 
 export default createAgent(() => ({
   profile: titleGeneratorAgent,
-  model: KIRA_AGENT_MODEL,
+  model: getDefaultModel().upstreamModelId,
 }));

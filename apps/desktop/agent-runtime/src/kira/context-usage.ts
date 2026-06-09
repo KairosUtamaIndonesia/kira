@@ -1,6 +1,6 @@
 import type { PromptUsage, SessionData } from "@flue/runtime";
 
-import { KIRA_AGENT_CONTEXT_WINDOW, KIRA_AGENT_MAX_OUTPUT_TOKENS, KIRA_AGENT_MODEL } from "./model";
+import { getDefaultModel } from "./model-catalog";
 
 type SessionEntry = SessionData["entries"][number];
 type MessageEntry = Extract<SessionEntry, { type: "message" }>;
@@ -45,11 +45,13 @@ function agentThreadContextUsageFromSessionData(sessionData: SessionData): Agent
   const inputTokens =
     latestUsage === undefined ? estimate.usedTokens : latestUsage.input + estimate.trailingTokens;
 
+  const defaultModel = getDefaultModel();
+
   return {
     usedTokens: estimate.usedTokens,
-    contextWindow: KIRA_AGENT_CONTEXT_WINDOW,
-    maxOutputTokens: KIRA_AGENT_MAX_OUTPUT_TOKENS,
-    modelId: KIRA_AGENT_MODEL,
+    contextWindow: defaultModel.contextWindow,
+    maxOutputTokens: defaultModel.maxOutputTokens,
+    modelId: defaultModel.upstreamModelId,
     usage: {
       inputTokens,
       outputTokens: latestUsage === undefined ? 0 : latestUsage.output,

@@ -2,9 +2,10 @@ import { createAgent, defineAgentProfile, type AgentWebSocketHandler } from "@fl
 
 import { requireAgentThreadContext } from "../kira/agent-thread-context";
 import { bundledSkills } from "../kira/bundled-skills";
-import { KIRA_AGENT_MODEL } from "../kira/env";
 import { createKiraLocalSandbox } from "../kira/local-sandbox";
+import { getDefaultModel } from "../kira/model-catalog";
 import { createKiraSessionStore } from "../kira/session-store";
+import { createAskUserTool } from "../kira/tools/ask-user-tool";
 
 export const websocket: AgentWebSocketHandler = async (_context, next) => next();
 
@@ -21,9 +22,10 @@ export default createAgent(({ id }) => {
 
   return {
     profile: codingAgent,
-    model: KIRA_AGENT_MODEL,
+    model: getDefaultModel().upstreamModelId,
     skills: [...bundledSkills],
     sandbox: createKiraLocalSandbox(context.projectPath),
     persist: createKiraSessionStore(context),
+    tools: [createAskUserTool(context.threadId)],
   };
 });
