@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   CreatedProject,
   CreateAgentThreadPanelInput,
+  CreateBrowserPanelInput,
   CreateProjectInput,
   CreateTerminalPanelInput,
   DeleteTerminalSnapshotInput,
@@ -23,6 +24,7 @@ import type {
   TerminalSnapshot,
   UpdateSessionLayoutInput,
   WorkspacePanel,
+  UpdateBrowserPanelUrlInput,
 } from "../types";
 
 function listProjects() {
@@ -55,6 +57,14 @@ function createTerminalPanel(input: CreateTerminalPanelInput) {
 
 function createAgentThreadPanel(input: CreateAgentThreadPanelInput) {
   return invoke<WorkspacePanel>("workspace_agent_thread_panel_create", { input });
+}
+
+function createBrowserPanel(input: CreateBrowserPanelInput) {
+  return invoke<WorkspacePanel>("workspace_browser_panel_create", { input });
+}
+
+function updateBrowserPanelUrl(input: UpdateBrowserPanelUrlInput) {
+  return invoke<void>("workspace_browser_panel_url_update", { input });
 }
 
 function openSourceControlDiffPanel(input: OpenSourceControlDiffPanelInput) {
@@ -99,6 +109,7 @@ function updateSessionLayout(input: UpdateSessionLayoutInput) {
 
 export {
   createAgentThreadPanel,
+  createBrowserPanel,
   createProject,
   createTerminalPanel,
   deleteTerminalSnapshot,
@@ -115,5 +126,6 @@ export {
   renameProject,
   renameWorkspacePanel,
   saveTerminalSnapshot,
+  updateBrowserPanelUrl,
   updateSessionLayout,
 };

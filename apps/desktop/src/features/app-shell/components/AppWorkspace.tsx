@@ -14,6 +14,7 @@ import {
   MoreHorizontal,
   PanelBottom,
   PanelRight,
+  Globe,
   PenLine,
   Plus,
   Terminal as TerminalIcon,
@@ -59,9 +60,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { AgentThreadPanel, type AgentThreadPanelParams } from "@/features/agent-thread";
 import { useAgentThreadTitleGenerationState } from "@/features/agent-thread/agentThreadStatusStore";
+import { BrowserPanel, type BrowserPanelParams } from "@/features/browser";
+import { closeBrowserPanel, closeOrphanBrowserPanels } from "@/features/browser/api/browserApi";
 import { FileEditorPanel, type FileEditorPanelParams } from "@/features/editor";
 import {
   createAgentThreadPanel,
+  createBrowserPanel,
   createTerminalPanel,
   deleteTerminalSnapshot,
   deleteWorkspacePanel,
@@ -153,6 +157,19 @@ function WorkspaceHeaderActions({ containerApi, group }: IDockviewHeaderActionsP
           >
             <TerminalIcon className="size-4 text-muted-foreground" />
             <span>New Terminal</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() =>
+              void addBrowserPanel({
+                containerApi,
+                group,
+                onPanelCreated,
+                sessionId,
+              })
+            }
+          >
+            <Globe className="size-4 text-muted-foreground" />
+            <span>New Browser</span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -647,6 +664,14 @@ function requireAgentThreadState(panel: StoredWorkspacePanel) {
   return panel.agentThreadState;
 }
 
+function requireBrowserState(panel: StoredWorkspacePanel) {
+  if (panel.kind !== "browser") {
+    throw new Error(`Workspace panel ${panel.id} is not a browser panel.`);
+  }
+
+  return panel.browserState;
+}
+
 function useWorkspaceRuntimeContext() {
   const context = useContext(WorkspaceRuntimeContext);
   if (context === undefined) {
@@ -716,6 +741,36 @@ async function addAgentThreadPanel({
       threadId: agentThreadState.threadId,
       panelId: panel.id,
       title: panel.title,
+    },
+    position: {
+      referenceGroup: group,
+      direction: "within",
+    },
+  });
+  removeEmptyWorkspacePanel(containerApi);
+  await persistWorkspaceLayout(containerApi, sessionId);
+}
+
+async function addBrowserPanel({
+  containerApi,
+  group,
+  onPanelCreated,
+  sessionId,
+}: Omit<AddPanelActionInput, "projectId" | "workingDirectory">) {
+  const panel = await createBrowserPanel({
+    sessionId,
+    title: "Browser",
+    url: "https://example.com",
+  });
+  const browserState = requireBrowserState(panel);
+  onPanelCreated(panel);
+  containerApi.addPanel<BrowserPanelParams>({
+    id: panel.id,
+    component: "browserPanel",
+    title: panel.title,
+    params: {
+      panelId: panel.id,
+      url: browserState.url,
     },
     position: {
       referenceGroup: group,
@@ -810,6 +865,18 @@ function createStoredPanelState(panel: StoredWorkspacePanel, projectId: string, 
         },
       };
     }
+    case "browser": {
+      const browserState = requireBrowserState(panel);
+      return {
+        id: panel.id,
+        contentComponent: "browserPanel",
+        title: panel.title,
+        params: {
+          panelId: panel.id,
+          url: browserState.url,
+        },
+      };
+    }
   }
 }
 
@@ -852,6 +919,10 @@ function restoreWorkspacePanels(
   deletedPanelIdsRef: RefObject<Set<string>>,
 ) {
   preventHeaderSpaceDrag(event);
+
+  void closeOrphanBrowserPanels(
+    activeWorkspace.panels.filter((panel) => panel.kind === "browser").map((panel) => panel.id),
+  );
 
   if (activeWorkspace.panels.length === 0) {
     addEmptyWorkspacePanel(event.api);
@@ -902,6 +973,9 @@ function restoreWorkspacePanels(
       addEmptyWorkspacePanelWhenWorkspaceHasNoVisiblePanels(event);
       void saveWorkspaceLayoutIfActive(activeWorkspace.session.id, event, isWorkspaceDisposingRef);
       return;
+    }
+    if (storedPanel.kind === "browser") {
+      void closeBrowserPanel(panel.id);
     }
 
     if (storedPanel.kind === "terminal") {
@@ -1079,6 +1153,19 @@ function restoreWorkspacePanel(
       });
       return;
     }
+    case "browser": {
+      const browserState = requireBrowserState(panel);
+      event.api.addPanel<BrowserPanelParams>({
+        id: panel.id,
+        component: "browserPanel",
+        title: panel.title,
+        params: {
+          panelId: panel.id,
+          url: browserState.url,
+        },
+      });
+      return;
+    }
   }
 }
 
@@ -1162,6 +1249,7 @@ function ActiveWorkspaceDockview({
       sourceControlDiffPanel: SourceControlDiffPanel,
       fileEditorPanel: FileEditorPanel,
       agentThreadPanel: AgentThreadPanelWrapper,
+      browserPanel: BrowserPanel,
     }),
     [],
   );

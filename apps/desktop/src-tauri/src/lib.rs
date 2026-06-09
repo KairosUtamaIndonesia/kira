@@ -8,6 +8,7 @@
 #![warn(clippy::pedantic)]
 
 mod agent_runtime;
+mod browser;
 mod editor;
 mod explorer;
 mod org_config;
@@ -108,7 +109,18 @@ pub fn run() -> tauri::Result<()> {
             skills::skills_list,
             source_control::source_control_status,
             source_control::source_control_unstage_path,
-            source_control::source_control_unstage_paths
+            source_control::source_control_unstage_paths,
+            projects::workspace_browser_panel_create,
+            projects::workspace_browser_panel_url_update,
+            browser::browser_panel_open,
+            browser::browser_panel_set_bounds,
+            browser::browser_panel_hide,
+            browser::browser_panel_navigate,
+            browser::browser_panel_reload,
+            browser::browser_panel_go_back,
+            browser::browser_panel_go_forward,
+            browser::browser_panel_close,
+            browser::browser_close_orphans
         ])
         .run(tauri::generate_context!())
 }

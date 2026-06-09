@@ -12,6 +12,7 @@ import type { GitStatusEntry } from "@/features/source-control/types";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { toast } from "@/components/ui/sonner";
 import { startAgentRuntime } from "@/features/agent-thread/api/agentRuntimeApi";
+import { BrowserOverlayGate } from "@/features/browser/components/BrowserOverlayGate";
 import {
   deleteWorkspacePanel,
   openFileEditorPanel,
@@ -542,6 +543,7 @@ function AppShell() {
         </ResizablePanel>
       </ResizablePanelGroup>
       <AppStatusBar activeWorkspace={activeWorkspace} />
+      <BrowserOverlayGate />
       {settingsSurfaceState === "closed" ? undefined : (
         <SettingsPage
           state={settingsSurfaceState}
