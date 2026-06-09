@@ -6,7 +6,7 @@ Kira v3 is a Bun/Turborepo monorepo containing the Kira desktop app and the host
 
 ```txt
 apps/
-  admin/                    Next.js hosted admin panel and API
+  admin/                    TanStack Start hosted admin panel and API
   desktop/                  Tauri 2 desktop app with Vite, React, and Rust
     agent-runtime/          Bun/TypeScript Pi SDK runtime managed by desktop
 packages/

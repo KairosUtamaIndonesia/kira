@@ -1,6 +1,5 @@
-"use client";
-
 import { useForm } from "@tanstack/react-form";
+import { useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 
 import type { CreateOrganizationResult } from "@/features/organizations/actions/types";
@@ -17,6 +16,7 @@ const initialResult: CreateOrganizationResult = {
 };
 
 function CreateOrganizationForm() {
+  const router = useRouter();
   const [result, setResult] = useState<CreateOrganizationResult>(initialResult);
   const form = useForm({
     defaultValues: {
@@ -26,11 +26,12 @@ function CreateOrganizationForm() {
       onSubmit: createOrganizationSchema,
     },
     onSubmit: async ({ value }) => {
-      const actionResult = await createOrganizationAction(value);
+      const actionResult = await createOrganizationAction({ data: value });
       setResult(actionResult);
 
       if (actionResult.status === "success") {
         form.reset();
+        await router.invalidate();
       }
     },
   });

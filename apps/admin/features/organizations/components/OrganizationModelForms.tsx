@@ -1,6 +1,5 @@
-"use client";
-
 import { useForm } from "@tanstack/react-form";
+import { useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 
 import type { CreateOrganizationResult } from "@/features/organizations/actions/types";
@@ -87,6 +86,7 @@ type ModelFormProperties = {
 };
 
 function ModelForm({ organizationId, model, onDone }: ModelFormProperties) {
+  const router = useRouter();
   const [result, setResult] = useState<CreateOrganizationResult>(emptyResult);
   const defaultValues: ModelFormValues =
     model === undefined
@@ -107,8 +107,10 @@ function ModelForm({ organizationId, model, onDone }: ModelFormProperties) {
     onSubmit: async ({ value }) => {
       const actionResult =
         model === undefined
-          ? await createOrganizationModelAction({ organizationId, ...value })
-          : await updateOrganizationModelAction({ organizationId, modelId: model.id, ...value });
+          ? await createOrganizationModelAction({ data: { organizationId, ...value } })
+          : await updateOrganizationModelAction({
+              data: { organizationId, modelId: model.id, ...value },
+            });
       setResult(actionResult);
 
       if (actionResult.status === "success") {
@@ -119,6 +121,8 @@ function ModelForm({ organizationId, model, onDone }: ModelFormProperties) {
         if (onDone !== undefined) {
           onDone();
         }
+
+        await router.invalidate();
       }
     },
   });
@@ -271,6 +275,7 @@ type ModelActionsProperties = {
 };
 
 function ModelActions({ model }: ModelActionsProperties) {
+  const router = useRouter();
   const [result, setResult] = useState<CreateOrganizationResult>(emptyResult);
   const [isEditing, setIsEditing] = useState(false);
 
@@ -282,12 +287,17 @@ function ModelActions({ model }: ModelActionsProperties) {
             type="button"
             variant="outline"
             onClick={async () => {
-              setResult(
-                await setDefaultOrganizationModelAction({
+              const actionResult = await setDefaultOrganizationModelAction({
+                data: {
                   organizationId: model.organizationId,
                   modelId: model.id,
-                }),
-              );
+                },
+              });
+              setResult(actionResult);
+
+              if (actionResult.status === "success") {
+                await router.invalidate();
+              }
             }}
           >
             Set default
@@ -300,12 +310,17 @@ function ModelActions({ model }: ModelActionsProperties) {
           type="button"
           variant="destructive"
           onClick={async () => {
-            setResult(
-              await deleteOrganizationModelAction({
+            const actionResult = await deleteOrganizationModelAction({
+              data: {
                 organizationId: model.organizationId,
                 modelId: model.id,
-              }),
-            );
+              },
+            });
+            setResult(actionResult);
+
+            if (actionResult.status === "success") {
+              await router.invalidate();
+            }
           }}
         >
           Delete

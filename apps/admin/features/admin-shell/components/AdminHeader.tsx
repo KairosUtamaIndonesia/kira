@@ -1,8 +1,5 @@
-"use client";
-
+import { Link, useLocation } from "@tanstack/react-router";
 import { Circle } from "lucide-react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
 
 import {
   Breadcrumb,
@@ -39,7 +36,7 @@ function getDefaultBreadcrumbs(pathname: string) {
 }
 
 function AdminHeader() {
-  const pathname = usePathname();
+  const pathname = useLocation({ select: (location) => location.pathname });
   const { items } = useAdminBreadcrumbs();
   const breadcrumbs = items !== undefined ? items : getDefaultBreadcrumbs(pathname);
 
@@ -48,7 +45,7 @@ function AdminHeader() {
       <div className="flex h-14 items-center justify-between gap-3 px-4 md:px-6">
         <div className="flex min-w-0 items-center gap-3">
           <SidebarTrigger />
-          <Link href="/dashboard" className="font-semibold tracking-tight lg:hidden">
+          <Link to="/dashboard" className="font-semibold tracking-tight lg:hidden">
             Kira Admin
           </Link>
           <Breadcrumb className="hidden min-w-0 md:block">
@@ -62,9 +59,7 @@ function AdminHeader() {
                     {isLast || item.href === undefined ? (
                       <BreadcrumbPage>{item.label}</BreadcrumbPage>
                     ) : (
-                      <BreadcrumbLink render={<Link href={item.href} />}>
-                        {item.label}
-                      </BreadcrumbLink>
+                      <BreadcrumbLink render={<Link to={item.href} />}>{item.label}</BreadcrumbLink>
                     )}
                   </BreadcrumbItem>
                 );

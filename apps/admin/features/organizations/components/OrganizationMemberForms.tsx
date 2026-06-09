@@ -1,6 +1,5 @@
-"use client";
-
 import { useForm } from "@tanstack/react-form";
+import { useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 
 import type { CreateOrganizationResult } from "@/features/organizations/actions/types";
@@ -46,16 +45,18 @@ type InviteMemberFormProperties = {
 };
 
 function InviteMemberForm({ organizationId }: InviteMemberFormProperties) {
+  const router = useRouter();
   const [result, setResult] = useState<CreateOrganizationResult>(emptyResult);
   const form = useForm({
     defaultValues: { organizationId, email: "", role: "member" as OrganizationRoleValue },
     validators: { onSubmit: inviteMemberSchema },
     onSubmit: async ({ value }) => {
-      const actionResult = await inviteMemberAction(value);
+      const actionResult = await inviteMemberAction({ data: value });
       setResult(actionResult);
 
       if (actionResult.status === "success") {
         form.reset();
+        await router.invalidate();
       }
     },
   });
@@ -155,6 +156,7 @@ type MemberActionsProperties = {
 };
 
 function MemberActions({ member }: MemberActionsProperties) {
+  const router = useRouter();
   const [result, setResult] = useState<CreateOrganizationResult>(emptyResult);
   const form = useForm({
     defaultValues: {
@@ -163,7 +165,14 @@ function MemberActions({ member }: MemberActionsProperties) {
       role: memberRoleValue(member.role),
     },
     validators: { onSubmit: updateMemberRoleSchema },
-    onSubmit: async ({ value }) => setResult(await updateMemberRoleAction(value)),
+    onSubmit: async ({ value }) => {
+      const actionResult = await updateMemberRoleAction({ data: value });
+      setResult(actionResult);
+
+      if (actionResult.status === "success") {
+        await router.invalidate();
+      }
+    },
   });
 
   return (
@@ -205,12 +214,17 @@ function MemberActions({ member }: MemberActionsProperties) {
         type="button"
         variant="destructive"
         onClick={async () => {
-          setResult(
-            await removeMemberAction({
+          const actionResult = await removeMemberAction({
+            data: {
               organizationId: member.organizationId,
               memberId: member.id,
-            }),
-          );
+            },
+          });
+          setResult(actionResult);
+
+          if (actionResult.status === "success") {
+            await router.invalidate();
+          }
         }}
       >
         Remove

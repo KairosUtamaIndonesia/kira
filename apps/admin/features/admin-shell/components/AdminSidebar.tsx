@@ -1,7 +1,4 @@
-"use client";
-
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { Link, useLocation } from "@tanstack/react-router";
 
 import {
   Sidebar,
@@ -18,14 +15,14 @@ import {
 import { primaryNavigation } from "../navigation";
 
 function AdminSidebar() {
-  const pathname = usePathname();
+  const pathname = useLocation({ select: (location) => location.pathname });
 
   return (
     <Sidebar collapsible="offcanvas">
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" render={<Link href="/dashboard" />}>
+            <SidebarMenuButton size="lg" render={<Link to="/dashboard" />}>
               <span className="font-semibold tracking-tight">Kira Admin</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -37,12 +34,12 @@ function AdminSidebar() {
             <SidebarMenu>
               {primaryNavigation.map((item) => {
                 const Icon = item.icon;
-                const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+                const isActive = pathname === item.to || pathname.startsWith(`${item.to}/`);
 
                 return (
-                  <SidebarMenuItem key={item.href}>
+                  <SidebarMenuItem key={item.to}>
                     <SidebarMenuButton
-                      render={<Link href={item.href} />}
+                      render={<Link to={item.to} />}
                       isActive={isActive}
                       size="lg"
                       tooltip={item.label}

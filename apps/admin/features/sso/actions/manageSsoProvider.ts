@@ -1,8 +1,6 @@
-"use server";
-
+import { createServerFn } from "@tanstack/react-start";
+import { getRequest } from "@tanstack/react-start/server";
 import { eq } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
-import { headers } from "next/headers";
 
 import type { SsoActionResult } from "@/features/sso/types";
 import type {
@@ -55,7 +53,7 @@ function failure(error: unknown): SsoActionResult {
 }
 
 async function requirePlatformAdmin() {
-  const requestHeaders = await headers();
+  const requestHeaders = getRequest().headers;
   const currentSession = await auth.api.getSession({ headers: requestHeaders });
 
   if (currentSession === null) {
@@ -85,80 +83,79 @@ async function requireOrganization(organizationId: string, organizationSlug: str
   }
 }
 
-async function registerAzureSsoProviderAction(
-  input: RegisterAzureSsoProviderInput,
-): Promise<SsoActionResult> {
-  try {
-    const requestHeaders = await requirePlatformAdmin();
-    const parsedInput = registerAzureSsoProviderSchema.parse(input);
-    await requireOrganization(parsedInput.organizationId, parsedInput.organizationSlug);
+const registerAzureSsoProviderAction = createServerFn({ method: "POST" })
+  .validator((input: RegisterAzureSsoProviderInput) => input)
+  .handler(async ({ data: input }): Promise<SsoActionResult> => {
+    try {
+      const requestHeaders = await requirePlatformAdmin();
+      const parsedInput = registerAzureSsoProviderSchema.parse(input);
+      await requireOrganization(parsedInput.organizationId, parsedInput.organizationSlug);
 
-    const providerId = providerIdForOrganizationSlug(parsedInput.organizationSlug);
+      const providerId = providerIdForOrganizationSlug(parsedInput.organizationSlug);
 
-    const registeredProvider = await auth.api.registerSSOProvider({
-      headers: requestHeaders,
-      body: {
-        providerId,
-        issuer: azureIssuer(parsedInput.tenantId),
-        domain: parsedInput.domain,
-        organizationId: parsedInput.organizationId,
-        oidcConfig: {
-          clientId: parsedInput.clientId,
-          clientSecret: parsedInput.clientSecret,
-          scopes: ["openid", "email", "profile"],
-          pkce: true,
+      const registeredProvider = await auth.api.registerSSOProvider({
+        headers: requestHeaders,
+        body: {
+          providerId,
+          issuer: azureIssuer(parsedInput.tenantId),
+          domain: parsedInput.domain,
+          organizationId: parsedInput.organizationId,
+          oidcConfig: {
+            clientId: parsedInput.clientId,
+            clientSecret: parsedInput.clientSecret,
+            scopes: ["openid", "email", "profile"],
+            pkce: true,
+          },
         },
-      },
-    });
+      });
 
-    revalidatePath(`/organizations/${parsedInput.organizationId}/settings`);
-    return success(
-      "Registered Azure Entra ID single sign-on provider. Add the TXT record below, then verify the domain.",
-      domainVerificationRecord(providerId, registeredProvider.domainVerificationToken),
-    );
-  } catch (error) {
-    return failure(error);
-  }
-}
+      return success(
+        "Registered Azure Entra ID single sign-on provider. Add the TXT record below, then verify the domain.",
+        domainVerificationRecord(providerId, registeredProvider.domainVerificationToken),
+      );
+    } catch (error) {
+      return failure(error);
+    }
+  });
 
-async function requestSsoDomainVerificationAction(
-  input: VerifySsoDomainInput,
-): Promise<SsoActionResult> {
-  try {
-    const requestHeaders = await requirePlatformAdmin();
-    const parsedInput = verifySsoDomainSchema.parse(input);
+const requestSsoDomainVerificationAction = createServerFn({ method: "POST" })
+  .validator((input: VerifySsoDomainInput) => input)
+  .handler(async ({ data: input }): Promise<SsoActionResult> => {
+    try {
+      const requestHeaders = await requirePlatformAdmin();
+      const parsedInput = verifySsoDomainSchema.parse(input);
 
-    const verification = await auth.api.requestDomainVerification({
-      headers: requestHeaders,
-      body: { providerId: parsedInput.providerId },
-    });
+      const verification = await auth.api.requestDomainVerification({
+        headers: requestHeaders,
+        body: { providerId: parsedInput.providerId },
+      });
 
-    revalidatePath(`/organizations/${parsedInput.organizationId}/settings`);
-    return success(
-      "Created a new SSO domain verification TXT record.",
-      domainVerificationRecord(parsedInput.providerId, verification.domainVerificationToken),
-    );
-  } catch (error) {
-    return failure(error);
-  }
-}
+      return success(
+        "Created a new SSO domain verification TXT record.",
+        domainVerificationRecord(parsedInput.providerId, verification.domainVerificationToken),
+      );
+    } catch (error) {
+      return failure(error);
+    }
+  });
 
-async function verifySsoDomainAction(input: VerifySsoDomainInput): Promise<SsoActionResult> {
-  try {
-    const requestHeaders = await requirePlatformAdmin();
-    const parsedInput = verifySsoDomainSchema.parse(input);
+const verifySsoDomainAction = createServerFn({ method: "POST" })
+  .validator((input: VerifySsoDomainInput) => input)
+  .handler(async ({ data: input }): Promise<SsoActionResult> => {
+    try {
+      const requestHeaders = await requirePlatformAdmin();
+      const parsedInput = verifySsoDomainSchema.parse(input);
 
-    await auth.api.verifyDomain({
-      headers: requestHeaders,
-      body: { providerId: parsedInput.providerId },
-    });
+      await auth.api.verifyDomain({
+        headers: requestHeaders,
+        body: { providerId: parsedInput.providerId },
+      });
 
-    revalidatePath(`/organizations/${parsedInput.organizationId}/settings`);
-    return success("Verified SSO email domain.");
-  } catch (error) {
-    return failure(error);
-  }
-}
+      return success("Verified SSO email domain.");
+    } catch (error) {
+      return failure(error);
+    }
+  });
 
 export {
   registerAzureSsoProviderAction,

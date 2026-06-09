@@ -4,6 +4,10 @@
 
 Accepted
 
+The admin app's framework choice ("Next.js") is superseded by ADR 0005
+(TanStack Start, SPA). The monorepo and hosted-admin boundary decisions here
+still hold.
+
 ## Context
 
 Kira now needs two deployable surfaces:
