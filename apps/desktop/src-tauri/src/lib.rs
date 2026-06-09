@@ -14,6 +14,7 @@ mod persistence;
 mod projects;
 mod search;
 mod settings;
+mod skills;
 mod source_control;
 mod terminal;
 
@@ -102,6 +103,7 @@ pub fn run() -> tauri::Result<()> {
             source_control::source_control_discard_paths,
             source_control::source_control_stage_path,
             source_control::source_control_stage_paths,
+            skills::skills_list,
             source_control::source_control_status,
             source_control::source_control_unstage_path,
             source_control::source_control_unstage_paths

@@ -428,6 +428,59 @@ async fn register_agent_thread(
     Ok(())
 }
 
+/// Bundled Skill metadata reported by the agent runtime's `GET /app/skills` route.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BundledSkill {
+    pub name: String,
+    pub description: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct BundledSkillsResponse {
+    skills: Vec<BundledSkill>,
+}
+
+/// Fetches the Bundled Skills compiled into the agent runtime.
+///
+/// # Errors
+///
+/// Returns the failure reason when the runtime is not running, is in a failed
+/// state, or the `GET /app/skills` request fails. Callers surface this as a
+/// degraded Bundled section without failing the whole Skills listing.
+pub async fn fetch_bundled_skills(
+    registry: &tauri::State<'_, AgentRuntimeRegistry>,
+) -> Result<Vec<BundledSkill>, String> {
+    let connection = {
+        let runtime_guard = registry.runtime.lock().await;
+        match &*runtime_guard {
+            AgentRuntimeState::Running(runtime) => runtime.connection.clone(),
+            AgentRuntimeState::Failed { reason } => return Err(reason.clone()),
+            AgentRuntimeState::NotStarted => {
+                return Err("Agent runtime is not running.".to_string())
+            }
+        }
+    };
+
+    let response = reqwest::Client::new()
+        .get(format!("{}/app/skills", connection.base_url))
+        .bearer_auth(&connection.token)
+        .send()
+        .await
+        .map_err(|error| error.to_string())?;
+
+    if !response.status().is_success() {
+        return Err(format!("runtime returned HTTP {}", response.status()));
+    }
+
+    let parsed = response
+        .json::<BundledSkillsResponse>()
+        .await
+        .map_err(|error| error.to_string())?;
+
+    Ok(parsed.skills)
+}
+
 async fn start_persistence_bridge(
     store: PersistenceStore,
     port: u16,

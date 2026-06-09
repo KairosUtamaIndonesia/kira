@@ -2,10 +2,13 @@ import { Hono } from "hono";
 
 import { registerAgentThreadContext } from "./agent-thread-context";
 import { requireRuntimeToken } from "./auth";
+import { bundledSkillSummaries } from "./bundled-skills";
 
 const appRoutes = new Hono();
 
 appRoutes.use("/*", requireRuntimeToken);
+
+appRoutes.get("/skills", (context) => context.json({ skills: bundledSkillSummaries() }));
 
 appRoutes.post("/agent-threads", async (context) => {
   const payload = await context.req.json();
