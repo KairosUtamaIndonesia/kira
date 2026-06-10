@@ -56,10 +56,11 @@ pub async fn get_model_catalog(pool: &SqlitePool) -> Result<ModelCatalog, OrgCon
 }
 
 pub async fn refresh_model_catalog(pool: &SqlitePool) -> Result<ModelCatalog, OrgConfigError> {
-    let api_key = std::env::var("KIRA_AGENT_PROVIDER_API_KEY")
-        .map_err(|_| OrgConfigError::ApiKeyNotConfigured)?;
+    let api_key =
+        crate::desktop_signin::stored_credential().ok_or(OrgConfigError::ApiKeyNotConfigured)?;
 
-    let client = reqwest::Client::new();
+    let client =
+        crate::admin_api::client().map_err(|e| OrgConfigError::FetchFailed(e.to_string()))?;
     let response = client
         .get(ADMIN_API_URL)
         .header("x-api-key", api_key)

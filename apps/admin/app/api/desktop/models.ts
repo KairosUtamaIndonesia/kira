@@ -1,7 +1,29 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { listOrganizationModels } from "@/features/organizations/data/organizationModels";
+import { userBelongsToOrganization } from "@/features/organizations/data/organizations";
 import { auth } from "@/lib/auth/auth";
+
+function organizationIdFromMetadata(metadata: unknown): string | undefined {
+  let parsed = metadata;
+
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      return undefined;
+    }
+  }
+
+  if (parsed === null || typeof parsed !== "object" || !("organizationId" in parsed)) {
+    return undefined;
+  }
+
+  const { organizationId } = parsed as { organizationId: unknown };
+  return typeof organizationId === "string" && organizationId.length > 0
+    ? organizationId
+    : undefined;
+}
 
 export const Route = createFileRoute("/api/desktop/models")({
   server: {
@@ -24,7 +46,27 @@ export const Route = createFileRoute("/api/desktop/models")({
           return Response.json({ error: "Invalid API key" }, { status: 401 });
         }
 
-        const organizationId = verification.key.referenceId;
+        const userId = verification.key.referenceId;
+        const organizationId = organizationIdFromMetadata(verification.key.metadata);
+
+        if (organizationId === undefined) {
+          return Response.json(
+            { error: "API key is not scoped to an organization" },
+            {
+              status: 401,
+            },
+          );
+        }
+
+        if (!(await userBelongsToOrganization(userId, organizationId))) {
+          return Response.json(
+            { error: "API key user is not a member of the organization" },
+            {
+              status: 403,
+            },
+          );
+        }
+
         const models = await listOrganizationModels(organizationId);
 
         if (models.length === 0) {

@@ -213,6 +213,29 @@ async function getActiveOrganizationIdForCurrentSession(
   return row.activeOrganizationId;
 }
 
+type MembershipOrganization = { id: string; name: string };
+
+// Organizations the user belongs to, used to scope desktop sign-in to the
+// member's own organizations.
+async function listOrganizationsForMember(userId: string): Promise<MembershipOrganization[]> {
+  return db
+    .select({ id: organization.id, name: organization.name })
+    .from(member)
+    .innerJoin(organization, eq(member.organizationId, organization.id))
+    .where(eq(member.userId, userId))
+    .orderBy(organization.name);
+}
+
+async function userBelongsToOrganization(userId: string, organizationId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: member.id })
+    .from(member)
+    .where(and(eq(member.userId, userId), eq(member.organizationId, organizationId)))
+    .limit(1);
+
+  return row !== undefined;
+}
+
 export {
   getActiveOrganizationIdForCurrentSession,
   getInvitationEmailForSignIn,
@@ -221,4 +244,7 @@ export {
   listOrganizationInvitationsForAdmin,
   listOrganizationMembersForAdmin,
   listOrganizationsForAdmin,
+  listOrganizationsForMember,
+  userBelongsToOrganization,
 };
+export type { MembershipOrganization };

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted. The desktop-enrollment decision in this ADR is superseded by ADR 0006 (the desktop authenticates via browser sign-in, not enrollment approval). The organization-scoped SSO decision for the hosted admin stands.
 
 ## Context
 
@@ -24,4 +24,4 @@ Initial SSO behavior is invite-only. Domain auto-join is not enabled by default.
 - Organization-specific identity providers must not be presented as global social login options.
 - Domain-based discovery requires domain ownership verification before it is trusted.
 - Invitation and membership checks remain part of authorization after SSO sign-in.
-- Desktop enrollment remains independent from hosted admin SSO.
+- Desktop access is authenticated by browser sign-in gated on organization membership (see ADR 0006), reusing the same hosted-admin authentication including SSO.

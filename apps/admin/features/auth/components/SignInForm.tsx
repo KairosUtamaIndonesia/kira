@@ -20,9 +20,10 @@ type InvitationSignInContext = {
 type SignInFormProperties = {
   invitationId: string | undefined;
   invitationContext: InvitationSignInContext | undefined;
+  redirect: string | undefined;
 };
 
-function SignInForm({ invitationId, invitationContext }: SignInFormProperties) {
+function SignInForm({ invitationId, invitationContext, redirect }: SignInFormProperties) {
   const invitedEmail = invitationContext === undefined ? undefined : invitationContext.invitedEmail;
   const ssoOnlyInvite =
     invitationId !== undefined && invitationContext !== undefined && invitationContext.ssoRequired;
@@ -170,6 +171,20 @@ function SignInForm({ invitationId, invitationContext }: SignInFormProperties) {
         );
         return;
       }
+    }
+
+    // Only honor same-origin relative paths to avoid an open redirect; a
+    // protocol-relative `//host` target is rejected. A captured destination
+    // (e.g. desktop sign-in) takes precedence over the role-based default.
+    const safeRedirect =
+      redirect !== undefined && redirect.startsWith("/") && !redirect.startsWith("//")
+        ? redirect
+        : undefined;
+
+    if (safeRedirect !== undefined) {
+      await router.navigate({ to: safeRedirect, replace: true });
+      await router.invalidate();
+      return;
     }
 
     if (result.data.user.role === "admin") {

@@ -7,6 +7,7 @@ import { getInvitationSignInContext } from "@/features/organizations/data/organi
 
 const signInSearchSchema = z.object({
   invitationId: z.string().optional(),
+  redirect: z.string().optional(),
 });
 
 const loadInvitationContext = createServerFn()
@@ -27,7 +28,7 @@ export const Route = createFileRoute("/sign-in")({
 });
 
 function SignInPage() {
-  const { invitationId } = Route.useSearch();
+  const { invitationId, redirect } = Route.useSearch();
   const { invitationContext } = Route.useLoaderData();
 
   return (
@@ -53,7 +54,11 @@ function SignInPage() {
               : "If you do not have a password yet, create an account with the invited email address."}
           </div>
         )}
-        <SignInForm invitationId={invitationId} invitationContext={invitationContext} />
+        <SignInForm
+          invitationId={invitationId}
+          invitationContext={invitationContext}
+          redirect={redirect}
+        />
       </section>
     </main>
   );

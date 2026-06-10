@@ -70,6 +70,18 @@ _Avoid_: Tenant when referring only to the email domain routing key
 The external system that authenticates a user for Single Sign-On.
 _Avoid_: Authorization provider when Kira still owns organization access decisions
 
+**Desktop Sign-In**:
+The act of authenticating the Kira desktop app as an organization member so it receives a credential to reach the hosted admin. Sign-in proves the human and is gated only by organization membership; it reuses hosted-admin authentication, including Single Sign-On.
+_Avoid_: Enrollment, device approval when referring to authenticating the user
+
+**Desktop Credential**:
+The user-owned, organization-scoped desktop-access API key issued on Desktop Sign-In, stored in the OS keychain and individually revocable.
+_Avoid_: Installation key, enrollment token
+
+**Loopback Callback**:
+The one-time `http://127.0.0.1` address the desktop listens on so the browser can hand back the sign-in result after the user authenticates.
+_Avoid_: Redirect URL when referring specifically to the desktop's local sign-in listener
+
 **Skill**:
 A reusable Agent Skill, defined by a `SKILL.md` and optional supporting files, that guides agent behavior for specialized, repeatable work.
 _Avoid_: Plugin, extension

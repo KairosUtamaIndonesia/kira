@@ -17,7 +17,7 @@ type SettingsPageProps = {
 };
 
 function SettingsPage({ state, onClose, onClosed, onEntered }: SettingsPageProps) {
-  const [activeSectionId, setActiveSectionId] = useState<SettingsSectionId>("appearance");
+  const [activeSectionId, setActiveSectionId] = useState<SettingsSectionId>("general");
   const backButtonRef = useRef<HTMLButtonElement>(null);
   const { handleTitleBarDoubleClick, handleTitleBarMouseDown, titleBarError } = useTitleBarDrag();
 

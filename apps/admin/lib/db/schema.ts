@@ -7,6 +7,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -65,25 +66,48 @@ const organizationModels = pgTable(
   (table) => [index("organization_models_organization_id_idx").on(table.organizationId)],
 );
 
+const desktopSigninHandoffs = pgTable(
+  "desktop_signin_handoffs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    handoffCodeHash: text("handoff_code_hash").notNull(),
+    userId: text("user_id").notNull(),
+    organizationId: text("organization_id").notNull(),
+    organizationName: text("organization_name").notNull(),
+    apiKey: text("api_key"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("desktop_signin_handoffs_handoff_code_hash_uidx").on(table.handoffCodeHash),
+  ],
+);
+
 type DesktopAccessPolicy = typeof desktopAccessPolicies.$inferSelect;
 type NewDesktopAccessPolicy = typeof desktopAccessPolicies.$inferInsert;
 type DesktopAccessCheck = typeof desktopAccessChecks.$inferSelect;
 type NewDesktopAccessCheck = typeof desktopAccessChecks.$inferInsert;
 type OrganizationModel = typeof organizationModels.$inferSelect;
 type NewOrganizationModel = typeof organizationModels.$inferInsert;
+type DesktopSigninHandoff = typeof desktopSigninHandoffs.$inferSelect;
+type NewDesktopSigninHandoff = typeof desktopSigninHandoffs.$inferInsert;
 
 export {
   desktopAccessCheckDecision,
   desktopAccessChecks,
   desktopAccessPolicies,
   desktopAccessPolicyStatus,
+  desktopSigninHandoffs,
   organizationModels,
 };
 export type {
   DesktopAccessCheck,
   DesktopAccessPolicy,
+  DesktopSigninHandoff,
   NewDesktopAccessCheck,
   NewDesktopAccessPolicy,
+  NewDesktopSigninHandoff,
   NewOrganizationModel,
   OrganizationModel,
 };
