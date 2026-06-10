@@ -2,13 +2,7 @@ import * as z from "zod";
 
 const organizationModelSchema = z.object({
   label: z.string().trim().min(1, "Label is required."),
-  upstreamModelId: z
-    .string()
-    .trim()
-    .min(1, "Model ID is required.")
-    .refine((value) => value.includes("/"), {
-      message: "Model ID must include a provider prefix (e.g. gh/gpt-5.5).",
-    }),
+  upstreamModelId: z.string().trim().min(1, "Model ID is required."),
   providerId: z.string().trim().min(1, "Provider ID is required."),
   providerBaseUrl: z.string().trim().min(1, "Base URL is required.").url("Enter a valid URL."),
   contextWindow: z.number().int().positive("Context window must be a positive integer."),
