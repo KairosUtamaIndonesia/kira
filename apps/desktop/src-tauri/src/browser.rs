@@ -10,10 +10,17 @@
 //! thread, and a synchronous Tauri command runs *on* the main thread, which deadlocks on
 //! Windows (tauri 2.11.2 `webview/mod.rs` docs). `async` schedules the command off the main
 //! thread so the main thread is free to service the dispatch.
+//!
+//! ## Element Selector
+//!
+//! The selector injects an overlay into the page that highlights elements on hover and
+//! captures the selected element's context when clicked. The injected script uses navigation
+//! interception (`location.href = 'kira-select://capture/...'`) to send data back to Rust.
+
+use crate::browser_selector;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WebviewUrl};
-
 /// Label of the main app window/webview, declared in `tauri.conf.json`.
 const MAIN_WINDOW_LABEL: &str = "main";
 /// Prefix applied to every Browser Panel webview label, so orphan cleanup can identify
@@ -59,6 +66,7 @@ pub struct BrowserBounds {
 enum BrowserEvent {
     Navigated { url: String },
     TitleChanged { title: String },
+    Capture { payload: String },
 }
 
 fn webview_label(panel_id: &str) -> String {
@@ -115,10 +123,24 @@ pub async fn browser_panel_open(
     let title_panel_id = panel_id.clone();
     let builder = tauri::webview::WebviewBuilder::new(&label, WebviewUrl::External(parsed))
         .on_navigation(move |target| {
+            let url_str = target.as_str();
+            // Intercept selector capture events
+            if let Some(encoded) = url_str.strip_prefix(browser_selector::CAPTURE_PREFIX) {
+                if let Ok(decoded) = urlencoding::decode(encoded) {
+                    let _ = nav_app.emit(
+                        &event_name(&nav_panel_id),
+                        BrowserEvent::Capture {
+                            payload: decoded.into_owned(),
+                        },
+                    );
+                }
+                return false; // Cancel the navigation
+            }
+            // Normal navigation event
             let _ = nav_app.emit(
                 &event_name(&nav_panel_id),
                 BrowserEvent::Navigated {
-                    url: target.as_str().to_string(),
+                    url: url_str.to_string(),
                 },
             );
             true
@@ -300,5 +322,38 @@ pub async fn browser_close_orphans(
             webview.close()?;
         }
     }
+    Ok(())
+}
+
+/// Arms or disarms the element selector on the Browser Panel webview. When armed, the injected
+/// script highlights elements on hover and sends a capture event via navigation interception
+/// (`kira-select://capture/...`) when the user clicks.
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require AppHandle by value"
+)]
+#[allow(
+    clippy::unused_async,
+    reason = "async schedules this off the main thread; webview dispatch deadlocks in a sync command on Windows"
+)]
+#[tauri::command]
+pub async fn browser_panel_set_selector_mode(
+    app: AppHandle,
+    panel_id: String,
+    enabled: bool,
+) -> Result<(), BrowserError> {
+    let Some(webview) = app.get_webview(&webview_label(&panel_id)) else {
+        return Err(BrowserError::WebviewMissing(panel_id));
+    };
+    let script = if enabled {
+        format!(
+            "{}\n{}",
+            browser_selector::arm_script(),
+            browser_selector::await_click_script()
+        )
+    } else {
+        browser_selector::teardown_script()
+    };
+    webview.eval(&script)?;
     Ok(())
 }

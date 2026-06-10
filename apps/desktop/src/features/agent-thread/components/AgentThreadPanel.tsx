@@ -4,7 +4,11 @@ import { useAppearanceTheme } from "@/features/settings";
 
 import type { AgentThreadPanelParams } from "../types";
 
-import { setAgentThreadRuntimeState } from "../agentThreadStatusStore";
+import {
+  registerOpenAgentThread,
+  setAgentThreadRuntimeState,
+  unregisterOpenAgentThread,
+} from "../agentThreadStatusStore";
 import { useAgentThreadConnection } from "../hooks/useAgentThreadConnection";
 import { AgentThreadContextMeter } from "./AgentThreadContextMeter";
 import { AgentThreadRawEventStream } from "./AgentThreadRawEventStream";
@@ -43,6 +47,15 @@ function AgentThreadPanel({ api, params, onRename }: AgentThreadPanelProps) {
     return () => setAgentThreadRuntimeState(params.threadId, undefined);
   }, [params.threadId, runtimeState]);
 
+  useEffect(() => {
+    registerOpenAgentThread({
+      threadId: params.threadId,
+      panelId: params.panelId,
+      title: params.title,
+    });
+    return () => unregisterOpenAgentThread(params.threadId);
+  }, [params.threadId, params.panelId, params.title]);
+
   return (
     <section className="flex h-full min-h-0 flex-col bg-editor-surface text-foreground">
       <div className="min-h-0 flex-1 overflow-auto p-2">
@@ -59,7 +72,11 @@ function AgentThreadPanel({ api, params, onRename }: AgentThreadPanelProps) {
       </div>
       <footer className="relative shrink-0 bg-editor-surface p-2 before:pointer-events-none before:absolute before:-top-8 before:right-0 before:left-0 before:h-8 before:bg-gradient-to-t before:from-editor-surface before:to-transparent before:content-['']">
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-1.5">
-          <Composer runtimeState={runtimeState} sendPrompt={sendPrompt} />
+          <Composer
+            threadId={params.threadId}
+            runtimeState={runtimeState}
+            sendPrompt={sendPrompt}
+          />
           <AgentThreadContextMeter state={contextUsageState} />
         </div>
       </footer>

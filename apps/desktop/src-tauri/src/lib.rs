@@ -9,6 +9,7 @@
 
 mod agent_runtime;
 mod browser;
+mod browser_selector;
 mod editor;
 mod explorer;
 mod org_config;
@@ -120,7 +121,8 @@ pub fn run() -> tauri::Result<()> {
             browser::browser_panel_go_back,
             browser::browser_panel_go_forward,
             browser::browser_panel_close,
-            browser::browser_close_orphans
+            browser::browser_close_orphans,
+            browser::browser_panel_set_selector_mode
         ])
         .run(tauri::generate_context!())
 }

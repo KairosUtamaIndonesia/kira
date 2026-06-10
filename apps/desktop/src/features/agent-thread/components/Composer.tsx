@@ -1,5 +1,6 @@
 import { CornerDownLeft, Loader2 } from "lucide-react";
 import {
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -13,14 +14,19 @@ import { cn } from "@/lib/utils";
 
 import type { AgentThreadRuntimeState } from "../hooks/useAgentThreadConnection";
 
+import { clearAgentThreadDraft, useAgentThreadDraft } from "../agentThreadDraftStore";
+
 type ComposerProps = {
+  threadId: string;
   runtimeState: AgentThreadRuntimeState;
   sendPrompt: (prompt: string) => Promise<boolean>;
 };
 
-function Composer({ runtimeState, sendPrompt }: ComposerProps) {
+function Composer({ threadId, runtimeState, sendPrompt }: ComposerProps) {
   const [prompt, setPrompt] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const consumedDraftSequenceRef = useRef(0);
+  const draft = useAgentThreadDraft(threadId);
   const canSend = runtimeState.status === "ready" || runtimeState.status === "sending";
   const isSending = runtimeState.status === "sending";
   const isDisabled = !canSend || isSending;
@@ -31,6 +37,21 @@ function Composer({ runtimeState, sendPrompt }: ComposerProps) {
       resizeComposerTextarea(textarea);
     }
   }, [prompt]);
+
+  useEffect(() => {
+    if (draft === undefined || draft.sequence === consumedDraftSequenceRef.current) {
+      return;
+    }
+    consumedDraftSequenceRef.current = draft.sequence;
+    setPrompt((current) =>
+      current.trim().length > 0 ? `${current}\n\n${draft.text}` : draft.text,
+    );
+    clearAgentThreadDraft(threadId);
+    const textarea = textareaRef.current;
+    if (textarea !== null) {
+      textarea.focus();
+    }
+  }, [draft, threadId]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

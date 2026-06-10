@@ -32,8 +32,10 @@ function Toaster({ ...props }: ToasterProps) {
       toastOptions={{
         classNames: {
           toast: "cn-toast font-sans",
+          closeButton: "!border-border !bg-popover !text-muted-foreground hover:!text-foreground",
         },
       }}
+      closeButton
       {...props}
     />
   );

@@ -12,12 +12,27 @@ type AgentThreadRuntimeEntry = {
   state: AgentThreadRuntimeState;
 };
 
+type OpenAgentThreadMeta = {
+  threadId: string;
+  panelId: string;
+  title: string;
+};
+
+type OpenAgentThread = OpenAgentThreadMeta & {
+  state: AgentThreadRuntimeState | undefined;
+};
+
 const runtimeEntries = new Map<string, AgentThreadRuntimeEntry>();
 const titleGenerations = new Map<string, AgentThreadTitleGenerationState>();
+const openThreads = new Map<string, OpenAgentThreadMeta>();
 const idleTitleGeneration = { status: "idle" } as const satisfies AgentThreadTitleGenerationState;
 const listeners = new Set<() => void>();
+let snapshotVersion = 0;
+let cachedOpenThreads: OpenAgentThread[] = [];
+let cachedOpenThreadsVersion = -1;
 
 function notify() {
+  snapshotVersion += 1;
   for (const listener of listeners) {
     listener();
   }
@@ -42,6 +57,25 @@ export function setAgentThreadTitleGenerationState(
 ) {
   titleGenerations.set(id, titleGeneration);
   notify();
+}
+
+export function registerOpenAgentThread(meta: OpenAgentThreadMeta) {
+  const existing = openThreads.get(meta.threadId);
+  if (
+    existing !== undefined &&
+    existing.panelId === meta.panelId &&
+    existing.title === meta.title
+  ) {
+    return;
+  }
+  openThreads.set(meta.threadId, meta);
+  notify();
+}
+
+export function unregisterOpenAgentThread(threadId: string) {
+  if (openThreads.delete(threadId)) {
+    notify();
+  }
 }
 
 function subscribe(callback: () => void) {
@@ -79,4 +113,20 @@ export function useAgentThreadTitleGenerationState(
   );
 }
 
-export type { AgentThreadTitleGenerationState };
+export function useOpenAgentThreads(): OpenAgentThread[] {
+  return useSyncExternalStore(subscribe, getOpenAgentThreadsSnapshot);
+}
+
+function getOpenAgentThreadsSnapshot(): OpenAgentThread[] {
+  if (cachedOpenThreadsVersion === snapshotVersion) {
+    return cachedOpenThreads;
+  }
+  cachedOpenThreads = Array.from(openThreads.values(), (meta) => {
+    const entry = runtimeEntries.get(meta.threadId);
+    return { ...meta, state: entry === undefined ? undefined : entry.state };
+  });
+  cachedOpenThreadsVersion = snapshotVersion;
+  return cachedOpenThreads;
+}
+
+export type { AgentThreadTitleGenerationState, OpenAgentThread };

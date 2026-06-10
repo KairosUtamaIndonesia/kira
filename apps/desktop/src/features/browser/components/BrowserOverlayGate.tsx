@@ -2,10 +2,15 @@ import { useEffect } from "react";
 
 import { releaseBrowserOverlays, suppressBrowserOverlays } from "../browserOverlayStore";
 
-// CSS selector covering every Base UI portal the app can open (Dialog, DropdownMenu,
-// ContextMenu, Sheet, AlertDialog, HoverCard, Tooltip, Popover, Select — all carry a
-// `data-slot` ending in "-portal") plus the non-portal SettingsPage `<dialog>` surface.
-const OVERLAY_SELECTOR = '[data-slot$="-portal"], dialog.kira-settings-surface';
+// CSS selector covering every DOM surface that must float above the native browser webview.
+// Base UI portals (Dialog, DropdownMenu, ContextMenu, Sheet, AlertDialog, HoverCard, Tooltip,
+// Popover, Select) all carry a `data-slot` ending in "-portal"; the SettingsPage is a non-portal
+// `<dialog>`; and Sonner stamps each live toast with `data-sonner-toast` (its always-mounted
+// container is `data-sonner-toaster`, deliberately not matched so an empty toaster never hides
+// the webview). The native webview renders above all DOM, so it is hidden while any of these are
+// present and restored once they leave.
+const OVERLAY_SELECTOR =
+  '[data-slot$="-portal"], dialog.kira-settings-surface, [data-sonner-toast]';
 
 // Mounted once at the AppShell root. Watches body for overlay additions/removals and drives
 // the browser overlay store. The BrowserPanel subscribes and hides its native webview while

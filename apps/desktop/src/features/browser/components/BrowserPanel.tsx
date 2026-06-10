@@ -1,12 +1,14 @@
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import type { IDockviewPanelProps } from "dockview-react";
 
-import { ArrowLeft, ArrowRight, RotateCw } from "lucide-react";
+import { ArrowLeft, ArrowRight, MousePointerClick, RotateCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "@/components/ui/sonner";
+import { setAgentThreadDraft } from "@/features/agent-thread";
 import { updateBrowserPanelUrl } from "@/features/projects/api/projectsApi";
 
 import {
@@ -20,6 +22,8 @@ import {
   setBrowserPanelBounds,
 } from "../api/browserApi";
 import { useBrowserOverlayActive } from "../browserOverlayStore";
+import { useElementSelector } from "../hooks/useElementSelector";
+import { ElementCaptureSheet } from "./ElementCaptureSheet";
 
 type BrowserPanelParams = {
   panelId: string;
@@ -35,6 +39,7 @@ function BrowserPanel({ api, params }: IDockviewPanelProps<BrowserPanelParams>) 
   const viewportRef = useRef<HTMLDivElement>(null);
   const urlRef = useRef(params.url);
   const [address, setAddress] = useState(params.url);
+  const selector = useElementSelector(params.panelId);
 
   const viewportBounds = useCallback(() => {
     const viewport = viewportRef.current;
@@ -140,7 +145,9 @@ function BrowserPanel({ api, params }: IDockviewPanelProps<BrowserPanelParams>) 
           void updateBrowserPanelUrl({ panelId: params.panelId, url: event.url });
           return;
         }
-        api.setTitle(event.title);
+        if (event.kind === "titleChanged") {
+          api.setTitle(event.title);
+        }
       });
       if (cancelled) {
         fn();
@@ -164,6 +171,12 @@ function BrowserPanel({ api, params }: IDockviewPanelProps<BrowserPanelParams>) 
       return;
     }
     void navigateBrowserPanel(params.panelId, normalizeUrl(trimmed));
+  }
+
+  function handleSendToThread(threadId: string, text: string) {
+    setAgentThreadDraft(threadId, text);
+    selector.dismissCapture();
+    toast.success("Element sent to Agent Thread.");
   }
 
   return (
@@ -199,6 +212,16 @@ function BrowserPanel({ api, params }: IDockviewPanelProps<BrowserPanelParams>) 
         >
           <RotateCw className="size-4" />
         </Button>
+        <Button
+          type="button"
+          variant={selector.state.status === "armed" ? "secondary" : "ghost"}
+          size="icon-sm"
+          aria-label="Select element"
+          aria-pressed={selector.state.status === "armed"}
+          onClick={() => (selector.state.status === "armed" ? selector.disarm() : selector.arm())}
+        >
+          <MousePointerClick className="size-4" />
+        </Button>
         <Input
           value={address}
           onChange={(event) => setAddress(event.target.value)}
@@ -221,6 +244,16 @@ function BrowserPanel({ api, params }: IDockviewPanelProps<BrowserPanelParams>) 
           </div>
         )}
       </div>
+      <ElementCaptureSheet
+        payload={selector.state.status === "captured" ? selector.state.payload : undefined}
+        open={selector.state.status === "captured"}
+        onOpenChange={(open) => {
+          if (!open) {
+            selector.dismissCapture();
+          }
+        }}
+        onSendToThread={handleSendToThread}
+      />
     </div>
   );
 }

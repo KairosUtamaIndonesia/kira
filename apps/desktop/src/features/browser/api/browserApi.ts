@@ -39,6 +39,10 @@ function closeOrphanBrowserPanels(keepPanelIds: string[]) {
   return invoke<void>("browser_close_orphans", { keepPanelIds });
 }
 
+function setBrowserPanelSelectorMode(panelId: string, enabled: boolean) {
+  return invoke<void>("browser_panel_set_selector_mode", { panelId, enabled });
+}
+
 function listenToBrowserPanel(
   panelId: string,
   handler: (event: BrowserPanelEvent) => void,
@@ -57,4 +61,5 @@ export {
   openBrowserPanel,
   reloadBrowserPanel,
   setBrowserPanelBounds,
+  setBrowserPanelSelectorMode,
 };
