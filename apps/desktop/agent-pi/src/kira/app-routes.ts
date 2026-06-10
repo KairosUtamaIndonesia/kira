@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { registerAgentThreadContext } from "./agent-thread-context";
 import { requireRuntimeToken } from "./auth";
 import { deliverHumanResponse } from "./human-in-the-loop";
+import { generateAgentThreadTitle } from "./title-generation";
 
 const appRoutes = new Hono();
 
@@ -15,6 +16,17 @@ appRoutes.post("/agent-threads", async (context) => {
   const agentThreadContext = parseAgentThreadContext(payload);
   registerAgentThreadContext(agentThreadContext);
   return context.json({ status: "registered", threadId: agentThreadContext.threadId });
+});
+
+appRoutes.post("/agent-thread-title", async (context) => {
+  try {
+    const payload = await context.req.json();
+    const titleInput = parseAgentThreadTitleInput(payload);
+    const title = await generateAgentThreadTitle(titleInput);
+    return context.json(title);
+  } catch (error) {
+    return context.json({ error: error instanceof Error ? error.message : String(error) }, 400);
+  }
 });
 
 appRoutes.post("/agent-threads/:threadId/human-response", async (context) => {
@@ -63,6 +75,14 @@ function parseAgentThreadContext(value: unknown) {
   };
 }
 
+function parseAgentThreadTitleInput(value: unknown) {
+  const record = requireRecord(value, "Agent Thread title input");
+  return {
+    projectPath: requireString(record.projectPath, "projectPath"),
+    prompt: requireString(record.prompt, "prompt"),
+    assistantText: requireString(record.assistantText, "assistantText"),
+  };
+}
 function requireRecord(value: unknown, label: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error(`${label} must be an object.`);

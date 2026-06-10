@@ -37,6 +37,7 @@ export const Route = createFileRoute("/api/desktop/models")({
 
         const verification = await auth.api.verifyApiKey({
           body: {
+            configId: "organization-desktop-access",
             key: apiKeyHeader,
             permissions: { desktopAccess: ["read"] },
           },

@@ -23,6 +23,14 @@ type GetAgentThreadContextUsageInput = {
   threadId: string;
 };
 
+type GenerateAgentThreadTitleInput = {
+  projectId: string;
+  sessionId: string;
+  threadId: string;
+  prompt: string;
+  assistantText: string;
+};
+
 type AgentThreadContextUsage = {
   usedTokens: number;
   contextWindow: number;
@@ -80,6 +88,7 @@ export type {
   AgentThreadMessageKind,
   AgentThreadMessageRecord,
   AgentThreadPanelParams,
+  GenerateAgentThreadTitleInput,
   GetAgentThreadContextUsageInput,
   ListAgentThreadMessagesInput,
   PrepareAgentThreadInput,

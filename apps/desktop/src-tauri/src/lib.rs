@@ -72,6 +72,7 @@ pub fn run() -> tauri::Result<()> {
             desktop_signin::desktop_signin_begin,
             desktop_signin::desktop_sign_out,
             agent_runtime::agent_thread_context_usage_get,
+            agent_runtime::generate_agent_thread_title,
             agent_runtime::prepare_agent_thread,
             agent_runtime::respond_to_agent_thread_request,
             agent_runtime::start_agent_runtime,

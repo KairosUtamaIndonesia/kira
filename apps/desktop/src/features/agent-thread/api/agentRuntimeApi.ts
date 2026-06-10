@@ -4,6 +4,7 @@ import type {
   AgentRuntimeConnection,
   AgentThreadContextUsage,
   AgentThreadMessageRecord,
+  GenerateAgentThreadTitleInput,
   GetAgentThreadContextUsageInput,
   ListAgentThreadMessagesInput,
   PrepareAgentThreadInput,
@@ -27,6 +28,10 @@ function getAgentThreadContextUsage(input: GetAgentThreadContextUsageInput) {
   return invoke<AgentThreadContextUsage | null>("agent_thread_context_usage_get", { input });
 }
 
+function generateAgentThreadTitle(input: GenerateAgentThreadTitleInput) {
+  return invoke<string>("generate_agent_thread_title", { input });
+}
+
 function saveAgentThreadMessage(input: SaveAgentThreadMessageInput) {
   return invoke<AgentThreadMessageRecord>("agent_thread_message_save", { input });
 }
@@ -36,6 +41,7 @@ function respondToHumanRequest(input: RespondToHumanRequestInput) {
 }
 
 export {
+  generateAgentThreadTitle,
   getAgentThreadContextUsage,
   listAgentThreadMessages,
   prepareAgentThread,

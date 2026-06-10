@@ -24,8 +24,8 @@ const AGENT_RUNTIME_HEALTH_TIMEOUT_MS: u64 = 30_000;
 const AGENT_RUNTIME_HEALTH_TIMEOUT: Duration =
     Duration::from_millis(AGENT_RUNTIME_HEALTH_TIMEOUT_MS);
 const AGENT_RUNTIME_HEALTH_POLL_INTERVAL: Duration = Duration::from_millis(150);
-const AGENT_RUNTIME_PACKAGE_NAME: &str = "@kira/agent-runtime";
-const AGENT_RUNTIME_KIND: &str = "flue";
+const AGENT_RUNTIME_PACKAGE_NAME: &str = "@kira/agent-pi";
+const AGENT_RUNTIME_KIND: &str = "pi";
 const AGENT_RUNTIME_HOST: &str = "127.0.0.1";
 
 #[derive(Default)]
@@ -203,6 +203,22 @@ pub struct RespondToAgentThreadRequestInput {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct GenerateAgentThreadTitleInput {
+    project_id: String,
+    session_id: String,
+    thread_id: String,
+    prompt: String,
+    assistant_text: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GenerateAgentThreadTitleOutput {
+    title: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct HealthResponse {
     status: String,
     package_name: String,
@@ -230,6 +246,10 @@ pub enum AgentRuntimeError {
     MissingSessionId,
     #[error("Agent Thread id is required")]
     MissingThreadId,
+    #[error("Agent Thread title prompt is required")]
+    MissingTitlePrompt,
+    #[error("Agent Thread assistant text is required")]
+    MissingAssistantText,
     #[error("Project {project_id} with Session {session_id} was not found")]
     ProjectSessionNotFound {
         project_id: String,
@@ -259,6 +279,8 @@ pub enum AgentRuntimeError {
     RegisterAgentThread { thread_id: String, reason: String },
     #[error("Failed to deliver human response for Agent Thread {thread_id}: {reason}")]
     DeliverHumanResponse { thread_id: String, reason: String },
+    #[error("Failed to generate title for Agent Thread {thread_id}: {reason}")]
+    GenerateTitle { thread_id: String, reason: String },
     #[error("Agent runtime is not running. Start the app-scoped agent runtime before preparing an Agent Thread.")]
     NotRunning,
     #[error("Agent runtime startup failed: {reason}")]
@@ -351,6 +373,35 @@ pub async fn respond_to_agent_thread_request(
 
     let connection = runtime_connection(&registry).await?;
     deliver_human_response(&connection, &input.thread_id, &input.response).await
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
+pub async fn generate_agent_thread_title(
+    input: GenerateAgentThreadTitleInput,
+    registry: tauri::State<'_, AgentRuntimeRegistry>,
+    store: tauri::State<'_, PersistenceStore>,
+) -> Result<String, AgentRuntimeError> {
+    validate_required_project_id(&input.project_id)?;
+    validate_required_session_id(&input.session_id)?;
+    validate_required_thread_id(&input.thread_id)?;
+    validate_required_prompt(&input.prompt)?;
+    validate_required_assistant_text(&input.assistant_text)?;
+
+    let context = load_agent_thread_project_context(
+        &store,
+        &input.project_id,
+        &input.session_id,
+        &input.thread_id,
+    )
+    .await?;
+    validate_project_path(&context.project_path)?;
+
+    let connection = runtime_connection(&registry).await?;
+    request_agent_thread_title(&connection, &input, &context.project_path).await
 }
 
 #[tauri::command]
@@ -479,6 +530,43 @@ async fn deliver_human_response(
     }
 
     Ok(())
+}
+
+async fn request_agent_thread_title(
+    connection: &RuntimeConnection,
+    input: &GenerateAgentThreadTitleInput,
+    project_path: &str,
+) -> Result<String, AgentRuntimeError> {
+    let http_response = reqwest::Client::new()
+        .post(format!("{}/app/agent-thread-title", connection.base_url))
+        .bearer_auth(&connection.token)
+        .json(&serde_json::json!({
+            "projectPath": project_path,
+            "prompt": input.prompt,
+            "assistantText": input.assistant_text,
+        }))
+        .send()
+        .await
+        .map_err(|error| AgentRuntimeError::GenerateTitle {
+            thread_id: input.thread_id.clone(),
+            reason: error.to_string(),
+        })?;
+
+    if !http_response.status().is_success() {
+        return Err(AgentRuntimeError::GenerateTitle {
+            thread_id: input.thread_id.clone(),
+            reason: format!("runtime returned HTTP {}", http_response.status()),
+        });
+    }
+
+    let output = http_response
+        .json::<GenerateAgentThreadTitleOutput>()
+        .await
+        .map_err(|error| AgentRuntimeError::GenerateTitle {
+            thread_id: input.thread_id.clone(),
+            reason: error.to_string(),
+        })?;
+    Ok(output.title)
 }
 
 /// Bundled Skill metadata reported by the agent runtime's `GET /app/skills` route.
@@ -825,7 +913,7 @@ fn resolve_runtime_dir() -> Result<PathBuf, AgentRuntimeError> {
     let runtime_dir = if let Ok(path) = env::var("KIRA_AGENT_RUNTIME_DIR") {
         PathBuf::from(path)
     } else {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../agent-runtime")
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../agent-pi")
     };
 
     if !runtime_dir.is_dir() {
@@ -845,6 +933,19 @@ fn resolve_launch_mode() -> AgentRuntimeLaunchMode {
     }
 }
 
+fn validate_required_prompt(prompt: &str) -> Result<(), AgentRuntimeError> {
+    if prompt.trim().is_empty() {
+        return Err(AgentRuntimeError::MissingTitlePrompt);
+    }
+    Ok(())
+}
+
+fn validate_required_assistant_text(assistant_text: &str) -> Result<(), AgentRuntimeError> {
+    if assistant_text.trim().is_empty() {
+        return Err(AgentRuntimeError::MissingAssistantText);
+    }
+    Ok(())
+}
 fn validate_project_path(project_path: &str) -> Result<(), AgentRuntimeError> {
     let path = PathBuf::from(project_path);
     if !path.exists() {

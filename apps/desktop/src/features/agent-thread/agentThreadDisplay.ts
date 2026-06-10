@@ -164,31 +164,17 @@ function applyEventToActivity(activity: RequestActivity, message: AgentThreadMes
   }
 
   const type = firstString(value, ["type"]);
-  if (type === "text_delta") {
-    const text = firstString(value, ["text"]);
-    if (text !== undefined) {
-      appendMarkdown(activity, message.id, text);
-    }
+  if (type === "message_update") {
+    applyPiMessageUpdate(activity, message, value);
     return;
   }
 
-  if (type === "thinking_delta") {
-    const text = firstString(value, ["delta"]);
-    if (text !== undefined) {
-      appendThinking(activity, message.id, text);
-    }
+  if (type === "message_end" || type === "turn_end") {
+    applyPiMessageSnapshot(activity, message.id, value);
     return;
   }
 
-  if (type === "thinking_end") {
-    const content = firstString(value, ["content"]);
-    if (content !== undefined && !activityHasThinking(activity, content)) {
-      appendThinking(activity, message.id, content);
-    }
-    return;
-  }
-
-  if (type === "tool_start" || type === "tool_execution_start") {
+  if (type === "tool_execution_start") {
     upsertTool(activity, message, value, "running");
     return;
   }
@@ -198,9 +184,18 @@ function applyEventToActivity(activity: RequestActivity, message: AgentThreadMes
     return;
   }
 
-  if (type === "tool_call" || type === "tool_execution_end") {
+  if (type === "tool_execution_end") {
     const isError = value.isError === true;
     upsertTool(activity, message, value, isError ? "failed" : "succeeded");
+    return;
+  }
+
+  if (
+    type === "agent_end" ||
+    type === "settled" ||
+    type === "turn_start" ||
+    type === "message_start"
+  ) {
     return;
   }
 
@@ -234,6 +229,85 @@ function appendMarkdown(activity: RequestActivity, id: string, markdown: string)
   activity.blocks.push({ type: "markdown", id, parts: [markdown] });
 }
 
+function applyPiMessageUpdate(
+  activity: RequestActivity,
+  message: AgentThreadMessageRecord,
+  event: ObjectRecord,
+) {
+  const assistantEvent = objectRecordFromUnknown(event.assistantMessageEvent);
+  if (assistantEvent === undefined) {
+    return;
+  }
+
+  applyAssistantMessageEvent(activity, message, assistantEvent);
+}
+
+function applyPiMessageSnapshot(activity: RequestActivity, id: string, event: ObjectRecord) {
+  const assistantMessage = objectRecordFromUnknown(event.message);
+  if (assistantMessage !== undefined) {
+    appendAssistantMessageContent(activity, id, assistantMessage);
+  }
+}
+
+function applyAssistantMessageEvent(
+  activity: RequestActivity,
+  message: AgentThreadMessageRecord,
+  event: ObjectRecord,
+) {
+  const type = firstString(event, ["type"]);
+  if (type === "text_delta") {
+    const text = firstString(event, ["delta"]);
+    if (text !== undefined) {
+      appendMarkdown(activity, message.id, text);
+    }
+    return;
+  }
+
+  if (type === "thinking_delta") {
+    const text = firstString(event, ["delta"]);
+    if (text !== undefined) {
+      appendThinking(activity, message.id, text);
+    }
+    return;
+  }
+
+  if (
+    type === "text_start" ||
+    type === "text_end" ||
+    type === "thinking_start" ||
+    type === "thinking_end"
+  ) {
+    return;
+  }
+}
+
+function appendAssistantMessageContent(
+  activity: RequestActivity,
+  id: string,
+  message: ObjectRecord,
+) {
+  if (message.role !== "assistant" || !Array.isArray(message.content)) {
+    return;
+  }
+
+  for (const content of message.content) {
+    if (!isObjectRecord(content)) {
+      continue;
+    }
+    if (content.type === "text" && typeof content.text === "string") {
+      const text = content.text;
+      if (text.length > 0 && !activityHasMarkdown(activity)) {
+        appendMarkdown(activity, id, text);
+      }
+    }
+    if (content.type === "thinking" && typeof content.thinking === "string") {
+      const thinking = content.thinking;
+      if (thinking.length > 0 && !activityHasThinking(activity, thinking)) {
+        appendThinking(activity, id, thinking);
+      }
+    }
+  }
+}
 function appendThinking(activity: RequestActivity, id: string, thinking: string) {
   const lastBlock = activity.blocks[activity.blocks.length - 1];
   if (lastBlock !== undefined && lastBlock.type === "thinking") {
@@ -407,6 +481,10 @@ function errorMessageFromUnknown(value: unknown) {
   }
 
   return firstString(value, ["error", "errorMessage", "message"]);
+}
+
+function objectRecordFromUnknown(value: unknown): ObjectRecord | undefined {
+  return isObjectRecord(value) ? value : undefined;
 }
 
 function changedFilesFromUnknown(value: unknown) {
