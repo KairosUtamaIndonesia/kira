@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 
+import { getOrCreateAgentSession } from "./agent-session-host";
 import { registerAgentThreadContext, requireAgentThreadContext } from "./agent-thread-context";
 import { requireRuntimeToken } from "./auth";
-import { getOrCreateHarness } from "./harness-host";
 import { generateAgentThreadTitle } from "./title-generation";
 
 const appRoutes = new Hono();
@@ -22,8 +22,8 @@ appRoutes.get("/agent-threads/:threadId/session", async (context) => {
   try {
     const threadId = context.req.param("threadId");
     const agentThreadContext = requireAgentThreadContext(threadId);
-    const host = await getOrCreateHarness(agentThreadContext);
-    return context.json({ messages: host.harness.messages, sessionId: host.harness.sessionId });
+    const host = await getOrCreateAgentSession(agentThreadContext);
+    return context.json({ messages: host.session.messages, sessionId: host.session.sessionId });
   } catch (error) {
     return context.json({ error: error instanceof Error ? error.message : String(error) }, 400);
   }

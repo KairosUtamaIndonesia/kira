@@ -91,25 +91,25 @@ function requireMessage(command: ParsedCommand): string {
 }
 
 /**
- * Bridge one desktop WebSocket connection to an Agent Thread's harness.
+ * Bridge one desktop WebSocket connection to an Agent Thread's Pi AgentSession.
  *
- * Outbound: every `AgentHarnessEvent` is forwarded verbatim as a JSON frame.
+ * Outbound: every Pi session event is forwarded verbatim as a JSON frame.
  * Inbound: RPC commands (`prompt`/`steer`/`follow_up`/`abort`/`navigate_tree`)
- * drive the harness. `prompt` is fire-and-forget — it is acknowledged on accept
+ * drive the session. `prompt` is fire-and-forget — it is acknowledged on accept
  * and its progress streams back through the event subscription.
  */
 export function attachAgentSocket(
   ws: WebSocket,
-  harness: AgentSession,
+  session: AgentSession,
   toolUiBroker: ToolUiBroker,
 ): void {
   const detachToolUi = toolUiBroker.attach(ws);
-  const unsubscribe = harness.subscribe((event) => {
+  const unsubscribe = session.subscribe((event) => {
     send(ws, event);
   });
 
   ws.on("message", (data) => {
-    void handleCommand(ws, harness, toolUiBroker, data.toString());
+    void handleCommand(ws, session, toolUiBroker, data.toString());
   });
 
   ws.on("close", () => {
@@ -120,7 +120,7 @@ export function attachAgentSocket(
 
 async function handleCommand(
   ws: WebSocket,
-  harness: AgentSession,
+  session: AgentSession,
   toolUiBroker: ToolUiBroker,
   raw: string,
 ): Promise<void> {
@@ -148,11 +148,11 @@ async function handleCommand(
       case "prompt": {
         const message = requireMessage(command);
         if (command.streamingBehavior === "steer" || command.streamingBehavior === "followUp") {
-          await harness.prompt(message, promptOptions(command.images, command.streamingBehavior));
+          await session.prompt(message, promptOptions(command.images, command.streamingBehavior));
         } else {
           void (async () => {
             try {
-              await harness.prompt(message, promptOptions(command.images));
+              await session.prompt(message, promptOptions(command.images));
             } catch (error) {
               send(ws, { type: "error", scope: "prompt", message: errorMessage(error) });
             }
@@ -162,12 +162,12 @@ async function handleCommand(
         return;
       }
       case "steer": {
-        await harness.steer(requireMessage(command));
+        await session.steer(requireMessage(command));
         respond(ws, command.id, "steer", true);
         return;
       }
       case "follow_up": {
-        await harness.followUp(requireMessage(command));
+        await session.followUp(requireMessage(command));
         respond(ws, command.id, "follow_up", true);
         return;
       }
@@ -193,7 +193,7 @@ async function handleCommand(
         }
       }
       case "abort": {
-        await harness.abort();
+        await session.abort();
         respond(ws, command.id, "abort", true);
         return;
       }
@@ -201,7 +201,7 @@ async function handleCommand(
         if (typeof command.targetId !== "string" || command.targetId.length === 0) {
           throw new Error("navigate_tree requires a non-empty 'targetId'.");
         }
-        const result = await harness.navigateTree(command.targetId, command.options);
+        const result = await session.navigateTree(command.targetId, command.options);
         respond(ws, command.id, "navigate_tree", true, { data: result });
         return;
       }

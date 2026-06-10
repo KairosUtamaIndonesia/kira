@@ -16,12 +16,12 @@ import { piModelFromConfig } from "./pi-model";
 import { ToolUiBroker } from "./tool-ui-broker";
 import { createAskUserTool } from "./tools/ask-user-tool";
 
-type HarnessHost = {
-  harness: AgentSession;
+type AgentSessionHost = {
+  session: AgentSession;
   toolUiBroker: ToolUiBroker;
 };
 
-const harnessesByThread = new Map<string, Promise<HarnessHost>>();
+const sessionsByThread = new Map<string, Promise<AgentSessionHost>>();
 
 /**
  * Returns the Pi AgentSession for one Agent Thread, building it on first use.
@@ -30,17 +30,17 @@ const harnessesByThread = new Map<string, Promise<HarnessHost>>();
  * directory. The WebSocket is only a live controller for the persisted Pi
  * session; it is not the transcript owner.
  */
-export function getOrCreateHarness(context: AgentThreadContext): Promise<HarnessHost> {
-  const existing = harnessesByThread.get(context.threadId);
+export function getOrCreateAgentSession(context: AgentThreadContext): Promise<AgentSessionHost> {
+  const existing = sessionsByThread.get(context.threadId);
   if (existing !== undefined) {
     return existing;
   }
-  const created = buildHarness(context);
-  harnessesByThread.set(context.threadId, created);
+  const created = buildAgentSession(context);
+  sessionsByThread.set(context.threadId, created);
   return created;
 }
 
-async function buildHarness(context: AgentThreadContext): Promise<HarnessHost> {
+async function buildAgentSession(context: AgentThreadContext): Promise<AgentSessionHost> {
   const apiKey = readAgentProviderApiKey();
   if (apiKey === undefined) {
     throw new Error("KIRA_AGENT_PROVIDER_API_KEY must be set to run the agent.");
@@ -65,5 +65,5 @@ async function buildHarness(context: AgentThreadContext): Promise<HarnessHost> {
     agentDir: readPiSessionRoot(),
   });
 
-  return { harness: session, toolUiBroker };
+  return { session, toolUiBroker };
 }
