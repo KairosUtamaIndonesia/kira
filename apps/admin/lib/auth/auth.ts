@@ -35,7 +35,6 @@ const auth = betterAuth({
     admin(),
     apiKey({
       configId: "organization-desktop-access",
-      references: "organization",
       defaultPrefix: "kira_",
       requireName: true,
       enableMetadata: true,

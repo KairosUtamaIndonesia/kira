@@ -735,7 +735,7 @@ async fn start_app_runtime(store: PersistenceStore) -> Result<AppAgentRuntime, A
             })?,
         )
         .kill_on_drop(true);
-    if let Ok(provider_api_key) = env::var("KIRA_AGENT_PROVIDER_API_KEY") {
+    if let Some(provider_api_key) = crate::desktop_signin::stored_credential() {
         command.env("KIRA_AGENT_PROVIDER_API_KEY", provider_api_key);
     }
     let mut process = command

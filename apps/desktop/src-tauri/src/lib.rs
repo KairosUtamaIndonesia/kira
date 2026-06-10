@@ -7,9 +7,11 @@
 #![deny(clippy::unwrap_used)]
 #![warn(clippy::pedantic)]
 
+mod admin_api;
 mod agent_runtime;
 mod browser;
 mod browser_selector;
+mod desktop_signin;
 mod editor;
 mod explorer;
 mod org_config;
@@ -66,6 +68,9 @@ pub fn run() -> tauri::Result<()> {
             settings::notification_sound_import,
             settings::notification_sound_read,
             settings::notification_sound_remove,
+            desktop_signin::desktop_signin_status,
+            desktop_signin::desktop_signin_begin,
+            desktop_signin::desktop_sign_out,
             agent_runtime::agent_thread_context_usage_get,
             agent_runtime::prepare_agent_thread,
             agent_runtime::respond_to_agent_thread_request,

@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './app/__root'
 import { Route as SignInRouteImport } from './app/sign-in'
 import { Route as InvitationAcceptedRouteImport } from './app/invitation-accepted'
+import { Route as DesktopSigninRouteImport } from './app/desktop-signin'
 import { Route as AdminRouteImport } from './app/_admin'
 import { Route as IndexRouteImport } from './app/index'
 import { Route as AdminUsersRouteImport } from './app/_admin/users'
@@ -20,6 +21,7 @@ import { Route as AdminOrganizationsIndexRouteImport } from './app/_admin/organi
 import { Route as ApiDesktopModelsRouteImport } from './app/api/desktop/models'
 import { Route as ApiAuthSplatRouteImport } from './app/api/auth/$'
 import { Route as AdminOrganizationsOrganizationIdIndexRouteImport } from './app/_admin/organizations/$organizationId/index'
+import { Route as ApiDesktopSigninClaimRouteImport } from './app/api/desktop/signin/claim'
 import { Route as AdminOrganizationsOrganizationIdSettingsRouteImport } from './app/_admin/organizations/$organizationId/settings'
 import { Route as AdminOrganizationsOrganizationIdModelsRouteImport } from './app/_admin/organizations/$organizationId/models'
 import { Route as AdminOrganizationsOrganizationIdMembersRouteImport } from './app/_admin/organizations/$organizationId/members'
@@ -34,6 +36,11 @@ const SignInRoute = SignInRouteImport.update({
 const InvitationAcceptedRoute = InvitationAcceptedRouteImport.update({
   id: '/invitation-accepted',
   path: '/invitation-accepted',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DesktopSigninRoute = DesktopSigninRouteImport.update({
+  id: '/desktop-signin',
+  path: '/desktop-signin',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminRoute = AdminRouteImport.update({
@@ -81,6 +88,11 @@ const AdminOrganizationsOrganizationIdIndexRoute =
     path: '/organizations/$organizationId/',
     getParentRoute: () => AdminRoute,
   } as any)
+const ApiDesktopSigninClaimRoute = ApiDesktopSigninClaimRouteImport.update({
+  id: '/api/desktop/signin/claim',
+  path: '/api/desktop/signin/claim',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminOrganizationsOrganizationIdSettingsRoute =
   AdminOrganizationsOrganizationIdSettingsRouteImport.update({
     id: '/organizations/$organizationId/settings',
@@ -114,6 +126,7 @@ const AdminOrganizationsOrganizationIdAccessControlRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/desktop-signin': typeof DesktopSigninRoute
   '/invitation-accepted': typeof InvitationAcceptedRoute
   '/sign-in': typeof SignInRoute
   '/dashboard': typeof AdminDashboardRoute
@@ -127,10 +140,12 @@ export interface FileRoutesByFullPath {
   '/organizations/$organizationId/members': typeof AdminOrganizationsOrganizationIdMembersRoute
   '/organizations/$organizationId/models': typeof AdminOrganizationsOrganizationIdModelsRoute
   '/organizations/$organizationId/settings': typeof AdminOrganizationsOrganizationIdSettingsRoute
+  '/api/desktop/signin/claim': typeof ApiDesktopSigninClaimRoute
   '/organizations/$organizationId/': typeof AdminOrganizationsOrganizationIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/desktop-signin': typeof DesktopSigninRoute
   '/invitation-accepted': typeof InvitationAcceptedRoute
   '/sign-in': typeof SignInRoute
   '/dashboard': typeof AdminDashboardRoute
@@ -144,12 +159,14 @@ export interface FileRoutesByTo {
   '/organizations/$organizationId/members': typeof AdminOrganizationsOrganizationIdMembersRoute
   '/organizations/$organizationId/models': typeof AdminOrganizationsOrganizationIdModelsRoute
   '/organizations/$organizationId/settings': typeof AdminOrganizationsOrganizationIdSettingsRoute
+  '/api/desktop/signin/claim': typeof ApiDesktopSigninClaimRoute
   '/organizations/$organizationId': typeof AdminOrganizationsOrganizationIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_admin': typeof AdminRouteWithChildren
+  '/desktop-signin': typeof DesktopSigninRoute
   '/invitation-accepted': typeof InvitationAcceptedRoute
   '/sign-in': typeof SignInRoute
   '/_admin/dashboard': typeof AdminDashboardRoute
@@ -163,12 +180,14 @@ export interface FileRoutesById {
   '/_admin/organizations/$organizationId/members': typeof AdminOrganizationsOrganizationIdMembersRoute
   '/_admin/organizations/$organizationId/models': typeof AdminOrganizationsOrganizationIdModelsRoute
   '/_admin/organizations/$organizationId/settings': typeof AdminOrganizationsOrganizationIdSettingsRoute
+  '/api/desktop/signin/claim': typeof ApiDesktopSigninClaimRoute
   '/_admin/organizations/$organizationId/': typeof AdminOrganizationsOrganizationIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/desktop-signin'
     | '/invitation-accepted'
     | '/sign-in'
     | '/dashboard'
@@ -182,10 +201,12 @@ export interface FileRouteTypes {
     | '/organizations/$organizationId/members'
     | '/organizations/$organizationId/models'
     | '/organizations/$organizationId/settings'
+    | '/api/desktop/signin/claim'
     | '/organizations/$organizationId/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/desktop-signin'
     | '/invitation-accepted'
     | '/sign-in'
     | '/dashboard'
@@ -199,11 +220,13 @@ export interface FileRouteTypes {
     | '/organizations/$organizationId/members'
     | '/organizations/$organizationId/models'
     | '/organizations/$organizationId/settings'
+    | '/api/desktop/signin/claim'
     | '/organizations/$organizationId'
   id:
     | '__root__'
     | '/'
     | '/_admin'
+    | '/desktop-signin'
     | '/invitation-accepted'
     | '/sign-in'
     | '/_admin/dashboard'
@@ -217,16 +240,19 @@ export interface FileRouteTypes {
     | '/_admin/organizations/$organizationId/members'
     | '/_admin/organizations/$organizationId/models'
     | '/_admin/organizations/$organizationId/settings'
+    | '/api/desktop/signin/claim'
     | '/_admin/organizations/$organizationId/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRouteWithChildren
+  DesktopSigninRoute: typeof DesktopSigninRoute
   InvitationAcceptedRoute: typeof InvitationAcceptedRoute
   SignInRoute: typeof SignInRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiDesktopModelsRoute: typeof ApiDesktopModelsRoute
+  ApiDesktopSigninClaimRoute: typeof ApiDesktopSigninClaimRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -243,6 +269,13 @@ declare module '@tanstack/react-router' {
       path: '/invitation-accepted'
       fullPath: '/invitation-accepted'
       preLoaderRoute: typeof InvitationAcceptedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/desktop-signin': {
+      id: '/desktop-signin'
+      path: '/desktop-signin'
+      fullPath: '/desktop-signin'
+      preLoaderRoute: typeof DesktopSigninRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_admin': {
@@ -307,6 +340,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/organizations/$organizationId/'
       preLoaderRoute: typeof AdminOrganizationsOrganizationIdIndexRouteImport
       parentRoute: typeof AdminRoute
+    }
+    '/api/desktop/signin/claim': {
+      id: '/api/desktop/signin/claim'
+      path: '/api/desktop/signin/claim'
+      fullPath: '/api/desktop/signin/claim'
+      preLoaderRoute: typeof ApiDesktopSigninClaimRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_admin/organizations/$organizationId/settings': {
       id: '/_admin/organizations/$organizationId/settings'
@@ -383,10 +423,12 @@ const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRouteWithChildren,
+  DesktopSigninRoute: DesktopSigninRoute,
   InvitationAcceptedRoute: InvitationAcceptedRoute,
   SignInRoute: SignInRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiDesktopModelsRoute: ApiDesktopModelsRoute,
+  ApiDesktopSigninClaimRoute: ApiDesktopSigninClaimRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

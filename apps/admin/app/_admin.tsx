@@ -4,11 +4,11 @@ import { AdminShell } from "@/features/admin-shell/components/AdminShell";
 import { getSessionFn } from "@/lib/auth/session";
 
 export const Route = createFileRoute("/_admin")({
-  beforeLoad: async () => {
+  beforeLoad: async ({ location }) => {
     const session = await getSessionFn();
 
     if (session === null) {
-      throw redirect({ to: "/sign-in" });
+      throw redirect({ to: "/sign-in", search: { redirect: location.href } });
     }
 
     if (session.user.role !== "admin") {
