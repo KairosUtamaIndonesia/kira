@@ -5,6 +5,7 @@
   "workspaces": [
     "apps/*",
     "apps/desktop/agent-runtime",
+    "apps/desktop/agent-pi",
     "packages/*"
   ],
   "type": "module",
