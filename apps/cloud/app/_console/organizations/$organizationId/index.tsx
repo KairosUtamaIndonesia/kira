@@ -1,7 +1,7 @@
 import { createFileRoute, notFound } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 
-import { OrganizationHeader } from "@/features/organizations/components/OrganizationHeader";
+import { ConsoleBreadcrumbSetter } from "@/features/console-shell/components/ConsoleBreadcrumbs";
 import { listOrganizationApiKeysForAdmin } from "@/features/organizations/data/organizationApiKeys";
 import {
   getOrganizationForPlatform,
@@ -37,23 +37,26 @@ function OrganizationPage() {
 
   return (
     <div className="space-y-6">
-      <OrganizationHeader organization={organization} />
+      <ConsoleBreadcrumbSetter
+        items={[{ label: "Organizations", href: "/organizations" }, { label: organization.name }]}
+      />
+      <div>
+        <p className="text-sm text-muted-foreground">Organization</p>
+        <h1 className="text-2xl font-semibold tracking-tight">{organization.name}</h1>
+        <p className="text-sm text-muted-foreground">{organization.slug}</p>
+      </div>
       <section className="grid gap-4 md:grid-cols-3">
         <SummaryCard
           label="Members"
           value={members.length.toString()}
-          detail="Loaded from Better Auth organization members"
+          detail="Active organization members"
         />
         <SummaryCard
           label="API Keys"
           value={apiKeys.length.toString()}
-          detail="Organization-owned desktop credentials"
+          detail="Active desktop credentials"
         />
-        <SummaryCard
-          label="Status"
-          value={organization.status}
-          detail="Derived from organization state"
-        />
+        <SummaryCard label="Status" value={organization.status} detail="Organization state" />
       </section>
     </div>
   );

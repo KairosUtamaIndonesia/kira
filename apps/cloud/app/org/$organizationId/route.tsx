@@ -1,6 +1,7 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 
 import { OrgAdminShell } from "@/features/org-admin-shell/components/OrgAdminShell";
+import { loadOrgAdminLayout } from "@/features/org-admin-shell/data/orgAdminLayout";
 import { getSessionFn } from "@/lib/auth/session";
 
 export const Route = createFileRoute("/org/$organizationId")({
@@ -11,12 +12,15 @@ export const Route = createFileRoute("/org/$organizationId")({
     }
     return { session };
   },
+  loader: ({ params }) => loadOrgAdminLayout({ data: params.organizationId }),
   component: OrgAdminLayout,
 });
 
 function OrgAdminLayout() {
+  const layoutData = Route.useLoaderData();
+
   return (
-    <OrgAdminShell>
+    <OrgAdminShell layoutData={layoutData}>
       <Outlet />
     </OrgAdminShell>
   );

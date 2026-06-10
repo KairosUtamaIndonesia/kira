@@ -171,7 +171,7 @@ function OrganizationsTable({ organizations }: OrganizationsTableProperties) {
             >
               <td className="py-3 pr-4 font-medium">
                 <Link
-                  to="/organizations/$organizationId"
+                  to="/org/$organizationId"
                   params={{ organizationId: organization.id }}
                   className="hover:underline"
                 >
@@ -212,12 +212,7 @@ function OrgRowActions({ organization }: { organization: Organization }) {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem
-          render={
-            <Link
-              to="/organizations/$organizationId"
-              params={{ organizationId: organization.id }}
-            />
-          }
+          render={<Link to="/org/$organizationId" params={{ organizationId: organization.id }} />}
         >
           <Building2 className="size-4" />
           View

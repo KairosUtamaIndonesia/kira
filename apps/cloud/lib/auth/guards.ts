@@ -1,8 +1,9 @@
 import { getRequest } from "@tanstack/react-start/server";
-import { eq, and } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { auth } from "@/lib/auth/auth";
-import { member, organization } from "@/lib/db/auth-schema";
+import { ac, admin, member as memberRole, owner } from "@/lib/auth/permissions";
+import { member as memberTable, organization } from "@/lib/db/auth-schema";
 import { db } from "@/lib/db/postgres";
 
 // ---------------------------------------------------------------------------
@@ -35,25 +36,34 @@ async function requirePlatformAdmin() {
 // ---------------------------------------------------------------------------
 // requireOrgRole
 // ---------------------------------------------------------------------------
-// Asserts the current request is authenticated and that the session user is a
-// member of `organizationId` with a role in `allowedRoles` (default: owner or
-// admin).  Returns `{ session, member }` so callers avoid a second DB hit.
+// Asserts the current request is authenticated and that the session user is an
+// owner or admin of `organizationId`.  Returns `{ session, memberRow }` so
+// callers avoid a second DB hit.
+//
+// For finer-grained checks, follow with `requireOrgPermission`.
 //
 // Throws on any auth or authorization failure.  MUST be called inside every
 // org-scoped server-fn handler.
 // ---------------------------------------------------------------------------
 
-type OrgRole = "owner" | "admin" | "member";
+type OrgMemberRow = { id: string; role: string };
 
+// Map DB role string → role object so we can call .authorize().
+const orgRoles = { owner, admin, member: memberRole } as const;
+type OrgRoleName = keyof typeof orgRoles;
+
+function resolveOrgRole(role: string): (typeof orgRoles)[OrgRoleName] | undefined {
+  if (role === "owner" || role === "admin" || role === "member") {
+    return orgRoles[role];
+  }
+  return undefined;
+}
 type RequireOrgRoleResult = {
-  session: Awaited<ReturnType<typeof auth.api.getSession>> & {};
-  memberRow: { id: string; role: string };
+  session: NonNullable<Awaited<ReturnType<typeof auth.api.getSession>>>;
+  memberRow: OrgMemberRow;
 };
 
-async function requireOrgRole(
-  organizationId: string,
-  allowedRoles: OrgRole[] = ["owner", "admin"],
-): Promise<RequireOrgRoleResult> {
+async function requireOrgRole(organizationId: string): Promise<RequireOrgRoleResult> {
   const headers = getRequest().headers;
   const session = await auth.api.getSession({ headers });
 
@@ -62,20 +72,55 @@ async function requireOrgRole(
   }
 
   const [memberRow] = await db
-    .select({ id: member.id, role: member.role })
-    .from(member)
-    .where(and(eq(member.userId, session.user.id), eq(member.organizationId, organizationId)))
+    .select({ id: memberTable.id, role: memberTable.role })
+    .from(memberTable)
+    .where(
+      and(eq(memberTable.userId, session.user.id), eq(memberTable.organizationId, organizationId)),
+    )
     .limit(1);
 
   if (memberRow === undefined) {
     throw new Error("You are not a member of this organization.");
   }
 
-  if (!(allowedRoles as string[]).includes(memberRow.role)) {
-    throw new Error(`This action requires one of the following roles: ${allowedRoles.join(", ")}.`);
+  const roleObj = resolveOrgRole(memberRow.role);
+  const canAccessOrgAdmin = roleObj !== undefined && roleObj.authorize({ org: ["update"] }).success;
+
+  if (!canAccessOrgAdmin) {
+    throw new Error("You do not have permission to access the admin panel for this organization.");
   }
 
   return { session, memberRow };
+}
+
+// ---------------------------------------------------------------------------
+// requireOrgPermission
+// ---------------------------------------------------------------------------
+// Extends `requireOrgRole` with a specific permission check.  Use this for
+// individual actions that require more than org-admin access (e.g. owner-only
+// delete, SSO configuration).
+//
+// Usage:
+//   await requireOrgPermission(orgId, { sso: ["configure"] });
+//   await requireOrgPermission(orgId, { org: ["delete"] });
+// ---------------------------------------------------------------------------
+
+type OrgPermission = Parameters<ReturnType<typeof ac.newRole>["authorize"]>[0];
+
+async function requireOrgPermission(
+  organizationId: string,
+  permission: OrgPermission,
+): Promise<RequireOrgRoleResult> {
+  const result = await requireOrgRole(organizationId);
+
+  const roleObj = resolveOrgRole(result.memberRow.role);
+  const hasPermission = roleObj !== undefined && roleObj.authorize(permission).success;
+
+  if (!hasPermission) {
+    throw new Error("You do not have permission to perform this action.");
+  }
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -99,5 +144,5 @@ async function requireOrganization(organizationId: string) {
   return row;
 }
 
-export { requireOrgRole, requireOrganization, requirePlatformAdmin };
-export type { OrgRole };
+export { requireOrgPermission, requireOrgRole, requireOrganization, requirePlatformAdmin };
+export type { OrgMemberRow, OrgPermission };

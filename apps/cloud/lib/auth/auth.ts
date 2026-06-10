@@ -4,6 +4,7 @@ import { sso } from "@better-auth/sso";
 import { betterAuth } from "better-auth";
 import { admin, organization } from "better-auth/plugins";
 
+import { ac, admin as orgAdmin, member, owner } from "@/lib/auth/permissions";
 import * as authSchema from "@/lib/db/auth-schema";
 import { db } from "@/lib/db/postgres";
 import { env } from "@/lib/env";
@@ -31,6 +32,8 @@ const auth = betterAuth({
   plugins: [
     organization({
       allowUserToCreateOrganization: true,
+      ac,
+      roles: { owner, admin: orgAdmin, member },
     }),
     admin(),
     apiKey({

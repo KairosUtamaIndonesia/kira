@@ -3,7 +3,6 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 
 import { getActiveOrganizationIdForCurrentSession } from "@/features/auth/data/membership";
-import { OrganizationHeader } from "@/features/organizations/components/OrganizationHeader";
 import { OrganizationSettingsForms } from "@/features/organizations/components/OrganizationSettingsForms";
 import { getOrganizationForPlatform } from "@/features/platform/organizations/data/organizations";
 import { getOrganizationSsoConnection } from "@/features/sso/data/ssoConnections";
@@ -49,7 +48,10 @@ function OrganizationSettingsPage() {
 
   return (
     <div className="space-y-6">
-      <OrganizationHeader organization={organization} />
+      <div>
+        <p className="text-sm text-muted-foreground">{organization.name}</p>
+        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
+      </div>
       <OrganizationSettingsForms
         organization={organization}
         isCurrentActiveOrganization={isCurrentActiveOrganization}

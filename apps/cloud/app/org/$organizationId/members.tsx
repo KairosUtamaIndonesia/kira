@@ -3,7 +3,6 @@ import { createServerFn } from "@tanstack/react-start";
 
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { listOrgInvitations, listOrgMembers } from "@/features/org-admin/members/data/members";
-import { OrganizationHeader } from "@/features/organizations/components/OrganizationHeader";
 import {
   InviteMemberForm,
   MemberActions,
@@ -39,7 +38,10 @@ function MembersPage() {
 
   return (
     <div className="space-y-6">
-      <OrganizationHeader organization={organization} />
+      <div>
+        <p className="text-sm text-muted-foreground">{organization.name}</p>
+        <h1 className="text-2xl font-semibold tracking-tight">Members</h1>
+      </div>
       <InviteMemberForm organizationId={organization.id} />
       <section className="rounded-xl border border-border bg-card p-4 text-card-foreground">
         <div className="mb-4 flex items-center justify-between gap-3">

@@ -2,7 +2,6 @@ import { createFileRoute, notFound } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 
 import { listOrganizationModels } from "@/features/org-admin/models/data/models";
-import { OrganizationHeader } from "@/features/organizations/components/OrganizationHeader";
 import {
   ModelActions,
   ModelForm,
@@ -36,13 +35,9 @@ function OrganizationModelsPage() {
 
   return (
     <div className="space-y-6">
-      <OrganizationHeader organization={organization} />
-
-      <div className="space-y-1">
-        <h2 className="text-lg font-semibold">AI Models</h2>
-        <p className="text-sm text-muted-foreground">
-          Organization-specific model configurations for desktop agents.
-        </p>
+      <div>
+        <p className="text-sm text-muted-foreground">{organization.name}</p>
+        <h1 className="text-2xl font-semibold tracking-tight">Models</h1>
       </div>
 
       <section className="rounded-xl border border-border bg-card p-4 text-card-foreground">

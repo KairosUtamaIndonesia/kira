@@ -1,13 +1,12 @@
 import type { ComponentType, SVGProps } from "react";
 
-import { BrainCircuit, Building2, KeyRound, Settings, ShieldCheck, Users } from "lucide-react";
+import { BrainCircuit, Building2, KeyRound, Settings, Users } from "lucide-react";
 
 type OrgAdminNavigationRoute =
   | "/org/$organizationId"
   | "/org/$organizationId/members"
   | "/org/$organizationId/api-keys"
   | "/org/$organizationId/models"
-  | "/org/$organizationId/access-control"
   | "/org/$organizationId/settings";
 
 type NavigationIcon = ComponentType<SVGProps<SVGSVGElement>>;
@@ -43,12 +42,6 @@ const orgAdminNavigation: OrgAdminNavigationItem[] = [
     label: "Models",
     description: "Organization AI models",
     icon: BrainCircuit,
-  },
-  {
-    to: "/org/$organizationId/access-control",
-    label: "Access Control",
-    description: "Role permissions",
-    icon: ShieldCheck,
   },
   {
     to: "/org/$organizationId/settings",

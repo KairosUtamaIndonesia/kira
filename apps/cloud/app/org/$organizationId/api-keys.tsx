@@ -4,7 +4,6 @@ import { createServerFn } from "@tanstack/react-start";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { listOrgApiKeys } from "@/features/org-admin/api-keys/data/apiKeys";
-import { OrganizationHeader } from "@/features/organizations/components/OrganizationHeader";
 import { getOrganizationForPlatform } from "@/features/platform/organizations/data/organizations";
 import { requireOrgRole } from "@/lib/auth/guards";
 
@@ -33,7 +32,10 @@ function ApiKeysPage() {
 
   return (
     <div className="space-y-6">
-      <OrganizationHeader organization={organization} />
+      <div>
+        <p className="text-sm text-muted-foreground">{organization.name}</p>
+        <h1 className="text-2xl font-semibold tracking-tight">API Keys</h1>
+      </div>
       <section className="rounded-xl border border-border bg-card p-4 text-card-foreground">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>

@@ -2,7 +2,6 @@ import { createFileRoute, notFound } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { ShieldCheck } from "lucide-react";
 
-import { OrganizationHeader } from "@/features/organizations/components/OrganizationHeader";
 import { getOrganizationForPlatform } from "@/features/platform/organizations/data/organizations";
 import { requireOrgRole } from "@/lib/auth/guards";
 
@@ -29,7 +28,10 @@ function AccessControlPage() {
 
   return (
     <div className="space-y-6">
-      <OrganizationHeader organization={organization} />
+      <div>
+        <p className="text-sm text-muted-foreground">{organization.name}</p>
+        <h1 className="text-2xl font-semibold tracking-tight">Access Control</h1>
+      </div>
       <section className="rounded-xl border border-border bg-card p-6 text-card-foreground">
         <div className="flex items-start gap-4">
           <ShieldCheck className="mt-0.5 size-6 text-muted-foreground" aria-hidden="true" />

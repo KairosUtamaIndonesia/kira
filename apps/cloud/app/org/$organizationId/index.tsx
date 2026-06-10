@@ -10,7 +10,6 @@ import type { OrganizationStatus } from "@/features/organizations/types";
 import { Badge } from "@/components/ui/badge";
 import { listOrgApiKeys } from "@/features/org-admin/api-keys/data/apiKeys";
 import { listOrgMembers } from "@/features/org-admin/members/data/members";
-import { OrganizationHeader } from "@/features/organizations/components/OrganizationHeader";
 import { getOrganizationForPlatform } from "@/features/platform/organizations/data/organizations";
 import { requireOrgRole } from "@/lib/auth/guards";
 
@@ -42,7 +41,10 @@ function OrganizationPage() {
 
   return (
     <div className="space-y-6">
-      <OrganizationHeader organization={organization} />
+      <div>
+        <p className="text-sm text-muted-foreground">{organization.name}</p>
+        <h1 className="text-2xl font-semibold tracking-tight">Overview</h1>
+      </div>
       <section className="grid gap-4 md:grid-cols-3">
         <SummaryCard
           label="Members"
