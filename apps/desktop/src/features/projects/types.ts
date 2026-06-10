@@ -39,7 +39,8 @@ type WorkspacePanel =
   | TerminalWorkspacePanel
   | SourceControlDiffWorkspacePanel
   | FileEditorWorkspacePanel
-  | AgentThreadWorkspacePanel;
+  | AgentThreadWorkspacePanel
+  | BrowserWorkspacePanel;
 
 type TerminalWorkspacePanel = WorkspacePanelBase & {
   kind: "terminal";
@@ -47,6 +48,7 @@ type TerminalWorkspacePanel = WorkspacePanelBase & {
   sourceControlDiffState: null;
   fileEditorState: null;
   agentThreadState: null;
+  browserState: null;
 };
 
 type SourceControlDiffWorkspacePanel = WorkspacePanelBase & {
@@ -55,6 +57,7 @@ type SourceControlDiffWorkspacePanel = WorkspacePanelBase & {
   sourceControlDiffState: SourceControlDiffPanelState;
   fileEditorState: null;
   agentThreadState: null;
+  browserState: null;
 };
 
 type FileEditorWorkspacePanel = WorkspacePanelBase & {
@@ -63,6 +66,7 @@ type FileEditorWorkspacePanel = WorkspacePanelBase & {
   sourceControlDiffState: null;
   fileEditorState: FileEditorPanelState;
   agentThreadState: null;
+  browserState: null;
 };
 
 type AgentThreadWorkspacePanel = WorkspacePanelBase & {
@@ -71,10 +75,24 @@ type AgentThreadWorkspacePanel = WorkspacePanelBase & {
   sourceControlDiffState: null;
   fileEditorState: null;
   agentThreadState: AgentThreadPanelState;
+  browserState: null;
 };
 
 type AgentThreadPanelState = {
   threadId: string;
+};
+
+type BrowserPanelState = {
+  url: string;
+};
+
+type BrowserWorkspacePanel = WorkspacePanelBase & {
+  kind: "browser";
+  terminalState: null;
+  sourceControlDiffState: null;
+  fileEditorState: null;
+  agentThreadState: null;
+  browserState: BrowserPanelState;
 };
 
 type TerminalPanelState = {
@@ -103,6 +121,17 @@ type CreateTerminalPanelInput = {
 type CreateAgentThreadPanelInput = {
   sessionId: string;
   title: string;
+};
+
+type CreateBrowserPanelInput = {
+  sessionId: string;
+  title: string;
+  url: string;
+};
+
+type UpdateBrowserPanelUrlInput = {
+  panelId: string;
+  url: string;
 };
 
 type OpenSourceControlDiffPanelInput = {
@@ -193,6 +222,10 @@ type OpenProject = {
 export type {
   AgentThreadPanelState,
   AgentThreadWorkspacePanel,
+  BrowserPanelState,
+  BrowserWorkspacePanel,
+  CreateBrowserPanelInput,
+  UpdateBrowserPanelUrlInput,
   CreatedProject,
   CreateAgentThreadPanelInput,
   CreateProjectInput,

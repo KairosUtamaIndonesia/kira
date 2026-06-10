@@ -90,6 +90,7 @@ pub struct WorkspacePanel {
     source_control_diff_state: Option<SourceControlDiffPanelState>,
     file_editor_state: Option<FileEditorPanelState>,
     agent_thread_state: Option<AgentThreadPanelState>,
+    browser_state: Option<BrowserPanelState>,
 }
 
 #[derive(Debug, Serialize)]
@@ -119,6 +120,27 @@ pub struct SourceControlDiffPanelState {
 pub struct FileEditorPanelState {
     folder_path: String,
     file_path: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserPanelState {
+    url: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateBrowserPanelInput {
+    session_id: String,
+    title: String,
+    url: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateBrowserPanelUrlInput {
+    panel_id: String,
+    url: String,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
@@ -303,6 +325,8 @@ pub enum ProjectError {
     MissingSourceControlDiffFilePath,
     #[error("file editor file path is required")]
     MissingFileEditorFilePath,
+    #[error("browser panel url is required")]
+    MissingBrowserUrl,
     #[error("source control diff source is invalid: {0}")]
     InvalidSourceControlDiffSource(String),
     #[error("workspace panel kind `{kind}` is missing required state for panel {panel_id}")]
@@ -501,6 +525,30 @@ pub async fn workspace_file_editor_panel_open(
     store: tauri::State<'_, PersistenceStore>,
 ) -> Result<WorkspacePanel, ProjectError> {
     open_file_editor_panel(store.pool(), input).await
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
+pub async fn workspace_browser_panel_create(
+    input: CreateBrowserPanelInput,
+    store: tauri::State<'_, PersistenceStore>,
+) -> Result<WorkspacePanel, ProjectError> {
+    create_browser_panel(store.pool(), input).await
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
+pub async fn workspace_browser_panel_url_update(
+    input: UpdateBrowserPanelUrlInput,
+    store: tauri::State<'_, PersistenceStore>,
+) -> Result<(), ProjectError> {
+    update_browser_panel_url(store.pool(), input).await
 }
 
 #[tauri::command]
@@ -896,7 +944,7 @@ async fn list_workspace_panels(
     session_id: &str,
 ) -> Result<Vec<WorkspacePanel>, ProjectError> {
     let rows = sqlx::query(
-        "SELECT workspace_panels.id, workspace_panels.session_id, workspace_panels.kind, workspace_panels.title, workspace_panels.position_index, workspace_panels.created_at, workspace_panels.updated_at, terminal_panel_state.working_directory, terminal_panel_state.shell, source_control_diff_panel_state.folder_path AS diff_folder_path, source_control_diff_panel_state.file_path AS diff_file_path, source_control_diff_panel_state.old_path AS diff_old_path, source_control_diff_panel_state.source AS diff_source, file_editor_panel_state.folder_path AS editor_folder_path, file_editor_panel_state.file_path AS editor_file_path, agent_thread_panel_state.thread_id AS agent_thread_id FROM workspace_panels LEFT JOIN terminal_panel_state ON terminal_panel_state.panel_id = workspace_panels.id LEFT JOIN source_control_diff_panel_state ON source_control_diff_panel_state.panel_id = workspace_panels.id LEFT JOIN file_editor_panel_state ON file_editor_panel_state.panel_id = workspace_panels.id LEFT JOIN agent_thread_panel_state ON agent_thread_panel_state.panel_id = workspace_panels.id WHERE workspace_panels.session_id = ? ORDER BY workspace_panels.position_index ASC",
+        "SELECT workspace_panels.id, workspace_panels.session_id, workspace_panels.kind, workspace_panels.title, workspace_panels.position_index, workspace_panels.created_at, workspace_panels.updated_at, terminal_panel_state.working_directory, terminal_panel_state.shell, source_control_diff_panel_state.folder_path AS diff_folder_path, source_control_diff_panel_state.file_path AS diff_file_path, source_control_diff_panel_state.old_path AS diff_old_path, source_control_diff_panel_state.source AS diff_source, file_editor_panel_state.folder_path AS editor_folder_path, file_editor_panel_state.file_path AS editor_file_path, agent_thread_panel_state.thread_id AS agent_thread_id, browser_panel_state.url AS browser_url FROM workspace_panels LEFT JOIN terminal_panel_state ON terminal_panel_state.panel_id = workspace_panels.id LEFT JOIN source_control_diff_panel_state ON source_control_diff_panel_state.panel_id = workspace_panels.id LEFT JOIN file_editor_panel_state ON file_editor_panel_state.panel_id = workspace_panels.id LEFT JOIN agent_thread_panel_state ON agent_thread_panel_state.panel_id = workspace_panels.id LEFT JOIN browser_panel_state ON browser_panel_state.panel_id = workspace_panels.id WHERE workspace_panels.session_id = ? ORDER BY workspace_panels.position_index ASC",
     )
     .bind(session_id)
     .fetch_all(pool)
@@ -906,40 +954,27 @@ async fn list_workspace_panels(
     rows.iter().map(workspace_panel_from_row).collect()
 }
 
+fn panel_column<'r, T>(row: &'r SqliteRow, column: &str) -> Result<T, ProjectError>
+where
+    T: sqlx::Decode<'r, sqlx::Sqlite> + sqlx::Type<sqlx::Sqlite>,
+{
+    row.try_get(column)
+        .map_err(|error| ProjectError::Query(error.to_string()))
+}
+
 fn workspace_panel_from_row(row: &SqliteRow) -> Result<WorkspacePanel, ProjectError> {
-    let id: String = row
-        .try_get("id")
-        .map_err(|error| ProjectError::Query(error.to_string()))?;
-    let kind: String = row
-        .try_get("kind")
-        .map_err(|error| ProjectError::Query(error.to_string()))?;
-    let working_directory: Option<String> = row
-        .try_get("working_directory")
-        .map_err(|error| ProjectError::Query(error.to_string()))?;
-    let shell: Option<String> = row
-        .try_get("shell")
-        .map_err(|error| ProjectError::Query(error.to_string()))?;
-    let diff_folder_path: Option<String> = row
-        .try_get("diff_folder_path")
-        .map_err(|error| ProjectError::Query(error.to_string()))?;
-    let diff_file_path: Option<String> = row
-        .try_get("diff_file_path")
-        .map_err(|error| ProjectError::Query(error.to_string()))?;
-    let diff_old_path: Option<String> = row
-        .try_get("diff_old_path")
-        .map_err(|error| ProjectError::Query(error.to_string()))?;
-    let diff_source: Option<String> = row
-        .try_get("diff_source")
-        .map_err(|error| ProjectError::Query(error.to_string()))?;
-    let editor_folder_path: Option<String> = row
-        .try_get("editor_folder_path")
-        .map_err(|error| ProjectError::Query(error.to_string()))?;
-    let editor_file_path: Option<String> = row
-        .try_get("editor_file_path")
-        .map_err(|error| ProjectError::Query(error.to_string()))?;
-    let agent_thread_id: Option<String> = row
-        .try_get("agent_thread_id")
-        .map_err(|error| ProjectError::Query(error.to_string()))?;
+    let id: String = panel_column(row, "id")?;
+    let kind: String = panel_column(row, "kind")?;
+    let working_directory: Option<String> = panel_column(row, "working_directory")?;
+    let shell: Option<String> = panel_column(row, "shell")?;
+    let diff_folder_path: Option<String> = panel_column(row, "diff_folder_path")?;
+    let diff_file_path: Option<String> = panel_column(row, "diff_file_path")?;
+    let diff_old_path: Option<String> = panel_column(row, "diff_old_path")?;
+    let diff_source: Option<String> = panel_column(row, "diff_source")?;
+    let editor_folder_path: Option<String> = panel_column(row, "editor_folder_path")?;
+    let editor_file_path: Option<String> = panel_column(row, "editor_file_path")?;
+    let agent_thread_id: Option<String> = panel_column(row, "agent_thread_id")?;
+    let browser_url: Option<String> = panel_column(row, "browser_url")?;
 
     let terminal_state = match (kind.as_str(), working_directory) {
         ("terminal", Some(working_directory)) => Some(TerminalPanelState {
@@ -947,7 +982,7 @@ fn workspace_panel_from_row(row: &SqliteRow) -> Result<WorkspacePanel, ProjectEr
             shell,
         }),
         ("terminal", None) => {
-            return Err(ProjectError::MissingWorkspacePanelState { kind, panel_id: id });
+            return Err(ProjectError::MissingWorkspacePanelState { kind, panel_id: id })
         }
         _ => None,
     };
@@ -963,7 +998,7 @@ fn workspace_panel_from_row(row: &SqliteRow) -> Result<WorkspacePanel, ProjectEr
                 })
             }
             ("source_control_diff", _, _, _) => {
-                return Err(ProjectError::MissingWorkspacePanelState { kind, panel_id: id });
+                return Err(ProjectError::MissingWorkspacePanelState { kind, panel_id: id })
             }
             _ => None,
         };
@@ -974,7 +1009,7 @@ fn workspace_panel_from_row(row: &SqliteRow) -> Result<WorkspacePanel, ProjectEr
             file_path,
         }),
         ("file_editor", _, _) => {
-            return Err(ProjectError::MissingWorkspacePanelState { kind, panel_id: id });
+            return Err(ProjectError::MissingWorkspacePanelState { kind, panel_id: id })
         }
         _ => None,
     };
@@ -982,33 +1017,32 @@ fn workspace_panel_from_row(row: &SqliteRow) -> Result<WorkspacePanel, ProjectEr
     let agent_thread_state = match (kind.as_str(), agent_thread_id) {
         ("agent_thread", Some(thread_id)) => Some(AgentThreadPanelState { thread_id }),
         ("agent_thread", None) => {
-            return Err(ProjectError::MissingWorkspacePanelState { kind, panel_id: id });
+            return Err(ProjectError::MissingWorkspacePanelState { kind, panel_id: id })
+        }
+        _ => None,
+    };
+
+    let browser_state = match (kind.as_str(), browser_url) {
+        ("browser", Some(url)) => Some(BrowserPanelState { url }),
+        ("browser", None) => {
+            return Err(ProjectError::MissingWorkspacePanelState { kind, panel_id: id })
         }
         _ => None,
     };
 
     Ok(WorkspacePanel {
         id,
-        session_id: row
-            .try_get("session_id")
-            .map_err(|error| ProjectError::Query(error.to_string()))?,
+        session_id: panel_column(row, "session_id")?,
         kind,
-        title: row
-            .try_get("title")
-            .map_err(|error| ProjectError::Query(error.to_string()))?,
-        position_index: row
-            .try_get("position_index")
-            .map_err(|error| ProjectError::Query(error.to_string()))?,
-        created_at: row
-            .try_get("created_at")
-            .map_err(|error| ProjectError::Query(error.to_string()))?,
-        updated_at: row
-            .try_get("updated_at")
-            .map_err(|error| ProjectError::Query(error.to_string()))?,
+        title: panel_column(row, "title")?,
+        position_index: panel_column(row, "position_index")?,
+        created_at: panel_column(row, "created_at")?,
+        updated_at: panel_column(row, "updated_at")?,
         terminal_state,
         source_control_diff_state,
         file_editor_state,
         agent_thread_state,
+        browser_state,
     })
 }
 
@@ -1071,6 +1105,7 @@ async fn create_terminal_panel(
         source_control_diff_state: None,
         file_editor_state: None,
         agent_thread_state: None,
+        browser_state: None,
     })
 }
 
@@ -1137,6 +1172,7 @@ async fn create_agent_thread_panel(
         source_control_diff_state: None,
         file_editor_state: None,
         agent_thread_state: Some(AgentThreadPanelState { thread_id }),
+        browser_state: None,
     })
 }
 
@@ -1208,6 +1244,7 @@ async fn open_source_control_diff_panel(
         }),
         file_editor_state: None,
         agent_thread_state: None,
+        browser_state: None,
     })
 }
 
@@ -1276,7 +1313,87 @@ async fn open_file_editor_panel(
             file_path,
         }),
         agent_thread_state: None,
+        browser_state: None,
     })
+}
+
+async fn create_browser_panel(
+    pool: &SqlitePool,
+    input: CreateBrowserPanelInput,
+) -> Result<WorkspacePanel, ProjectError> {
+    let title = validate_panel_title(&input.title)?;
+    let url = validate_browser_url(&input.url)?;
+    let panel_id = Uuid::new_v4().to_string();
+    let now = current_timestamp()?;
+    let position_index = sqlx::query_scalar::<_, i64>(
+        "SELECT COALESCE(MAX(position_index), -1) + 1 FROM workspace_panels WHERE session_id = ?",
+    )
+    .bind(&input.session_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|error| ProjectError::Query(error.to_string()))?;
+
+    let mut transaction = pool
+        .begin()
+        .await
+        .map_err(|error| ProjectError::Create(error.to_string()))?;
+    sqlx::query("INSERT INTO workspace_panels (id, session_id, kind, title, position_index, created_at, updated_at) VALUES (?, ?, 'browser', ?, ?, ?, ?)")
+        .bind(&panel_id)
+        .bind(&input.session_id)
+        .bind(&title)
+        .bind(position_index)
+        .bind(&now)
+        .bind(&now)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|error| ProjectError::Create(error.to_string()))?;
+    sqlx::query("INSERT INTO browser_panel_state (panel_id, url) VALUES (?, ?)")
+        .bind(&panel_id)
+        .bind(&url)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|error| ProjectError::Create(error.to_string()))?;
+    transaction
+        .commit()
+        .await
+        .map_err(|error| ProjectError::Create(error.to_string()))?;
+
+    Ok(WorkspacePanel {
+        id: panel_id,
+        session_id: input.session_id,
+        kind: "browser".to_string(),
+        title,
+        position_index,
+        created_at: now.clone(),
+        updated_at: now,
+        terminal_state: None,
+        source_control_diff_state: None,
+        file_editor_state: None,
+        agent_thread_state: None,
+        browser_state: Some(BrowserPanelState { url }),
+    })
+}
+
+async fn update_browser_panel_url(
+    pool: &SqlitePool,
+    input: UpdateBrowserPanelUrlInput,
+) -> Result<(), ProjectError> {
+    let url = validate_browser_url(&input.url)?;
+    sqlx::query("UPDATE browser_panel_state SET url = ? WHERE panel_id = ?")
+        .bind(&url)
+        .bind(&input.panel_id)
+        .execute(pool)
+        .await
+        .map_err(|error| ProjectError::Update(error.to_string()))?;
+    Ok(())
+}
+
+fn validate_browser_url(url: &str) -> Result<String, ProjectError> {
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
+        return Err(ProjectError::MissingBrowserUrl);
+    }
+    Ok(trimmed.to_string())
 }
 
 async fn get_workspace_panel(
@@ -1284,7 +1401,7 @@ async fn get_workspace_panel(
     panel_id: &str,
 ) -> Result<Option<WorkspacePanel>, ProjectError> {
     let row = sqlx::query(
-        "SELECT workspace_panels.id, workspace_panels.session_id, workspace_panels.kind, workspace_panels.title, workspace_panels.position_index, workspace_panels.created_at, workspace_panels.updated_at, terminal_panel_state.working_directory, terminal_panel_state.shell, source_control_diff_panel_state.folder_path AS diff_folder_path, source_control_diff_panel_state.file_path AS diff_file_path, source_control_diff_panel_state.old_path AS diff_old_path, source_control_diff_panel_state.source AS diff_source, file_editor_panel_state.folder_path AS editor_folder_path, file_editor_panel_state.file_path AS editor_file_path, agent_thread_panel_state.thread_id AS agent_thread_id FROM workspace_panels LEFT JOIN terminal_panel_state ON terminal_panel_state.panel_id = workspace_panels.id LEFT JOIN source_control_diff_panel_state ON source_control_diff_panel_state.panel_id = workspace_panels.id LEFT JOIN file_editor_panel_state ON file_editor_panel_state.panel_id = workspace_panels.id LEFT JOIN agent_thread_panel_state ON agent_thread_panel_state.panel_id = workspace_panels.id WHERE workspace_panels.id = ?",
+        "SELECT workspace_panels.id, workspace_panels.session_id, workspace_panels.kind, workspace_panels.title, workspace_panels.position_index, workspace_panels.created_at, workspace_panels.updated_at, terminal_panel_state.working_directory, terminal_panel_state.shell, source_control_diff_panel_state.folder_path AS diff_folder_path, source_control_diff_panel_state.file_path AS diff_file_path, source_control_diff_panel_state.old_path AS diff_old_path, source_control_diff_panel_state.source AS diff_source, file_editor_panel_state.folder_path AS editor_folder_path, file_editor_panel_state.file_path AS editor_file_path, agent_thread_panel_state.thread_id AS agent_thread_id, browser_panel_state.url AS browser_url FROM workspace_panels LEFT JOIN terminal_panel_state ON terminal_panel_state.panel_id = workspace_panels.id LEFT JOIN source_control_diff_panel_state ON source_control_diff_panel_state.panel_id = workspace_panels.id LEFT JOIN file_editor_panel_state ON file_editor_panel_state.panel_id = workspace_panels.id LEFT JOIN agent_thread_panel_state ON agent_thread_panel_state.panel_id = workspace_panels.id LEFT JOIN browser_panel_state ON browser_panel_state.panel_id = workspace_panels.id WHERE workspace_panels.id = ?",
     )
     .bind(panel_id)
     .fetch_optional(pool)
