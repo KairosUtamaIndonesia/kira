@@ -15,8 +15,9 @@ export const Route = createFileRoute("/")({
           params: { organizationId: destination.organizationId },
         });
       case "org-picker":
+        throw redirect({ to: "/org" });
       case "member-only":
-        throw redirect({ to: "/invitation-accepted" });
+        throw redirect({ to: "/access" });
     }
   },
 });

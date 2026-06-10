@@ -12,8 +12,10 @@ import { Route as rootRouteImport } from './app/__root'
 import { Route as SignInRouteImport } from './app/sign-in'
 import { Route as InvitationAcceptedRouteImport } from './app/invitation-accepted'
 import { Route as DesktopSigninRouteImport } from './app/desktop-signin'
+import { Route as AccessRouteImport } from './app/access'
 import { Route as ConsoleRouteImport } from './app/_console'
 import { Route as IndexRouteImport } from './app/index'
+import { Route as OrgIndexRouteImport } from './app/org/index'
 import { Route as ConsoleUsersRouteImport } from './app/_console/users'
 import { Route as ConsoleSettingsRouteImport } from './app/_console/settings'
 import { Route as ConsoleDashboardRouteImport } from './app/_console/dashboard'
@@ -45,6 +47,11 @@ const DesktopSigninRoute = DesktopSigninRouteImport.update({
   path: '/desktop-signin',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AccessRoute = AccessRouteImport.update({
+  id: '/access',
+  path: '/access',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ConsoleRoute = ConsoleRouteImport.update({
   id: '/_console',
   getParentRoute: () => rootRouteImport,
@@ -52,6 +59,11 @@ const ConsoleRoute = ConsoleRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OrgIndexRoute = OrgIndexRouteImport.update({
+  id: '/org/',
+  path: '/org/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConsoleUsersRoute = ConsoleUsersRouteImport.update({
@@ -138,6 +150,7 @@ const ApiDesktopSigninClaimRoute = ApiDesktopSigninClaimRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/access': typeof AccessRoute
   '/desktop-signin': typeof DesktopSigninRoute
   '/invitation-accepted': typeof InvitationAcceptedRoute
   '/sign-in': typeof SignInRoute
@@ -145,6 +158,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof ConsoleDashboardRoute
   '/settings': typeof ConsoleSettingsRoute
   '/users': typeof ConsoleUsersRoute
+  '/org/': typeof OrgIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/desktop/models': typeof ApiDesktopModelsRoute
   '/org/$organizationId/access-control': typeof OrgOrganizationIdAccessControlRoute
@@ -159,12 +173,14 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/access': typeof AccessRoute
   '/desktop-signin': typeof DesktopSigninRoute
   '/invitation-accepted': typeof InvitationAcceptedRoute
   '/sign-in': typeof SignInRoute
   '/dashboard': typeof ConsoleDashboardRoute
   '/settings': typeof ConsoleSettingsRoute
   '/users': typeof ConsoleUsersRoute
+  '/org': typeof OrgIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/desktop/models': typeof ApiDesktopModelsRoute
   '/org/$organizationId/access-control': typeof OrgOrganizationIdAccessControlRoute
@@ -181,6 +197,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_console': typeof ConsoleRouteWithChildren
+  '/access': typeof AccessRoute
   '/desktop-signin': typeof DesktopSigninRoute
   '/invitation-accepted': typeof InvitationAcceptedRoute
   '/sign-in': typeof SignInRoute
@@ -188,6 +205,7 @@ export interface FileRoutesById {
   '/_console/dashboard': typeof ConsoleDashboardRoute
   '/_console/settings': typeof ConsoleSettingsRoute
   '/_console/users': typeof ConsoleUsersRoute
+  '/org/': typeof OrgIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/desktop/models': typeof ApiDesktopModelsRoute
   '/org/$organizationId/access-control': typeof OrgOrganizationIdAccessControlRoute
@@ -204,6 +222,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/access'
     | '/desktop-signin'
     | '/invitation-accepted'
     | '/sign-in'
@@ -211,6 +230,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/settings'
     | '/users'
+    | '/org/'
     | '/api/auth/$'
     | '/api/desktop/models'
     | '/org/$organizationId/access-control'
@@ -225,12 +245,14 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/access'
     | '/desktop-signin'
     | '/invitation-accepted'
     | '/sign-in'
     | '/dashboard'
     | '/settings'
     | '/users'
+    | '/org'
     | '/api/auth/$'
     | '/api/desktop/models'
     | '/org/$organizationId/access-control'
@@ -246,6 +268,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/_console'
+    | '/access'
     | '/desktop-signin'
     | '/invitation-accepted'
     | '/sign-in'
@@ -253,6 +276,7 @@ export interface FileRouteTypes {
     | '/_console/dashboard'
     | '/_console/settings'
     | '/_console/users'
+    | '/org/'
     | '/api/auth/$'
     | '/api/desktop/models'
     | '/org/$organizationId/access-control'
@@ -269,10 +293,12 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ConsoleRoute: typeof ConsoleRouteWithChildren
+  AccessRoute: typeof AccessRoute
   DesktopSigninRoute: typeof DesktopSigninRoute
   InvitationAcceptedRoute: typeof InvitationAcceptedRoute
   SignInRoute: typeof SignInRoute
   OrgOrganizationIdRouteRoute: typeof OrgOrganizationIdRouteRouteWithChildren
+  OrgIndexRoute: typeof OrgIndexRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiDesktopModelsRoute: typeof ApiDesktopModelsRoute
   ApiDesktopSigninClaimRoute: typeof ApiDesktopSigninClaimRoute
@@ -301,6 +327,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DesktopSigninRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/access': {
+      id: '/access'
+      path: '/access'
+      fullPath: '/access'
+      preLoaderRoute: typeof AccessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_console': {
       id: '/_console'
       path: ''
@@ -313,6 +346,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/org/': {
+      id: '/org/'
+      path: '/org'
+      fullPath: '/org/'
+      preLoaderRoute: typeof OrgIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_console/users': {
@@ -470,10 +510,12 @@ const OrgOrganizationIdRouteRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ConsoleRoute: ConsoleRouteWithChildren,
+  AccessRoute: AccessRoute,
   DesktopSigninRoute: DesktopSigninRoute,
   InvitationAcceptedRoute: InvitationAcceptedRoute,
   SignInRoute: SignInRoute,
   OrgOrganizationIdRouteRoute: OrgOrganizationIdRouteRouteWithChildren,
+  OrgIndexRoute: OrgIndexRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiDesktopModelsRoute: ApiDesktopModelsRoute,
   ApiDesktopSigninClaimRoute: ApiDesktopSigninClaimRoute,
