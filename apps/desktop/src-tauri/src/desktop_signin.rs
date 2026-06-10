@@ -6,8 +6,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::time::{timeout, Duration};
 
-const ADMIN_SIGNIN_URL: &str = "https://admin.kira.localhost/desktop-signin";
-const ADMIN_CLAIM_URL: &str = "https://admin.kira.localhost/api/desktop/signin/claim";
+const ADMIN_SIGNIN_URL: &str = "https://cloud.kira.localhost/desktop-signin";
+const ADMIN_CLAIM_URL: &str = "https://cloud.kira.localhost/api/desktop/signin/claim";
 const IDENTITY_KEY: &str = "desktop.signin.identity";
 const KEYRING_SERVICE: &str = "com.kira.desktop";
 const KEYRING_ACCOUNT: &str = "organization-desktop-access";

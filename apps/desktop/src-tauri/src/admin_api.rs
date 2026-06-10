@@ -1,14 +1,14 @@
-//! Shared HTTP access to the hosted admin API.
+//! Shared HTTP access to the hosted cloud API.
 //!
-//! All desktop-to-admin calls go through [`client`] so the dev-environment
+//! All desktop-to-cloud calls go through [`client`] so the dev-environment
 //! transport quirks are handled in exactly one place.
 
-/// Hostname the desktop reaches the hosted admin on.
-pub const ADMIN_HOST: &str = "admin.kira.localhost";
+/// Hostname the desktop reaches the hosted cloud on.
+pub const ADMIN_HOST: &str = "cloud.kira.localhost";
 
-/// Builds a `reqwest` client configured for the hosted admin API.
+/// Builds a `reqwest` client configured for the hosted cloud API.
 ///
-/// In dev builds the admin is served by `portless` on loopback `:443` with a
+/// In dev builds the cloud app is served by `portless` on loopback `:443` with a
 /// locally generated CA. Two things break native HTTP clients there that do not
 /// affect the Chromium webview:
 ///

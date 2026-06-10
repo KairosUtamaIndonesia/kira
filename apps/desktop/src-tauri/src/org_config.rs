@@ -5,7 +5,7 @@ use crate::persistence::PersistenceStore;
 use crate::settings::{app_setting_value, upsert_app_setting};
 
 const ORG_MODEL_CATALOG_KEY: &str = "desktop.org.modelCatalog";
-const ADMIN_API_URL: &str = "https://admin.kira.localhost/api/desktop/models";
+const ADMIN_API_URL: &str = "https://cloud.kira.localhost/api/desktop/models";
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
