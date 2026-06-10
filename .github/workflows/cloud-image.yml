@@ -1,4 +1,4 @@
-name: Admin Image
+name: Cloud Image
 
 on:
   push:
@@ -13,16 +13,16 @@ permissions:
   packages: write
 
 concurrency:
-  group: admin-image-${{ github.ref }}
+  group: cloud-image-${{ github.ref }}
   cancel-in-progress: true
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/kira-admin
+  IMAGE_NAME: ${{ github.repository_owner }}/kira-cloud
 
 jobs:
   build:
-    name: Build and push admin image
+    name: Build and push cloud image
     runs-on: ubuntu-latest
 
     steps:
@@ -54,7 +54,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: apps/admin/Dockerfile
+          file: apps/cloud/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
