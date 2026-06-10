@@ -15,7 +15,11 @@ const initialResult: CreateOrganizationResult = {
   message: "",
 };
 
-function CreateOrganizationForm() {
+type CreateOrganizationFormProperties = {
+  onSuccess?: () => void;
+};
+
+function CreateOrganizationForm({ onSuccess }: CreateOrganizationFormProperties) {
   const router = useRouter();
   const [result, setResult] = useState<CreateOrganizationResult>(initialResult);
   const form = useForm({
@@ -32,19 +36,16 @@ function CreateOrganizationForm() {
       if (actionResult.status === "success") {
         form.reset();
         await router.invalidate();
+        if (onSuccess !== undefined) {
+          onSuccess();
+        }
       }
     },
   });
   const hasMessage = result.message.length > 0;
 
   return (
-    <section className="rounded-xl border border-border bg-card p-4 text-card-foreground">
-      <div className="mb-4">
-        <h2 className="font-medium">Create organization</h2>
-        <p className="text-sm text-muted-foreground">
-          Add a Better Auth organization for Kira SaaS administration.
-        </p>
-      </div>
+    <>
       <form
         className="flex flex-col gap-3 sm:flex-row sm:items-end"
         onSubmit={(event) => {
@@ -106,7 +107,7 @@ function CreateOrganizationForm() {
           {result.message}
         </p>
       ) : undefined}
-    </section>
+    </>
   );
 }
 
