@@ -13,17 +13,23 @@ static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 #[derive(Clone)]
 pub struct PersistenceStore {
     pool: SqlitePool,
+    app_data_dir: PathBuf,
 }
 
 impl PersistenceStore {
     #[must_use]
-    pub const fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+    pub fn new(pool: SqlitePool, app_data_dir: PathBuf) -> Self {
+        Self { pool, app_data_dir }
     }
 
     #[must_use]
     pub const fn pool(&self) -> &SqlitePool {
         &self.pool
+    }
+
+    #[must_use]
+    pub fn app_data_dir(&self) -> &PathBuf {
+        &self.app_data_dir
     }
 }
 
@@ -67,11 +73,12 @@ pub async fn persistence_store_health(
 pub async fn initialize<R: Runtime>(
     app: &tauri::AppHandle<R>,
 ) -> Result<PersistenceStore, PersistenceError> {
-    let store_path = persistence_store_path(app)?;
-    let store_directory = store_path
-        .parent()
-        .ok_or(PersistenceError::AppDataDir)?
-        .to_path_buf();
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|_| PersistenceError::AppDataDir)?;
+    let store_path = app_data_dir.join("kira.sqlite3");
+    let store_directory = app_data_dir.clone();
 
     std::fs::create_dir_all(&store_directory).map_err(|error| {
         PersistenceError::CreateDirectory {
@@ -104,16 +111,5 @@ pub async fn initialize<R: Runtime>(
             message: error.to_string(),
         })?;
 
-    Ok(PersistenceStore::new(pool))
-}
-
-fn persistence_store_path<R: Runtime>(
-    app: &tauri::AppHandle<R>,
-) -> Result<PathBuf, PersistenceError> {
-    let app_data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|_| PersistenceError::AppDataDir)?;
-
-    Ok(app_data_dir.join("kira.sqlite3"))
+    Ok(PersistenceStore::new(pool, app_data_dir))
 }

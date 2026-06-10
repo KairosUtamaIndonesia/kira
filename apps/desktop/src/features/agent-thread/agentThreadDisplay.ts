@@ -26,6 +26,7 @@ type AgentThreadActivityBlock =
 type AgentThreadToolCallDisplay = {
   id: string;
   toolName: string;
+  toolUiRequestId: string | undefined;
   title: string;
   status: ToolCallStatus | undefined;
   command: string | undefined;
@@ -99,13 +100,15 @@ function buildAgentThreadTranscript(
     exhaustiveMessageKind(message.kind);
   }
 
-  return items.map((item) => {
+  return items.flatMap((item) => {
     if ("type" in item) {
-      return item;
+      return [item];
     }
-
+    if (item.blocks.length === 0) {
+      return [];
+    }
     const isStreaming = runtimeIsSending && item.requestId === lastRequestId;
-    return activityToTranscriptItem(item, isStreaming);
+    return [activityToTranscriptItem(item, isStreaming)];
   });
 }
 
@@ -187,6 +190,11 @@ function applyEventToActivity(activity: RequestActivity, message: AgentThreadMes
   if (type === "tool_execution_end") {
     const isError = value.isError === true;
     upsertTool(activity, message, value, isError ? "failed" : "succeeded");
+    return;
+  }
+
+  if (type === "tool_ui_request") {
+    upsertToolUiRequest(activity, message, value);
     return;
   }
 
@@ -330,11 +338,28 @@ function activityHasThinking(activity: RequestActivity, thinking: string) {
   );
 }
 
+function upsertToolUiRequest(
+  activity: RequestActivity,
+  message: AgentThreadMessageRecord,
+  value: ObjectRecord,
+) {
+  const toolCallId = firstString(value, ["toolCallId"]);
+  if (toolCallId === undefined) {
+    return;
+  }
+  const input = firstPresent(value, ["input"]);
+  const toolName = firstString(value, ["toolName"]) ?? "unknown";
+  const requestId = firstString(value, ["id"]);
+  const event = { ...value, args: input, toolName };
+  upsertTool(activity, message, event, "running", requestId);
+}
+
 function upsertTool(
   activity: RequestActivity,
   message: AgentThreadMessageRecord,
   value: ObjectRecord,
   status: ToolCallStatus,
+  toolUiRequestId?: string,
 ) {
   const toolCallId = firstString(value, ["toolCallId", "operationId", "taskId"]) ?? message.id;
   const existingBlockIndex = activity.toolBlockIndexes.get(toolCallId);
@@ -355,6 +380,7 @@ function upsertTool(
   const existingErrorMessage = existing === undefined ? undefined : existing.errorMessage;
   const existingInput = existing === undefined ? undefined : existing.input;
   const existingOutput = existing === undefined ? undefined : existing.output;
+  const existingToolUiRequestId = existing === undefined ? undefined : existing.toolUiRequestId;
   const effectiveArgs = args === undefined ? existingInput : args;
   const effectiveResult = result === undefined ? existingOutput : result;
 
@@ -363,6 +389,7 @@ function upsertTool(
 
   const tool: AgentThreadToolCallDisplay = {
     id: toolCallId,
+    toolUiRequestId: toolUiRequestId ?? existingToolUiRequestId,
     toolName,
     title: humanizeToolName(toolName) ?? existingTitle ?? "Tool call",
     status,

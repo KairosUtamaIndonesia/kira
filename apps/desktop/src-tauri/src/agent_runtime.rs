@@ -1,20 +1,11 @@
 use std::{env, net::TcpListener, path::PathBuf, time::Duration};
 
-use axum::{
-    extract::{Path, State},
-    http::{HeaderMap, StatusCode},
-    routing::{delete, get, put},
-    Json, Router,
-};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use tokio::{
-    net::TcpListener as TokioTcpListener,
     process::{Child, Command},
     sync::Mutex,
-    task::JoinHandle,
     time::{sleep, timeout},
 };
 
@@ -46,38 +37,11 @@ enum AgentRuntimeState {
 struct AppAgentRuntime {
     connection: RuntimeConnection,
     _process: Child,
-    _persistence_bridge: JoinHandle<()>,
 }
-
 #[derive(Clone)]
 struct RuntimeConnection {
     base_url: String,
     token: String,
-}
-
-#[derive(Clone)]
-struct AgentRuntimePersistenceBridgeState {
-    store: PersistenceStore,
-    token: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SaveFlueSessionStateInput {
-    agent_thread_id: String,
-    context_usage: Option<AgentThreadContextUsageSnapshot>,
-    session_data: serde_json::Value,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct AgentThreadContextUsageSnapshot {
-    used_tokens: i64,
-    context_window: i64,
-    max_output_tokens: i64,
-    model_id: String,
-    usage: AgentThreadContextTokenUsage,
-    cost: AgentThreadContextUsageCost,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -167,12 +131,6 @@ impl From<AgentThreadContextUsageRow> for AgentThreadContextUsage {
     }
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct LoadFlueSessionStateOutput {
-    session_data: serde_json::Value,
-}
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[allow(
@@ -192,13 +150,6 @@ pub struct AgentRuntimeConnection {
     session_id: String,
     base_url: String,
     token: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RespondToAgentThreadRequestInput {
-    thread_id: String,
-    response: serde_json::Value,
 }
 
 #[derive(Debug, Deserialize)]
@@ -269,16 +220,12 @@ pub enum AgentRuntimeError {
     ReservePort(String),
     #[error("failed to start agent runtime: {reason}")]
     StartFailed { reason: String },
-    #[error("failed to start Agent Thread persistence bridge: {reason}")]
-    PersistenceBridgeStart { reason: String },
     #[error("Agent runtime did not become healthy on port {port} within {timeout_ms}ms")]
     HealthTimeout { port: u16, timeout_ms: u64 },
     #[error("Agent runtime returned invalid health response on port {port}: {reason}")]
     InvalidHealthResponse { port: u16, reason: String },
     #[error("Failed to register Agent Thread {thread_id} with agent runtime: {reason}")]
     RegisterAgentThread { thread_id: String, reason: String },
-    #[error("Failed to deliver human response for Agent Thread {thread_id}: {reason}")]
-    DeliverHumanResponse { thread_id: String, reason: String },
     #[error("Failed to generate title for Agent Thread {thread_id}: {reason}")]
     GenerateTitle { thread_id: String, reason: String },
     #[error("Agent runtime is not running. Start the app-scoped agent runtime before preparing an Agent Thread.")]
@@ -358,21 +305,6 @@ pub async fn prepare_agent_thread(
         base_url: connection.base_url,
         token: connection.token,
     })
-}
-
-#[tauri::command]
-#[allow(
-    clippy::needless_pass_by_value,
-    reason = "Tauri commands require State by value"
-)]
-pub async fn respond_to_agent_thread_request(
-    input: RespondToAgentThreadRequestInput,
-    registry: tauri::State<'_, AgentRuntimeRegistry>,
-) -> Result<(), AgentRuntimeError> {
-    validate_required_thread_id(&input.thread_id)?;
-
-    let connection = runtime_connection(&registry).await?;
-    deliver_human_response(&connection, &input.thread_id, &input.response).await
 }
 
 #[tauri::command]
@@ -503,35 +435,6 @@ async fn register_agent_thread(
     Ok(())
 }
 
-async fn deliver_human_response(
-    connection: &RuntimeConnection,
-    thread_id: &str,
-    response: &serde_json::Value,
-) -> Result<(), AgentRuntimeError> {
-    let http_response = reqwest::Client::new()
-        .post(format!(
-            "{}/app/agent-threads/{thread_id}/human-response",
-            connection.base_url
-        ))
-        .bearer_auth(&connection.token)
-        .json(&serde_json::json!({ "response": response }))
-        .send()
-        .await
-        .map_err(|error| AgentRuntimeError::DeliverHumanResponse {
-            thread_id: thread_id.to_string(),
-            reason: error.to_string(),
-        })?;
-
-    if !http_response.status().is_success() {
-        return Err(AgentRuntimeError::DeliverHumanResponse {
-            thread_id: thread_id.to_string(),
-            reason: format!("runtime returned HTTP {}", http_response.status()),
-        });
-    }
-
-    Ok(())
-}
-
 async fn request_agent_thread_title(
     connection: &RuntimeConnection,
     input: &GenerateAgentThreadTitleInput,
@@ -622,157 +525,6 @@ pub async fn fetch_bundled_skills(
     Ok(parsed.skills)
 }
 
-async fn start_persistence_bridge(
-    store: PersistenceStore,
-    port: u16,
-    token: String,
-) -> Result<JoinHandle<()>, AgentRuntimeError> {
-    let listener = TokioTcpListener::bind((AGENT_RUNTIME_HOST, port))
-        .await
-        .map_err(|error| AgentRuntimeError::PersistenceBridgeStart {
-            reason: error.to_string(),
-        })?;
-    let state = AgentRuntimePersistenceBridgeState { store, token };
-    let router = Router::new()
-        .route("/flue-sessions/{storage_key}", get(load_flue_session_state))
-        .route("/flue-sessions/{storage_key}", put(save_flue_session_state))
-        .route(
-            "/flue-sessions/{storage_key}",
-            delete(delete_flue_session_state),
-        )
-        .with_state(state);
-
-    Ok(tokio::spawn(async move {
-        if let Err(error) = axum::serve(listener, router).await {
-            eprintln!("Agent Thread persistence bridge stopped: {error}");
-        }
-    }))
-}
-
-async fn save_flue_session_state(
-    State(state): State<AgentRuntimePersistenceBridgeState>,
-    headers: HeaderMap,
-    Path(storage_key): Path<String>,
-    Json(input): Json<SaveFlueSessionStateInput>,
-) -> Result<StatusCode, (StatusCode, String)> {
-    authorize_bridge_request(&headers, &state.token)?;
-    let now = current_bridge_timestamp()?;
-    let session_data_json = serde_json::to_string(&input.session_data)
-        .map_err(|error| (StatusCode::BAD_REQUEST, error.to_string()))?;
-    let mut transaction = state
-        .store
-        .pool()
-        .begin()
-        .await
-        .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?;
-
-    sqlx::query("INSERT INTO flue_agent_session_state (storage_key, agent_thread_id, session_data_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(storage_key) DO UPDATE SET agent_thread_id = excluded.agent_thread_id, session_data_json = excluded.session_data_json, updated_at = excluded.updated_at")
-        .bind(&storage_key)
-        .bind(&input.agent_thread_id)
-        .bind(session_data_json)
-        .bind(&now)
-        .bind(&now)
-        .execute(&mut *transaction)
-        .await
-        .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?;
-
-    if let Some(context_usage) = input.context_usage {
-        sqlx::query("INSERT INTO agent_thread_context_usage (agent_thread_id, storage_key, used_tokens, context_window, max_output_tokens, model_id, input_tokens, output_tokens, reasoning_tokens, cached_input_tokens, cache_write_tokens, input_cost, output_cost, cache_read_cost, cache_write_cost, total_cost, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(agent_thread_id) DO UPDATE SET storage_key = excluded.storage_key, used_tokens = excluded.used_tokens, context_window = excluded.context_window, max_output_tokens = excluded.max_output_tokens, model_id = excluded.model_id, input_tokens = excluded.input_tokens, output_tokens = excluded.output_tokens, reasoning_tokens = excluded.reasoning_tokens, cached_input_tokens = excluded.cached_input_tokens, cache_write_tokens = excluded.cache_write_tokens, input_cost = excluded.input_cost, output_cost = excluded.output_cost, cache_read_cost = excluded.cache_read_cost, cache_write_cost = excluded.cache_write_cost, total_cost = excluded.total_cost, updated_at = excluded.updated_at")
-            .bind(&input.agent_thread_id)
-            .bind(&storage_key)
-            .bind(context_usage.used_tokens)
-            .bind(context_usage.context_window)
-            .bind(context_usage.max_output_tokens)
-            .bind(context_usage.model_id)
-            .bind(context_usage.usage.input_tokens)
-            .bind(context_usage.usage.output_tokens)
-            .bind(context_usage.usage.reasoning_tokens)
-            .bind(context_usage.usage.cached_input_tokens)
-            .bind(context_usage.usage.cache_write_tokens)
-            .bind(context_usage.cost.input)
-            .bind(context_usage.cost.output)
-            .bind(context_usage.cost.cache_read)
-            .bind(context_usage.cost.cache_write)
-            .bind(context_usage.cost.total)
-            .bind(&now)
-            .execute(&mut *transaction)
-            .await
-            .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?;
-    }
-
-    transaction
-        .commit()
-        .await
-        .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?;
-    Ok(StatusCode::NO_CONTENT)
-}
-
-async fn load_flue_session_state(
-    State(state): State<AgentRuntimePersistenceBridgeState>,
-    headers: HeaderMap,
-    Path(storage_key): Path<String>,
-) -> Result<Json<Option<LoadFlueSessionStateOutput>>, (StatusCode, String)> {
-    authorize_bridge_request(&headers, &state.token)?;
-    let session_data_json = sqlx::query_scalar::<_, String>(
-        "SELECT session_data_json FROM flue_agent_session_state WHERE storage_key = ?",
-    )
-    .bind(storage_key)
-    .fetch_optional(state.store.pool())
-    .await
-    .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?;
-
-    match session_data_json {
-        Some(value) => {
-            let session_data = serde_json::from_str(&value)
-                .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?;
-            Ok(Json(Some(LoadFlueSessionStateOutput { session_data })))
-        }
-        None => Ok(Json(None)),
-    }
-}
-
-async fn delete_flue_session_state(
-    State(state): State<AgentRuntimePersistenceBridgeState>,
-    headers: HeaderMap,
-    Path(storage_key): Path<String>,
-) -> Result<StatusCode, (StatusCode, String)> {
-    authorize_bridge_request(&headers, &state.token)?;
-    sqlx::query("DELETE FROM flue_agent_session_state WHERE storage_key = ?")
-        .bind(storage_key)
-        .execute(state.store.pool())
-        .await
-        .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?;
-    Ok(StatusCode::NO_CONTENT)
-}
-
-fn authorize_bridge_request(headers: &HeaderMap, token: &str) -> Result<(), (StatusCode, String)> {
-    let Some(value) = headers.get("authorization") else {
-        return Err((
-            StatusCode::UNAUTHORIZED,
-            "authorization header is required".to_string(),
-        ));
-    };
-    let Ok(value) = value.to_str() else {
-        return Err((
-            StatusCode::UNAUTHORIZED,
-            "authorization header is invalid".to_string(),
-        ));
-    };
-    if value != format!("Bearer {token}") {
-        return Err((
-            StatusCode::UNAUTHORIZED,
-            "authorization token is invalid".to_string(),
-        ));
-    }
-    Ok(())
-}
-
-fn current_bridge_timestamp() -> Result<String, (StatusCode, String)> {
-    OffsetDateTime::now_utc()
-        .format(&Rfc3339)
-        .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))
-}
-
 fn runtime_base_url(port: u16) -> String {
     format!("http://{AGENT_RUNTIME_HOST}:{port}")
 }
@@ -782,15 +534,12 @@ async fn start_app_runtime(store: PersistenceStore) -> Result<AppAgentRuntime, A
     let mode = resolve_launch_mode();
     let port = reserve_port()?;
     let token = generate_runtime_token();
-    let bridge_token = generate_runtime_token();
-    let bridge_port = reserve_port()?;
-    let persistence_bridge =
-        start_persistence_bridge(store.clone(), bridge_port, bridge_token.clone()).await?;
     let catalog = crate::org_config::get_or_refresh_model_catalog(store.pool())
         .await
         .map_err(|error| AgentRuntimeError::StartFailed {
             reason: format!("failed to fetch organization model catalog: {error}"),
         })?;
+    let pi_session_root = store.app_data_dir().join("agent-pi-sessions");
     let mut command = Command::new("bun");
     match mode {
         AgentRuntimeLaunchMode::Dev => {
@@ -811,11 +560,7 @@ async fn start_app_runtime(store: PersistenceStore) -> Result<AppAgentRuntime, A
         .env("HOSTNAME", AGENT_RUNTIME_HOST)
         .env("PORT", port.to_string())
         .env("KIRA_AGENT_RUNTIME_TOKEN", &token)
-        .env(
-            "KIRA_AGENT_PERSISTENCE_BRIDGE_URL",
-            runtime_base_url(bridge_port),
-        )
-        .env("KIRA_AGENT_PERSISTENCE_BRIDGE_TOKEN", bridge_token)
+        .env("KIRA_AGENT_PI_SESSION_ROOT", &pi_session_root)
         .env(
             "KIRA_AGENT_MODEL_CATALOG",
             serde_json::to_string(&catalog).map_err(|error| AgentRuntimeError::StartFailed {
@@ -836,7 +581,6 @@ async fn start_app_runtime(store: PersistenceStore) -> Result<AppAgentRuntime, A
         })?;
     if let Err(error) = wait_for_health(port).await {
         let _kill_result = process.kill().await;
-        persistence_bridge.abort();
         return Err(error);
     }
     Ok(AppAgentRuntime {
@@ -845,7 +589,6 @@ async fn start_app_runtime(store: PersistenceStore) -> Result<AppAgentRuntime, A
             token,
         },
         _process: process,
-        _persistence_bridge: persistence_bridge,
     })
 }
 

@@ -255,32 +255,6 @@ pub struct DeleteTerminalSnapshotInput {
     terminal_id: String,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AgentThreadMessageRecord {
-    id: String,
-    thread_id: String,
-    kind: String,
-    request_id: String,
-    message: serde_json::Value,
-    created_at: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ListAgentThreadMessagesInput {
-    thread_id: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SaveAgentThreadMessageInput {
-    thread_id: String,
-    kind: String,
-    request_id: String,
-    message: serde_json::Value,
-}
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenameProjectInput {
@@ -333,12 +307,6 @@ pub enum ProjectError {
     MissingWorkspacePanelState { kind: String, panel_id: String },
     #[error("terminal snapshot id is required")]
     MissingTerminalSnapshotId,
-    #[error("Agent Thread id is required")]
-    MissingAgentThreadId,
-    #[error("Agent Thread message kind is invalid: {0}")]
-    InvalidAgentThreadMessageKind(String),
-    #[error("Agent Thread message request id is required")]
-    MissingAgentThreadMessageRequestId,
     #[error("terminal snapshot payload is required")]
     MissingTerminalSnapshotPayload,
     #[error("terminal snapshot sequence must be at least 0, got {0}")]
@@ -721,65 +689,6 @@ pub async fn workspace_terminal_snapshot_save(
     clippy::needless_pass_by_value,
     reason = "Tauri commands require State by value"
 )]
-pub async fn agent_thread_messages_list(
-    input: ListAgentThreadMessagesInput,
-    store: tauri::State<'_, PersistenceStore>,
-) -> Result<Vec<AgentThreadMessageRecord>, ProjectError> {
-    let thread_id = validate_agent_thread_id(&input.thread_id)?;
-    let rows = sqlx::query(
-        "SELECT id, thread_id, kind, request_id, message_json, created_at FROM agent_thread_message_records WHERE thread_id = ? ORDER BY created_at ASC",
-    )
-    .bind(thread_id)
-    .fetch_all(store.pool())
-    .await
-    .map_err(|error| ProjectError::Query(error.to_string()))?;
-
-    rows.iter().map(agent_thread_message_from_row).collect()
-}
-
-#[tauri::command]
-#[allow(
-    clippy::needless_pass_by_value,
-    reason = "Tauri commands require State by value"
-)]
-pub async fn agent_thread_message_save(
-    input: SaveAgentThreadMessageInput,
-    store: tauri::State<'_, PersistenceStore>,
-) -> Result<AgentThreadMessageRecord, ProjectError> {
-    let thread_id = validate_agent_thread_id(&input.thread_id)?;
-    let kind = validate_agent_thread_message_kind(&input.kind)?;
-    let request_id = validate_agent_thread_message_request_id(&input.request_id)?;
-    let id = Uuid::new_v4().to_string();
-    let now = current_timestamp()?;
-    let message_json = serde_json::to_string(&input.message)
-        .map_err(|error| ProjectError::Create(error.to_string()))?;
-
-    sqlx::query("INSERT INTO agent_thread_message_records (id, thread_id, kind, request_id, message_json, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-        .bind(&id)
-        .bind(&thread_id)
-        .bind(&kind)
-        .bind(&request_id)
-        .bind(message_json)
-        .bind(&now)
-        .execute(store.pool())
-        .await
-        .map_err(|error| ProjectError::Create(error.to_string()))?;
-
-    Ok(AgentThreadMessageRecord {
-        id,
-        thread_id,
-        kind,
-        request_id,
-        message: input.message,
-        created_at: now,
-    })
-}
-
-#[tauri::command]
-#[allow(
-    clippy::needless_pass_by_value,
-    reason = "Tauri commands require State by value"
-)]
 pub async fn workspace_terminal_snapshot_delete(
     input: DeleteTerminalSnapshotInput,
     store: tauri::State<'_, PersistenceStore>,
@@ -791,35 +700,6 @@ pub async fn workspace_terminal_snapshot_delete(
         .await
         .map_err(|error| ProjectError::Query(error.to_string()))?;
     Ok(())
-}
-
-fn agent_thread_message_from_row(
-    row: &SqliteRow,
-) -> Result<AgentThreadMessageRecord, ProjectError> {
-    let message_json: String = row
-        .try_get("message_json")
-        .map_err(|error| ProjectError::Query(error.to_string()))?;
-    let message = serde_json::from_str(&message_json)
-        .map_err(|error| ProjectError::Query(error.to_string()))?;
-
-    Ok(AgentThreadMessageRecord {
-        id: row
-            .try_get("id")
-            .map_err(|error| ProjectError::Query(error.to_string()))?,
-        thread_id: row
-            .try_get("thread_id")
-            .map_err(|error| ProjectError::Query(error.to_string()))?,
-        kind: row
-            .try_get("kind")
-            .map_err(|error| ProjectError::Query(error.to_string()))?,
-        request_id: row
-            .try_get("request_id")
-            .map_err(|error| ProjectError::Query(error.to_string()))?,
-        message,
-        created_at: row
-            .try_get("created_at")
-            .map_err(|error| ProjectError::Query(error.to_string()))?,
-    })
 }
 
 async fn list_projects(pool: &SqlitePool) -> Result<Vec<Project>, ProjectError> {
@@ -1558,34 +1438,6 @@ fn validate_file_editor_file_path(file_path: &str) -> Result<String, ProjectErro
     }
 
     Ok(trimmed_file_path.to_string())
-}
-
-fn validate_agent_thread_id(thread_id: &str) -> Result<String, ProjectError> {
-    let trimmed_thread_id = thread_id.trim();
-    if trimmed_thread_id.is_empty() {
-        return Err(ProjectError::MissingAgentThreadId);
-    }
-
-    Ok(trimmed_thread_id.to_string())
-}
-
-fn validate_agent_thread_message_kind(kind: &str) -> Result<String, ProjectError> {
-    let trimmed_kind = kind.trim();
-    match trimmed_kind {
-        "prompt" | "event" | "result" => Ok(trimmed_kind.to_string()),
-        _ => Err(ProjectError::InvalidAgentThreadMessageKind(
-            trimmed_kind.to_string(),
-        )),
-    }
-}
-
-fn validate_agent_thread_message_request_id(request_id: &str) -> Result<String, ProjectError> {
-    let trimmed_request_id = request_id.trim();
-    if trimmed_request_id.is_empty() {
-        return Err(ProjectError::MissingAgentThreadMessageRequestId);
-    }
-
-    Ok(trimmed_request_id.to_string())
 }
 
 fn validate_terminal_snapshot_id(terminal_id: &str) -> Result<String, ProjectError> {

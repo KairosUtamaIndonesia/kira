@@ -64,23 +64,7 @@ type AgentThreadMessageRecord = {
   createdAt: string;
 };
 
-type ListAgentThreadMessagesInput = {
-  threadId: string;
-};
-
-type SaveAgentThreadMessageInput = {
-  threadId: string;
-  kind: AgentThreadMessageKind;
-  requestId: string;
-  message: unknown;
-};
-
-type RespondToHumanRequestInput = {
-  threadId: string;
-  response: unknown;
-};
-
-type RespondToHumanRequest = (response: unknown) => Promise<boolean>;
+type RespondToHumanRequest = (requestId: string, response: unknown) => Promise<boolean>;
 
 export type {
   AgentRuntimeConnection,
@@ -90,9 +74,6 @@ export type {
   AgentThreadPanelParams,
   GenerateAgentThreadTitleInput,
   GetAgentThreadContextUsageInput,
-  ListAgentThreadMessagesInput,
   PrepareAgentThreadInput,
   RespondToHumanRequest,
-  RespondToHumanRequestInput,
-  SaveAgentThreadMessageInput,
 };

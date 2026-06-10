@@ -47,8 +47,10 @@ server.on("upgrade", (request: IncomingMessage, socket: Duplex, head: Buffer) =>
 
   void (async () => {
     try {
-      const harness = await getOrCreateHarness(context);
-      wss.handleUpgrade(request, socket, head, (ws) => attachAgentSocket(ws, harness));
+      const harnessHost = await getOrCreateHarness(context);
+      wss.handleUpgrade(request, socket, head, (ws) =>
+        attachAgentSocket(ws, harnessHost.harness, harnessHost.toolUiBroker),
+      );
     } catch (error) {
       process.stderr.write(
         `harness build failed: ${error instanceof Error ? error.stack : String(error)}\n`,
