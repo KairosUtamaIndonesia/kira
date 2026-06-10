@@ -97,3 +97,15 @@ _Avoid_: Built-in plugin
 **Skill Conflict**:
 A Bundled Skill and a Project Skill sharing a declared name, which fails Flue session initialization rather than resolving implicitly.
 _Avoid_: Skill override when the result is a hard initialization failure
+
+**Platform Console**:
+The Kira-staff web control plane for onboarding and operating tenant organizations. Accessible only to platform admins. Lives at `/_console/*` in the cloud app.
+_Avoid_: "the admin panel" as an umbrella term; Platform Console and Organization Admin are distinct surfaces.
+
+**Organization Admin**:
+The tenant-scoped web surface where an organization's owners and admins manage their own members, Desktop Credentials, AI model catalog, and future app data. Lives at `/org/$organizationId/*` in the cloud app.
+_Avoid_: "org dashboard", "workspace settings".
+
+**Platform Admin**:
+A user holding the Better Auth `admin` plugin role, authorized to operate the Platform Console across all tenants. Distinct from an organization owner or admin (member roles within a single organization).
+_Avoid_: "admin" unqualified when the context could mean either a Platform Admin or an organization admin.

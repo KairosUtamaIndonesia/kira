@@ -1,12 +1,12 @@
 # Kira v3
 
-Kira v3 is a Bun/Turborepo monorepo containing the Kira desktop app and the hosted admin panel.
+Kira v3 is a Bun/Turborepo monorepo containing the Kira desktop app and the hosted cloud app.
 
 ## Repository layout
 
 ```txt
 apps/
-  admin/                    TanStack Start hosted admin panel and API
+  cloud/                    TanStack Start hosted web app (Sign-In, Platform Console, Org Admin)
   desktop/                  Tauri 2 desktop app with Vite, React, and Rust
     agent-runtime/          Bun/TypeScript Pi SDK runtime managed by desktop
 packages/
@@ -92,29 +92,29 @@ cd apps/desktop/agent-runtime
 bun run smoke:prompt
 ```
 
-## Admin app
+## Cloud app
 
-The admin app lives in `apps/admin`.
+The cloud app lives in `apps/cloud`.
 
-Run the admin dev server:
-
-```bash
-bun run dev:admin
-```
-
-Run admin checks only:
+Run the cloud dev server:
 
 ```bash
-bun run turbo check --filter=@kira/admin
+bun run dev:cloud
 ```
 
-Build admin only:
+Run cloud checks only:
 
 ```bash
-bun run turbo build --filter=@kira/admin
+bun run turbo check --filter=@kira/cloud
 ```
 
-Copy `apps/admin/.env.example` to `apps/admin/.env.local` when adding hosted auth/database integrations.
+Build cloud only:
+
+```bash
+bun run turbo build --filter=@kira/cloud
+```
+
+Copy `apps/cloud/.env.example` to `apps/cloud/.env` when adding hosted auth/database integrations.
 
 ## Tooling
 
