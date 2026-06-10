@@ -1,6 +1,7 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 
 import { ConsoleShell } from "@/features/console-shell/components/ConsoleShell";
+import { loadConsoleUser } from "@/features/console-shell/data/consoleUser";
 import { getSessionFn } from "@/lib/auth/session";
 
 export const Route = createFileRoute("/_console")({
@@ -17,12 +18,15 @@ export const Route = createFileRoute("/_console")({
 
     return { session };
   },
+  loader: () => loadConsoleUser(),
   component: ConsoleLayout,
 });
 
 function ConsoleLayout() {
+  const userMenu = Route.useLoaderData();
+
   return (
-    <ConsoleShell>
+    <ConsoleShell userMenu={userMenu}>
       <Outlet />
     </ConsoleShell>
   );

@@ -1,5 +1,8 @@
-import { Link, useLocation } from "@tanstack/react-router";
-import { Circle } from "lucide-react";
+import { Link, useLocation, useRouter } from "@tanstack/react-router";
+import { Building2, Circle, LayoutDashboard, LogOut } from "lucide-react";
+import { useState } from "react";
+
+import type { ConsoleUserMenu } from "@/features/console-shell/data/consoleUser";
 
 import {
   Breadcrumb,
@@ -10,7 +13,17 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { authClient } from "@/lib/auth/client";
 
 import { useConsoleBreadcrumbs, type ConsoleBreadcrumbItem } from "./ConsoleBreadcrumbs";
 
@@ -35,7 +48,11 @@ function getDefaultBreadcrumbs(pathname: string) {
   return [{ label: "Dashboard", href: "/dashboard" }];
 }
 
-function ConsoleHeader() {
+type ConsoleHeaderProperties = {
+  userMenu?: ConsoleUserMenu;
+};
+
+function ConsoleHeader({ userMenu }: ConsoleHeaderProperties) {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { items } = useConsoleBreadcrumbs();
   const breadcrumbs = items !== undefined ? items : getDefaultBreadcrumbs(pathname);
@@ -72,12 +89,161 @@ function ConsoleHeader() {
             <Circle aria-hidden="true" className="size-2 fill-current" />
             Local
           </span>
-          <Button variant="outline" size="sm">
-            User menu
-          </Button>
+          {userMenu !== undefined ? (
+            <ConsoleUserMenuDropdown userMenu={userMenu} />
+          ) : (
+            <OrgAdminUserMenuDropdown />
+          )}
         </div>
       </div>
     </header>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Shared sign-out item
+// ---------------------------------------------------------------------------
+
+function SignOutItem() {
+  const router = useRouter();
+  const [isSigningOut, setIsSigningOut] = useState(false);
+
+  return (
+    <DropdownMenuItem
+      disabled={isSigningOut}
+      onClick={async () => {
+        setIsSigningOut(true);
+        await authClient.signOut();
+        await router.invalidate();
+        await router.navigate({ to: "/sign-in", replace: true });
+      }}
+    >
+      <LogOut className="size-4" />
+      {isSigningOut ? "Signing out…" : "Sign out"}
+    </DropdownMenuItem>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Console user menu (platform admin context — has loader data)
+// ---------------------------------------------------------------------------
+
+function ConsoleUserMenuDropdown({ userMenu }: { userMenu: ConsoleUserMenu }) {
+  const initials = deriveInitials(userMenu.user.name);
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={<Button variant="ghost" size="sm" aria-label="Open user menu" className="gap-2" />}
+      >
+        <UserAvatar initials={initials} />
+        <span className="hidden max-w-32 truncate text-sm sm:block">{userMenu.user.name}</span>
+      </DropdownMenuTrigger>
+
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuGroup>
+          <DropdownMenuLabel className="flex flex-col gap-0.5 py-2">
+            <span className="font-semibold">{userMenu.user.name}</span>
+            <span className="text-xs font-normal text-muted-foreground">{userMenu.user.email}</span>
+          </DropdownMenuLabel>
+        </DropdownMenuGroup>
+
+        {userMenu.adminOrgs.length > 0 ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuLabel className="text-xs text-muted-foreground">
+                Switch to org
+              </DropdownMenuLabel>
+              {userMenu.adminOrgs.map((org) => (
+                <DropdownMenuItem
+                  key={org.id}
+                  render={<Link to="/org/$organizationId" params={{ organizationId: org.id }} />}
+                >
+                  <Building2 className="size-4" />
+                  {org.name}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuGroup>
+          </>
+        ) : undefined}
+
+        <DropdownMenuSeparator />
+        <SignOutItem />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Org admin user menu (org-scoped context — uses client session)
+// ---------------------------------------------------------------------------
+
+function OrgAdminUserMenuDropdown() {
+  const { data: session } = authClient.useSession();
+  const name = session !== null && session !== undefined ? session.user.name : "";
+  const email = session !== null && session !== undefined ? session.user.email : "";
+  const isPlatformAdmin =
+    session !== null && session !== undefined && session.user.role === "admin";
+  const initials = deriveInitials(name);
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={<Button variant="ghost" size="sm" aria-label="Open user menu" className="gap-2" />}
+      >
+        <UserAvatar initials={initials} />
+        <span className="hidden max-w-32 truncate text-sm sm:block">{name}</span>
+      </DropdownMenuTrigger>
+
+      <DropdownMenuContent align="end" className="w-56">
+        {name.length > 0 ? (
+          <DropdownMenuGroup>
+            <DropdownMenuLabel className="flex flex-col gap-0.5 py-2">
+              <span className="font-semibold">{name}</span>
+              <span className="text-xs font-normal text-muted-foreground">{email}</span>
+            </DropdownMenuLabel>
+          </DropdownMenuGroup>
+        ) : undefined}
+
+        {isPlatformAdmin ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem render={<Link to="/dashboard" />}>
+              <LayoutDashboard className="size-4" />
+              Back to console
+            </DropdownMenuItem>
+          </>
+        ) : undefined}
+
+        <DropdownMenuSeparator />
+        <SignOutItem />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Shared helpers
+// ---------------------------------------------------------------------------
+
+function deriveInitials(name: string) {
+  return name
+    .split(" ")
+    .map((part) => part[0] ?? "")
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+}
+
+function UserAvatar({ initials }: { initials: string }) {
+  return (
+    <span
+      aria-hidden
+      className="flex size-6 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground"
+    >
+      {initials}
+    </span>
   );
 }
 
