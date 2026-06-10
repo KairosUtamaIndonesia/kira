@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { getOrCreateAgentSession } from "./agent-session-host";
 import { registerAgentThreadContext, requireAgentThreadContext } from "./agent-thread-context";
 import { requireRuntimeToken } from "./auth";
+import { contextUsageFromEntries } from "./context-usage";
 import { generateAgentThreadTitle } from "./title-generation";
 
 const appRoutes = new Hono();
@@ -23,7 +24,15 @@ appRoutes.get("/agent-threads/:threadId/session", async (context) => {
     const threadId = context.req.param("threadId");
     const agentThreadContext = requireAgentThreadContext(threadId);
     const host = await getOrCreateAgentSession(agentThreadContext);
-    return context.json({ messages: host.session.messages, sessionId: host.session.sessionId });
+    const contextUsage = contextUsageFromEntries(await host.session.sessionManager.getEntries());
+    return context.json({
+      messages: host.session.messages,
+      sessionId: host.session.sessionId,
+      contextUsage:
+        contextUsage === undefined
+          ? undefined
+          : { ...contextUsage, updatedAt: new Date().toISOString() },
+    });
   } catch (error) {
     return context.json({ error: error instanceof Error ? error.message : String(error) }, 400);
   }

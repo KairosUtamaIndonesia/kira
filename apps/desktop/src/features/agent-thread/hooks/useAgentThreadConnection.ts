@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   AgentThreadContextUsage,
-  AgentThreadMessageKind,
-  AgentThreadMessageRecord,
   AgentThreadPanelParams,
+  PiMessage,
+  PiTranscriptState,
 } from "../types";
 
 import { setAgentThreadTitleGenerationState } from "../agentThreadStatusStore";
@@ -13,6 +13,12 @@ import {
   getAgentThreadContextUsage,
   prepareAgentThread,
 } from "../api/agentRuntimeApi";
+import {
+  appendLocalUserMessage,
+  applyPiEvent,
+  emptyPiTranscriptState,
+  hydratePiTranscript,
+} from "../piTranscriptState";
 
 declare global {
   interface PromiseConstructor {
@@ -87,7 +93,7 @@ function useAgentThreadConnection(
       status: "idle",
     },
   );
-  const [messages, setMessages] = useState<AgentThreadMessageRecord[]>([]);
+  const [transcript, setTranscript] = useState(emptyPiTranscriptState);
   const socketRef = useRef<PiAgentSocket | undefined>(void 0);
   const runtimeStateRef = useRef(runtimeState);
   const hasAutoTitledRef = useRef(false);
@@ -104,15 +110,6 @@ function useAgentThreadConnection(
       threadId: params.threadId,
     }),
     [params.projectId, params.sessionId, params.threadId],
-  );
-
-  const appendMessage = useCallback(
-    (kind: AgentThreadMessageKind, requestId: string, message: unknown) => {
-      const savedMessage = localMessageRecord(params.threadId, kind, requestId, message);
-      setMessages((currentMessages) => [...currentMessages, savedMessage]);
-      return Promise.resolve(savedMessage);
-    },
-    [params.threadId],
   );
 
   const respondToRequest = useCallback(
@@ -138,7 +135,7 @@ function useAgentThreadConnection(
 
     async function connectRuntime() {
       try {
-        setMessages([]);
+        setTranscript(emptyPiTranscriptState);
 
         const runtime = await prepareAgentThread(runtimeInput);
         if (disposed) {
@@ -146,6 +143,17 @@ function useAgentThreadConnection(
         }
         runtimeInfoRef.current = { baseUrl: runtime.baseUrl, token: runtime.token };
 
+        const session = await loadPiSession(runtime.baseUrl, runtime.token, params.threadId);
+        if (disposed) {
+          return;
+        }
+
+        setTranscript(hydratePiTranscript(session.messages));
+        setContextUsageState(
+          session.contextUsage === undefined
+            ? { status: "empty" }
+            : { status: "ready", usage: session.contextUsage },
+        );
         setRuntimeState({ status: "connecting", baseUrl: runtime.baseUrl });
         socket = PiAgentSocket.connect({
           baseUrl: runtime.baseUrl,
@@ -154,20 +162,13 @@ function useAgentThreadConnection(
         });
         socketRef.current = socket;
         unsubscribe = socket.onEvent((event) => {
-          const requestId = eventRequestId(event);
-          void appendMessage("event", requestId, event);
+          setTranscript((currentTranscript) => applyPiEvent(currentTranscript, event));
         });
         await socket.ready;
-        const hydratedMessages = await loadPiSessionMessages(
-          runtime.baseUrl,
-          runtime.token,
-          params.threadId,
-        );
 
         if (!disposed) {
-          setMessages(hydratedMessages);
           setRuntimeState({ status: "ready", baseUrl: runtime.baseUrl });
-          await refreshContextUsage(params.threadId, setContextUsageState);
+          await refreshContextUsage(params.threadId, setContextUsageState, runtime);
         }
       } catch (error) {
         if (!disposed) {
@@ -190,7 +191,7 @@ function useAgentThreadConnection(
         socketRef.current = undefined;
       }
     };
-  }, [appendMessage, params.threadId, runtimeInput]);
+  }, [params.threadId, runtimeInput]);
 
   async function sendPrompt(message: string) {
     const state = runtimeStateRef.current;
@@ -206,8 +207,7 @@ function useAgentThreadConnection(
 
     setRuntimeState({ status: "sending", baseUrl: state.baseUrl });
     try {
-      const requestId = crypto.randomUUID();
-      await appendMessage("prompt", requestId, message);
+      setTranscript((currentTranscript) => appendLocalUserMessage(currentTranscript, message));
       const result = await socket.prompt(message);
 
       if (
@@ -227,8 +227,15 @@ function useAgentThreadConnection(
           void generateTitleFromModel(trimmedPrompt, result);
         }
       }
+      const runtimeInfo = runtimeInfoRef.current;
+      if (runtimeInfo === undefined) {
+        throw new Error("Agent Thread runtime connection is missing.");
+      }
 
-      await refreshContextUsage(params.threadId, setContextUsageState);
+      await refreshContextUsage(params.threadId, setContextUsageState, {
+        baseUrl: state.baseUrl,
+        token: runtimeInfo.token,
+      });
       setRuntimeState({ status: "ready", baseUrl: state.baseUrl });
       return true;
     } catch (error) {
@@ -273,7 +280,7 @@ function useAgentThreadConnection(
 
   return {
     contextUsageState,
-    messages,
+    transcript,
     respondToRequest,
     runtimeState,
     sendPrompt,
@@ -486,46 +493,6 @@ function textDeltaFromEvent(value: Record<string, unknown>) {
   return;
 }
 
-function eventRequestId(event: unknown) {
-  const requestId = piEventGroupId(event);
-  if (requestId !== undefined) {
-    return requestId;
-  }
-  return "pi-runtime";
-}
-function piEventGroupId(event: unknown): string | undefined {
-  if (!isRecord(event)) {
-    return;
-  }
-  if (typeof event.requestId === "string" && event.requestId.length > 0) {
-    return event.requestId;
-  }
-  const toolCallId = stringField(event, "toolCallId");
-  if (toolCallId !== undefined) {
-    return `tool:${toolCallId}`;
-  }
-  const message = isRecord(event.message) ? event.message : undefined;
-  if (message !== undefined) {
-    return piMessageGroupId(message);
-  }
-  return;
-}
-function piMessageGroupId(message: Record<string, unknown>): string | undefined {
-  const role = stringField(message, "role");
-  const timestamp = message.timestamp;
-  if (role !== undefined && (typeof timestamp === "string" || typeof timestamp === "number")) {
-    return `message:${role}:${String(timestamp)}`;
-  }
-  const id = stringField(message, "id") ?? stringField(message, "responseId");
-  if (id !== undefined) {
-    return `message:${id}`;
-  }
-  return;
-}
-function stringField(record: Record<string, unknown>, key: string): string | undefined {
-  const value = record[key];
-  return typeof value === "string" && value.length > 0 ? value : undefined;
-}
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -546,8 +513,19 @@ async function waitForMinimumTitleGenerationDuration(startedAt: number) {
 async function refreshContextUsage(
   threadId: string,
   setContextUsageState: (state: AgentThreadContextUsageState) => void,
+  runtime: { baseUrl: string; token: string },
 ) {
   try {
+    const sessionUsage = await waitForPiSessionContextUsage(
+      runtime.baseUrl,
+      runtime.token,
+      threadId,
+    );
+    if (sessionUsage !== undefined) {
+      setContextUsageState({ status: "ready", usage: sessionUsage });
+      return;
+    }
+
     const usage = await getAgentThreadContextUsage({ threadId });
     setContextUsageState(usage === null ? { status: "empty" } : { status: "ready", usage });
   } catch (error) {
@@ -555,11 +533,53 @@ async function refreshContextUsage(
   }
 }
 
-async function loadPiSessionMessages(
+async function waitForPiSessionContextUsage(
   baseUrl: string,
   token: string,
   threadId: string,
-): Promise<AgentThreadMessageRecord[]> {
+): Promise<AgentThreadContextUsage | undefined> {
+  return waitForPiSessionContextUsageAttempt(baseUrl, token, threadId, [0, 100, 250, 500, 1000]);
+}
+
+async function waitForPiSessionContextUsageAttempt(
+  baseUrl: string,
+  token: string,
+  threadId: string,
+  retryDelaysMs: number[],
+): Promise<AgentThreadContextUsage | undefined> {
+  const [delayMs, ...remainingDelaysMs] = retryDelaysMs;
+  if (delayMs === undefined) {
+    return undefined;
+  }
+
+  if (delayMs > 0) {
+    await delay(delayMs);
+  }
+
+  const session = await loadPiSession(baseUrl, token, threadId);
+  if (session.contextUsage !== undefined) {
+    return session.contextUsage;
+  }
+
+  return waitForPiSessionContextUsageAttempt(baseUrl, token, threadId, remainingDelaysMs);
+}
+
+async function delay(durationMs: number) {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  setTimeout(resolve, durationMs);
+  await promise;
+}
+
+type PiSessionPayload = {
+  messages: PiMessage[];
+  contextUsage: AgentThreadContextUsage | undefined;
+};
+
+async function loadPiSession(
+  baseUrl: string,
+  token: string,
+  threadId: string,
+): Promise<PiSessionPayload> {
   const response = await fetch(
     `${baseUrl}/app/agent-threads/${encodeURIComponent(threadId)}/session`,
     {
@@ -569,62 +589,31 @@ async function loadPiSessionMessages(
   if (!response.ok) {
     throw new Error(`Failed to load Pi session: ${response.status} ${await response.text()}`);
   }
-  const payload = (await response.json()) as { messages?: unknown[] };
-  const messages = Array.isArray(payload.messages) ? payload.messages : [];
-  return messages.flatMap((message) => messageRecordFromPiMessage(threadId, message));
+  const payload = (await response.json()) as { messages?: unknown[]; contextUsage?: unknown };
+  return {
+    messages: Array.isArray(payload.messages)
+      ? payload.messages.filter((message): message is PiMessage => isRecord(message))
+      : [],
+    contextUsage: isAgentThreadContextUsage(payload.contextUsage)
+      ? payload.contextUsage
+      : undefined,
+  };
 }
-function messageRecordFromPiMessage(
-  threadId: string,
-  message: unknown,
-): AgentThreadMessageRecord[] {
-  if (!isRecord(message)) {
-    return [];
+function isAgentThreadContextUsage(value: unknown): value is AgentThreadContextUsage {
+  if (!isRecord(value)) {
+    return false;
   }
-  const role = stringField(message, "role");
-  if (role === "user") {
-    return [
-      localMessageRecord(
-        threadId,
-        "prompt",
-        piMessageGroupId(message) ?? crypto.randomUUID(),
-        textFromPiMessage(message),
-      ),
-    ];
-  }
-  if (role === "assistant") {
-    return [
-      localMessageRecord(threadId, "event", piMessageGroupId(message) ?? crypto.randomUUID(), {
-        type: "message_end",
-        message,
-      }),
-    ];
-  }
-  return [];
+
+  return (
+    typeof value.usedTokens === "number" &&
+    typeof value.contextWindow === "number" &&
+    typeof value.maxOutputTokens === "number" &&
+    typeof value.modelId === "string" &&
+    isRecord(value.usage) &&
+    isRecord(value.cost)
+  );
 }
-function localMessageRecord(
-  threadId: string,
-  kind: AgentThreadMessageKind,
-  requestId: string,
-  message: unknown,
-): AgentThreadMessageRecord {
-  const now = new Date().toISOString();
-  return { id: crypto.randomUUID(), threadId, kind, requestId, message, createdAt: now };
-}
-function textFromPiMessage(message: Record<string, unknown>): string {
-  const content = message.content;
-  if (!Array.isArray(content)) {
-    return "";
-  }
-  return content
-    .flatMap((part) => {
-      if (!isRecord(part)) {
-        return [];
-      }
-      const text = part.text;
-      return typeof text === "string" ? [text] : [];
-    })
-    .join("");
-}
+
 function errorMessageFromUnknown(error: unknown) {
   if (typeof error === "string") {
     return error;
@@ -637,7 +626,7 @@ function errorMessageFromUnknown(error: unknown) {
 export { useAgentThreadConnection };
 export type {
   AgentThreadContextUsageState,
-  AgentThreadMessageRecord,
   AgentThreadRuntimeState,
   AgentThreadTitleGenerationState,
+  PiTranscriptState,
 };

@@ -53,15 +53,42 @@ type AgentThreadContextUsage = {
   updatedAt: string;
 };
 
-type AgentThreadMessageKind = "prompt" | "event" | "result";
+type PiMessage = Record<string, unknown>;
+type PiEvent = Record<string, unknown>;
 
-type AgentThreadMessageRecord = {
+type PiToolExecutionState = {
+  toolCallId: string;
+  toolName: string | undefined;
+  status: "queued" | "running" | "succeeded" | "failed" | "canceled";
+  input: unknown;
+  output: unknown;
+  error: string | undefined;
+  durationMs: number | undefined;
+  event: PiEvent;
+  toolUiRequestId: string | undefined;
+};
+
+type PiToolUiRequestState = {
   id: string;
-  threadId: string;
-  kind: AgentThreadMessageKind;
-  requestId: string;
-  message: unknown;
+  toolCallId: string;
+  toolName: string;
+  input: unknown;
+  event: PiEvent;
+};
+
+type PiActiveAssistantTurn = {
+  id: string;
   createdAt: string;
+  textParts: string[];
+  thinkingParts: string[];
+};
+
+type PiTranscriptState = {
+  persistedMessages: PiMessage[];
+  activeAssistantTurn: PiActiveAssistantTurn | undefined;
+  activeToolExecutions: Record<string, PiToolExecutionState>;
+  activeToolUiRequests: Record<string, PiToolUiRequestState>;
+  liveEvents: PiEvent[];
 };
 
 type RespondToHumanRequest = (requestId: string, response: unknown) => Promise<boolean>;
@@ -69,11 +96,15 @@ type RespondToHumanRequest = (requestId: string, response: unknown) => Promise<b
 export type {
   AgentRuntimeConnection,
   AgentThreadContextUsage,
-  AgentThreadMessageKind,
-  AgentThreadMessageRecord,
   AgentThreadPanelParams,
   GenerateAgentThreadTitleInput,
   GetAgentThreadContextUsageInput,
+  PiActiveAssistantTurn,
+  PiEvent,
+  PiMessage,
+  PiToolExecutionState,
+  PiToolUiRequestState,
+  PiTranscriptState,
   PrepareAgentThreadInput,
   RespondToHumanRequest,
 };

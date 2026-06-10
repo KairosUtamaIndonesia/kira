@@ -1,24 +1,20 @@
 import { Brain } from "lucide-react";
 
 import type { AgentThreadActivityBlock } from "../agentThreadDisplay";
-import type { AgentThreadMessageRecord, RespondToHumanRequest } from "../types";
+import type { PiTranscriptState, RespondToHumanRequest } from "../types";
 
 import { buildAgentThreadTranscript, stringifyUnknown } from "../agentThreadDisplay";
 import { AgentThreadMarkdown } from "./AgentThreadMarkdown";
 import { toolComponentForName } from "./tools";
 
 type AgentThreadTranscriptProps = {
-  messages: AgentThreadMessageRecord[];
-  runtimeIsSending: boolean;
+  transcript: PiTranscriptState;
   respond: RespondToHumanRequest;
 };
 
-function AgentThreadTranscript({
-  messages,
-  runtimeIsSending,
-  respond,
-}: AgentThreadTranscriptProps) {
-  if (messages.length === 0) {
+function AgentThreadTranscript({ transcript, respond }: AgentThreadTranscriptProps) {
+  const items = buildAgentThreadTranscript(transcript);
+  if (items.length === 0) {
     return (
       <div className="flex h-full min-h-40 items-center justify-center rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
         Agent Thread messages will appear here after you send a prompt.
@@ -26,11 +22,9 @@ function AgentThreadTranscript({
     );
   }
 
-  const transcript = buildAgentThreadTranscript(messages, runtimeIsSending);
-
   return (
     <ol className="space-y-5">
-      {transcript.map((item) => {
+      {items.map((item) => {
         if (item.type === "user-message") {
           return (
             <li key={item.id} className="flex justify-end">
