@@ -12,8 +12,10 @@ import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { listOrganizationsForPlatform } from "@/features/platform/organizations/data/organizations";
 import { listDashboardSsoConnections } from "@/features/sso/data/dashboardSso";
+import { requirePlatformAdmin } from "@/lib/auth/guards";
 
 const loadDashboard = createServerFn().handler(async () => {
+  await requirePlatformAdmin();
   const [organizations, ssoConnections] = await Promise.all([
     listOrganizationsForPlatform(),
     listDashboardSsoConnections(),

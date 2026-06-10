@@ -3,8 +3,10 @@ import { createServerFn } from "@tanstack/react-start";
 
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { listPlatformUsersForAdmin } from "@/features/users/data/users";
+import { requirePlatformAdmin } from "@/lib/auth/guards";
 
 const loadUsers = createServerFn().handler(async () => {
+  await requirePlatformAdmin();
   return listPlatformUsersForAdmin();
 });
 

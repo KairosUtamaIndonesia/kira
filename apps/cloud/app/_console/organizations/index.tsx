@@ -23,8 +23,12 @@ import {
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { CreateOrganizationForm } from "@/features/organizations/components/CreateOrganizationForm";
 import { listOrganizationsForPlatform } from "@/features/platform/organizations/data/organizations";
+import { requirePlatformAdmin } from "@/lib/auth/guards";
 
-const loadOrganizations = createServerFn().handler(() => listOrganizationsForPlatform());
+const loadOrganizations = createServerFn().handler(async () => {
+  await requirePlatformAdmin();
+  return listOrganizationsForPlatform();
+});
 
 export const Route = createFileRoute("/_console/organizations/")({
   loader: () => loadOrganizations(),

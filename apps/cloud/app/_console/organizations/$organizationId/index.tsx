@@ -7,10 +7,12 @@ import {
   getOrganizationForPlatform,
   listOrganizationMembersForPlatform,
 } from "@/features/platform/organizations/data/organizations";
+import { requirePlatformAdmin } from "@/lib/auth/guards";
 
 const loadOrganization = createServerFn()
   .validator((organizationId: string) => organizationId)
   .handler(async ({ data: organizationId }) => {
+    await requirePlatformAdmin();
     const organization = await getOrganizationForPlatform(organizationId);
 
     if (organization === undefined) {
