@@ -29,6 +29,7 @@ type ParsedCommand = {
   streamingBehavior?: "steer" | "followUp";
   targetId?: string;
   response?: unknown;
+  customInstructions?: string;
   options?: {
     summarize?: boolean;
     customInstructions?: string;
@@ -250,6 +251,19 @@ async function handleCommand(
           ...(summarize === undefined ? {} : { summarize }),
         });
         respond(ws, command.id, "navigate_tree", true);
+        return;
+      }
+      case "compact": {
+        const customInstructions =
+          typeof command.customInstructions === "string" && command.customInstructions.length > 0
+            ? command.customInstructions
+            : undefined;
+        // Pi emits `compaction_start` / `compaction_end` itself; the desktop
+        // client listens for those events to reflect the in-flight state.
+        // Wait for the compactor to finish before acknowledging so the caller's
+        // `await` resolves only when the new context is durable.
+        const result = await session.compact(customInstructions);
+        respond(ws, command.id, "compact", true, { data: { result } });
         return;
       }
       default:

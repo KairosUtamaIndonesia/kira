@@ -9,18 +9,34 @@ type SlashCommandListInput = {
 };
 
 /**
- * Returns the slash commands visible in the Composer. Skills are the only
- * source for now; future command sources (custom commands, extensions) plug
+ * Built-in slash commands that are always available. They are listed first in
+ * the picker so users discover them before scrolling through per-project
+ * Skills. New built-ins get added here.
+ */
+const builtInSlashCommands: readonly ComposerSlashCommand[] = [
+  {
+    kind: "built-in",
+    name: "compact",
+    invocation: "/compact",
+    description: "Manually compact this Agent Thread's context",
+    dispatch: () => ({ type: "action", action: "compact" }),
+  },
+];
+
+/**
+ * Returns the slash commands visible in the Composer. Built-in commands come
+ * first so users discover them; Skills follow, with project Skills after
+ * bundled Skills. Future command sources (custom commands, extensions) plug
  * in here.
  */
 function useSlashCommands(input: SlashCommandListInput): ComposerSlashCommand[] {
   const { state } = useSkillsList(input.projectPath);
   return useMemo<ComposerSlashCommand[]>(() => {
     if (state.status !== "ready") {
-      return [];
+      return [...builtInSlashCommands];
     }
     const { bundled, project } = state.result;
-    const commands: ComposerSlashCommand[] = [];
+    const commands: ComposerSlashCommand[] = [...builtInSlashCommands];
     for (const skill of [...bundled, ...project]) {
       if (skill.conflict) {
         continue;
@@ -30,7 +46,10 @@ function useSlashCommands(input: SlashCommandListInput): ComposerSlashCommand[] 
         name: skill.name,
         invocation: `/skill:${skill.name}`,
         description: skill.description,
-        expand: () => `<skill name="${skill.name}" />`,
+        dispatch: () => ({
+          type: "insert",
+          text: `<skill name="${skill.name}" />`,
+        }),
       });
     }
     return commands;

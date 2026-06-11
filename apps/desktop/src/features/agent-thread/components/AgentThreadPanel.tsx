@@ -47,8 +47,15 @@ function AgentThreadPanel({ api, params, onRename }: AgentThreadPanelProps) {
     [api, onRename, params.panelId],
   );
 
-  const { contextUsageState, transcript, respondToRequest, runtimeState, sendPrompt } =
-    useAgentThreadConnection(params, { onAutoTitled: handleAutoTitled });
+  const {
+    contextUsageState,
+    isCompacting,
+    runSlashCommandAction,
+    transcript,
+    respondToRequest,
+    runtimeState,
+    sendPrompt,
+  } = useAgentThreadConnection(params, { onAutoTitled: handleAutoTitled });
 
   useEffect(() => {
     setAgentThreadRuntimeState(params.threadId, runtimeState);
@@ -135,7 +142,9 @@ function AgentThreadPanel({ api, params, onRename }: AgentThreadPanelProps) {
             threadId={params.threadId}
             folderPath={params.folderPath}
             runtimeState={runtimeState}
+            isCompacting={isCompacting}
             sendPrompt={sendPrompt}
+            runSlashCommandAction={runSlashCommandAction}
             isDropTargetActive={isDraggingFile}
           />
           <AgentThreadContextMeter state={contextUsageState} />

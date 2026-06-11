@@ -97,6 +97,8 @@ function useAgentThreadConnection(
     },
   );
   const [transcript, setTranscript] = useState(emptyPiTranscriptState);
+  const [isCompacting, setIsCompacting] = useState(false);
+  const isCompactingRef = useRef(false);
   const socketRef = useRef<PiAgentSocket | undefined>(void 0);
   const runtimeStateRef = useRef(runtimeState);
   const runtimeInfoRef = useRef<{ baseUrl: string; token: string } | undefined>(void 0);
@@ -106,6 +108,18 @@ function useAgentThreadConnection(
   const onAutoTitledRef = useRef(options === undefined ? undefined : options.onAutoTitled);
   onAutoTitledRef.current = options === undefined ? undefined : options.onAutoTitled;
   runtimeStateRef.current = runtimeState;
+  isCompactingRef.current = isCompacting;
+
+  function handlePiEvent(event: unknown) {
+    setTranscript((currentTranscript) => applyPiEvent(currentTranscript, event));
+    if (isRecord(event)) {
+      if (event.type === "compaction_start") {
+        setIsCompacting(true);
+      } else if (event.type === "compaction_end") {
+        setIsCompacting(false);
+      }
+    }
+  }
 
   const runtimeInput = useMemo(
     () => ({
@@ -165,9 +179,7 @@ function useAgentThreadConnection(
           threadId: params.threadId,
         });
         socketRef.current = socket;
-        unsubscribe = socket.onEvent((event) => {
-          setTranscript((currentTranscript) => applyPiEvent(currentTranscript, event));
-        });
+        unsubscribe = socket.onEvent(handlePiEvent);
         await socket.ready;
 
         if (!disposed) {
@@ -282,8 +294,37 @@ function useAgentThreadConnection(
     setAgentThreadTitleGenerationState(params.threadId, { status: "done" });
   }
 
+  async function runSlashCommandAction(
+    kind: "compact",
+    args: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    if (isCompactingRef.current) {
+      return { ok: false, error: "Already compacting." };
+    }
+    const socket = socketRef.current;
+    if (socket === undefined) {
+      return { ok: false, error: "Agent Thread socket is not connected." };
+    }
+    const state = runtimeStateRef.current;
+    if (state.status !== "ready") {
+      return { ok: false, error: "Agent Thread is not ready." };
+    }
+    try {
+      if (kind === "compact") {
+        const trimmed = args.trim();
+        await socket.compact(trimmed.length === 0 ? undefined : trimmed);
+        return { ok: true };
+      }
+      return { ok: false, error: `Unknown slash command kind: ${kind}` };
+    } catch (error) {
+      return { ok: false, error: errorMessageFromUnknown(error) };
+    }
+  }
+
   return {
     contextUsageState,
+    isCompacting,
+    runSlashCommandAction,
     transcript,
     respondToRequest,
     runtimeState,
@@ -342,8 +383,21 @@ class PiAgentSocket {
   respondToToolUi(requestId: string, response: unknown) {
     return this.sendCommand({ id: requestId, type: "tool_ui_response", response });
   }
-
-  private sendCommand(command: { id: string; type: string; message?: string; response?: unknown }) {
+  async compact(customInstructions: string | undefined) {
+    const id = crypto.randomUUID();
+    await this.sendCommand({
+      id,
+      type: "compact",
+      ...(customInstructions === undefined ? {} : { customInstructions }),
+    });
+  }
+  private sendCommand(command: {
+    id: string;
+    type: string;
+    message?: string;
+    response?: unknown;
+    customInstructions?: string;
+  }) {
     if (this.socket.readyState !== WebSocket.OPEN) {
       return Promise.reject(new Error("Agent Thread socket is not open."));
     }
