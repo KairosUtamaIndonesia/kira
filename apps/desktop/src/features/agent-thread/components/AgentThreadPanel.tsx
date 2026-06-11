@@ -1,5 +1,8 @@
+import { ArrowDown } from "lucide-react";
 import { useCallback, useEffect } from "react";
+import { StickToBottom } from "use-stick-to-bottom";
 
+import { Button } from "@/components/ui/button";
 import { useAppearanceTheme } from "@/features/settings";
 
 import type { AgentThreadPanelParams } from "../types";
@@ -58,14 +61,34 @@ function AgentThreadPanel({ api, params, onRename }: AgentThreadPanelProps) {
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-editor-surface text-foreground">
-      <div className="min-h-0 flex-1 overflow-auto p-2">
-        <div className="mx-auto w-full max-w-5xl">
-          <AgentThreadTranscript transcript={transcript} respond={respondToRequest} />
-          {agentThreadShowRawEventStream ? (
-            <AgentThreadRawEventStream transcript={transcript} />
-          ) : undefined}
-        </div>
-      </div>
+      <StickToBottom className="relative min-h-0 flex-1" initial="instant" resize="smooth">
+        {({ isAtBottom, scrollToBottom }) => (
+          <>
+            <StickToBottom.Content className="mx-auto w-full max-w-5xl" scrollClassName="p-2">
+              <AgentThreadTranscript transcript={transcript} respond={respondToRequest} />
+              {agentThreadShowRawEventStream ? (
+                <AgentThreadRawEventStream transcript={transcript} />
+              ) : undefined}
+            </StickToBottom.Content>
+            {isAtBottom ? undefined : (
+              <div className="pointer-events-none absolute right-4 bottom-4 left-4 mx-auto flex max-w-5xl justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon-sm"
+                  aria-label="Scroll to bottom"
+                  className="pointer-events-auto shadow-xs"
+                  onClick={() => {
+                    void scrollToBottom({ animation: "smooth" });
+                  }}
+                >
+                  <ArrowDown />
+                </Button>
+              </div>
+            )}
+          </>
+        )}
+      </StickToBottom>
       <footer className="relative shrink-0 bg-editor-surface p-2 before:pointer-events-none before:absolute before:-top-8 before:right-0 before:left-0 before:h-8 before:bg-gradient-to-t before:from-editor-surface before:to-transparent before:content-['']">
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-1.5">
           <Composer
