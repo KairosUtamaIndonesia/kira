@@ -166,22 +166,26 @@ function ExplorerTreeModel({
   const expandedPathsRef = useRef<readonly string[]>([]);
   const didInitializePathsRef = useRef(false);
   const draggedFilePathsRef = useRef<readonly string[]>([]);
-  // Tracks the last file path selected by a pointer/keyboard interaction so the
-  // click handler can open it. Stored in a ref (not state) so it is synchronously
-  // current when handleTreeClick fires after pointerup/click.
-  const pendingOpenFileRef = useRef<string | undefined>();
+  // Tracks the last file or directory path selected by a pointer/keyboard
+  // interaction so the click handler can open it. Stored in refs (not state)
+  // so they are synchronously current when handleTreeClick fires after
+  // pointerup/click.
   const runtimeRef = useRef({ directoryPaths, filePaths, onLoadDirectory, onOpenFile });
   runtimeRef.current = { directoryPaths, filePaths, onLoadDirectory, onOpenFile };
+  const pendingOpenFileRef = useRef<string | undefined>();
+  const pendingOpenDirectoryRef = useRef<string | undefined>();
   const preparedInput = useMemo(() => prepareFileTreeInput(treePaths), [treePaths]);
   const handleSelectionChange = useCallback((selectedPaths: readonly string[]) => {
     if (selectedPaths.length !== 1) {
       pendingOpenFileRef.current = undefined;
+      pendingOpenDirectoryRef.current = undefined;
       return;
     }
 
     const selectedPath = selectedPaths[0];
     if (selectedPath === undefined) {
       pendingOpenFileRef.current = undefined;
+      pendingOpenDirectoryRef.current = undefined;
       return;
     }
 
@@ -192,14 +196,20 @@ function ExplorerTreeModel({
       // panel on every drag attempt. Instead, record the path and open it
       // in handleTreeClick, which only fires for click (never for drags).
       pendingOpenFileRef.current = selectedPath;
+      pendingOpenDirectoryRef.current = undefined;
+      return;
+    }
+
+    if (runtime.directoryPaths.has(selectedPath)) {
+      // Same rule as files: defer directory loading until click so a drag
+      // gesture does not accidentally expand the folder.
+      pendingOpenFileRef.current = undefined;
+      pendingOpenDirectoryRef.current = selectedPath;
       return;
     }
 
     pendingOpenFileRef.current = undefined;
-    if (runtime.directoryPaths.has(selectedPath)) {
-      expandedPathsRef.current = includeExpandedPath(expandedPathsRef.current, selectedPath);
-      runtime.onLoadDirectory(selectedPath);
-    }
+    pendingOpenDirectoryRef.current = undefined;
   }, []);
   const { model } = useFileTree({
     preparedInput,
@@ -210,12 +220,15 @@ function ExplorerTreeModel({
     onSelectionChange: handleSelectionChange,
     dragAndDrop: {
       canDrag(paths) {
-        const isFilePaths = paths.every((p) => runtimeRef.current.filePaths.has(p));
+        const isDraggable = paths.every(
+          (path) =>
+            runtimeRef.current.filePaths.has(path) || runtimeRef.current.directoryPaths.has(path),
+        );
         // Capture the dragged paths synchronously here — this fires inside the
         // shadow-DOM phase of dragstart, before our light-DOM handleDragStart runs,
         // so it is always current regardless of React's render scheduling.
-        draggedFilePathsRef.current = isFilePaths ? paths : [];
-        return isFilePaths;
+        draggedFilePathsRef.current = isDraggable ? paths : [];
+        return isDraggable;
       },
       canDrop() {
         return true;
@@ -261,8 +274,8 @@ function ExplorerTreeModel({
     if (container === null) {
       return;
     }
-    function onDragStart(event: Event) {
-      const drag = event as DragEvent;
+    function onDragStart(event: DragEvent) {
+      const drag = event;
       const filesToDrag = draggedFilePathsRef.current;
       if (filesToDrag.length === 0 || drag.dataTransfer === null) {
         return;
@@ -277,11 +290,20 @@ function ExplorerTreeModel({
   }, []);
 
   function handleTreeClick() {
-    const path = pendingOpenFileRef.current;
-    if (path === undefined) {
+    const filePath = pendingOpenFileRef.current;
+    if (filePath !== undefined) {
+      void runtimeRef.current.onOpenFile(filePath);
       return;
     }
-    void runtimeRef.current.onOpenFile(path);
+
+    const directoryPath = pendingOpenDirectoryRef.current;
+    if (directoryPath === undefined) {
+      return;
+    }
+
+    const runtime = runtimeRef.current;
+    expandedPathsRef.current = includeExpandedPath(expandedPathsRef.current, directoryPath);
+    void runtime.onLoadDirectory(directoryPath);
   }
 
   function handleTreeKeyDown(event: KeyboardEvent<HTMLDivElement>) {
