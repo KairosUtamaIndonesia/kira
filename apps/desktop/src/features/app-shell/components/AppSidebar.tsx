@@ -37,7 +37,7 @@ type AppSidebarProps = {
   onProjectCreated: (createdProject: CreatedProject) => void;
   onProjectRemoved: (projectId: string) => void;
   onProjectSelect: (projectId: string) => void;
-  onSessionSelect: (projectId: string, sessionId: string) => void;
+  onSessionSelect: (projectId: string, sessionId: string) => Promise<void>;
   onSettingsOpen: () => void;
 };
 

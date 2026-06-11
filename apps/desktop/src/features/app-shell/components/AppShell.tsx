@@ -511,9 +511,7 @@ function AppShell() {
             onProjectCreated={handleProjectCreated}
             onProjectRemoved={handleProjectRemoved}
             onProjectSelect={(projectId) => void handleProjectSelect(projectId)}
-            onSessionSelect={(projectId, sessionId) =>
-              void handleSessionSelect(projectId, sessionId)
-            }
+            onSessionSelect={handleSessionSelect}
             onSettingsOpen={handleSettingsOpen}
           />
         </ResizablePanel>

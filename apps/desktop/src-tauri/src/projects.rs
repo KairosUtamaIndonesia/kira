@@ -2,6 +2,8 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::Command,
+    thread,
+    time::Duration,
 };
 
 use serde::{Deserialize, Serialize};
@@ -543,6 +545,23 @@ pub async fn project_remove(
     input: RemoveProjectInput,
     store: tauri::State<'_, PersistenceStore>,
 ) -> Result<(), ProjectError> {
+    let project = ensure_project_exists(store.pool(), &input.project_id).await?;
+    let sessions = sqlx::query_as::<_, Session>(SESSION_SELECT_PROJECT)
+        .bind(&input.project_id)
+        .fetch_all(store.pool())
+        .await
+        .map_err(|error| ProjectError::Query(error.to_string()))?;
+
+    for session in sessions {
+        if session.root_kind == SessionRootKind::Worktree {
+            let worktree_path = session
+                .worktree_path
+                .as_deref()
+                .ok_or_else(|| ProjectError::MissingWorktreePath(session.id.clone()))?;
+            remove_clean_session_worktree(&project.folder_path, worktree_path)?;
+        }
+    }
+
     sqlx::query("DELETE FROM projects WHERE id = ?")
         .bind(input.project_id)
         .execute(store.pool())
@@ -1536,20 +1555,23 @@ fn remove_clean_session_worktree(
     worktree_path: &str,
 ) -> Result<(), ProjectError> {
     let worktree_path = PathBuf::from(worktree_path);
-    if !worktree_path.exists() {
-        prune_stale_project_worktrees(project_folder)?;
-        return Ok(());
-    }
-
-    let status = run_git(
+    match run_git(
         &worktree_path,
         "inspect worktree status",
         &["status", "--porcelain"],
-    )?;
-    if !status.trim().is_empty() {
-        return Err(ProjectError::DirtyWorktree(
-            worktree_path.display().to_string(),
-        ));
+    ) {
+        Ok(status) if !status.trim().is_empty() => {
+            return Err(ProjectError::DirtyWorktree(
+                worktree_path.display().to_string(),
+            ));
+        }
+        Err(error) if is_missing_git_repository_error(&error) => {
+            prune_stale_project_worktrees(project_folder)?;
+            remove_worktree_directory_with_retry(&worktree_path)?;
+            return Ok(());
+        }
+        Err(error) => return Err(error),
+        Ok(_) => {}
     }
 
     run_git(
@@ -1558,13 +1580,48 @@ fn remove_clean_session_worktree(
         &["worktree", "remove", &worktree_path.display().to_string()],
     )?;
     prune_stale_project_worktrees(project_folder)?;
-    if worktree_path.exists() {
-        fs::remove_dir_all(&worktree_path).map_err(|error| ProjectError::RemoveWorktree {
+    remove_worktree_directory_with_retry(&worktree_path)?;
+    Ok(())
+}
+
+fn remove_worktree_directory_with_retry(worktree_path: &Path) -> Result<(), ProjectError> {
+    if !worktree_path.exists() {
+        return Ok(());
+    }
+
+    let mut last_error = None;
+    for attempt in 0..10 {
+        match fs::remove_dir_all(worktree_path) {
+            Ok(()) => return Ok(()),
+            Err(error) if attempt < 9 && is_transient_remove_dir_error(&error) => {
+                last_error = Some(error);
+                thread::sleep(Duration::from_millis(50));
+            }
+            Err(error) => {
+                return Err(ProjectError::RemoveWorktree {
+                    path: worktree_path.display().to_string(),
+                    message: error.to_string(),
+                });
+            }
+        }
+    }
+
+    if let Some(error) = last_error {
+        return Err(ProjectError::RemoveWorktree {
             path: worktree_path.display().to_string(),
             message: error.to_string(),
-        })?;
+        });
     }
-    Ok(())
+
+    Err(ProjectError::RemoveWorktree {
+        path: worktree_path.display().to_string(),
+        message: "failed to remove worktree directory after retries".to_string(),
+    })
+}
+
+fn is_transient_remove_dir_error(error: &std::io::Error) -> bool {
+    matches!(error.raw_os_error(), Some(32 | 5))
+        || matches!(error.kind(), std::io::ErrorKind::PermissionDenied)
 }
 
 fn prune_stale_project_worktrees(project_folder: &str) -> Result<(), ProjectError> {
@@ -1575,6 +1632,21 @@ fn prune_stale_project_worktrees(project_folder: &str) -> Result<(), ProjectErro
     )?;
     Ok(())
 }
+
+fn is_missing_git_repository_error(error: &ProjectError) -> bool {
+    matches!(
+        error,
+        ProjectError::GitCommand { message, .. }
+            if message.contains("not a git repository")
+                || message.contains("directory name is invalid")
+                || message.contains("system cannot find the file specified")
+                || message.contains("No such file or directory")
+                || message.contains("os error 267")
+                || message.contains("os error 2")
+    )
+}
+
+
 
 fn run_git(cwd: &Path, operation: &str, args: &[&str]) -> Result<String, ProjectError> {
     let output = Command::new("git")
@@ -1595,6 +1667,7 @@ fn run_git(cwd: &Path, operation: &str, args: &[&str]) -> Result<String, Project
         message: if stderr.is_empty() { stdout } else { stderr },
     })
 }
+
 
 fn validate_session_name(name: &str) -> Result<String, ProjectError> {
     let trimmed_name = name.trim();

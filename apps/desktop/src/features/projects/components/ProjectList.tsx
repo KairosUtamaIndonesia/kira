@@ -76,7 +76,7 @@ type ProjectListProps = {
   onProjectChanged: (project: Project) => void;
   onProjectRemoved: (projectId: string) => void;
   onProjectSelect: (projectId: string) => void;
-  onSessionSelect: (projectId: string, sessionId: string) => void;
+  onSessionSelect: (projectId: string, sessionId: string) => Promise<void>;
   onSessionCreated: (session: Session) => void;
   onSessionDeleted: (projectId: string, sessionId: string) => void;
 };
@@ -100,7 +100,13 @@ function ProjectList({
   const [collapsedProjectIds, setCollapsedProjectIds] = useState<string[]>([]);
   const [projectForNewSession, setProjectForNewSession] = useState<Project>();
   const [sessionToDelete, setSessionToDelete] = useState<SessionDeleteTarget>();
-
+  let sessionDeleteSessions: Session[] | undefined;
+  if (sessionToDelete !== undefined) {
+    const deleteSessionsState = projectSessions[sessionToDelete.project.id];
+    if (deleteSessionsState !== undefined) {
+      sessionDeleteSessions = deleteSessionsState.sessions;
+    }
+  }
   function handleProjectCollapseToggle(projectId: string) {
     setCollapsedProjectIds((currentProjectIds) =>
       toggleProjectCollapse(currentProjectIds, projectId),
@@ -138,7 +144,7 @@ function ProjectList({
                   </SidebarMenuButton>
                   <SidebarMenuAction
                     tooltip="New Session"
-                    className="right-7 opacity-0 transition-opacity duration-150 group-hover/menu-item:opacity-100 group-focus-within/menu-item:opacity-100"
+                    className="right-7 opacity-0 transition-opacity duration-150 group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100"
                     render={
                       <button
                         type="button"
@@ -246,6 +252,9 @@ function ProjectList({
       />
       <DeleteSessionDialog
         target={sessionToDelete}
+        activeSessionId={activeSessionId}
+        sessions={sessionDeleteSessions}
+        onSessionSelect={onSessionSelect}
         onOpenChange={(open) => {
           if (!open) {
             setSessionToDelete(undefined);
@@ -269,7 +278,7 @@ type ProjectSessionsProps = {
   project: Project;
   branchLabel: string | undefined;
   sessionsState: ProjectSessionsState | undefined;
-  onSessionSelect: (projectId: string, sessionId: string) => void;
+  onSessionSelect: (projectId: string, sessionId: string) => Promise<void>;
   onSessionDeleteRequest: (session: Session) => void;
 };
 
@@ -329,7 +338,9 @@ function ProjectSessions({
                         type="button"
                         aria-label={`${project.name} Session ${session.name}`}
                         disabled={isProjectSwitching}
-                        onClick={() => onSessionSelect(project.id, session.id)}
+                        onClick={() => {
+                          void onSessionSelect(project.id, session.id);
+                        }}
                       />
                     }
                   >
@@ -544,17 +555,34 @@ function NewSessionDialog({ project, onOpenChange, onSessionCreated }: NewSessio
     </Dialog>
   );
 }
-
 type DeleteSessionDialogProps = {
   target: SessionDeleteTarget | undefined;
+  activeSessionId: string;
+  sessions: Session[] | undefined;
+  onSessionSelect: (projectId: string, sessionId: string) => Promise<void>;
   onOpenChange: (open: boolean) => void;
   onSessionDeleted: (projectId: string, sessionId: string) => void;
 };
 
-function DeleteSessionDialog({ target, onOpenChange, onSessionDeleted }: DeleteSessionDialogProps) {
+function DeleteSessionDialog({
+  target,
+  activeSessionId,
+  sessions,
+  onSessionSelect,
+  onOpenChange,
+  onSessionDeleted,
+}: DeleteSessionDialogProps) {
   async function handleDeleteSession() {
     if (target === undefined) {
       return;
+    }
+
+    if (target.session.id === activeSessionId) {
+      const defaultSession =
+        sessions === undefined ? undefined : sessions.find((session) => session.name === "Default");
+      if (defaultSession !== undefined) {
+        await onSessionSelect(target.project.id, defaultSession.id);
+      }
     }
 
     try {
