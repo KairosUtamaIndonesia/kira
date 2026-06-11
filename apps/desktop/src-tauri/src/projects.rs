@@ -98,7 +98,7 @@ pub struct CreateProjectSessionInput {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", tag = "kind")]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase", tag = "kind")]
 pub enum CreateSessionRootInput {
     ProjectFolder,
     Worktree {
@@ -109,7 +109,7 @@ pub enum CreateSessionRootInput {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", tag = "kind")]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase", tag = "kind")]
 pub enum CreateWorktreeBranchInput {
     New { name: String },
     Existing { name: String },
@@ -1536,6 +1536,11 @@ fn remove_clean_session_worktree(
     worktree_path: &str,
 ) -> Result<(), ProjectError> {
     let worktree_path = PathBuf::from(worktree_path);
+    if !worktree_path.exists() {
+        prune_stale_project_worktrees(project_folder)?;
+        return Ok(());
+    }
+
     let status = run_git(
         &worktree_path,
         "inspect worktree status",
@@ -1552,12 +1557,22 @@ fn remove_clean_session_worktree(
         "remove worktree",
         &["worktree", "remove", &worktree_path.display().to_string()],
     )?;
+    prune_stale_project_worktrees(project_folder)?;
     if worktree_path.exists() {
         fs::remove_dir_all(&worktree_path).map_err(|error| ProjectError::RemoveWorktree {
             path: worktree_path.display().to_string(),
             message: error.to_string(),
         })?;
     }
+    Ok(())
+}
+
+fn prune_stale_project_worktrees(project_folder: &str) -> Result<(), ProjectError> {
+    run_git(
+        Path::new(project_folder),
+        "prune stale worktree metadata",
+        &["worktree", "prune"],
+    )?;
     Ok(())
 }
 
