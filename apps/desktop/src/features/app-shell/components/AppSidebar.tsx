@@ -1,7 +1,7 @@
 import { Settings } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import type { CreatedProject, Project } from "@/features/projects/types";
+import type { CreatedProject, Project, Session } from "@/features/projects/types";
 import type { SourceControlStatusResult } from "@/features/source-control/types";
 
 import { Button } from "@/components/ui/button";
@@ -208,6 +208,23 @@ function AppSidebar({
                   }}
                   onProjectSelect={onProjectSelect}
                   onSessionSelect={onSessionSelect}
+                  onSessionCreated={(session) => {
+                    setProjectSessions((currentProjectSessions) =>
+                      appendProjectSession(currentProjectSessions, session),
+                    );
+                  }}
+                  onSessionDeleted={(projectId, sessionId) => {
+                    setProjectSessions((currentProjectSessions) =>
+                      removeProjectSession(currentProjectSessions, projectId, sessionId),
+                    );
+                    if (
+                      activeWorkspace.status === "active" &&
+                      activeWorkspace.project.id === projectId &&
+                      activeWorkspace.session.id === sessionId
+                    ) {
+                      onProjectSelect(projectId);
+                    }
+                  }}
                 />
               ) : (
                 <p role="alert" className="px-2 text-sm text-destructive">
@@ -282,6 +299,43 @@ function omitProjectBranches(
   const nextProjectBranches = { ...projectBranches };
   delete nextProjectBranches[projectId];
   return nextProjectBranches;
+}
+
+function appendProjectSession(
+  projectSessions: Record<string, ProjectSessionsState>,
+  session: Session,
+) {
+  const currentProjectSessions = projectSessions[session.projectId];
+  if (currentProjectSessions === undefined || currentProjectSessions.status !== "ready") {
+    return projectSessions;
+  }
+
+  return {
+    ...projectSessions,
+    [session.projectId]: {
+      ...currentProjectSessions,
+      sessions: [...currentProjectSessions.sessions, session],
+    },
+  };
+}
+
+function removeProjectSession(
+  projectSessions: Record<string, ProjectSessionsState>,
+  projectId: string,
+  sessionId: string,
+) {
+  const currentProjectSessions = projectSessions[projectId];
+  if (currentProjectSessions === undefined || currentProjectSessions.status !== "ready") {
+    return projectSessions;
+  }
+
+  return {
+    ...projectSessions,
+    [projectId]: {
+      ...currentProjectSessions,
+      sessions: currentProjectSessions.sessions.filter((session) => session.id !== sessionId),
+    },
+  };
 }
 
 function branchLabelFromSourceControlStatus(sourceControlStatus: SourceControlStatusResult) {

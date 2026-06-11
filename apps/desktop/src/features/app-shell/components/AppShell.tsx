@@ -22,6 +22,7 @@ import {
   openSourceControlDiffPanel,
   renameWorkspacePanel,
 } from "@/features/projects/api/projectsApi";
+import { sessionRootPath } from "@/features/projects/sessionRoot";
 import { SettingsPage } from "@/features/settings";
 
 import type {
@@ -267,10 +268,12 @@ function AppShell() {
       return;
     }
 
+    const folderPath = sessionRootPath(activeWorkspace.project, activeWorkspace.session);
+
     const panel = await openSourceControlDiffPanel({
       sessionId: activeWorkspace.session.id,
       title: fileTitle(entry.path),
-      folderPath: activeWorkspace.project.folderPath,
+      folderPath,
       filePath: entry.path,
       oldPath: entry.oldPath,
       source: entry.area,
@@ -305,11 +308,13 @@ function AppShell() {
       return;
     }
 
+    const folderPath = sessionRootPath(activeWorkspace.project, activeWorkspace.session);
+
     try {
       const panel = await openFileEditorPanel({
         sessionId: activeWorkspace.session.id,
         title: fileTitle(filePath),
-        folderPath: activeWorkspace.project.folderPath,
+        folderPath,
         filePath,
       });
 
@@ -349,7 +354,10 @@ function AppShell() {
       return;
     }
 
-    const relativePath = projectRelativePath(activeWorkspace.project.folderPath, skill.skillPath);
+    const relativePath = projectRelativePath(
+      sessionRootPath(activeWorkspace.project, activeWorkspace.session),
+      skill.skillPath,
+    );
     if (relativePath === undefined) {
       toast.error(`Skill ${skill.name} is not inside the active Project.`);
       return;

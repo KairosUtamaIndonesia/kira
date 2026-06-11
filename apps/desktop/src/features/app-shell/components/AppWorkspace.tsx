@@ -74,6 +74,7 @@ import {
   renameWorkspacePanel,
   updateSessionLayout,
 } from "@/features/projects/api/projectsApi";
+import { sessionRootPath } from "@/features/projects/sessionRoot";
 import {
   SourceControlDiffPanel,
   type SourceControlDiffPanelParams,
@@ -1230,7 +1231,7 @@ function ActiveWorkspaceDockview({
     () => ({
       projectId: activeWorkspace.project.id,
       sessionId: activeWorkspace.session.id,
-      workingDirectory: activeWorkspace.project.folderPath,
+      workingDirectory: sessionRootPath(activeWorkspace.project, activeWorkspace.session),
       panels: activeWorkspace.panels,
       onPanelCreated,
       onPanelUpdated,
@@ -1651,7 +1652,7 @@ async function createFirstTerminalPanel(
   const panel = await createTerminalPanel({
     sessionId: activeWorkspace.session.id,
     title: "Terminal",
-    workingDirectory: activeWorkspace.project.folderPath,
+    workingDirectory: sessionRootPath(activeWorkspace.project, activeWorkspace.session),
   });
   onPanelCreated(panel);
 }

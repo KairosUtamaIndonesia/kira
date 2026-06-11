@@ -1,5 +1,5 @@
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { ChevronRight, Copy, ExternalLink, Folder, Pencil, Trash } from "lucide-react";
+import { ChevronRight, Copy, ExternalLink, Folder, Pencil, Plus, Trash } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
 
