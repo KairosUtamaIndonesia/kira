@@ -355,7 +355,9 @@ pub enum ProjectError {
     MissingWorktreeSlug,
     #[error("session branch name is required")]
     MissingBranchName,
-    #[error("session worktree slug `{0}` must contain only lowercase letters, numbers, and hyphens")]
+    #[error(
+        "session worktree slug `{0}` must contain only lowercase letters, numbers, and hyphens"
+    )]
     InvalidWorktreeSlug(String),
     #[error("session worktree already exists: {0}")]
     WorktreeAlreadyExists(String),
@@ -769,7 +771,13 @@ async fn create_project_session(
             project_slug,
             worktree_slug,
             branch,
-        } => create_session_worktree(app_data_dir, &project, &project_slug, &worktree_slug, branch)?,
+        } => create_session_worktree(
+            app_data_dir,
+            &project,
+            &project_slug,
+            &worktree_slug,
+            &branch,
+        )?,
     };
 
     sqlx::query(
@@ -922,10 +930,10 @@ async fn list_project_sessions(
 ) -> Result<Vec<Session>, ProjectError> {
     ensure_project_exists(pool, &input.project_id).await?;
     sqlx::query_as::<_, Session>(SESSION_SELECT_PROJECT)
-    .bind(input.project_id)
-    .fetch_all(pool)
-    .await
-    .map_err(|error| ProjectError::Query(error.to_string()))
+        .bind(input.project_id)
+        .fetch_all(pool)
+        .await
+        .map_err(|error| ProjectError::Query(error.to_string()))
 }
 
 async fn open_project(
@@ -933,11 +941,11 @@ async fn open_project(
     input: OpenProjectInput,
 ) -> Result<OpenProject, ProjectError> {
     let session = sqlx::query_as::<_, Session>(SESSION_SELECT_LAST_PROJECT)
-    .bind(&input.project_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(|error| ProjectError::Query(error.to_string()))?
-    .ok_or_else(|| ProjectError::MissingSession(input.project_id.clone()))?;
+        .bind(&input.project_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|error| ProjectError::Query(error.to_string()))?
+        .ok_or_else(|| ProjectError::MissingSession(input.project_id.clone()))?;
 
     open_project_with_session(pool, &input.project_id, session).await
 }
@@ -947,12 +955,12 @@ async fn open_project_session(
     input: OpenProjectSessionInput,
 ) -> Result<OpenProject, ProjectError> {
     let session = sqlx::query_as::<_, Session>(SESSION_SELECT_BY_PROJECT_AND_ID)
-    .bind(&input.project_id)
-    .bind(&input.session_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(|error| ProjectError::Query(error.to_string()))?
-    .ok_or(ProjectError::MissingSession(input.project_id.clone()))?;
+        .bind(&input.project_id)
+        .bind(&input.session_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|error| ProjectError::Query(error.to_string()))?
+        .ok_or(ProjectError::MissingSession(input.project_id.clone()))?;
 
     open_project_with_session(pool, &input.project_id, session).await
 }
@@ -1444,7 +1452,6 @@ async fn update_browser_panel_url(
     let url = validate_browser_url(&input.url)?;
     sqlx::query("UPDATE browser_panel_state SET url = ? WHERE panel_id = ?")
         .bind(&url)
-
         .bind(&input.panel_id)
         .execute(pool)
         .await
@@ -1463,28 +1470,27 @@ fn create_session_worktree(
     project: &Project,
     project_slug: &str,
     worktree_slug: &str,
-    branch: CreateWorktreeBranchInput,
+    branch: &CreateWorktreeBranchInput,
 ) -> Result<CreatedSessionRoot, ProjectError> {
     let project_slug = validate_worktree_slug(project_slug)?;
     let worktree_slug = validate_worktree_slug(worktree_slug)?;
-    let branch_name = validate_branch_name(&branch)?;
+    let branch_name = validate_branch_name(branch)?;
     let worktree_path = session_worktree_path(app_data_dir, &project_slug, &worktree_slug);
     if worktree_path.exists() {
         return Err(ProjectError::WorktreeAlreadyExists(
             worktree_path.display().to_string(),
         ));
     }
-    let parent = worktree_path.parent().ok_or_else(|| {
-        ProjectError::CreateWorktreeDirectory {
+    let parent = worktree_path
+        .parent()
+        .ok_or_else(|| ProjectError::CreateWorktreeDirectory {
             path: worktree_path.display().to_string(),
             message: "worktree path has no parent directory".to_string(),
-        }
-    })?;
+        })?;
     fs::create_dir_all(parent).map_err(|error| ProjectError::CreateWorktreeDirectory {
         path: parent.display().to_string(),
         message: error.to_string(),
     })?;
-
 
     let project_folder = Path::new(&project.folder_path);
     match branch {
@@ -1536,7 +1542,9 @@ fn remove_clean_session_worktree(
         &["status", "--porcelain"],
     )?;
     if !status.trim().is_empty() {
-        return Err(ProjectError::DirtyWorktree(worktree_path.display().to_string()));
+        return Err(ProjectError::DirtyWorktree(
+            worktree_path.display().to_string(),
+        ));
     }
 
     run_git(
@@ -1587,9 +1595,9 @@ fn validate_worktree_slug(slug: &str) -> Result<String, ProjectError> {
     if trimmed_slug.is_empty() {
         return Err(ProjectError::MissingWorktreeSlug);
     }
-    let is_valid = trimmed_slug.bytes().all(|byte| {
-        byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-'
-    });
+    let is_valid = trimmed_slug
+        .bytes()
+        .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-');
     if !is_valid {
         return Err(ProjectError::InvalidWorktreeSlug(trimmed_slug.to_string()));
     }
