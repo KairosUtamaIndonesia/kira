@@ -14,7 +14,7 @@
     "check": "turbo check",
     "check:hook": "turbo check --ui=stream --no-color --output-logs=errors-only",
     "dev": "turbo dev",
-    "dev:admin": "turbo dev --filter=@kira/admin",
+    "dev:cloud": "turbo dev --filter=@kira/cloud",
     "dev:desktop": "turbo tauri:dev --filter=@kira/desktop",
     "format": "oxfmt AGENTS.md README.md docs package.json turbo.json .oxfmtrc.json .oxlintrc.json && turbo format",
     "format:all": "turbo format:all",

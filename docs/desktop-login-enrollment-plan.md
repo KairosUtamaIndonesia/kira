@@ -13,7 +13,7 @@ email/password and SSO uniformly.
 
 1. Desktop "Sign in" binds a one-shot loopback listener on `http://127.0.0.1:<port>`, generates a
    CSRF `state`, opens the system browser to
-   `https://admin.kira.localhost/desktop-signin?redirect_uri=<loopback>&state=<state>`.
+   `https://cloud.kira.localhost/desktop-signin?redirect_uri=<loopback>&state=<state>`.
 2. The admin page requires a session (redirects to `/sign-in` with a return-to, so the user lands
    back after authenticating — password or SSO). Once signed in it shows "Continue as <email>"
    with an organization picker only when the member belongs to more than one org.
@@ -27,7 +27,7 @@ email/password and SSO uniformly.
 
 ## Files
 
-Admin (`apps/admin/`)
+Admin (`apps/cloud/`)
 
 - `lib/auth/auth.ts` — desktop-access `apiKey` config is user-referenced (org-reference removed).
 - `app/api/desktop/models.ts` — resolves org from key metadata + membership check.
