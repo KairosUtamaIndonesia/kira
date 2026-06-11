@@ -10,6 +10,9 @@ type Session = {
   id: string;
   projectId: string;
   name: string;
+  rootKind: "projectFolder" | "worktree";
+  worktreePath: string | null;
+  branchName: string | null;
   createdAt: string;
   updatedAt: string;
   lastOpenedAt: string | null;
@@ -19,6 +22,28 @@ type Session = {
 type CreateProjectInput = {
   name: string;
   folderPath: string;
+};
+
+type CreateProjectSessionInput = {
+  projectId: string;
+  name: string;
+  root: CreateSessionRootInput;
+};
+
+type CreateSessionRootInput =
+  | { kind: "projectFolder" }
+  | {
+      kind: "worktree";
+      projectSlug: string;
+      worktreeSlug: string;
+      branch: CreateWorktreeBranchInput;
+    };
+
+type CreateWorktreeBranchInput = { kind: "new"; name: string } | { kind: "existing"; name: string };
+
+type DeleteProjectSessionInput = {
+  projectId: string;
+  sessionId: string;
 };
 
 type CreatedProject = {
@@ -227,6 +252,8 @@ export type {
   CreateBrowserPanelInput,
   UpdateBrowserPanelUrlInput,
   CreatedProject,
+  CreateProjectSessionInput,
+  DeleteProjectSessionInput,
   CreateAgentThreadPanelInput,
   CreateProjectInput,
   OpenProject,

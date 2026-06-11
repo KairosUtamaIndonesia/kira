@@ -5,9 +5,11 @@ import type {
   CreateAgentThreadPanelInput,
   CreateBrowserPanelInput,
   CreateProjectInput,
+  CreateProjectSessionInput,
   CreateTerminalPanelInput,
   DeleteTerminalSnapshotInput,
   DeleteWorkspacePanelInput,
+  DeleteProjectSessionInput,
   GetTerminalSnapshotInput,
   OpenFileEditorPanelInput,
   ListProjectSessionsInput,
@@ -49,6 +51,14 @@ function listProjectSessions(input: ListProjectSessionsInput) {
 
 function openProjectSession(input: OpenProjectSessionInput) {
   return invoke<OpenProject>("project_session_open", { input });
+}
+
+function createProjectSession(input: CreateProjectSessionInput) {
+  return invoke<Session>("project_session_create", { input });
+}
+
+function deleteProjectSession(input: DeleteProjectSessionInput) {
+  return invoke<void>("project_session_delete", { input });
 }
 
 function createTerminalPanel(input: CreateTerminalPanelInput) {
@@ -111,9 +121,11 @@ export {
   createAgentThreadPanel,
   createBrowserPanel,
   createProject,
+  createProjectSession,
   createTerminalPanel,
   deleteTerminalSnapshot,
   deleteWorkspacePanel,
+  deleteProjectSession,
   getTerminalSnapshot,
   listProjectSessions,
   listProjects,

@@ -1,4 +1,10 @@
-use std::path::Path;
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+    thread,
+    time::Duration,
+};
 
 use serde::{Deserialize, Serialize};
 use sqlx::{sqlite::SqliteRow, FromRow, Row, SqlitePool};
@@ -36,12 +42,29 @@ pub struct Session {
     id: String,
     project_id: String,
     name: String,
+    root_kind: SessionRootKind,
+    worktree_path: Option<String>,
+    branch_name: Option<String>,
     created_at: String,
     updated_at: String,
     last_opened_at: Option<String>,
     layout_json: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, sqlx::Type)]
+#[serde(rename_all = "camelCase")]
+#[sqlx(type_name = "TEXT", rename_all = "snake_case")]
+pub enum SessionRootKind {
+    ProjectFolder,
+    Worktree,
+}
+
+const SESSION_SELECT_PROJECT: &str =
+    "SELECT id, project_id, name, root_kind, worktree_path, branch_name, created_at, updated_at, last_opened_at, layout_json FROM sessions WHERE project_id = ? ORDER BY COALESCE(last_opened_at, created_at) DESC";
+const SESSION_SELECT_LAST_PROJECT: &str =
+    "SELECT id, project_id, name, root_kind, worktree_path, branch_name, created_at, updated_at, last_opened_at, layout_json FROM sessions WHERE project_id = ? ORDER BY COALESCE(last_opened_at, created_at) DESC LIMIT 1";
+const SESSION_SELECT_BY_PROJECT_AND_ID: &str =
+    "SELECT id, project_id, name, root_kind, worktree_path, branch_name, created_at, updated_at, last_opened_at, layout_json FROM sessions WHERE project_id = ? AND id = ?";
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreatedProject {
@@ -64,6 +87,47 @@ pub struct ListProjectSessionsInput {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenProjectSessionInput {
+    project_id: String,
+    session_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateProjectSessionInput {
+    project_id: String,
+    name: String,
+    root: CreateSessionRootInput,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    tag = "kind"
+)]
+pub enum CreateSessionRootInput {
+    ProjectFolder,
+    Worktree {
+        project_slug: String,
+        worktree_slug: String,
+        branch: CreateWorktreeBranchInput,
+    },
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    tag = "kind"
+)]
+pub enum CreateWorktreeBranchInput {
+    New { name: String },
+    Existing { name: String },
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteProjectSessionInput {
     project_id: String,
     session_id: String,
 }
@@ -291,6 +355,32 @@ pub enum ProjectError {
     MissingProject(String),
     #[error("project has no sessions: {0}")]
     MissingSession(String),
+    #[error("session name is required")]
+    MissingSessionName,
+    #[error("session was not found: {0}")]
+    MissingProjectSession(String),
+    #[error("default session cannot be deleted")]
+    CannotDeleteDefaultSession,
+    #[error("session worktree slug is required")]
+    MissingWorktreeSlug,
+    #[error("session branch name is required")]
+    MissingBranchName,
+    #[error(
+        "session worktree slug `{0}` must contain only lowercase letters, numbers, and hyphens"
+    )]
+    InvalidWorktreeSlug(String),
+    #[error("session worktree already exists: {0}")]
+    WorktreeAlreadyExists(String),
+    #[error("session worktree path is missing for session: {0}")]
+    MissingWorktreePath(String),
+    #[error("session worktree has uncommitted changes: {0}")]
+    DirtyWorktree(String),
+    #[error("failed to create session worktree directory `{path}`: {message}")]
+    CreateWorktreeDirectory { path: String, message: String },
+    #[error("failed to remove session worktree `{path}`: {message}")]
+    RemoveWorktree { path: String, message: String },
+    #[error("failed to run git {operation}: {message}")]
+    GitCommand { operation: String, message: String },
     #[error("workspace panel title is required")]
     MissingPanelTitle,
     #[error("workspace panel was not found: {0}")]
@@ -407,6 +497,30 @@ pub async fn project_session_open(
     clippy::needless_pass_by_value,
     reason = "Tauri commands require State by value"
 )]
+pub async fn project_session_create(
+    input: CreateProjectSessionInput,
+    store: tauri::State<'_, PersistenceStore>,
+) -> Result<Session, ProjectError> {
+    create_project_session(store.pool(), store.app_data_dir(), input).await
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
+pub async fn project_session_delete(
+    input: DeleteProjectSessionInput,
+    store: tauri::State<'_, PersistenceStore>,
+) -> Result<(), ProjectError> {
+    delete_project_session(store.pool(), input).await
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
 pub async fn project_rename(
     input: RenameProjectInput,
     store: tauri::State<'_, PersistenceStore>,
@@ -439,6 +553,23 @@ pub async fn project_remove(
     input: RemoveProjectInput,
     store: tauri::State<'_, PersistenceStore>,
 ) -> Result<(), ProjectError> {
+    let project = ensure_project_exists(store.pool(), &input.project_id).await?;
+    let sessions = sqlx::query_as::<_, Session>(SESSION_SELECT_PROJECT)
+        .bind(&input.project_id)
+        .fetch_all(store.pool())
+        .await
+        .map_err(|error| ProjectError::Query(error.to_string()))?;
+
+    for session in sessions {
+        if session.root_kind == SessionRootKind::Worktree {
+            let worktree_path = session
+                .worktree_path
+                .as_deref()
+                .ok_or_else(|| ProjectError::MissingWorktreePath(session.id.clone()))?;
+            remove_clean_session_worktree(&project.folder_path, worktree_path)?;
+        }
+    }
+
     sqlx::query("DELETE FROM projects WHERE id = ?")
         .bind(input.project_id)
         .execute(store.pool())
@@ -641,9 +772,102 @@ pub async fn workspace_terminal_snapshot_get(
         "SELECT terminal_id, sequence, serialized, cols, rows, captured_at, updated_at FROM terminal_snapshots WHERE terminal_id = ?",
     )
     .bind(terminal_id)
+
     .fetch_optional(store.pool())
     .await
     .map_err(|error| ProjectError::Query(error.to_string()))
+}
+
+async fn create_project_session(
+    pool: &SqlitePool,
+    app_data_dir: &Path,
+    input: CreateProjectSessionInput,
+) -> Result<Session, ProjectError> {
+    let project = ensure_project_exists(pool, &input.project_id).await?;
+    let name = validate_session_name(&input.name)?;
+    let session_id = Uuid::new_v4().to_string();
+    let now = current_timestamp()?;
+
+    let root = match input.root {
+        CreateSessionRootInput::ProjectFolder => CreatedSessionRoot {
+            kind: SessionRootKind::ProjectFolder,
+            worktree_path: None,
+            branch_name: None,
+        },
+        CreateSessionRootInput::Worktree {
+            project_slug,
+            worktree_slug,
+            branch,
+        } => create_session_worktree(
+            app_data_dir,
+            &project,
+            &project_slug,
+            &worktree_slug,
+            &branch,
+        )?,
+    };
+
+    sqlx::query(
+        "INSERT INTO sessions (id, project_id, name, root_kind, worktree_path, branch_name, created_at, updated_at, last_opened_at, layout_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)",
+    )
+    .bind(&session_id)
+    .bind(&input.project_id)
+    .bind(&name)
+    .bind(root.kind)
+    .bind(&root.worktree_path)
+    .bind(&root.branch_name)
+    .bind(&now)
+    .bind(&now)
+    .execute(pool)
+    .await
+    .map_err(|error| ProjectError::Create(error.to_string()))?;
+
+    Ok(Session {
+        id: session_id,
+        project_id: input.project_id,
+        name,
+        root_kind: root.kind,
+        worktree_path: root.worktree_path,
+        branch_name: root.branch_name,
+        created_at: now.clone(),
+        updated_at: now,
+        last_opened_at: None,
+        layout_json: None,
+    })
+}
+
+async fn delete_project_session(
+    pool: &SqlitePool,
+    input: DeleteProjectSessionInput,
+) -> Result<(), ProjectError> {
+    let project = ensure_project_exists(pool, &input.project_id).await?;
+    let session = sqlx::query_as::<_, Session>(SESSION_SELECT_BY_PROJECT_AND_ID)
+        .bind(&input.project_id)
+        .bind(&input.session_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|error| ProjectError::Query(error.to_string()))?
+        .ok_or_else(|| ProjectError::MissingProjectSession(input.session_id.clone()))?;
+
+    if session.name == DEFAULT_SESSION_NAME {
+        return Err(ProjectError::CannotDeleteDefaultSession);
+    }
+
+    if session.root_kind == SessionRootKind::Worktree {
+        let worktree_path = session
+            .worktree_path
+            .as_deref()
+            .ok_or_else(|| ProjectError::MissingWorktreePath(session.id.clone()))?;
+        remove_clean_session_worktree(&project.folder_path, worktree_path)?;
+    }
+
+    sqlx::query("DELETE FROM sessions WHERE project_id = ? AND id = ?")
+        .bind(input.project_id)
+        .bind(input.session_id)
+        .execute(pool)
+        .await
+        .map_err(|error| ProjectError::Query(error.to_string()))?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -732,27 +956,23 @@ async fn list_project_sessions(
     input: ListProjectSessionsInput,
 ) -> Result<Vec<Session>, ProjectError> {
     ensure_project_exists(pool, &input.project_id).await?;
-    sqlx::query_as::<_, Session>(
-        "SELECT id, project_id, name, created_at, updated_at, last_opened_at, layout_json FROM sessions WHERE project_id = ? ORDER BY COALESCE(last_opened_at, created_at) DESC",
-    )
-    .bind(input.project_id)
-    .fetch_all(pool)
-    .await
-    .map_err(|error| ProjectError::Query(error.to_string()))
+    sqlx::query_as::<_, Session>(SESSION_SELECT_PROJECT)
+        .bind(input.project_id)
+        .fetch_all(pool)
+        .await
+        .map_err(|error| ProjectError::Query(error.to_string()))
 }
 
 async fn open_project(
     pool: &SqlitePool,
     input: OpenProjectInput,
 ) -> Result<OpenProject, ProjectError> {
-    let session = sqlx::query_as::<_, Session>(
-        "SELECT id, project_id, name, created_at, updated_at, last_opened_at, layout_json FROM sessions WHERE project_id = ? ORDER BY COALESCE(last_opened_at, created_at) DESC LIMIT 1",
-    )
-    .bind(&input.project_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(|error| ProjectError::Query(error.to_string()))?
-    .ok_or_else(|| ProjectError::MissingSession(input.project_id.clone()))?;
+    let session = sqlx::query_as::<_, Session>(SESSION_SELECT_LAST_PROJECT)
+        .bind(&input.project_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|error| ProjectError::Query(error.to_string()))?
+        .ok_or_else(|| ProjectError::MissingSession(input.project_id.clone()))?;
 
     open_project_with_session(pool, &input.project_id, session).await
 }
@@ -761,15 +981,13 @@ async fn open_project_session(
     pool: &SqlitePool,
     input: OpenProjectSessionInput,
 ) -> Result<OpenProject, ProjectError> {
-    let session = sqlx::query_as::<_, Session>(
-        "SELECT id, project_id, name, created_at, updated_at, last_opened_at, layout_json FROM sessions WHERE project_id = ? AND id = ?",
-    )
-    .bind(&input.project_id)
-    .bind(&input.session_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(|error| ProjectError::Query(error.to_string()))?
-    .ok_or(ProjectError::MissingSession(input.project_id.clone()))?;
+    let session = sqlx::query_as::<_, Session>(SESSION_SELECT_BY_PROJECT_AND_ID)
+        .bind(&input.project_id)
+        .bind(&input.session_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|error| ProjectError::Query(error.to_string()))?
+        .ok_or(ProjectError::MissingSession(input.project_id.clone()))?;
 
     open_project_with_session(pool, &input.project_id, session).await
 }
@@ -1268,6 +1486,232 @@ async fn update_browser_panel_url(
     Ok(())
 }
 
+struct CreatedSessionRoot {
+    kind: SessionRootKind,
+    worktree_path: Option<String>,
+    branch_name: Option<String>,
+}
+
+fn create_session_worktree(
+    app_data_dir: &Path,
+    project: &Project,
+    project_slug: &str,
+    worktree_slug: &str,
+    branch: &CreateWorktreeBranchInput,
+) -> Result<CreatedSessionRoot, ProjectError> {
+    let project_slug = validate_worktree_slug(project_slug)?;
+    let worktree_slug = validate_worktree_slug(worktree_slug)?;
+    let branch_name = validate_branch_name(branch)?;
+    let worktree_path = session_worktree_path(app_data_dir, &project_slug, &worktree_slug);
+    if worktree_path.exists() {
+        return Err(ProjectError::WorktreeAlreadyExists(
+            worktree_path.display().to_string(),
+        ));
+    }
+    let parent = worktree_path
+        .parent()
+        .ok_or_else(|| ProjectError::CreateWorktreeDirectory {
+            path: worktree_path.display().to_string(),
+            message: "worktree path has no parent directory".to_string(),
+        })?;
+    fs::create_dir_all(parent).map_err(|error| ProjectError::CreateWorktreeDirectory {
+        path: parent.display().to_string(),
+        message: error.to_string(),
+    })?;
+
+    let project_folder = Path::new(&project.folder_path);
+    match branch {
+        CreateWorktreeBranchInput::New { .. } => run_git(
+            project_folder,
+            "create worktree branch",
+            &[
+                "worktree",
+                "add",
+                "-b",
+                &branch_name,
+                &worktree_path.display().to_string(),
+            ],
+        )?,
+        CreateWorktreeBranchInput::Existing { .. } => run_git(
+            project_folder,
+            "create worktree",
+            &[
+                "worktree",
+                "add",
+                &worktree_path.display().to_string(),
+                &branch_name,
+            ],
+        )?,
+    };
+
+    Ok(CreatedSessionRoot {
+        kind: SessionRootKind::Worktree,
+        worktree_path: Some(worktree_path.display().to_string()),
+        branch_name: Some(branch_name),
+    })
+}
+
+fn session_worktree_path(app_data_dir: &Path, project_slug: &str, worktree_slug: &str) -> PathBuf {
+    app_data_dir
+        .join("worktrees")
+        .join(project_slug)
+        .join(worktree_slug)
+}
+
+fn remove_clean_session_worktree(
+    project_folder: &str,
+    worktree_path: &str,
+) -> Result<(), ProjectError> {
+    let worktree_path = PathBuf::from(worktree_path);
+    match run_git(
+        &worktree_path,
+        "inspect worktree status",
+        &["status", "--porcelain"],
+    ) {
+        Ok(status) if !status.trim().is_empty() => {
+            return Err(ProjectError::DirtyWorktree(
+                worktree_path.display().to_string(),
+            ));
+        }
+        Err(error) if is_missing_git_repository_error(&error) => {
+            prune_stale_project_worktrees(project_folder)?;
+            remove_worktree_directory_with_retry(&worktree_path)?;
+            return Ok(());
+        }
+        Err(error) => return Err(error),
+        Ok(_) => {}
+    }
+
+    run_git(
+        Path::new(project_folder),
+        "remove worktree",
+        &["worktree", "remove", &worktree_path.display().to_string()],
+    )?;
+    prune_stale_project_worktrees(project_folder)?;
+    remove_worktree_directory_with_retry(&worktree_path)?;
+    Ok(())
+}
+
+fn remove_worktree_directory_with_retry(worktree_path: &Path) -> Result<(), ProjectError> {
+    if !worktree_path.exists() {
+        return Ok(());
+    }
+
+    let mut last_error = None;
+    for attempt in 0..10 {
+        match fs::remove_dir_all(worktree_path) {
+            Ok(()) => return Ok(()),
+            Err(error) if attempt < 9 && is_transient_remove_dir_error(&error) => {
+                last_error = Some(error);
+                thread::sleep(Duration::from_millis(50));
+            }
+            Err(error) => {
+                return Err(ProjectError::RemoveWorktree {
+                    path: worktree_path.display().to_string(),
+                    message: error.to_string(),
+                });
+            }
+        }
+    }
+
+    if let Some(error) = last_error {
+        return Err(ProjectError::RemoveWorktree {
+            path: worktree_path.display().to_string(),
+            message: error.to_string(),
+        });
+    }
+
+    Err(ProjectError::RemoveWorktree {
+        path: worktree_path.display().to_string(),
+        message: "failed to remove worktree directory after retries".to_string(),
+    })
+}
+
+fn is_transient_remove_dir_error(error: &std::io::Error) -> bool {
+    matches!(error.raw_os_error(), Some(32 | 5))
+        || matches!(error.kind(), std::io::ErrorKind::PermissionDenied)
+}
+
+fn prune_stale_project_worktrees(project_folder: &str) -> Result<(), ProjectError> {
+    run_git(
+        Path::new(project_folder),
+        "prune stale worktree metadata",
+        &["worktree", "prune"],
+    )?;
+    Ok(())
+}
+
+fn is_missing_git_repository_error(error: &ProjectError) -> bool {
+    matches!(
+        error,
+        ProjectError::GitCommand { message, .. }
+            if message.contains("not a git repository")
+                || message.contains("directory name is invalid")
+                || message.contains("system cannot find the file specified")
+                || message.contains("No such file or directory")
+                || message.contains("os error 267")
+                || message.contains("os error 2")
+    )
+}
+
+fn run_git(cwd: &Path, operation: &str, args: &[&str]) -> Result<String, ProjectError> {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(cwd)
+        .output()
+        .map_err(|error| ProjectError::GitCommand {
+            operation: operation.to_string(),
+            message: error.to_string(),
+        })?;
+    if output.status.success() {
+        return Ok(String::from_utf8_lossy(&output.stdout).to_string());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Err(ProjectError::GitCommand {
+        operation: operation.to_string(),
+        message: if stderr.is_empty() { stdout } else { stderr },
+    })
+}
+
+fn validate_session_name(name: &str) -> Result<String, ProjectError> {
+    let trimmed_name = name.trim();
+    if trimmed_name.is_empty() {
+        return Err(ProjectError::MissingSessionName);
+    }
+
+    Ok(trimmed_name.to_string())
+}
+
+fn validate_worktree_slug(slug: &str) -> Result<String, ProjectError> {
+    let trimmed_slug = slug.trim();
+    if trimmed_slug.is_empty() {
+        return Err(ProjectError::MissingWorktreeSlug);
+    }
+    let is_valid = trimmed_slug
+        .bytes()
+        .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-');
+    if !is_valid {
+        return Err(ProjectError::InvalidWorktreeSlug(trimmed_slug.to_string()));
+    }
+
+    Ok(trimmed_slug.to_string())
+}
+
+fn validate_branch_name(branch: &CreateWorktreeBranchInput) -> Result<String, ProjectError> {
+    let name = match branch {
+        CreateWorktreeBranchInput::New { name } | CreateWorktreeBranchInput::Existing { name } => {
+            name.as_str()
+        }
+    };
+    let trimmed_name = name.trim();
+    if trimmed_name.is_empty() {
+        return Err(ProjectError::MissingBranchName);
+    }
+
+    Ok(trimmed_name.to_string())
+}
+
 fn validate_browser_url(url: &str) -> Result<String, ProjectError> {
     let trimmed = url.trim();
     if trimmed.is_empty() {
@@ -1367,7 +1811,7 @@ async fn create_project(
     .map_err(|error| ProjectError::Create(error.to_string()))?;
 
     sqlx::query(
-        "INSERT INTO sessions (id, project_id, name, created_at, updated_at, last_opened_at, layout_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO sessions (id, project_id, name, root_kind, worktree_path, branch_name, created_at, updated_at, last_opened_at, layout_json) VALUES (?, ?, ?, 'project_folder', NULL, NULL, ?, ?, ?, ?)",
     )
     .bind(&session_id)
     .bind(&project_id)
@@ -1397,6 +1841,9 @@ async fn create_project(
             id: session_id,
             project_id,
             name: DEFAULT_SESSION_NAME.to_string(),
+            root_kind: SessionRootKind::ProjectFolder,
+            worktree_path: None,
+            branch_name: None,
             created_at: now.clone(),
             updated_at: now.clone(),
             last_opened_at: Some(now),
@@ -1508,4 +1955,58 @@ fn current_timestamp() -> Result<String, ProjectError> {
     OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .map_err(|error| ProjectError::Timestamp(error.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        session_worktree_path, validate_branch_name, validate_worktree_slug,
+        CreateWorktreeBranchInput, ProjectError,
+    };
+    use std::path::Path;
+
+    #[test]
+    fn validate_worktree_slug_accepts_safe_slug() {
+        assert!(matches!(
+            validate_worktree_slug("project-123").as_deref(),
+            Ok("project-123")
+        ));
+    }
+
+    #[test]
+    fn validate_worktree_slug_rejects_empty_slug() {
+        let error = validate_worktree_slug("  ");
+
+        assert!(matches!(error, Err(ProjectError::MissingWorktreeSlug)));
+    }
+
+    #[test]
+    fn validate_worktree_slug_rejects_unsafe_slug() {
+        let error = validate_worktree_slug("Project Name");
+
+        assert!(
+            matches!(error, Err(ProjectError::InvalidWorktreeSlug(value)) if value == "Project Name")
+        );
+    }
+
+    #[test]
+    fn validate_branch_name_rejects_empty_branch() {
+        let error = validate_branch_name(&CreateWorktreeBranchInput::New {
+            name: " ".to_string(),
+        });
+
+        assert!(matches!(error, Err(ProjectError::MissingBranchName)));
+    }
+
+    #[test]
+    fn session_worktree_path_uses_app_data_worktrees_directory() {
+        let path = session_worktree_path(Path::new("app-data"), "project-name", "worktree-name");
+        assert_eq!(
+            path,
+            Path::new("app-data")
+                .join("worktrees")
+                .join("project-name")
+                .join("worktree-name")
+        );
+    }
 }

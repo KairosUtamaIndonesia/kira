@@ -7,6 +7,7 @@ import type { GitStatusEntry } from "@/features/source-control/types";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ExplorerInspector } from "@/features/explorer";
+import { sessionRootPath } from "@/features/projects/sessionRoot";
 import { SearchInspector } from "@/features/search";
 import { SkillsInspector } from "@/features/skills";
 import { SourceControlInspector } from "@/features/source-control/components/SourceControlInspector";
@@ -145,34 +146,25 @@ function inspectorContent({
   onSkillOpen,
   onSourceControlDiffOpen,
 }: InspectorContentProps) {
+  const activeFolderPath =
+    activeWorkspace.status === "active"
+      ? sessionRootPath(activeWorkspace.project, activeWorkspace.session)
+      : undefined;
+
   if (activeView === "search") {
-    return (
-      <SearchInspector
-        folderPath={
-          activeWorkspace.status === "active" ? activeWorkspace.project.folderPath : undefined
-        }
-        onOpenFile={onExplorerFileOpen}
-      />
-    );
+    return <SearchInspector folderPath={activeFolderPath} onOpenFile={onExplorerFileOpen} />;
   }
 
   if (activeView === "sourceControl") {
     return (
-      <SourceControlInspector
-        folderPath={
-          activeWorkspace.status === "active" ? activeWorkspace.project.folderPath : undefined
-        }
-        onOpenDiff={onSourceControlDiffOpen}
-      />
+      <SourceControlInspector folderPath={activeFolderPath} onOpenDiff={onSourceControlDiffOpen} />
     );
   }
 
   if (activeView === "skills") {
     return (
       <SkillsInspector
-        folderPath={
-          activeWorkspace.status === "active" ? activeWorkspace.project.folderPath : undefined
-        }
+        folderPath={activeFolderPath}
         onOpenSkill={(skill) => void onSkillOpen(skill)}
       />
     );
@@ -191,14 +183,7 @@ function inspectorContent({
   }
 
   if (activeView === "explorer") {
-    return (
-      <ExplorerInspector
-        folderPath={
-          activeWorkspace.status === "active" ? activeWorkspace.project.folderPath : undefined
-        }
-        onOpenFile={onExplorerFileOpen}
-      />
-    );
+    return <ExplorerInspector folderPath={activeFolderPath} onOpenFile={onExplorerFileOpen} />;
   }
 
   return assertNever(activeView);
