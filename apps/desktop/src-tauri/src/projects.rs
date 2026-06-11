@@ -353,6 +353,8 @@ pub enum ProjectError {
     CannotDeleteDefaultSession,
     #[error("session worktree slug is required")]
     MissingWorktreeSlug,
+    #[error("session branch name is required")]
+    MissingBranchName,
     #[error("session worktree slug `{0}` must contain only lowercase letters, numbers, and hyphens")]
     InvalidWorktreeSlug(String),
     #[error("session worktree already exists: {0}")]
@@ -1466,11 +1468,7 @@ fn create_session_worktree(
     let project_slug = validate_worktree_slug(project_slug)?;
     let worktree_slug = validate_worktree_slug(worktree_slug)?;
     let branch_name = validate_branch_name(&branch)?;
-    let worktree_path = app_data_dir
-        .join("worktrees")
-        .join(project_slug)
-        .join(worktree_slug);
-
+    let worktree_path = session_worktree_path(app_data_dir, &project_slug, &worktree_slug);
     if worktree_path.exists() {
         return Err(ProjectError::WorktreeAlreadyExists(
             worktree_path.display().to_string(),
@@ -1486,6 +1484,7 @@ fn create_session_worktree(
         path: parent.display().to_string(),
         message: error.to_string(),
     })?;
+
 
     let project_folder = Path::new(&project.folder_path);
     match branch {
@@ -1517,6 +1516,13 @@ fn create_session_worktree(
         worktree_path: Some(worktree_path.display().to_string()),
         branch_name: Some(branch_name),
     })
+}
+
+fn session_worktree_path(app_data_dir: &Path, project_slug: &str, worktree_slug: &str) -> PathBuf {
+    app_data_dir
+        .join("worktrees")
+        .join(project_slug)
+        .join(worktree_slug)
 }
 
 fn remove_clean_session_worktree(
@@ -1599,7 +1605,7 @@ fn validate_branch_name(branch: &CreateWorktreeBranchInput) -> Result<String, Pr
     };
     let trimmed_name = name.trim();
     if trimmed_name.is_empty() {
-        return Err(ProjectError::MissingWorktreeSlug);
+        return Err(ProjectError::MissingBranchName);
     }
 
     Ok(trimmed_name.to_string())
@@ -1848,4 +1854,58 @@ fn current_timestamp() -> Result<String, ProjectError> {
     OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .map_err(|error| ProjectError::Timestamp(error.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        session_worktree_path, validate_branch_name, validate_worktree_slug,
+        CreateWorktreeBranchInput, ProjectError,
+    };
+    use std::path::Path;
+
+    #[test]
+    fn validate_worktree_slug_accepts_safe_slug() {
+        assert!(matches!(
+            validate_worktree_slug("project-123").as_deref(),
+            Ok("project-123")
+        ));
+    }
+
+    #[test]
+    fn validate_worktree_slug_rejects_empty_slug() {
+        let error = validate_worktree_slug("  ");
+
+        assert!(matches!(error, Err(ProjectError::MissingWorktreeSlug)));
+    }
+
+    #[test]
+    fn validate_worktree_slug_rejects_unsafe_slug() {
+        let error = validate_worktree_slug("Project Name");
+
+        assert!(
+            matches!(error, Err(ProjectError::InvalidWorktreeSlug(value)) if value == "Project Name")
+        );
+    }
+
+    #[test]
+    fn validate_branch_name_rejects_empty_branch() {
+        let error = validate_branch_name(&CreateWorktreeBranchInput::New {
+            name: " ".to_string(),
+        });
+
+        assert!(matches!(error, Err(ProjectError::MissingBranchName)));
+    }
+
+    #[test]
+    fn session_worktree_path_uses_app_data_worktrees_directory() {
+        let path = session_worktree_path(Path::new("app-data"), "project-name", "worktree-name");
+        assert_eq!(
+            path,
+            Path::new("app-data")
+                .join("worktrees")
+                .join("project-name")
+                .join("worktree-name")
+        );
+    }
 }
