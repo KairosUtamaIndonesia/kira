@@ -153,6 +153,8 @@ type ExplorerTreeModelProps = {
   onRefresh: () => void;
 };
 
+const noPendingExplorerPath = "";
+
 function ExplorerTreeModel({
   directoryError,
   directoryPaths,
@@ -172,20 +174,19 @@ function ExplorerTreeModel({
   // pointerup/click.
   const runtimeRef = useRef({ directoryPaths, filePaths, onLoadDirectory, onOpenFile });
   runtimeRef.current = { directoryPaths, filePaths, onLoadDirectory, onOpenFile };
-  const pendingOpenFileRef = useRef<string | undefined>();
-  const pendingOpenDirectoryRef = useRef<string | undefined>();
+  const pendingOpenFileRef = useRef(noPendingExplorerPath);
+  const pendingOpenDirectoryRef = useRef(noPendingExplorerPath);
   const preparedInput = useMemo(() => prepareFileTreeInput(treePaths), [treePaths]);
   const handleSelectionChange = useCallback((selectedPaths: readonly string[]) => {
     if (selectedPaths.length !== 1) {
-      pendingOpenFileRef.current = undefined;
-      pendingOpenDirectoryRef.current = undefined;
+      pendingOpenFileRef.current = noPendingExplorerPath;
+      pendingOpenDirectoryRef.current = noPendingExplorerPath;
       return;
     }
-
     const selectedPath = selectedPaths[0];
     if (selectedPath === undefined) {
-      pendingOpenFileRef.current = undefined;
-      pendingOpenDirectoryRef.current = undefined;
+      pendingOpenFileRef.current = noPendingExplorerPath;
+      pendingOpenDirectoryRef.current = noPendingExplorerPath;
       return;
     }
 
@@ -196,20 +197,20 @@ function ExplorerTreeModel({
       // panel on every drag attempt. Instead, record the path and open it
       // in handleTreeClick, which only fires for click (never for drags).
       pendingOpenFileRef.current = selectedPath;
-      pendingOpenDirectoryRef.current = undefined;
+      pendingOpenDirectoryRef.current = noPendingExplorerPath;
       return;
     }
 
     if (runtime.directoryPaths.has(selectedPath)) {
       // Same rule as files: defer directory loading until click so a drag
       // gesture does not accidentally expand the folder.
-      pendingOpenFileRef.current = undefined;
+      pendingOpenFileRef.current = noPendingExplorerPath;
       pendingOpenDirectoryRef.current = selectedPath;
       return;
     }
 
-    pendingOpenFileRef.current = undefined;
-    pendingOpenDirectoryRef.current = undefined;
+    pendingOpenFileRef.current = noPendingExplorerPath;
+    pendingOpenDirectoryRef.current = noPendingExplorerPath;
   }, []);
   const { model } = useFileTree({
     preparedInput,
@@ -274,8 +275,8 @@ function ExplorerTreeModel({
     if (container === null) {
       return;
     }
-    function onDragStart(event: DragEvent) {
-      const drag = event;
+    function onDragStart(event: Event) {
+      const drag = event as unknown as globalThis.DragEvent;
       const filesToDrag = draggedFilePathsRef.current;
       if (filesToDrag.length === 0 || drag.dataTransfer === null) {
         return;
@@ -291,13 +292,13 @@ function ExplorerTreeModel({
 
   function handleTreeClick() {
     const filePath = pendingOpenFileRef.current;
-    if (filePath !== undefined) {
+    if (filePath !== noPendingExplorerPath) {
       void runtimeRef.current.onOpenFile(filePath);
       return;
     }
 
     const directoryPath = pendingOpenDirectoryRef.current;
-    if (directoryPath === undefined) {
+    if (directoryPath === noPendingExplorerPath) {
       return;
     }
 
