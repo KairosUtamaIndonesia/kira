@@ -468,7 +468,7 @@ function isPromptError(value: unknown): value is { type: "error"; message: strin
 function isSettledEvent(value: unknown) {
   return (
     isRecord(value) &&
-    (value.type === "settled" || value.type === "turn_complete" || value.type === "turn_end")
+    (value.type === "agent_end" || value.type === "settled" || value.type === "turn_complete")
   );
 }
 
