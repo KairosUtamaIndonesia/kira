@@ -1,11 +1,21 @@
 import { prepareFileTreeInput } from "@pierre/trees";
 import { FileTree, useFileTree, useFileTreeSearch } from "@pierre/trees/react";
 import { ChevronsUp, File, RefreshCw, Search } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type DragEvent,
+  type KeyboardEvent,
+} from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { explorerDragDataKey } from "@/features/explorer";
 
 import type { ExplorerDirectoryError } from "../store/explorerStore";
 import type { ExplorerEntry } from "../types";
@@ -143,6 +153,8 @@ type ExplorerTreeModelProps = {
   onRefresh: () => void;
 };
 
+const noPendingExplorerPath = "";
+
 function ExplorerTreeModel({
   directoryError,
   directoryPaths,
@@ -155,29 +167,50 @@ function ExplorerTreeModel({
 }: ExplorerTreeModelProps) {
   const expandedPathsRef = useRef<readonly string[]>([]);
   const didInitializePathsRef = useRef(false);
+  const draggedFilePathsRef = useRef<readonly string[]>([]);
+  // Tracks the last file or directory path selected by a pointer/keyboard
+  // interaction so the click handler can open it. Stored in refs (not state)
+  // so they are synchronously current when handleTreeClick fires after
+  // pointerup/click.
   const runtimeRef = useRef({ directoryPaths, filePaths, onLoadDirectory, onOpenFile });
   runtimeRef.current = { directoryPaths, filePaths, onLoadDirectory, onOpenFile };
+  const pendingOpenFileRef = useRef(noPendingExplorerPath);
+  const pendingOpenDirectoryRef = useRef(noPendingExplorerPath);
   const preparedInput = useMemo(() => prepareFileTreeInput(treePaths), [treePaths]);
   const handleSelectionChange = useCallback((selectedPaths: readonly string[]) => {
     if (selectedPaths.length !== 1) {
+      pendingOpenFileRef.current = noPendingExplorerPath;
+      pendingOpenDirectoryRef.current = noPendingExplorerPath;
       return;
     }
-
     const selectedPath = selectedPaths[0];
     if (selectedPath === undefined) {
+      pendingOpenFileRef.current = noPendingExplorerPath;
+      pendingOpenDirectoryRef.current = noPendingExplorerPath;
       return;
     }
 
     const runtime = runtimeRef.current;
     if (runtime.filePaths.has(selectedPath)) {
-      void runtime.onOpenFile(selectedPath);
+      // Do NOT open the file here — this fires on pointerdown, which is also
+      // the start of a drag gesture. Opening here would open a file editor
+      // panel on every drag attempt. Instead, record the path and open it
+      // in handleTreeClick, which only fires for click (never for drags).
+      pendingOpenFileRef.current = selectedPath;
+      pendingOpenDirectoryRef.current = noPendingExplorerPath;
       return;
     }
 
     if (runtime.directoryPaths.has(selectedPath)) {
-      expandedPathsRef.current = includeExpandedPath(expandedPathsRef.current, selectedPath);
-      runtime.onLoadDirectory(selectedPath);
+      // Same rule as files: defer directory loading until click so a drag
+      // gesture does not accidentally expand the folder.
+      pendingOpenFileRef.current = noPendingExplorerPath;
+      pendingOpenDirectoryRef.current = selectedPath;
+      return;
     }
+
+    pendingOpenFileRef.current = noPendingExplorerPath;
+    pendingOpenDirectoryRef.current = noPendingExplorerPath;
   }, []);
   const { model } = useFileTree({
     preparedInput,
@@ -186,6 +219,26 @@ function ExplorerTreeModel({
     fileTreeSearchMode: "hide-non-matches",
     density: "compact",
     onSelectionChange: handleSelectionChange,
+    dragAndDrop: {
+      canDrag(paths) {
+        const isDraggable = paths.every(
+          (path) =>
+            runtimeRef.current.filePaths.has(path) || runtimeRef.current.directoryPaths.has(path),
+        );
+        // Capture the dragged paths synchronously here — this fires inside the
+        // shadow-DOM phase of dragstart, before our light-DOM handleDragStart runs,
+        // so it is always current regardless of React's render scheduling.
+        draggedFilePathsRef.current = isDraggable ? paths : [];
+        return isDraggable;
+      },
+      canDrop() {
+        return true;
+      },
+      onDropComplete() {
+        // Intra-tree drops are intentionally no-ops. File insertion is handled
+        // at the panel level via dragstart + setAgentThreadDraft.
+      },
+    },
   });
   const search = useFileTreeSearch(model);
   const syncExpandedDirectories = useCallback(() => {
@@ -214,6 +267,51 @@ function ExplorerTreeModel({
       initialExpandedPaths: currentExpandedPathsForTree(expandedPathsRef.current, directoryPaths),
     });
   }, [directoryPaths, model, preparedInput, treePaths]);
+
+  const treeContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const container = treeContainerRef.current;
+    if (container === null) {
+      return;
+    }
+    function onDragStart(event: Event) {
+      const drag = event as unknown as globalThis.DragEvent;
+      const filesToDrag = draggedFilePathsRef.current;
+      if (filesToDrag.length === 0 || drag.dataTransfer === null) {
+        return;
+      }
+      drag.dataTransfer.effectAllowed = "copy";
+      drag.dataTransfer.setData(explorerDragDataKey, JSON.stringify([...filesToDrag]));
+    }
+    container.addEventListener("dragstart", onDragStart);
+    return () => {
+      container.removeEventListener("dragstart", onDragStart);
+    };
+  }, []);
+
+  function handleTreeClick() {
+    const filePath = pendingOpenFileRef.current;
+    if (filePath !== noPendingExplorerPath) {
+      void runtimeRef.current.onOpenFile(filePath);
+      return;
+    }
+
+    const directoryPath = pendingOpenDirectoryRef.current;
+    if (directoryPath === noPendingExplorerPath) {
+      return;
+    }
+
+    const runtime = runtimeRef.current;
+    expandedPathsRef.current = includeExpandedPath(expandedPathsRef.current, directoryPath);
+    void runtime.onLoadDirectory(directoryPath);
+  }
+
+  function handleTreeKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key === "Enter") {
+      handleTreeClick();
+    }
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -272,7 +370,14 @@ function ExplorerTreeModel({
           false
         )}
       </div>
-      <div className="min-h-0 flex-1 overflow-hidden">
+      <div
+        ref={treeContainerRef}
+        className="min-h-0 flex-1 overflow-hidden"
+        role="none"
+        onClick={handleTreeClick}
+        onKeyDown={handleTreeKeyDown}
+        onDragOver={handleExplorerTreeDragOver}
+      >
         {treePaths.length === 0 ? (
           <ExplorerMessage message="This Project folder has no files to show." />
         ) : (
@@ -330,6 +435,14 @@ function ExplorerMessage({ message, role }: { message: string; role?: "alert" })
       {message}
     </div>
   );
+}
+
+function handleExplorerTreeDragOver(event: DragEvent<HTMLDivElement>) {
+  if (!event.dataTransfer.types.includes(explorerDragDataKey)) {
+    return;
+  }
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "copy";
 }
 
 export { ExplorerInspector };
