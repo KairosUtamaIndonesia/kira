@@ -7,6 +7,10 @@ type AgentThreadContext = {
 
 const agentThreadContexts = new Map<string, AgentThreadContext>();
 
+export function listAgentThreadContexts(): AgentThreadContext[] {
+  return Array.from(agentThreadContexts.values());
+}
+
 export function registerAgentThreadContext(context: AgentThreadContext): void {
   agentThreadContexts.set(context.threadId, context);
 }

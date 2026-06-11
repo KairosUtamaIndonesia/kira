@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { useSkillsList } from "@/features/skills/hooks/useSkillsList";
+
 import type {
   AgentThreadContextUsage,
   AgentThreadPanelParams,
@@ -13,6 +15,7 @@ import {
   getAgentThreadContextUsage,
   prepareAgentThread,
 } from "../api/agentRuntimeApi";
+import { expandSlashCommandInText } from "../expandUserMessage";
 import {
   appendLocalUserMessage,
   applyPiEvent,
@@ -96,9 +99,10 @@ function useAgentThreadConnection(
   const [transcript, setTranscript] = useState(emptyPiTranscriptState);
   const socketRef = useRef<PiAgentSocket | undefined>(void 0);
   const runtimeStateRef = useRef(runtimeState);
+  const runtimeInfoRef = useRef<{ baseUrl: string; token: string } | undefined>(void 0);
+  const skillsList = useSkillsList(params.folderPath);
   const hasAutoTitledRef = useRef(false);
   const isFirstPromptRef = useRef(true);
-  const runtimeInfoRef = useRef<{ baseUrl: string; token: string } | undefined>(void 0);
   const onAutoTitledRef = useRef(options === undefined ? undefined : options.onAutoTitled);
   onAutoTitledRef.current = options === undefined ? undefined : options.onAutoTitled;
   runtimeStateRef.current = runtimeState;
@@ -204,11 +208,11 @@ function useAgentThreadConnection(
       setRuntimeState({ status: "error", message: "Agent Thread socket is not connected." });
       return false;
     }
-
     setRuntimeState({ status: "sending", baseUrl: state.baseUrl });
     try {
-      setTranscript((currentTranscript) => appendLocalUserMessage(currentTranscript, message));
-      const result = await socket.prompt(message);
+      const expanded = await expandForLocalTranscript(message, params.folderPath, skillsList);
+      setTranscript((currentTranscript) => appendLocalUserMessage(currentTranscript, expanded));
+      const result = await socket.prompt(expanded);
 
       if (
         isFirstPromptRef.current &&
@@ -623,6 +627,24 @@ function errorMessageFromUnknown(error: unknown) {
   }
   return "Agent Thread runtime failed.";
 }
+
+type SkillsListHookState = ReturnType<typeof useSkillsList>;
+
+async function expandForLocalTranscript(
+  message: string,
+  projectPath: string,
+  skillsList: SkillsListHookState,
+): Promise<string> {
+  if (skillsList.state.status !== "ready") {
+    return message;
+  }
+  const { bundled, project } = skillsList.state.result;
+  return expandSlashCommandInText(message, {
+    projectPath,
+    skills: [...bundled, ...project],
+  });
+}
+
 export { useAgentThreadConnection };
 export type {
   AgentThreadContextUsageState,

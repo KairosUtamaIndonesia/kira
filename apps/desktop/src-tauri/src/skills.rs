@@ -5,8 +5,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::agent_runtime::{fetch_bundled_skills, AgentRuntimeRegistry};
-
+use crate::agent_runtime::{fetch_bundled_skills, AgentRuntimeRegistry, AgentRuntimeState};
 /// Provenance of an installed Skill.
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -69,6 +68,27 @@ pub struct SkillsListInput {
     project_path: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillExpansionInput {
+    /// Declared skill name (the `name` from `SKILL.md` frontmatter).
+    name: String,
+    /// Project root, used to discover Project and Global Skills. Bundled
+    /// Skills are scope-independent and resolved via the agent runtime.
+    project_path: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillExpansionResult {
+    name: String,
+    /// Trimmed body of `SKILL.md` with the frontmatter block stripped.
+    body: String,
+    /// Absolute path to the `SKILL.md` for non-Bundled scopes.
+    location: Option<String>,
+    scope: SkillScope,
+}
+
 #[derive(Debug, Error)]
 pub enum SkillsError {
     #[error("failed to read skills directory {path}: {reason}")]
@@ -81,6 +101,8 @@ pub enum SkillsError {
     LockParse { path: String, reason: String },
     #[error("could not resolve the home directory for global skills: {reason}")]
     GlobalRootUnavailable { reason: String },
+    #[error("unknown skill: {name}")]
+    UnknownSkill { name: String },
 }
 
 impl serde::Serialize for SkillsError {
@@ -139,6 +161,168 @@ pub async fn skills_list(
     })
 }
 
+/// Returns the expanded body of a single Skill by name.
+///
+/// Resolution order: Bundled (agent runtime), then Project, then Global. The
+/// first match wins. Errors are returned for the resolved scope's failure
+/// (file not found, malformed frontmatter, runtime unavailable) but a skill
+/// being absent across all scopes surfaces as `UnknownSkill`.
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State and AppHandle by value"
+)]
+pub async fn skills_expand(
+    input: SkillExpansionInput,
+    app: tauri::AppHandle,
+    registry: tauri::State<'_, AgentRuntimeRegistry>,
+) -> Result<SkillExpansionResult, SkillsError> {
+    if let Some(bundled) = fetch_bundled_skill_body(&input.name, &registry).await {
+        return Ok(SkillExpansionResult {
+            name: bundled.name,
+            body: bundled.body,
+            location: None,
+            scope: SkillScope::Bundled,
+        });
+    }
+
+    if let Some(project_path) = input.project_path.as_deref() {
+        if let Some(skill) =
+            expand_disk_skill(Path::new(project_path), &input.name, SkillScope::Project)?
+        {
+            return Ok(skill);
+        }
+    }
+
+    if let Some(skill) = expand_global_skill(&app, &input.name)? {
+        return Ok(skill);
+    }
+
+    Err(SkillsError::UnknownSkill { name: input.name })
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct BundledSkillBody {
+    name: String,
+    body: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct BundledSkillBodyResponse {
+    name: String,
+    body: String,
+}
+
+async fn fetch_bundled_skill_body(
+    name: &str,
+    registry: &tauri::State<'_, AgentRuntimeRegistry>,
+) -> Option<BundledSkillBody> {
+    let connection = {
+        let runtime_guard = registry.runtime.lock().await;
+        match &*runtime_guard {
+            AgentRuntimeState::Running(runtime) => runtime.connection.clone(),
+            AgentRuntimeState::Failed { .. } | AgentRuntimeState::NotStarted => return None,
+        }
+    };
+
+    let response = reqwest::Client::new()
+        .get(format!(
+            "{}/app/skills/{}/body",
+            connection.base_url,
+            urlencode(name)
+        ))
+        .bearer_auth(&connection.token)
+        .send()
+        .await
+        .ok()?;
+
+    if !response.status().is_success() {
+        return None;
+    }
+
+    let parsed = response.json::<BundledSkillBodyResponse>().await.ok()?;
+    Some(BundledSkillBody {
+        name: parsed.name,
+        body: parsed.body,
+    })
+}
+
+fn urlencode(value: &str) -> String {
+    use std::fmt::Write as _;
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.as_bytes() {
+        match *byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                encoded.push(*byte as char);
+            }
+            _ => {
+                let _ = write!(encoded, "%{byte:02X}");
+            }
+        }
+    }
+    encoded
+}
+
+fn expand_disk_skill(
+    root: &Path,
+    name: &str,
+    scope: SkillScope,
+) -> Result<Option<SkillExpansionResult>, SkillsError> {
+    let skills_dir = root.join(".agents").join("skills");
+    if !skills_dir.is_dir() {
+        return Ok(None);
+    }
+
+    for dir_entry in fs::read_dir(&skills_dir).map_err(|error| SkillsError::ReadDirectory {
+        path: skills_dir.display().to_string(),
+        reason: error.to_string(),
+    })? {
+        let dir_entry = dir_entry.map_err(|error| SkillsError::ReadDirectory {
+            path: skills_dir.display().to_string(),
+            reason: error.to_string(),
+        })?;
+        let skill_path = dir_entry.path();
+        if !skill_path.is_dir() {
+            continue;
+        }
+        let skill_md = skill_path.join("SKILL.md");
+        if !skill_md.is_file() {
+            continue;
+        }
+        let content = fs::read_to_string(&skill_md).map_err(|error| SkillsError::ReadFile {
+            path: skill_md.display().to_string(),
+            reason: error.to_string(),
+        })?;
+        let frontmatter = parse_frontmatter(&content, &skill_md)?;
+        if frontmatter.name != name {
+            continue;
+        }
+        let body = skill_body(&content);
+        return Ok(Some(SkillExpansionResult {
+            name: frontmatter.name,
+            body,
+            location: Some(skill_md.display().to_string()),
+            scope,
+        }));
+    }
+
+    Ok(None)
+}
+
+fn expand_global_skill(
+    app: &tauri::AppHandle,
+    name: &str,
+) -> Result<Option<SkillExpansionResult>, SkillsError> {
+    use tauri::Manager;
+
+    let home = app
+        .path()
+        .home_dir()
+        .map_err(|error| SkillsError::GlobalRootUnavailable {
+            reason: error.to_string(),
+        })?;
+    expand_disk_skill(&home, name, SkillScope::Global)
+}
 fn bundled_skill(name: String, description: String) -> InstalledSkill {
     InstalledSkill {
         name,
@@ -349,6 +533,38 @@ fn parse_scalar(raw: &str) -> String {
     raw.to_string()
 }
 
+/// Returns the body of `SKILL.md` with the leading YAML frontmatter block
+/// removed and the result trimmed. Returns the raw content unchanged if the
+/// file has no frontmatter block.
+fn skill_body(content: &str) -> String {
+    let Some(after_fence) = skip_frontmatter(content) else {
+        return content.trim().to_string();
+    };
+    after_fence.trim_matches('\n').trim_end().to_string()
+}
+
+/// Returns the substring after the closing `---` fence of a leading YAML
+/// frontmatter block, or `None` if the content has no such block.
+fn skip_frontmatter(content: &str) -> Option<&str> {
+    let rest = content
+        .strip_prefix("---\r\n")
+        .or_else(|| content.strip_prefix("---\n"))?;
+    // Search for the next `\n---` fence that terminates the block.
+    let mut search_from = 0;
+    while let Some(rel) = rest[search_from..].find("\n---") {
+        let fence_start = search_from + rel + 1; // points at the '-'
+        let after_close = &rest[fence_start + 3..];
+        if after_close.is_empty()
+            || after_close.starts_with('\n')
+            || after_close.starts_with("\r\n")
+        {
+            return Some(after_close);
+        }
+        search_from = fence_start + 3;
+    }
+    None
+}
+
 /// Flags Skills whose declared name collides between Bundled and Project scopes
 /// (a Skill Conflict that fails Flue session initialization), returning the
 /// colliding names sorted and de-duplicated.
@@ -518,5 +734,41 @@ mod tests {
         assert!(frontmatter_block("---\nname: x\n---\nbody").is_some());
         assert!(frontmatter_block("no fence").is_none());
         assert!(frontmatter_block("---\nname: x\nbody without fence").is_none());
+    }
+
+    #[test]
+    fn skill_body_strips_frontmatter_and_trims() {
+        let content = "---\nname: x\ndescription: y\n---\n\n  the body  \n";
+        assert_eq!(skill_body(content), "  the body");
+    }
+
+    #[test]
+    fn skill_body_handles_no_frontmatter() {
+        assert_eq!(skill_body("just a body"), "just a body");
+    }
+
+    #[test]
+    fn expand_disk_skill_returns_body_for_matching_name() {
+        let root = temp_root("expand");
+        write_skill(
+            &root,
+            "tauri-v2",
+            "---\nname: tauri-v2\ndescription: \"Tauri dev\"\n---\n\nbody content",
+        );
+
+        let expanded = expand_disk_skill(&root, "tauri-v2", SkillScope::Project)
+            .expect("expand")
+            .expect("found");
+
+        assert_eq!(expanded.name, "tauri-v2");
+        assert_eq!(expanded.body, "body content");
+        assert!(matches!(expanded.scope, SkillScope::Project));
+        assert!(expanded.location.is_some());
+
+        let missing =
+            expand_disk_skill(&root, "absent", SkillScope::Project).expect("expand missing");
+        assert!(missing.is_none());
+
+        fs::remove_dir_all(&root).ok();
     }
 }

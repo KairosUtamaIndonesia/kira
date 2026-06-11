@@ -5,13 +5,13 @@ import type { PiTranscriptState, RespondToHumanRequest } from "../types";
 
 import { buildAgentThreadTranscript, stringifyUnknown } from "../agentThreadDisplay";
 import { AgentThreadMarkdown } from "./AgentThreadMarkdown";
+import { AgentThreadUserSkillBlock } from "./AgentThreadUserSkillBlock";
 import { toolComponentForName } from "./tools";
 
 type AgentThreadTranscriptProps = {
   transcript: PiTranscriptState;
   respond: RespondToHumanRequest;
 };
-
 function AgentThreadTranscript({ transcript, respond }: AgentThreadTranscriptProps) {
   const items = buildAgentThreadTranscript(transcript);
   if (items.length === 0) {
@@ -28,9 +28,15 @@ function AgentThreadTranscript({ transcript, respond }: AgentThreadTranscriptPro
         if (item.type === "user-message") {
           return (
             <li key={item.id} className="flex justify-end">
-              <article className="max-w-[min(42rem,85%)] rounded-xl border border-border bg-card p-3 text-card-foreground">
+              <article className="max-w-[min(42rem,85%)] space-y-2 rounded-xl border border-border bg-card p-3 text-card-foreground">
                 <MessageHeader label="You" createdAt={item.createdAt} />
-                <p className="mt-2 text-sm leading-6 whitespace-pre-wrap">{item.text}</p>
+                {item.blocks.length === 0 ? (
+                  <p className="text-sm leading-6 whitespace-pre-wrap">{item.text}</p>
+                ) : (
+                  item.blocks.map((block) => (
+                    <UserMessageBlock key={userMessageBlockKey(item.id, block)} block={block} />
+                  ))
+                )}
               </article>
             </li>
           );
@@ -153,6 +159,33 @@ function exhaustiveTranscriptItem(value: never): never {
 
 function exhaustiveActivityBlock(value: never): never {
   throw new Error(`Unknown Agent Thread activity block: ${String(value)}`);
+}
+
+function UserMessageBlock({
+  block,
+}: {
+  block:
+    | { type: "text"; text: string }
+    | { type: "skill"; name: string; location: string | undefined; body: string };
+}) {
+  if (block.type === "skill") {
+    return <AgentThreadUserSkillBlock block={block} />;
+  }
+  if (block.text.trim().length === 0) {
+    return <></>;
+  }
+  return <p className="text-sm leading-6 whitespace-pre-wrap">{block.text}</p>;
+}
+
+function userMessageBlockKey(
+  messageId: string,
+  block:
+    | { type: "text"; text: string }
+    | { type: "skill"; name: string; location: string | undefined; body: string },
+): string {
+  return block.type === "skill"
+    ? `${messageId}:skill:${block.name}:${block.location ?? ""}`
+    : `${messageId}:text:${block.text.length}`;
 }
 
 export { AgentThreadTranscript };

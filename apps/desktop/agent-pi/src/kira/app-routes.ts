@@ -1,7 +1,12 @@
 import { Hono } from "hono";
+import { readFileSync } from "node:fs";
 
 import { getOrCreateAgentSession } from "./agent-session-host";
-import { registerAgentThreadContext, requireAgentThreadContext } from "./agent-thread-context";
+import {
+  listAgentThreadContexts,
+  registerAgentThreadContext,
+  requireAgentThreadContext,
+} from "./agent-thread-context";
 import { requireRuntimeToken } from "./auth";
 import { contextUsageFromEntries } from "./context-usage";
 import { generateAgentThreadTitle } from "./title-generation";
@@ -10,7 +15,87 @@ const appRoutes = new Hono();
 
 appRoutes.use("/*", requireRuntimeToken);
 
-appRoutes.get("/skills", (context) => context.json({ skills: [] }));
+type SkillListItem = {
+  name: string;
+  description: string;
+  body: string;
+};
+
+appRoutes.get("/skills", async (context) => {
+  const skills = await listBundledSkills();
+  return context.json({ skills });
+});
+
+appRoutes.get("/skills/:name/body", async (context) => {
+  const name = context.req.param("name");
+  if (name === undefined || name.length === 0) {
+    return context.json({ error: "Skill name is required." }, 400);
+  }
+  const skills = await listBundledSkills();
+  const match = skills.find((skill) => skill.name === name);
+  if (match === undefined) {
+    return context.json({ error: `Unknown bundled skill: ${name}` }, 404);
+  }
+  return context.json({ name: match.name, body: match.body });
+});
+
+async function listBundledSkills(): Promise<SkillListItem[]> {
+  // Bundled Skills are identical across Agent Threads, so the first resource
+  // loader that exposes them is enough. Try the registered Agent Threads in
+  // parallel; the first one that succeeds wins.
+  const attempts = await Promise.allSettled(
+    listAgentThreadContexts().map(async (threadContext) => {
+      const host = await getOrCreateAgentSession(threadContext);
+      const loaded = host.session.resourceLoader.getSkills().skills;
+      return loaded.map<SkillListItem>((skill) => ({
+        name: skill.name,
+        description: skill.description,
+        body: readSkillBody(skill.filePath),
+      }));
+    }),
+  );
+  for (const attempt of attempts) {
+    if (attempt.status === "fulfilled") {
+      return attempt.value;
+    }
+  }
+  return [];
+}
+
+function readSkillBody(filePath: string): string {
+  try {
+    const content = readFileSync(filePath, "utf-8");
+    return stripFrontmatter(content).trim();
+  } catch {
+    return "";
+  }
+}
+
+function stripFrontmatter(content: string): string {
+  const altPrefix = "---\r\n";
+  const prefix = "---\n";
+  let rest: string;
+  if (content.startsWith(altPrefix)) {
+    rest = content.slice(altPrefix.length);
+  } else if (content.startsWith(prefix)) {
+    rest = content.slice(prefix.length);
+  } else {
+    return content;
+  }
+  let searchFrom = 0;
+  while (searchFrom < rest.length) {
+    const rel = rest.indexOf("\n---", searchFrom);
+    if (rel < 0) {
+      return content;
+    }
+    const afterClose = rest.slice(rel + 4);
+    if (afterClose.length === 0 || afterClose.startsWith("\n") || afterClose.startsWith("\r\n")) {
+      return afterClose;
+    }
+    searchFrom = rel + 4;
+  }
+  return content;
+}
 
 appRoutes.post("/agent-threads", async (context) => {
   const payload = await context.req.json();

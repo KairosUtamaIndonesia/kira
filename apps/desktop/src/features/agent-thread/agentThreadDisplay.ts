@@ -1,11 +1,14 @@
 import type { PiMessage, PiToolExecutionState, PiTranscriptState } from "./types";
 
+import { parseUserMessageBlocks, type UserMessageBlock } from "./userMessageBlocks";
+
 type AgentThreadTranscriptItem =
   | {
       type: "user-message";
       id: string;
       createdAt: string;
       text: string;
+      blocks: UserMessageBlock[];
     }
   | {
       type: "assistant-activity";
@@ -107,7 +110,6 @@ function appendTranscriptItem(
     },
   ];
 }
-
 function transcriptItemFromPiMessage(
   message: PiMessage,
   context: TranscriptBuildContext,
@@ -117,11 +119,13 @@ function transcriptItemFromPiMessage(
   const createdAt = timestampFromMessage(message);
 
   if (role === "user") {
+    const text = textFromPiMessage(message);
     return {
       type: "user-message",
       id,
       createdAt,
-      text: textFromPiMessage(message),
+      text,
+      blocks: parseUserMessageBlocks(text),
     };
   }
 

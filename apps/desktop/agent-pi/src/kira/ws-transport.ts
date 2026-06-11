@@ -2,7 +2,11 @@ import type { ImageContent } from "@earendil-works/pi-ai";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { WebSocket } from "ws";
 
+import { readFileSync } from "node:fs";
+
 import type { ToolUiBroker } from "./tool-ui-broker";
+
+import { stripSkillFrontmatter } from "./skill-expansion";
 
 /**
  * RPC response frame acknowledging a command. Mirrors pi's RPC protocol shape so
@@ -91,6 +95,34 @@ function requireMessage(command: ParsedCommand): string {
 }
 
 /**
+ * Replace every `/skill:<name> <args>` invocation in `text` with a Pi-compatible
+ * `<skill>` block plus trailing args, mirroring `_expandSkillCommand` in
+ * pi-coding-agent. Unknown skills are left untouched so the agent runtime sees
+ * a clean prompt either way.
+ */
+function expandSkillCommandsInText(text: string, session: AgentSession): string {
+  const pattern = /(^|\s)(\/skill:([A-Za-z0-9_:-]+))((?:\s[^\n]*)?)/g;
+  return text.replace(pattern, (match, lead: string, _full: string, name: string, args: string) => {
+    const trimmedArgs = args.replace(/^\s+/, "").replace(/\s+$/, "");
+    const skill = session.resourceLoader
+      .getSkills()
+      .skills.find((candidate) => candidate.name === name);
+    if (skill === undefined) {
+      return match;
+    }
+    let body: string;
+    try {
+      const content = readFileSync(skill.filePath, "utf-8");
+      body = stripSkillFrontmatter(content).trim();
+    } catch {
+      return match;
+    }
+    const block = `<skill name="${skill.name}" location="${skill.filePath}">\nReferences are relative to ${skill.baseDir}.\n\n${body}\n</skill>`;
+    return trimmedArgs.length === 0 ? `${lead}${block}` : `${lead}${block}\n\n${trimmedArgs}`;
+  });
+}
+
+/**
  * Bridge one desktop WebSocket connection to an Agent Thread's Pi AgentSession.
  *
  * Outbound: every Pi session event is forwarded verbatim as a JSON frame.
@@ -146,7 +178,7 @@ async function handleCommand(
   try {
     switch (command.type) {
       case "prompt": {
-        const message = requireMessage(command);
+        const message = expandSkillCommandsInText(requireMessage(command), session);
         if (command.streamingBehavior === "steer" || command.streamingBehavior === "followUp") {
           await session.prompt(message, promptOptions(command.images, command.streamingBehavior));
         } else {
@@ -162,12 +194,14 @@ async function handleCommand(
         return;
       }
       case "steer": {
-        await session.steer(requireMessage(command));
+        const message = expandSkillCommandsInText(requireMessage(command), session);
+        await session.steer(message);
         respond(ws, command.id, "steer", true);
         return;
       }
       case "follow_up": {
-        await session.followUp(requireMessage(command));
+        const message = expandSkillCommandsInText(requireMessage(command), session);
+        await session.followUp(message);
         respond(ws, command.id, "follow_up", true);
         return;
       }
@@ -182,18 +216,14 @@ async function handleCommand(
             return;
           case "none-pending":
             respond(ws, command.id, "tool_ui_response", false, {
-              error: "No matching tool UI request is pending for this Agent Thread.",
+              error: "No pending tool UI request with that id.",
             });
             return;
-          case "invalid":
-            respond(ws, command.id, "tool_ui_response", false, { error: result.reason });
-            return;
-          default:
-            return exhaustiveToolUiResult(result);
         }
+        return;
       }
       case "abort": {
-        await session.abort();
+        session.abort();
         respond(ws, command.id, "abort", true);
         return;
       }
@@ -201,20 +231,33 @@ async function handleCommand(
         if (typeof command.targetId !== "string" || command.targetId.length === 0) {
           throw new Error("navigate_tree requires a non-empty 'targetId'.");
         }
-        const result = await session.navigateTree(command.targetId, command.options);
-        respond(ws, command.id, "navigate_tree", true, { data: result });
+        const options = command.options;
+        const customInstructions =
+          options !== undefined && "customInstructions" in options
+            ? options.customInstructions
+            : undefined;
+        const replaceInstructions =
+          options !== undefined && "replaceInstructions" in options
+            ? options.replaceInstructions
+            : undefined;
+        const label = options !== undefined && "label" in options ? options.label : undefined;
+        const summarize =
+          options !== undefined && "summarize" in options ? options.summarize : undefined;
+        await session.navigateTree(command.targetId, {
+          ...(customInstructions === undefined ? {} : { customInstructions }),
+          ...(replaceInstructions === undefined ? {} : { replaceInstructions }),
+          ...(label === undefined ? {} : { label }),
+          ...(summarize === undefined ? {} : { summarize }),
+        });
+        respond(ws, command.id, "navigate_tree", true);
         return;
       }
-      default: {
-        respond(ws, command.id, command.type, false, { error: `Unknown command: ${command.type}` });
-        return;
-      }
+      default:
+        respond(ws, command.id, command.type, false, {
+          error: `Unknown command type: ${command.type}`,
+        });
     }
   } catch (error) {
     respond(ws, command.id, command.type, false, { error: errorMessage(error) });
   }
-}
-
-function exhaustiveToolUiResult(result: never): never {
-  throw new Error(`Unhandled tool UI delivery result: ${JSON.stringify(result)}`);
 }
