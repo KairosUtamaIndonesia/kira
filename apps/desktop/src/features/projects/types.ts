@@ -10,6 +10,9 @@ type Session = {
   id: string;
   projectId: string;
   name: string;
+  rootKind: "projectFolder" | "worktree";
+  worktreePath: string | null;
+  branchName: string | null;
   createdAt: string;
   updatedAt: string;
   lastOpenedAt: string | null;

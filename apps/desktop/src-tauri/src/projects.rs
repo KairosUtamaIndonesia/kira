@@ -36,12 +36,29 @@ pub struct Session {
     id: String,
     project_id: String,
     name: String,
+    root_kind: SessionRootKind,
+    worktree_path: Option<String>,
+    branch_name: Option<String>,
     created_at: String,
     updated_at: String,
     last_opened_at: Option<String>,
     layout_json: Option<String>,
 }
 
+#[derive(Debug, Serialize, sqlx::Type)]
+#[serde(rename_all = "camelCase")]
+#[sqlx(type_name = "TEXT", rename_all = "snake_case")]
+pub enum SessionRootKind {
+    ProjectFolder,
+    Worktree,
+}
+
+const SESSION_SELECT_PROJECT: &str =
+    "SELECT id, project_id, name, root_kind, worktree_path, branch_name, created_at, updated_at, last_opened_at, layout_json FROM sessions WHERE project_id = ? ORDER BY COALESCE(last_opened_at, created_at) DESC";
+const SESSION_SELECT_LAST_PROJECT: &str =
+    "SELECT id, project_id, name, root_kind, worktree_path, branch_name, created_at, updated_at, last_opened_at, layout_json FROM sessions WHERE project_id = ? ORDER BY COALESCE(last_opened_at, created_at) DESC LIMIT 1";
+const SESSION_SELECT_BY_PROJECT_AND_ID: &str =
+    "SELECT id, project_id, name, root_kind, worktree_path, branch_name, created_at, updated_at, last_opened_at, layout_json FROM sessions WHERE project_id = ? AND id = ?";
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreatedProject {
@@ -732,9 +749,7 @@ async fn list_project_sessions(
     input: ListProjectSessionsInput,
 ) -> Result<Vec<Session>, ProjectError> {
     ensure_project_exists(pool, &input.project_id).await?;
-    sqlx::query_as::<_, Session>(
-        "SELECT id, project_id, name, created_at, updated_at, last_opened_at, layout_json FROM sessions WHERE project_id = ? ORDER BY COALESCE(last_opened_at, created_at) DESC",
-    )
+    sqlx::query_as::<_, Session>(SESSION_SELECT_PROJECT)
     .bind(input.project_id)
     .fetch_all(pool)
     .await
@@ -745,9 +760,7 @@ async fn open_project(
     pool: &SqlitePool,
     input: OpenProjectInput,
 ) -> Result<OpenProject, ProjectError> {
-    let session = sqlx::query_as::<_, Session>(
-        "SELECT id, project_id, name, created_at, updated_at, last_opened_at, layout_json FROM sessions WHERE project_id = ? ORDER BY COALESCE(last_opened_at, created_at) DESC LIMIT 1",
-    )
+    let session = sqlx::query_as::<_, Session>(SESSION_SELECT_LAST_PROJECT)
     .bind(&input.project_id)
     .fetch_optional(pool)
     .await
@@ -761,9 +774,7 @@ async fn open_project_session(
     pool: &SqlitePool,
     input: OpenProjectSessionInput,
 ) -> Result<OpenProject, ProjectError> {
-    let session = sqlx::query_as::<_, Session>(
-        "SELECT id, project_id, name, created_at, updated_at, last_opened_at, layout_json FROM sessions WHERE project_id = ? AND id = ?",
-    )
+    let session = sqlx::query_as::<_, Session>(SESSION_SELECT_BY_PROJECT_AND_ID)
     .bind(&input.project_id)
     .bind(&input.session_id)
     .fetch_optional(pool)
@@ -1367,7 +1378,7 @@ async fn create_project(
     .map_err(|error| ProjectError::Create(error.to_string()))?;
 
     sqlx::query(
-        "INSERT INTO sessions (id, project_id, name, created_at, updated_at, last_opened_at, layout_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO sessions (id, project_id, name, root_kind, worktree_path, branch_name, created_at, updated_at, last_opened_at, layout_json) VALUES (?, ?, ?, 'project_folder', NULL, NULL, ?, ?, ?, ?)",
     )
     .bind(&session_id)
     .bind(&project_id)
@@ -1397,6 +1408,9 @@ async fn create_project(
             id: session_id,
             project_id,
             name: DEFAULT_SESSION_NAME.to_string(),
+            root_kind: SessionRootKind::ProjectFolder,
+            worktree_path: None,
+            branch_name: None,
             created_at: now.clone(),
             updated_at: now.clone(),
             last_opened_at: Some(now),
