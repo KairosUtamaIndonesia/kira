@@ -1,6 +1,8 @@
-import type { AgentHarness } from "@earendil-works/pi-agent-core";
 import type { ImageContent } from "@earendil-works/pi-ai";
+import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { WebSocket } from "ws";
+
+import type { ToolUiBroker } from "./tool-ui-broker";
 
 /**
  * RPC response frame acknowledging a command. Mirrors pi's RPC protocol shape so
@@ -22,6 +24,7 @@ type ParsedCommand = {
   images?: ImageContent[];
   streamingBehavior?: "steer" | "followUp";
   targetId?: string;
+  response?: unknown;
   options?: {
     summarize?: boolean;
     customInstructions?: string;
@@ -65,8 +68,19 @@ function errorMessage(error: unknown): string {
 
 function promptOptions(
   images: ImageContent[] | undefined,
-): { images?: ImageContent[] } | undefined {
-  return images === undefined ? undefined : { images };
+  streamingBehavior?: "steer" | "followUp",
+): { images?: ImageContent[]; streamingBehavior?: "steer" | "followUp" } | undefined {
+  if (images === undefined && streamingBehavior === undefined) {
+    return undefined;
+  }
+  const options: { images?: ImageContent[]; streamingBehavior?: "steer" | "followUp" } = {};
+  if (images !== undefined) {
+    options.images = images;
+  }
+  if (streamingBehavior !== undefined) {
+    options.streamingBehavior = streamingBehavior;
+  }
+  return options;
 }
 
 function requireMessage(command: ParsedCommand): string {
@@ -77,28 +91,39 @@ function requireMessage(command: ParsedCommand): string {
 }
 
 /**
- * Bridge one desktop WebSocket connection to an Agent Thread's harness.
+ * Bridge one desktop WebSocket connection to an Agent Thread's Pi AgentSession.
  *
- * Outbound: every `AgentHarnessEvent` is forwarded verbatim as a JSON frame.
+ * Outbound: every Pi session event is forwarded verbatim as a JSON frame.
  * Inbound: RPC commands (`prompt`/`steer`/`follow_up`/`abort`/`navigate_tree`)
- * drive the harness. `prompt` is fire-and-forget — it is acknowledged on accept
+ * drive the session. `prompt` is fire-and-forget — it is acknowledged on accept
  * and its progress streams back through the event subscription.
  */
-export function attachAgentSocket(ws: WebSocket, harness: AgentHarness): void {
-  const unsubscribe = harness.subscribe((event) => {
+export function attachAgentSocket(
+  ws: WebSocket,
+  session: AgentSession,
+  toolUiBroker: ToolUiBroker,
+): void {
+  const detachToolUi = toolUiBroker.attach(ws);
+  const unsubscribe = session.subscribe((event) => {
     send(ws, event);
   });
 
   ws.on("message", (data) => {
-    void handleCommand(ws, harness, data.toString());
+    void handleCommand(ws, session, toolUiBroker, data.toString());
   });
 
   ws.on("close", () => {
+    detachToolUi();
     unsubscribe();
   });
 }
 
-async function handleCommand(ws: WebSocket, harness: AgentHarness, raw: string): Promise<void> {
+async function handleCommand(
+  ws: WebSocket,
+  session: AgentSession,
+  toolUiBroker: ToolUiBroker,
+  raw: string,
+): Promise<void> {
   let command: ParsedCommand;
   try {
     const parsed = JSON.parse(raw) as unknown;
@@ -122,14 +147,12 @@ async function handleCommand(ws: WebSocket, harness: AgentHarness, raw: string):
     switch (command.type) {
       case "prompt": {
         const message = requireMessage(command);
-        if (command.streamingBehavior === "steer") {
-          await harness.steer(message, promptOptions(command.images));
-        } else if (command.streamingBehavior === "followUp") {
-          await harness.followUp(message, promptOptions(command.images));
+        if (command.streamingBehavior === "steer" || command.streamingBehavior === "followUp") {
+          await session.prompt(message, promptOptions(command.images, command.streamingBehavior));
         } else {
           void (async () => {
             try {
-              await harness.prompt(message, promptOptions(command.images));
+              await session.prompt(message, promptOptions(command.images));
             } catch (error) {
               send(ws, { type: "error", scope: "prompt", message: errorMessage(error) });
             }
@@ -139,17 +162,38 @@ async function handleCommand(ws: WebSocket, harness: AgentHarness, raw: string):
         return;
       }
       case "steer": {
-        await harness.steer(requireMessage(command), promptOptions(command.images));
+        await session.steer(requireMessage(command));
         respond(ws, command.id, "steer", true);
         return;
       }
       case "follow_up": {
-        await harness.followUp(requireMessage(command), promptOptions(command.images));
+        await session.followUp(requireMessage(command));
         respond(ws, command.id, "follow_up", true);
         return;
       }
+      case "tool_ui_response": {
+        if (typeof command.id !== "string" || command.id.length === 0) {
+          throw new Error("tool_ui_response requires a non-empty 'id'.");
+        }
+        const result = toolUiBroker.deliverResponse(command.id, command.response);
+        switch (result.status) {
+          case "delivered":
+            respond(ws, command.id, "tool_ui_response", true);
+            return;
+          case "none-pending":
+            respond(ws, command.id, "tool_ui_response", false, {
+              error: "No matching tool UI request is pending for this Agent Thread.",
+            });
+            return;
+          case "invalid":
+            respond(ws, command.id, "tool_ui_response", false, { error: result.reason });
+            return;
+          default:
+            return exhaustiveToolUiResult(result);
+        }
+      }
       case "abort": {
-        await harness.abort();
+        await session.abort();
         respond(ws, command.id, "abort", true);
         return;
       }
@@ -157,7 +201,7 @@ async function handleCommand(ws: WebSocket, harness: AgentHarness, raw: string):
         if (typeof command.targetId !== "string" || command.targetId.length === 0) {
           throw new Error("navigate_tree requires a non-empty 'targetId'.");
         }
-        const result = await harness.navigateTree(command.targetId, command.options);
+        const result = await session.navigateTree(command.targetId, command.options);
         respond(ws, command.id, "navigate_tree", true, { data: result });
         return;
       }
@@ -169,4 +213,8 @@ async function handleCommand(ws: WebSocket, harness: AgentHarness, raw: string):
   } catch (error) {
     respond(ws, command.id, command.type, false, { error: errorMessage(error) });
   }
+}
+
+function exhaustiveToolUiResult(result: never): never {
+  throw new Error(`Unhandled tool UI delivery result: ${JSON.stringify(result)}`);
 }

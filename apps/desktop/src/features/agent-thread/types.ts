@@ -23,6 +23,14 @@ type GetAgentThreadContextUsageInput = {
   threadId: string;
 };
 
+type GenerateAgentThreadTitleInput = {
+  projectId: string;
+  sessionId: string;
+  threadId: string;
+  prompt: string;
+  assistantText: string;
+};
+
 type AgentThreadContextUsage = {
   usedTokens: number;
   contextWindow: number;
@@ -45,45 +53,58 @@ type AgentThreadContextUsage = {
   updatedAt: string;
 };
 
-type AgentThreadMessageKind = "prompt" | "event" | "result";
+type PiMessage = Record<string, unknown>;
+type PiEvent = Record<string, unknown>;
 
-type AgentThreadMessageRecord = {
+type PiToolExecutionState = {
+  toolCallId: string;
+  toolName: string | undefined;
+  status: "queued" | "running" | "succeeded" | "failed" | "canceled";
+  input: unknown;
+  output: unknown;
+  error: string | undefined;
+  durationMs: number | undefined;
+  event: PiEvent;
+  toolUiRequestId: string | undefined;
+};
+
+type PiToolUiRequestState = {
   id: string;
-  threadId: string;
-  kind: AgentThreadMessageKind;
-  requestId: string;
-  message: unknown;
+  toolCallId: string;
+  toolName: string;
+  input: unknown;
+  event: PiEvent;
+};
+
+type PiActiveAssistantTurn = {
+  id: string;
   createdAt: string;
+  textParts: string[];
+  thinkingParts: string[];
 };
 
-type ListAgentThreadMessagesInput = {
-  threadId: string;
+type PiTranscriptState = {
+  persistedMessages: PiMessage[];
+  activeAssistantTurn: PiActiveAssistantTurn | undefined;
+  activeToolExecutions: Record<string, PiToolExecutionState>;
+  activeToolUiRequests: Record<string, PiToolUiRequestState>;
+  liveEvents: PiEvent[];
 };
 
-type SaveAgentThreadMessageInput = {
-  threadId: string;
-  kind: AgentThreadMessageKind;
-  requestId: string;
-  message: unknown;
-};
-
-type RespondToHumanRequestInput = {
-  threadId: string;
-  response: unknown;
-};
-
-type RespondToHumanRequest = (response: unknown) => Promise<boolean>;
+type RespondToHumanRequest = (requestId: string, response: unknown) => Promise<boolean>;
 
 export type {
   AgentRuntimeConnection,
   AgentThreadContextUsage,
-  AgentThreadMessageKind,
-  AgentThreadMessageRecord,
   AgentThreadPanelParams,
+  GenerateAgentThreadTitleInput,
   GetAgentThreadContextUsageInput,
-  ListAgentThreadMessagesInput,
+  PiActiveAssistantTurn,
+  PiEvent,
+  PiMessage,
+  PiToolExecutionState,
+  PiToolUiRequestState,
+  PiTranscriptState,
   PrepareAgentThreadInput,
   RespondToHumanRequest,
-  RespondToHumanRequestInput,
-  SaveAgentThreadMessageInput,
 };

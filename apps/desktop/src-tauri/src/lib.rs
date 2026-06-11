@@ -59,8 +59,6 @@ pub fn run() -> tauri::Result<()> {
         .manage(agent_runtime::AgentRuntimeRegistry::default())
         .invoke_handler(tauri::generate_handler![
             greet,
-            projects::agent_thread_message_save,
-            projects::agent_thread_messages_list,
             settings::appearance_settings_get,
             settings::appearance_settings_update,
             settings::notification_settings_get,
@@ -72,8 +70,8 @@ pub fn run() -> tauri::Result<()> {
             desktop_signin::desktop_signin_begin,
             desktop_signin::desktop_sign_out,
             agent_runtime::agent_thread_context_usage_get,
+            agent_runtime::generate_agent_thread_title,
             agent_runtime::prepare_agent_thread,
-            agent_runtime::respond_to_agent_thread_request,
             agent_runtime::start_agent_runtime,
             org_config::desktop_org_models_get,
             org_config::desktop_org_models_refresh,

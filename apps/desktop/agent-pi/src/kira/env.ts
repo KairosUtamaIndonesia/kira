@@ -25,12 +25,8 @@ export function readProjectPath(): string {
   return readRequiredEnv("KIRA_AGENT_PROJECT_PATH");
 }
 
-export function readPersistenceBridgeUrl(): string {
-  return readRequiredEnv("KIRA_AGENT_PERSISTENCE_BRIDGE_URL");
-}
-
-export function readPersistenceBridgeToken(): string {
-  return readRequiredEnv("KIRA_AGENT_PERSISTENCE_BRIDGE_TOKEN");
+export function readPiSessionRoot(): string {
+  return readRequiredEnv("KIRA_AGENT_PI_SESSION_ROOT");
 }
 
 export function readAgentProviderApiKey(): string | undefined {

@@ -5,9 +5,9 @@ import { serve } from "@hono/node-server";
 import { WebSocketServer } from "ws";
 
 import app from "./app";
+import { getOrCreateAgentSession } from "./kira/agent-session-host";
 import { requireAgentThreadContext } from "./kira/agent-thread-context";
 import { readRuntimeToken } from "./kira/env";
-import { getOrCreateHarness } from "./kira/harness-host";
 import { attachAgentSocket } from "./kira/ws-transport";
 
 const AGENT_SOCKET_PATH = /^\/agents\/([^/]+)\/ws$/;
@@ -47,11 +47,13 @@ server.on("upgrade", (request: IncomingMessage, socket: Duplex, head: Buffer) =>
 
   void (async () => {
     try {
-      const harness = await getOrCreateHarness(context);
-      wss.handleUpgrade(request, socket, head, (ws) => attachAgentSocket(ws, harness));
+      const sessionHost = await getOrCreateAgentSession(context);
+      wss.handleUpgrade(request, socket, head, (ws) =>
+        attachAgentSocket(ws, sessionHost.session, sessionHost.toolUiBroker),
+      );
     } catch (error) {
       process.stderr.write(
-        `harness build failed: ${error instanceof Error ? error.stack : String(error)}\n`,
+        `agent session build failed: ${error instanceof Error ? error.stack : String(error)}\n`,
       );
       socket.write("HTTP/1.1 500 Internal Server Error\r\n\r\n");
       socket.destroy();

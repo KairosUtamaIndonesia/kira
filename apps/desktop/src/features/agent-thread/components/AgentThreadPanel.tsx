@@ -39,7 +39,7 @@ function AgentThreadPanel({ api, params, onRename }: AgentThreadPanelProps) {
     [api, onRename, params.panelId],
   );
 
-  const { contextUsageState, messages, respondToRequest, runtimeState, sendPrompt } =
+  const { contextUsageState, transcript, respondToRequest, runtimeState, sendPrompt } =
     useAgentThreadConnection(params, { onAutoTitled: handleAutoTitled });
 
   useEffect(() => {
@@ -60,13 +60,9 @@ function AgentThreadPanel({ api, params, onRename }: AgentThreadPanelProps) {
     <section className="flex h-full min-h-0 flex-col bg-editor-surface text-foreground">
       <div className="min-h-0 flex-1 overflow-auto p-2">
         <div className="mx-auto w-full max-w-5xl">
-          <AgentThreadTranscript
-            messages={messages}
-            runtimeIsSending={runtimeState.status === "sending"}
-            respond={respondToRequest}
-          />
+          <AgentThreadTranscript transcript={transcript} respond={respondToRequest} />
           {agentThreadShowRawEventStream ? (
-            <AgentThreadRawEventStream messages={messages} />
+            <AgentThreadRawEventStream transcript={transcript} />
           ) : undefined}
         </div>
       </div>

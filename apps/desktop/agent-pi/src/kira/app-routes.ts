@@ -1,8 +1,10 @@
 import { Hono } from "hono";
 
-import { registerAgentThreadContext } from "./agent-thread-context";
+import { getOrCreateAgentSession } from "./agent-session-host";
+import { registerAgentThreadContext, requireAgentThreadContext } from "./agent-thread-context";
 import { requireRuntimeToken } from "./auth";
-import { deliverHumanResponse } from "./human-in-the-loop";
+import { contextUsageFromEntries } from "./context-usage";
+import { generateAgentThreadTitle } from "./title-generation";
 
 const appRoutes = new Hono();
 
@@ -17,41 +19,35 @@ appRoutes.post("/agent-threads", async (context) => {
   return context.json({ status: "registered", threadId: agentThreadContext.threadId });
 });
 
-appRoutes.post("/agent-threads/:threadId/human-response", async (context) => {
-  const threadId = context.req.param("threadId");
-  if (threadId.trim().length === 0) {
-    return context.json({ error: "threadId is required." }, 400);
-  }
-
-  let payload: unknown;
+appRoutes.get("/agent-threads/:threadId/session", async (context) => {
   try {
-    payload = await context.req.json();
-  } catch {
-    return context.json({ error: "Request body must be valid JSON." }, 400);
-  }
-  if (typeof payload !== "object" || payload === null || !("response" in payload)) {
-    return context.json({ error: "Request body must include a 'response' field." }, 400);
-  }
-
-  const result = deliverHumanResponse(threadId, (payload as { response: unknown }).response);
-  switch (result.status) {
-    case "delivered":
-      return context.json({ status: "delivered" });
-    case "none-pending":
-      return context.json(
-        { error: "No human input request is pending for this Agent Thread." },
-        409,
-      );
-    case "invalid":
-      return context.json({ error: result.reason }, 422);
-    default:
-      return exhaustiveDeliverResult(result);
+    const threadId = context.req.param("threadId");
+    const agentThreadContext = requireAgentThreadContext(threadId);
+    const host = await getOrCreateAgentSession(agentThreadContext);
+    const contextUsage = contextUsageFromEntries(await host.session.sessionManager.getEntries());
+    return context.json({
+      messages: host.session.messages,
+      sessionId: host.session.sessionId,
+      contextUsage:
+        contextUsage === undefined
+          ? undefined
+          : { ...contextUsage, updatedAt: new Date().toISOString() },
+    });
+  } catch (error) {
+    return context.json({ error: error instanceof Error ? error.message : String(error) }, 400);
   }
 });
 
-function exhaustiveDeliverResult(result: never): never {
-  throw new Error(`Unhandled human response delivery result: ${JSON.stringify(result)}`);
-}
+appRoutes.post("/agent-thread-title", async (context) => {
+  try {
+    const payload = await context.req.json();
+    const titleInput = parseAgentThreadTitleInput(payload);
+    const title = await generateAgentThreadTitle(titleInput);
+    return context.json(title);
+  } catch (error) {
+    return context.json({ error: error instanceof Error ? error.message : String(error) }, 400);
+  }
+});
 
 function parseAgentThreadContext(value: unknown) {
   const record = requireRecord(value, "Agent Thread context");
@@ -63,6 +59,14 @@ function parseAgentThreadContext(value: unknown) {
   };
 }
 
+function parseAgentThreadTitleInput(value: unknown) {
+  const record = requireRecord(value, "Agent Thread title input");
+  return {
+    projectPath: requireString(record.projectPath, "projectPath"),
+    prompt: requireString(record.prompt, "prompt"),
+    assistantText: requireString(record.assistantText, "assistantText"),
+  };
+}
 function requireRecord(value: unknown, label: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error(`${label} must be an object.`);

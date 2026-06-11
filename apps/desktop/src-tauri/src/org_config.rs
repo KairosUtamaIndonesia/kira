@@ -5,7 +5,7 @@ use crate::persistence::PersistenceStore;
 use crate::settings::{app_setting_value, upsert_app_setting};
 
 const ORG_MODEL_CATALOG_KEY: &str = "desktop.org.modelCatalog";
-const ADMIN_API_URL: &str = "https://admin.kira.localhost/api/desktop/models";
+const ADMIN_API_URL: &str = "https://cloud.kira.localhost/api/desktop/models";
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -68,21 +68,21 @@ pub async fn refresh_model_catalog(pool: &SqlitePool) -> Result<ModelCatalog, Or
         .await
         .map_err(|e| OrgConfigError::FetchFailed(e.to_string()))?;
 
-    if !response.status().is_success() {
-        let status = response.status();
-        let body = response
-            .text()
-            .await
-            .unwrap_or_else(|_| "Unknown error".to_string());
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .map_err(|e| OrgConfigError::FetchFailed(e.to_string()))?;
+
+    if !status.is_success() {
         return Err(OrgConfigError::FetchFailed(format!(
             "Admin returned {status}: {body}"
         )));
     }
 
-    let catalog: ModelCatalog = response
-        .json()
-        .await
-        .map_err(|e| OrgConfigError::ParseFailed(e.to_string()))?;
+    let catalog: ModelCatalog = serde_json::from_str(&body).map_err(|e| {
+        OrgConfigError::ParseFailed(format!("{e}; admin returned {}", response_preview(&body)))
+    })?;
 
     let raw =
         serde_json::to_string(&catalog).map_err(|e| OrgConfigError::ParseFailed(e.to_string()))?;
@@ -94,6 +94,15 @@ pub async fn refresh_model_catalog(pool: &SqlitePool) -> Result<ModelCatalog, Or
     Ok(catalog)
 }
 
+fn response_preview(body: &str) -> String {
+    const MAX_PREVIEW_CHARS: usize = 500;
+    let preview: String = body.chars().take(MAX_PREVIEW_CHARS).collect();
+    if body.chars().count() > MAX_PREVIEW_CHARS {
+        format!("{preview}…")
+    } else {
+        preview
+    }
+}
 pub async fn get_or_refresh_model_catalog(
     pool: &SqlitePool,
 ) -> Result<ModelCatalog, OrgConfigError> {
