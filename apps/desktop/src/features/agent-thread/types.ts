@@ -13,6 +13,7 @@ type AgentRuntimeConnection = {
 
 type AgentThreadPanelParams = {
   projectId: string;
+  folderPath: string;
   sessionId: string;
   threadId: string;
   panelId: string;

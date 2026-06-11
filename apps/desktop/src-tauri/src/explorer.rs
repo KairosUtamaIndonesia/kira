@@ -18,6 +18,29 @@ pub struct ExplorerDirectoryChildrenInput {
     directory_path: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExplorerFileReferenceSuggestionsInput {
+    folder_path: String,
+    query: String,
+    limit: usize,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExplorerFileReferenceSuggestionsResult {
+    suggestions: Vec<ExplorerFileReferenceSuggestion>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExplorerFileReferenceSuggestion {
+    path: String,
+    kind: ExplorerEntryKind,
+    label: String,
+    description: String,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExplorerTreeResult {
@@ -45,6 +68,12 @@ pub struct ExplorerEntry {
 pub enum ExplorerEntryKind {
     Directory,
     File,
+}
+
+#[derive(Debug)]
+struct ScoredExplorerEntry {
+    entry: ScannedExplorerEntry,
+    score: u8,
 }
 
 #[derive(Debug)]
@@ -116,6 +145,22 @@ pub async fn explorer_directory_children(
     })?
 }
 
+#[tauri::command]
+pub async fn explorer_file_reference_suggestions(
+    input: ExplorerFileReferenceSuggestionsInput,
+) -> Result<ExplorerFileReferenceSuggestionsResult, ExplorerError> {
+    let root_path = validate_project_folder(&input.folder_path)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        collect_file_reference_suggestions(&root_path, &input.query, input.limit)
+            .map(|suggestions| ExplorerFileReferenceSuggestionsResult { suggestions })
+    })
+    .await
+    .map_err(|error| ExplorerError::InspectFolder {
+        path: input.folder_path,
+        message: error.to_string(),
+    })?
+}
+
 fn collect_directory_entries(
     root_path: &Path,
     folder_path: &Path,
@@ -127,6 +172,63 @@ fn collect_directory_entries(
         .iter()
         .map(|scanned_entry| to_explorer_entry(root_path, scanned_entry))
         .collect()
+}
+
+fn collect_file_reference_suggestions(
+    root_path: &Path,
+    raw_query: &str,
+    limit: usize,
+) -> Result<Vec<ExplorerFileReferenceSuggestion>, ExplorerError> {
+    let query = raw_query.trim_start_matches('@').trim_matches('"');
+    let limit = limit.clamp(1, 50);
+    let scoped_query = resolve_file_reference_query(root_path, query)?;
+    let mut entries = scan_folder(&scoped_query.folder_path)?;
+    let normalized_filter = scoped_query.filter.to_lowercase();
+
+    let mut scored_entries = Vec::new();
+    for entry in entries.drain(..) {
+        let relative_path = relative_explorer_path(root_path, &entry.path, entry.kind)?;
+        let score = score_file_reference(&relative_path, &entry.name, &normalized_filter);
+        if score == 0 {
+            continue;
+        }
+
+        scored_entries.push(ScoredExplorerEntry { entry, score });
+    }
+
+    scored_entries.sort_by(compare_scored_entries);
+    scored_entries
+        .into_iter()
+        .take(limit)
+        .map(|scored| to_file_reference_suggestion(root_path, &scored.entry))
+        .collect()
+}
+
+struct FileReferenceQuery {
+    folder_path: PathBuf,
+    filter: String,
+}
+
+fn resolve_file_reference_query(
+    root_path: &Path,
+    query: &str,
+) -> Result<FileReferenceQuery, ExplorerError> {
+    let normalized_query = query.replace('\\', "/");
+    let slash_index = normalized_query.rfind('/');
+    let Some(index) = slash_index else {
+        return Ok(FileReferenceQuery {
+            folder_path: root_path.to_path_buf(),
+            filter: normalized_query,
+        });
+    };
+
+    let directory_path = &normalized_query[..=index];
+    let filter = normalized_query[index + 1..].to_string();
+    let folder_path = resolve_project_directory(root_path, directory_path)?;
+    Ok(FileReferenceQuery {
+        folder_path,
+        filter,
+    })
 }
 
 fn scan_folder(folder_path: &Path) -> Result<Vec<ScannedExplorerEntry>, ExplorerError> {
@@ -177,6 +279,50 @@ fn compare_scanned_entries(left: &ScannedExplorerEntry, right: &ScannedExplorerE
             compare_names(&left.name, &right.name)
         }
     }
+}
+
+fn compare_scored_entries(left: &ScoredExplorerEntry, right: &ScoredExplorerEntry) -> Ordering {
+    match right.score.cmp(&left.score) {
+        Ordering::Equal => compare_scanned_entries(&left.entry, &right.entry),
+        ordering => ordering,
+    }
+}
+
+fn score_file_reference(relative_path: &str, name: &str, normalized_filter: &str) -> u8 {
+    if normalized_filter.is_empty() {
+        return 1;
+    }
+
+    let normalized_name = name.to_lowercase();
+    let normalized_path = relative_path.to_lowercase();
+    if normalized_name == normalized_filter {
+        100
+    } else if normalized_name.starts_with(normalized_filter) {
+        80
+    } else if normalized_name.contains(normalized_filter) {
+        50
+    } else if normalized_path.contains(normalized_filter) {
+        30
+    } else {
+        0
+    }
+}
+
+fn to_file_reference_suggestion(
+    root_path: &Path,
+    scanned_entry: &ScannedExplorerEntry,
+) -> Result<ExplorerFileReferenceSuggestion, ExplorerError> {
+    let path = relative_explorer_path(root_path, &scanned_entry.path, scanned_entry.kind)?;
+    let label = match scanned_entry.kind {
+        ExplorerEntryKind::Directory => format!("{}/", scanned_entry.name),
+        ExplorerEntryKind::File => scanned_entry.name.clone(),
+    };
+    Ok(ExplorerFileReferenceSuggestion {
+        description: path.trim_end_matches('/').to_string(),
+        path,
+        kind: scanned_entry.kind,
+        label,
+    })
 }
 
 fn compare_names(left: &str, right: &str) -> Ordering {

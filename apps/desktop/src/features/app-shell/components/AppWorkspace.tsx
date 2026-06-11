@@ -138,6 +138,7 @@ function WorkspaceHeaderActions({ containerApi, group }: IDockviewHeaderActionsP
                 onPanelCreated,
                 projectId,
                 sessionId,
+                workingDirectory,
               })
             }
           >
@@ -622,11 +623,12 @@ const agentThreadRenameRef = {
 };
 
 function AgentThreadPanelWrapper(props: IDockviewPanelProps<AgentThreadPanelParams>) {
+  const { workingDirectory } = useWorkspaceRuntimeContext();
   const onRename = agentThreadRenameRef.current;
   return (
     <AgentThreadPanel
       api={props.api}
-      params={props.params}
+      params={{ ...props.params, folderPath: workingDirectory }}
       {...(onRename === undefined ? {} : { onRename })}
     />
   );
@@ -724,7 +726,8 @@ async function addAgentThreadPanel({
   onPanelCreated,
   projectId,
   sessionId,
-}: Omit<AddPanelActionInput, "workingDirectory">) {
+  workingDirectory,
+}: AddPanelActionInput) {
   const panel = await createAgentThreadPanel({
     sessionId,
     title: "New Thread",
@@ -737,6 +740,7 @@ async function addAgentThreadPanel({
     title: panel.title,
     params: {
       projectId,
+      folderPath: workingDirectory,
       sessionId,
       threadId: agentThreadState.threadId,
       panelId: panel.id,
@@ -1145,6 +1149,7 @@ function restoreWorkspacePanel(
         title: panel.title,
         params: {
           projectId: activeWorkspace.project.id,
+          folderPath: activeWorkspace.project.folderPath,
           sessionId: activeWorkspace.session.id,
           threadId: agentThreadState.threadId,
           panelId: panel.id,
@@ -1338,6 +1343,7 @@ function ActiveWorkspaceDockview({
       title: panel.title,
       params: {
         projectId: activeWorkspace.project.id,
+        folderPath: activeWorkspace.project.folderPath,
         sessionId: activeWorkspace.session.id,
         threadId: panel.agentThreadState.threadId,
         panelId: panel.id,

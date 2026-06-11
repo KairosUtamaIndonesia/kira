@@ -3,6 +3,12 @@ type ExplorerDirectoryChildrenInput = {
   directoryPath: string;
 };
 
+type ExplorerFileReferenceSuggestionsInput = {
+  folderPath: string;
+  query: string;
+  limit: number;
+};
+
 type ExplorerEntryKind = "directory" | "file";
 
 type ExplorerEntry = {
@@ -21,8 +27,22 @@ type ExplorerDirectoryChildrenResult = {
   entries: ExplorerEntry[];
 };
 
+type ExplorerFileReferenceSuggestion = {
+  path: string;
+  kind: ExplorerEntryKind;
+  label: string;
+  description: string;
+};
+
+type ExplorerFileReferenceSuggestionsResult = {
+  suggestions: ExplorerFileReferenceSuggestion[];
+};
+
 export type {
   ExplorerDirectoryChildrenInput,
+  ExplorerFileReferenceSuggestion,
+  ExplorerFileReferenceSuggestionsInput,
+  ExplorerFileReferenceSuggestionsResult,
   ExplorerDirectoryChildrenResult,
   ExplorerEntry,
   ExplorerEntryKind,
