@@ -77,6 +77,7 @@ pub fn run() -> tauri::Result<()> {
             org_config::desktop_org_models_refresh,
             editor::editor_file_read,
             explorer::explorer_directory_children,
+            explorer::explorer_file_reference_suggestions,
             explorer::explorer_tree,
             persistence::persistence_store_health,
             projects::project_create,

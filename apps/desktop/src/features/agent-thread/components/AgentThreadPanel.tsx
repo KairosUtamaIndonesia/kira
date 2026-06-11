@@ -93,6 +93,7 @@ function AgentThreadPanel({ api, params, onRename }: AgentThreadPanelProps) {
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-1.5">
           <Composer
             threadId={params.threadId}
+            folderPath={params.folderPath}
             runtimeState={runtimeState}
             sendPrompt={sendPrompt}
           />
