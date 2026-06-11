@@ -262,7 +262,7 @@ function SoundRow({
 }: SoundRowProps) {
   return (
     <div
-      className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background p-3"
+      className="group flex items-center justify-between gap-3 rounded-lg border border-border bg-background p-3 data-[current=true]:border-ring"
       data-current={isSelected}
     >
       <button
@@ -274,7 +274,10 @@ function SoundRow({
           void onSelect(sound.id);
         }}
       >
-        <Music aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+        <Music
+          aria-hidden="true"
+          className="size-4 shrink-0 text-muted-foreground group-data-[current=true]:text-foreground"
+        />
         <span className="min-w-0">
           <span className="block truncate text-sm font-medium">{sound.label}</span>
           <span className="block text-xs text-muted-foreground">
