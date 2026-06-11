@@ -5,9 +5,12 @@ import { useCallback, useSyncExternalStore } from "react";
 // thread id and carries a monotonic sequence so repeated sends of identical text still
 // re-trigger the consuming Composer.
 
+type AgentThreadDraftInsertion = "block" | "inline";
+
 type AgentThreadDraft = {
   sequence: number;
   text: string;
+  insertion: AgentThreadDraftInsertion;
 };
 
 const drafts = new Map<string, AgentThreadDraft>();
@@ -20,8 +23,12 @@ function notify() {
   }
 }
 
-function setAgentThreadDraft(threadId: string, text: string) {
-  drafts.set(threadId, { sequence: nextSequence, text });
+function setAgentThreadDraft(
+  threadId: string,
+  text: string,
+  insertion: AgentThreadDraftInsertion = "block",
+) {
+  drafts.set(threadId, { sequence: nextSequence, text, insertion });
   nextSequence += 1;
   notify();
 }
@@ -44,4 +51,10 @@ function useAgentThreadDraft(threadId: string): AgentThreadDraft | undefined {
   );
 }
 
-export { clearAgentThreadDraft, setAgentThreadDraft, useAgentThreadDraft, type AgentThreadDraft };
+export {
+  clearAgentThreadDraft,
+  setAgentThreadDraft,
+  useAgentThreadDraft,
+  type AgentThreadDraft,
+  type AgentThreadDraftInsertion,
+};

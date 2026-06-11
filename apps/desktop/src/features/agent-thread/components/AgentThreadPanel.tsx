@@ -1,17 +1,20 @@
 import { ArrowDown } from "lucide-react";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import { StickToBottom } from "use-stick-to-bottom";
 
 import { Button } from "@/components/ui/button";
+import { explorerDragDataKey } from "@/features/explorer";
 import { useAppearanceTheme } from "@/features/settings";
 
 import type { AgentThreadPanelParams } from "../types";
 
+import { setAgentThreadDraft } from "../agentThreadDraftStore";
 import {
   registerOpenAgentThread,
   setAgentThreadRuntimeState,
   unregisterOpenAgentThread,
 } from "../agentThreadStatusStore";
+import { explorerDropPaths, fileReferenceText } from "../explorerDropUtils";
 import { useAgentThreadConnection } from "../hooks/useAgentThreadConnection";
 import { AgentThreadContextMeter } from "./AgentThreadContextMeter";
 import { AgentThreadRawEventStream } from "./AgentThreadRawEventStream";
@@ -26,6 +29,8 @@ type AgentThreadPanelProps = {
 
 function AgentThreadPanel({ api, params, onRename }: AgentThreadPanelProps) {
   const { agentThreadShowRawEventStream } = useAppearanceTheme();
+  const dragCounterRef = useRef(0);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
 
   const handleAutoTitled = useCallback(
     async (title: string) => {
@@ -60,7 +65,42 @@ function AgentThreadPanel({ api, params, onRename }: AgentThreadPanelProps) {
   }, [params.threadId, params.panelId, params.title]);
 
   return (
-    <section className="flex h-full min-h-0 flex-col bg-editor-surface text-foreground">
+    <section
+      className="flex h-full min-h-0 flex-col bg-editor-surface text-foreground"
+      onDragEnter={(event: DragEvent<HTMLElement>) => {
+        if (!event.dataTransfer.types.includes(explorerDragDataKey)) {
+          return;
+        }
+        event.preventDefault();
+        dragCounterRef.current += 1;
+        setIsDraggingFile(true);
+      }}
+      onDragLeave={(event: DragEvent<HTMLElement>) => {
+        if (!event.dataTransfer.types.includes(explorerDragDataKey)) {
+          return;
+        }
+        dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
+        if (dragCounterRef.current === 0) {
+          setIsDraggingFile(false);
+        }
+      }}
+      onDragOver={handleExplorerDragOver}
+      onDrop={(event: DragEvent<HTMLElement>) => {
+        dragCounterRef.current = 0;
+        setIsDraggingFile(false);
+        // When Composer handles the drop itself it calls event.preventDefault().
+        // Skip setAgentThreadDraft to avoid double-insertion; just clean up drag state.
+        if (event.defaultPrevented) {
+          return;
+        }
+        const paths = explorerDropPaths(event.dataTransfer);
+        if (paths.length === 0) {
+          return;
+        }
+        event.preventDefault();
+        setAgentThreadDraft(params.threadId, paths.map(fileReferenceText).join(""), "inline");
+      }}
+    >
       <StickToBottom className="relative min-h-0 flex-1" initial="instant" resize="smooth">
         {({ isAtBottom, scrollToBottom }) => (
           <>
@@ -96,12 +136,21 @@ function AgentThreadPanel({ api, params, onRename }: AgentThreadPanelProps) {
             folderPath={params.folderPath}
             runtimeState={runtimeState}
             sendPrompt={sendPrompt}
+            isDropTargetActive={isDraggingFile}
           />
           <AgentThreadContextMeter state={contextUsageState} />
         </div>
       </footer>
     </section>
   );
+}
+
+function handleExplorerDragOver(event: DragEvent<HTMLElement>) {
+  if (!event.dataTransfer.types.includes(explorerDragDataKey)) {
+    return;
+  }
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "copy";
 }
 
 export { AgentThreadPanel };

@@ -4,8 +4,9 @@ import {
   useLayoutEffect,
   useRef,
   useState,
-  type Dispatch,
   type ChangeEvent,
+  type Dispatch,
+  type DragEvent,
   type FormEvent,
   type KeyboardEvent,
   type RefObject,
@@ -21,11 +22,13 @@ import { cn } from "@/lib/utils";
 import type { AgentThreadRuntimeState } from "../hooks/useAgentThreadConnection";
 
 import { clearAgentThreadDraft, useAgentThreadDraft } from "../agentThreadDraftStore";
+import { explorerDropPaths, fileReferenceText } from "../explorerDropUtils";
 
 type ComposerProps = {
   threadId: string;
   folderPath: string;
   runtimeState: AgentThreadRuntimeState;
+  isDropTargetActive?: boolean;
   sendPrompt: (prompt: string) => Promise<boolean>;
 };
 
@@ -50,13 +53,21 @@ type FileReferencePickerState =
 
 const fileReferenceSuggestionLimit = 20;
 
-function Composer({ threadId, folderPath, runtimeState, sendPrompt }: ComposerProps) {
+function Composer({
+  threadId,
+  folderPath,
+  runtimeState,
+  sendPrompt,
+  isDropTargetActive = false,
+}: ComposerProps) {
   const [prompt, setPrompt] = useState("");
   const [pickerState, setPickerState] = useState<FileReferencePickerState>({ status: "closed" });
   const [cursorSequence, setCursorSequence] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const consumedDraftSequenceRef = useRef(0);
   const requestSequenceRef = useRef(0);
+  const dragCounterRef = useRef(0);
   const draft = useAgentThreadDraft(threadId);
   const canSend = runtimeState.status === "ready" || runtimeState.status === "sending";
   const isSending = runtimeState.status === "sending";
@@ -75,7 +86,9 @@ function Composer({ threadId, folderPath, runtimeState, sendPrompt }: ComposerPr
     }
     consumedDraftSequenceRef.current = draft.sequence;
     setPrompt((current) =>
-      current.trim().length > 0 ? `${current}\n\n${draft.text}` : draft.text,
+      draft.insertion === "inline"
+        ? appendFileReferences(current, [draft.text])
+        : appendBlockDraft(current, draft.text),
     );
     clearAgentThreadDraft(threadId);
     const textarea = textareaRef.current;
@@ -170,6 +183,52 @@ function Composer({ threadId, folderPath, runtimeState, sendPrompt }: ComposerPr
     });
   }
 
+  function handleDragEnter(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    dragCounterRef.current += 1;
+    setIsDragging(true);
+  }
+
+  function handleDragLeave(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
+    if (dragCounterRef.current === 0) {
+      setIsDragging(false);
+    }
+  }
+
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    dragCounterRef.current = 0;
+    setIsDragging(false);
+    const explorerPaths = explorerDropPaths(event.dataTransfer);
+    if (explorerPaths.length > 0) {
+      insertFileReferences(explorerPaths.map(fileReferenceText));
+      return;
+    }
+    handleFileDrop(event.dataTransfer.files);
+  }
+
+  function handleFileDrop(files: FileList) {
+    insertFileReferences(droppedFileReferences(files, folderPath));
+  }
+
+  function insertFileReferences(references: readonly string[]) {
+    if (references.length === 0) {
+      return;
+    }
+    setPrompt((current) => appendFileReferences(current, references));
+    setPickerState({ status: "closed" });
+    window.requestAnimationFrame(() => {
+      const textarea = textareaRef.current;
+      if (textarea === null) {
+        return;
+      }
+      textarea.focus();
+      resizeComposerTextarea(textarea);
+    });
+  }
+
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === "Escape" && pickerState.status !== "closed") {
       event.preventDefault();
@@ -210,8 +269,13 @@ function Composer({ threadId, folderPath, runtimeState, sendPrompt }: ComposerPr
         className={cn(
           "relative rounded-sm border border-input bg-transparent pr-10 transition-colors",
           "focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50",
+          (isDragging || isDropTargetActive) && "border-dashed border-ring",
           isDisabled && "pointer-events-none opacity-50",
         )}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
       >
         <FileReferencePicker state={pickerState} onSelect={acceptFileReferenceSuggestion} />
         <textarea
@@ -420,6 +484,69 @@ function fileReferenceCompletion(
   const cursorOffset =
     kind === "directory" ? quotedPath.length - 1 : quotedPath.length + suffix.length;
   return { text: `${quotedPath}${suffix}`, cursorOffset };
+}
+
+function droppedFileReferences(files: FileList, folderPath: string) {
+  const references: string[] = [];
+  for (let index = 0; index < files.length; index += 1) {
+    const file = files.item(index);
+    if (file === null) {
+      continue;
+    }
+
+    const absolutePath = droppedFilePath(file);
+    if (absolutePath === undefined) {
+      continue;
+    }
+
+    const relativePath = relativeDroppedPath(absolutePath, folderPath);
+    if (relativePath === undefined) {
+      continue;
+    }
+
+    references.push(fileReferenceText(relativePath));
+  }
+
+  return references;
+}
+
+function droppedFilePath(file: File) {
+  const path = (file as File & { path?: unknown }).path;
+  return typeof path === "string" && path.length > 0 ? path : undefined;
+}
+
+function relativeDroppedPath(absolutePath: string, folderPath: string) {
+  const normalizedRoot = trimTrailingSlash(normalizePathSeparators(folderPath));
+  const normalizedPath = normalizePathSeparators(absolutePath);
+  const rootPrefix = `${normalizedRoot}/`;
+  if (!normalizedPath.startsWith(rootPrefix)) {
+    return;
+  }
+
+  return normalizedPath.slice(rootPrefix.length);
+}
+
+function normalizePathSeparators(path: string) {
+  return path.replace(/\\/g, "/");
+}
+
+function trimTrailingSlash(path: string) {
+  return path.endsWith("/") ? path.slice(0, -1) : path;
+}
+
+function appendFileReferences(prompt: string, references: readonly string[]) {
+  const trimmedPrompt = prompt.trimEnd();
+  const separator = trimmedPrompt.length > 0 ? " " : "";
+  return `${trimmedPrompt}${separator}${references.join("")}`;
+}
+
+function appendBlockDraft(prompt: string, text: string) {
+  return prompt.trim().length > 0 ? `${prompt}\n\n${text}` : text;
+}
+
+function handleDragOver(event: DragEvent<HTMLDivElement>) {
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "copy";
 }
 
 function wrapIndex(index: number, length: number) {

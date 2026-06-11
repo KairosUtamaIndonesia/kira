@@ -28,6 +28,7 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type DragEvent,
   type MouseEvent,
   type RefObject,
 } from "react";
@@ -63,6 +64,7 @@ import { useAgentThreadTitleGenerationState } from "@/features/agent-thread/agen
 import { BrowserPanel, type BrowserPanelParams } from "@/features/browser";
 import { closeBrowserPanel, closeOrphanBrowserPanels } from "@/features/browser/api/browserApi";
 import { FileEditorPanel, type FileEditorPanelParams } from "@/features/editor";
+import { explorerDragDataKey } from "@/features/explorer";
 import {
   createAgentThreadPanel,
   createBrowserPanel,
@@ -1402,7 +1404,7 @@ function ActiveWorkspaceDockview({
   }, [activeWorkspace.panels, agentThreadOperationRequest, dockviewApi]);
 
   return (
-    <div className="h-full min-h-0 min-w-0 overflow-hidden">
+    <div className="h-full min-h-0 min-w-0 overflow-hidden" onDragOver={preventExplorerDragDefault}>
       <WorkspaceRuntimeContext.Provider value={workspaceRuntimeContext}>
         <DockviewReact
           key={activeWorkspace.session.id}
@@ -1463,6 +1465,14 @@ function isRuntimeOnlyWorkspacePanel(value: unknown) {
 
   const component = value.component ?? value.contentComponent;
   return typeof component === "string" && runtimeOnlyWorkspaceComponents.has(component);
+}
+
+function preventExplorerDragDefault(event: DragEvent<HTMLDivElement>) {
+  if (!event.dataTransfer.types.includes(explorerDragDataKey)) {
+    return;
+  }
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "copy";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
