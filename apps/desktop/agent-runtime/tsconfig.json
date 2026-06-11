@@ -1,7 +1,0 @@
-{
-  "extends": "@kira/tsconfig/node.json",
-  "compilerOptions": {
-    "types": ["bun"]
-  },
-  "include": ["flue.config.ts", "src"]
-}
