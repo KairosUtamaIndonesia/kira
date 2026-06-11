@@ -538,12 +538,14 @@ function SidebarMenuAction({
   className,
   render,
   showOnHover = false,
+  tooltip,
   ...props
 }: useRender.ComponentProps<"button"> &
   React.ComponentProps<"button"> & {
     showOnHover?: boolean;
+    tooltip?: string | React.ComponentProps<typeof TooltipContent>;
   }) {
-  return useRender({
+  const comp = useRender({
     defaultTagName: "button",
     props: mergeProps<"button">(
       {
@@ -556,12 +558,27 @@ function SidebarMenuAction({
       },
       props,
     ),
-    render,
+    render: !tooltip ? render : <TooltipTrigger render={render} />,
     state: {
       slot: "sidebar-menu-action",
       sidebar: "menu-action",
     },
   });
+
+  if (!tooltip) {
+    return comp;
+  }
+
+  if (typeof tooltip === "string") {
+    tooltip = { children: tooltip };
+  }
+
+  return (
+    <Tooltip>
+      {comp}
+      <TooltipContent side="top" align="center" {...tooltip} />
+    </Tooltip>
+  );
 }
 
 function SidebarMenuBadge({ className, ...props }: React.ComponentProps<"div">) {

@@ -31,6 +31,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   SidebarMenu,
   SidebarMenuAction,
   SidebarMenuButton,
@@ -115,7 +122,7 @@ function ProjectList({
               <ContextMenu>
                 <ContextMenuTrigger render={<div />}>
                   <SidebarMenuButton
-                    className="pr-8 font-medium"
+                    className="pr-16 font-medium"
                     isActive={project.id === activeProjectId}
                     render={
                       <button
@@ -130,6 +137,21 @@ function ProjectList({
                     <span>{project.name}</span>
                   </SidebarMenuButton>
                   <SidebarMenuAction
+                    tooltip="New Session"
+                    className="right-7 opacity-0 transition-opacity duration-150 group-hover/menu-item:opacity-100 group-focus-within/menu-item:opacity-100"
+                    render={
+                      <button
+                        type="button"
+                        aria-label={`New Session for ${project.name}`}
+                        disabled={isProjectSwitching}
+                        onClick={() => setProjectForNewSession(project)}
+                      />
+                    }
+                  >
+                    <Plus aria-hidden="true" />
+                  </SidebarMenuAction>
+                  <SidebarMenuAction
+                    className="opacity-0 transition-opacity duration-150 group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100"
                     render={
                       <button
                         type="button"
@@ -370,20 +392,27 @@ type NewSessionDialogProps = {
 function NewSessionDialog({ project, onOpenChange, onSessionCreated }: NewSessionDialogProps) {
   const [name, setName] = useState("");
   const [rootKind, setRootKind] = useState<"projectFolder" | "worktree">("projectFolder");
-  const [projectSlug, setProjectSlug] = useState("");
-  const [worktreeSlug, setWorktreeSlug] = useState("");
   const [branchMode, setBranchMode] = useState<"new" | "existing">("new");
   const [branchName, setBranchName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const open = project !== undefined;
+  const projectSlug = project === undefined ? "" : slugFromName(project.name);
+  const worktreeSlug = slugFromName(branchName);
+
+  const rootKindItems = [
+    { value: "projectFolder", label: "Project Folder" },
+    { value: "worktree", label: "Worktree" },
+  ];
+
+  const branchModeItems = [
+    { value: "new", label: "New" },
+    { value: "existing", label: "Existing" },
+  ];
 
   function handleOpenChange(nextOpen: boolean) {
-    if (nextOpen && project !== undefined) {
-      const slug = slugFromName(project.name);
+    if (nextOpen) {
       setName("");
       setRootKind("projectFolder");
-      setProjectSlug(slug);
-      setWorktreeSlug("");
       setBranchMode("new");
       setBranchName("");
     }
@@ -392,10 +421,7 @@ function NewSessionDialog({ project, onOpenChange, onSessionCreated }: NewSessio
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (
-      project === undefined ||
-      !canCreateSession(name, rootKind, projectSlug, worktreeSlug, branchName)
-    ) {
+    if (project === undefined || !canCreateSession(name, rootKind, branchName)) {
       return;
     }
 
@@ -437,59 +463,55 @@ function NewSessionDialog({ project, onOpenChange, onSessionCreated }: NewSessio
             <Input
               id="new-session-name"
               value={name}
-              onChange={(event) => {
-                const nextName = event.target.value;
-                setName(nextName);
-                if (worktreeSlug.length === 0) {
-                  setWorktreeSlug(slugFromName(nextName));
-                }
-              }}
+              onChange={(event) => setName(event.target.value)}
               placeholder="Session name"
             />
           </div>
           <div className="grid gap-2">
             <Label htmlFor="new-session-root">Session root</Label>
-            <select
-              id="new-session-root"
-              className="h-9 rounded-md border border-input bg-input px-3 text-sm"
+            <Select
               value={rootKind}
-              onChange={(event) => setRootKind(event.target.value as "projectFolder" | "worktree")}
+              onValueChange={(value) => setRootKind(value as "projectFolder" | "worktree")}
+              items={rootKindItems}
             >
-              <option value="projectFolder">Project Folder</option>
-              <option value="worktree">Worktree</option>
-            </select>
+              <SelectTrigger className="h-9 w-full">
+                <SelectValue placeholder="Select folder type" />
+              </SelectTrigger>
+              <SelectContent>
+                {rootKindItems.map((item) => (
+                  <SelectItem value={item.value} key={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           {rootKind === "worktree" ? (
             <div className="grid gap-4 rounded-md border border-border p-3">
               <div className="grid gap-2">
-                <Label htmlFor="new-session-project-slug">Project slug</Label>
-                <Input
-                  id="new-session-project-slug"
-                  value={projectSlug}
-                  onChange={(event) => setProjectSlug(event.target.value)}
-                  placeholder="project-name"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="new-session-worktree-slug">Worktree slug</Label>
-                <Input
-                  id="new-session-worktree-slug"
-                  value={worktreeSlug}
-                  onChange={(event) => setWorktreeSlug(event.target.value)}
-                  placeholder="worktree-name"
-                />
+                <Label>Project slug</Label>
+                <div className="rounded-md border border-border bg-muted px-3 py-2 text-sm text-muted-foreground">
+                  {projectSlug}
+                </div>
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="new-session-branch-mode">Branch mode</Label>
-                <select
-                  id="new-session-branch-mode"
-                  className="h-9 rounded-md border border-input bg-input px-3 text-sm"
+                <Select
                   value={branchMode}
-                  onChange={(event) => setBranchMode(event.target.value as "new" | "existing")}
+                  onValueChange={(value) => setBranchMode(value as "new" | "existing")}
+                  items={branchModeItems}
                 >
-                  <option value="new">New branch</option>
-                  <option value="existing">Existing branch</option>
-                </select>
+                  <SelectTrigger className="h-9 w-full">
+                    <SelectValue placeholder="Select branch mode" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {branchModeItems.map((item) => (
+                      <SelectItem value={item.value} key={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="new-session-branch-name">Branch name</Label>
@@ -502,7 +524,7 @@ function NewSessionDialog({ project, onOpenChange, onSessionCreated }: NewSessio
               </div>
               <p className="text-xs text-muted-foreground">
                 Worktree path: worktrees/{projectSlug || "project-name"}/
-                {worktreeSlug || "worktree-name"}
+                {worktreeSlug || "branch-name"}
               </p>
             </div>
           ) : undefined}
@@ -512,10 +534,7 @@ function NewSessionDialog({ project, onOpenChange, onSessionCreated }: NewSessio
             </Button>
             <Button
               type="submit"
-              disabled={
-                !canCreateSession(name, rootKind, projectSlug, worktreeSlug, branchName) ||
-                isCreating
-              }
+              disabled={!canCreateSession(name, rootKind, branchName) || isCreating}
             >
               {isCreating ? "Creating…" : "Create Session"}
             </Button>
@@ -583,8 +602,6 @@ function sessionRootLabel(session: Session) {
 function canCreateSession(
   name: string,
   rootKind: "projectFolder" | "worktree",
-  projectSlug: string,
-  worktreeSlug: string,
   branchName: string,
 ) {
   if (name.trim().length === 0) {
@@ -594,9 +611,7 @@ function canCreateSession(
     return true;
   }
 
-  return (
-    projectSlug.trim().length > 0 && worktreeSlug.trim().length > 0 && branchName.trim().length > 0
-  );
+  return branchName.trim().length > 0;
 }
 
 function slugFromName(name: string) {
