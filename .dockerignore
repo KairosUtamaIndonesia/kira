@@ -12,5 +12,5 @@ apps/desktop/dist
 apps/admin/.next
 apps/admin/node_modules
 apps/desktop/node_modules
-apps/desktop/agent-runtime/node_modules
+apps/desktop/agent-pi/node_modules
 packages/*/node_modules

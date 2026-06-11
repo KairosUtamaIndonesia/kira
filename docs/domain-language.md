@@ -87,11 +87,11 @@ A reusable Agent Skill, defined by a `SKILL.md` and optional supporting files, t
 _Avoid_: Plugin, extension
 
 **Skill Scope**:
-The provenance of an installed Skill: `Bundled` (compiled into the agent-runtime), `Project` (discovered from the Project's `.agents/skills/`), or `Global` (installed at the machine-level `.agents/skills/` root).
+The provenance of an installed Skill: `Bundled` (compiled into the agent-pi), `Project` (discovered from the Project's `.agents/skills/`), or `Global` (installed at the machine-level `.agents/skills/` root).
 _Avoid_: Skill location
 
 **Bundled Skill**:
-A Skill compiled into Kira's agent-runtime and always loaded by Kira's agent, independent of any Project workspace.
+A Skill compiled into Kira's agent-pi and always loaded by Kira's agent, independent of any Project workspace.
 _Avoid_: Built-in plugin
 
 **Skill Conflict**:

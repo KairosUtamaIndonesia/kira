@@ -8,7 +8,7 @@ Kira v3 is a Bun/Turborepo monorepo containing the Kira desktop app and the host
 apps/
   cloud/                    TanStack Start hosted web app (Sign-In, Platform Console, Org Admin)
   desktop/                  Tauri 2 desktop app with Vite, React, and Rust
-    agent-runtime/          Bun/TypeScript Pi SDK runtime managed by desktop
+    agent-pi/          Bun/TypeScript Pi SDK runtime managed by desktop
 packages/
   tsconfig/                 Shared TypeScript configurations
 ```
@@ -75,20 +75,20 @@ bun run turbo check --filter=@kira/desktop
 
 ## Agent runtime
 
-The desktop agent runtime lives in `apps/desktop/agent-runtime`.
+The desktop agent runtime lives in `apps/desktop/agent-pi`.
 
-It hosts Pi SDK sessions behind a JSONL stdio boundary for Rust/Tauri. Current status and remaining work are documented in [`apps/desktop/agent-runtime/README.md`](apps/desktop/agent-runtime/README.md).
+It hosts Pi SDK sessions behind a JSONL stdio boundary for Rust/Tauri. Current status and remaining work are documented in [`apps/desktop/agent-pi/README.md`](apps/desktop/agent-pi/README.md).
 
 Run runtime checks only:
 
 ```bash
-bun run turbo check lint format:check --filter=@kira/agent-runtime
+bun run turbo check lint format:check --filter=@kira/agent-pi
 ```
 
 Run the real-provider prompt smoke test:
 
 ```bash
-cd apps/desktop/agent-runtime
+cd apps/desktop/agent-pi
 bun run smoke:prompt
 ```
 

@@ -5,7 +5,6 @@ COPY package.json bun.lock turbo.json ./
 COPY patches patches
 COPY apps/cloud/package.json apps/cloud/package.json
 COPY apps/desktop/package.json apps/desktop/package.json
-COPY apps/desktop/agent-runtime/package.json apps/desktop/agent-runtime/package.json
 COPY apps/desktop/agent-pi/package.json apps/desktop/agent-pi/package.json
 COPY packages/tsconfig/package.json packages/tsconfig/package.json
 

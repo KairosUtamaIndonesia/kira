@@ -1,0 +1,12 @@
+// Project-local debug tasks
+//
+// For more documentation on how to configure debug tasks,
+// see: https://zed.dev/docs/debugger
+[
+  {
+    "label": "Attach to Running Tauri (Rust)",
+    "adapter": "CodeLLDB",
+    "request": "attach",
+    "program": "${workspaceFolder}/apps/desktop/src-tauri/target/debug/kira-v3.exe",
+  },
+]
