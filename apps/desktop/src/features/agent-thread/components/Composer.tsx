@@ -449,7 +449,7 @@ function FileReferencePicker({
               key={suggestion.path}
               type="button"
               data-selected={index === state.selectedIndex}
-              className="flex w-full min-w-0 items-center gap-3 px-2.5 py-1.5 text-left text-sm data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground"
+              className="flex w-full min-w-0 items-center gap-3 px-2.5 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground"
               onClick={() => onSelect(suggestion, state.token)}
               onMouseDown={(event) => event.preventDefault()}
             >
@@ -523,7 +523,7 @@ function SlashCommandPicker({
             key={command.name}
             type="button"
             data-selected={index === state.selectedIndex}
-            className="flex w-full min-w-0 items-center gap-3 px-2.5 py-1.5 text-left text-sm data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground"
+            className="flex w-full min-w-0 items-center gap-3 px-2.5 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground"
             onClick={() => onSelect(command, state.token)}
             onMouseDown={(event) => event.preventDefault()}
           >
