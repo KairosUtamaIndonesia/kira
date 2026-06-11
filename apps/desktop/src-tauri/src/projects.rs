@@ -100,7 +100,11 @@ pub struct CreateProjectSessionInput {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", rename_all_fields = "camelCase", tag = "kind")]
+#[serde(
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    tag = "kind"
+)]
 pub enum CreateSessionRootInput {
     ProjectFolder,
     Worktree {
@@ -111,7 +115,11 @@ pub enum CreateSessionRootInput {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", rename_all_fields = "camelCase", tag = "kind")]
+#[serde(
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    tag = "kind"
+)]
 pub enum CreateWorktreeBranchInput {
     New { name: String },
     Existing { name: String },
@@ -1646,8 +1654,6 @@ fn is_missing_git_repository_error(error: &ProjectError) -> bool {
     )
 }
 
-
-
 fn run_git(cwd: &Path, operation: &str, args: &[&str]) -> Result<String, ProjectError> {
     let output = Command::new("git")
         .args(args)
@@ -1667,7 +1673,6 @@ fn run_git(cwd: &Path, operation: &str, args: &[&str]) -> Result<String, Project
         message: if stderr.is_empty() { stdout } else { stderr },
     })
 }
-
 
 fn validate_session_name(name: &str) -> Result<String, ProjectError> {
     let trimmed_name = name.trim();
