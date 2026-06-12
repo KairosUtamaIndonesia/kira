@@ -262,8 +262,17 @@ async function handleCommand(
         // client listens for those events to reflect the in-flight state.
         // Wait for the compactor to finish before acknowledging so the caller's
         // `await` resolves only when the new context is durable.
-        const result = await session.compact(customInstructions);
-        respond(ws, command.id, "compact", true, { data: { result } });
+        try {
+          const result = await session.compact(customInstructions);
+          respond(ws, command.id, "compact", true, { data: { result } });
+        } catch (error) {
+          const message = errorMessage(error);
+          if (message === "Compaction failed: Already compacted") {
+            respond(ws, command.id, "compact", true, { data: { alreadyCompacted: true } });
+          } else {
+            respond(ws, command.id, "compact", false, { error: message });
+          }
+        }
         return;
       }
       default:
