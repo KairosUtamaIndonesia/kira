@@ -16,7 +16,6 @@ import {
 } from "../agentThreadStatusStore";
 import { explorerDropPaths, fileReferenceText } from "../explorerDropUtils";
 import { useAgentThreadConnection } from "../hooks/useAgentThreadConnection";
-import { AgentThreadCompactionCard } from "./AgentThreadCompactionCard";
 import { AgentThreadRawEventStream } from "./AgentThreadRawEventStream";
 import { AgentThreadTranscript } from "./AgentThreadTranscript";
 import { Composer } from "./Composer";
@@ -113,7 +112,11 @@ function AgentThreadPanel({ api, params, onRename }: AgentThreadPanelProps) {
         {({ isAtBottom, scrollToBottom }) => (
           <>
             <StickToBottom.Content className="mx-auto w-full max-w-5xl" scrollClassName="p-2">
-              <AgentThreadTranscript transcript={transcript} respond={respondToRequest} />
+              <AgentThreadTranscript
+                transcript={transcript}
+                compactionSummary={compactionSummary}
+                respond={respondToRequest}
+              />
               {agentThreadShowRawEventStream ? (
                 <AgentThreadRawEventStream transcript={transcript} />
               ) : undefined}
@@ -149,12 +152,6 @@ function AgentThreadPanel({ api, params, onRename }: AgentThreadPanelProps) {
             runSlashCommandAction={runSlashCommandAction}
             isDropTargetActive={isDraggingFile}
           />
-          {compactionSummary !== undefined ? (
-            <AgentThreadCompactionCard
-              tokensBefore={compactionSummary.tokensBefore}
-              summary={compactionSummary.summary}
-            />
-          ) : undefined}
         </div>
       </footer>
     </section>
