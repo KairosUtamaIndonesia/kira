@@ -4,15 +4,21 @@ import type { AgentThreadActivityBlock } from "../agentThreadDisplay";
 import type { PiTranscriptState, RespondToHumanRequest } from "../types";
 
 import { buildAgentThreadTranscript, stringifyUnknown } from "../agentThreadDisplay";
+import { AgentThreadCompactionCard } from "./AgentThreadCompactionCard";
 import { AgentThreadMarkdown } from "./AgentThreadMarkdown";
+import { AgentThreadUserSkillBlock } from "./AgentThreadUserSkillBlock";
 import { toolComponentForName } from "./tools";
 
 type AgentThreadTranscriptProps = {
   transcript: PiTranscriptState;
+  compactionSummary?: { tokensBefore: number; summary: string } | undefined;
   respond: RespondToHumanRequest;
 };
-
-function AgentThreadTranscript({ transcript, respond }: AgentThreadTranscriptProps) {
+function AgentThreadTranscript({
+  transcript,
+  compactionSummary,
+  respond,
+}: AgentThreadTranscriptProps) {
   const items = buildAgentThreadTranscript(transcript);
   if (items.length === 0) {
     return (
@@ -28,9 +34,15 @@ function AgentThreadTranscript({ transcript, respond }: AgentThreadTranscriptPro
         if (item.type === "user-message") {
           return (
             <li key={item.id} className="flex justify-end">
-              <article className="max-w-[min(42rem,85%)] rounded-xl border border-border bg-card p-3 text-card-foreground">
+              <article className="max-w-[min(42rem,85%)] space-y-2 rounded-xl border border-border bg-card p-3 text-card-foreground">
                 <MessageHeader label="You" createdAt={item.createdAt} />
-                <p className="mt-2 text-sm leading-6 whitespace-pre-wrap">{item.text}</p>
+                {item.blocks.length === 0 ? (
+                  <p className="text-sm leading-6 whitespace-pre-wrap">{item.text}</p>
+                ) : (
+                  item.blocks.map((block) => (
+                    <UserMessageBlock key={userMessageBlockKey(item.id, block)} block={block} />
+                  ))
+                )}
               </article>
             </li>
           );
@@ -59,6 +71,14 @@ function AgentThreadTranscript({ transcript, respond }: AgentThreadTranscriptPro
 
         return exhaustiveTranscriptItem(item);
       })}
+      {compactionSummary !== undefined ? (
+        <li className="flex justify-start">
+          <AgentThreadCompactionCard
+            tokensBefore={compactionSummary.tokensBefore}
+            summary={compactionSummary.summary}
+          />
+        </li>
+      ) : undefined}
     </ol>
   );
 }
@@ -153,6 +173,33 @@ function exhaustiveTranscriptItem(value: never): never {
 
 function exhaustiveActivityBlock(value: never): never {
   throw new Error(`Unknown Agent Thread activity block: ${String(value)}`);
+}
+
+function UserMessageBlock({
+  block,
+}: {
+  block:
+    | { type: "text"; text: string }
+    | { type: "skill"; name: string; location: string | undefined; body: string };
+}) {
+  if (block.type === "skill") {
+    return <AgentThreadUserSkillBlock block={block} />;
+  }
+  if (block.text.trim().length === 0) {
+    return <></>;
+  }
+  return <p className="text-sm leading-6 whitespace-pre-wrap">{block.text}</p>;
+}
+
+function userMessageBlockKey(
+  messageId: string,
+  block:
+    | { type: "text"; text: string }
+    | { type: "skill"; name: string; location: string | undefined; body: string },
+): string {
+  return block.type === "skill"
+    ? `${messageId}:skill:${block.name}:${block.location ?? ""}`
+    : `${messageId}:text:${block.text.length}`;
 }
 
 export { AgentThreadTranscript };

@@ -21,11 +21,11 @@ const AGENT_RUNTIME_HOST: &str = "127.0.0.1";
 
 #[derive(Default)]
 pub struct AgentRuntimeRegistry {
-    runtime: Mutex<AgentRuntimeState>,
+    pub(crate) runtime: Mutex<AgentRuntimeState>,
 }
 
 #[derive(Default)]
-enum AgentRuntimeState {
+pub(crate) enum AgentRuntimeState {
     #[default]
     NotStarted,
     Running(Box<AppAgentRuntime>),
@@ -34,14 +34,14 @@ enum AgentRuntimeState {
     },
 }
 
-struct AppAgentRuntime {
-    connection: RuntimeConnection,
+pub(crate) struct AppAgentRuntime {
+    pub(crate) connection: RuntimeConnection,
     _process: Child,
 }
 #[derive(Clone)]
-struct RuntimeConnection {
-    base_url: String,
-    token: String,
+pub(crate) struct RuntimeConnection {
+    pub(crate) base_url: String,
+    pub(crate) token: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { useSkillsList } from "@/features/skills/hooks/useSkillsList";
+
 import type {
   AgentThreadContextUsage,
   AgentThreadPanelParams,
@@ -13,6 +15,7 @@ import {
   getAgentThreadContextUsage,
   prepareAgentThread,
 } from "../api/agentRuntimeApi";
+import { expandSlashCommandInText } from "../expandUserMessage";
 import {
   appendLocalUserMessage,
   applyPiEvent,
@@ -48,6 +51,12 @@ type AgentThreadTitleGenerationState =
   | { status: "idle" }
   | { status: "generating" }
   | { status: "done" };
+
+type CompactionSummary = {
+  tokensBefore: number;
+  summary: string;
+  timestamp: number;
+};
 
 type UseAgentThreadConnectionOptions = {
   onAutoTitled?: (title: string) => void;
@@ -94,14 +103,39 @@ function useAgentThreadConnection(
     },
   );
   const [transcript, setTranscript] = useState(emptyPiTranscriptState);
+  const [isCompacting, setIsCompacting] = useState(false);
+  const [compactionSummary, setCompactionSummary] = useState<CompactionSummary>();
+  const isCompactingRef = useRef(false);
   const socketRef = useRef<PiAgentSocket | undefined>(void 0);
   const runtimeStateRef = useRef(runtimeState);
+  const runtimeInfoRef = useRef<{ baseUrl: string; token: string } | undefined>(void 0);
+  const skillsList = useSkillsList(params.folderPath);
   const hasAutoTitledRef = useRef(false);
   const isFirstPromptRef = useRef(true);
-  const runtimeInfoRef = useRef<{ baseUrl: string; token: string } | undefined>(void 0);
   const onAutoTitledRef = useRef(options === undefined ? undefined : options.onAutoTitled);
   onAutoTitledRef.current = options === undefined ? undefined : options.onAutoTitled;
   runtimeStateRef.current = runtimeState;
+  isCompactingRef.current = isCompacting;
+
+  function handlePiEvent(event: unknown) {
+    setTranscript((currentTranscript) => applyPiEvent(currentTranscript, event));
+    if (isRecord(event)) {
+      if (event.type === "compaction_start") {
+        setIsCompacting(true);
+      } else if (event.type === "compaction_end") {
+        setIsCompacting(false);
+        if (event.result !== undefined && isRecord(event.result)) {
+          const result = event.result;
+          const summary = typeof result.summary === "string" ? result.summary : undefined;
+          const tokensBefore =
+            typeof result.tokensBefore === "number" ? result.tokensBefore : undefined;
+          if (summary !== undefined && tokensBefore !== undefined) {
+            setCompactionSummary({ tokensBefore, summary, timestamp: Date.now() });
+          }
+        }
+      }
+    }
+  }
 
   const runtimeInput = useMemo(
     () => ({
@@ -154,6 +188,9 @@ function useAgentThreadConnection(
             ? { status: "empty" }
             : { status: "ready", usage: session.contextUsage },
         );
+        if (session.compaction !== undefined) {
+          setCompactionSummary({ ...session.compaction, timestamp: Date.now() });
+        }
         setRuntimeState({ status: "connecting", baseUrl: runtime.baseUrl });
         socket = PiAgentSocket.connect({
           baseUrl: runtime.baseUrl,
@@ -161,9 +198,7 @@ function useAgentThreadConnection(
           threadId: params.threadId,
         });
         socketRef.current = socket;
-        unsubscribe = socket.onEvent((event) => {
-          setTranscript((currentTranscript) => applyPiEvent(currentTranscript, event));
-        });
+        unsubscribe = socket.onEvent(handlePiEvent);
         await socket.ready;
 
         if (!disposed) {
@@ -204,11 +239,11 @@ function useAgentThreadConnection(
       setRuntimeState({ status: "error", message: "Agent Thread socket is not connected." });
       return false;
     }
-
     setRuntimeState({ status: "sending", baseUrl: state.baseUrl });
     try {
-      setTranscript((currentTranscript) => appendLocalUserMessage(currentTranscript, message));
-      const result = await socket.prompt(message);
+      const expanded = await expandForLocalTranscript(message, params.folderPath, skillsList);
+      setTranscript((currentTranscript) => appendLocalUserMessage(currentTranscript, expanded));
+      const result = await socket.prompt(expanded);
 
       if (
         isFirstPromptRef.current &&
@@ -278,8 +313,38 @@ function useAgentThreadConnection(
     setAgentThreadTitleGenerationState(params.threadId, { status: "done" });
   }
 
+  async function runSlashCommandAction(
+    kind: "compact",
+    args: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    if (isCompactingRef.current) {
+      return { ok: false, error: "Already compacting." };
+    }
+    const socket = socketRef.current;
+    if (socket === undefined) {
+      return { ok: false, error: "Agent Thread socket is not connected." };
+    }
+    const state = runtimeStateRef.current;
+    if (state.status !== "ready") {
+      return { ok: false, error: "Agent Thread is not ready." };
+    }
+    try {
+      if (kind === "compact") {
+        const trimmed = args.trim();
+        await socket.compact(trimmed.length === 0 ? undefined : trimmed);
+        return { ok: true };
+      }
+      return { ok: false, error: `Unknown slash command kind: ${kind}` };
+    } catch (error) {
+      return { ok: false, error: errorMessageFromUnknown(error) };
+    }
+  }
+
   return {
     contextUsageState,
+    compactionSummary,
+    isCompacting,
+    runSlashCommandAction,
     transcript,
     respondToRequest,
     runtimeState,
@@ -338,8 +403,21 @@ class PiAgentSocket {
   respondToToolUi(requestId: string, response: unknown) {
     return this.sendCommand({ id: requestId, type: "tool_ui_response", response });
   }
-
-  private sendCommand(command: { id: string; type: string; message?: string; response?: unknown }) {
+  async compact(customInstructions: string | undefined) {
+    const id = crypto.randomUUID();
+    await this.sendCommand({
+      id,
+      type: "compact",
+      ...(customInstructions === undefined ? {} : { customInstructions }),
+    });
+  }
+  private sendCommand(command: {
+    id: string;
+    type: string;
+    message?: string;
+    response?: unknown;
+    customInstructions?: string;
+  }) {
     if (this.socket.readyState !== WebSocket.OPEN) {
       return Promise.reject(new Error("Agent Thread socket is not open."));
     }
@@ -573,6 +651,7 @@ async function delay(durationMs: number) {
 type PiSessionPayload = {
   messages: PiMessage[];
   contextUsage: AgentThreadContextUsage | undefined;
+  compaction: { tokensBefore: number; summary: string } | undefined;
 };
 
 async function loadPiSession(
@@ -589,7 +668,12 @@ async function loadPiSession(
   if (!response.ok) {
     throw new Error(`Failed to load Pi session: ${response.status} ${await response.text()}`);
   }
-  const payload = (await response.json()) as { messages?: unknown[]; contextUsage?: unknown };
+  const payload = (await response.json()) as {
+    messages?: unknown[];
+    contextUsage?: unknown;
+    compaction?: unknown;
+  };
+  const compaction = isCompactionSummary(payload.compaction) ? payload.compaction : undefined;
   return {
     messages: Array.isArray(payload.messages)
       ? payload.messages.filter((message): message is PiMessage => isRecord(message))
@@ -597,6 +681,7 @@ async function loadPiSession(
     contextUsage: isAgentThreadContextUsage(payload.contextUsage)
       ? payload.contextUsage
       : undefined,
+    compaction,
   };
 }
 function isAgentThreadContextUsage(value: unknown): value is AgentThreadContextUsage {
@@ -614,6 +699,12 @@ function isAgentThreadContextUsage(value: unknown): value is AgentThreadContextU
   );
 }
 
+function isCompactionSummary(value: unknown): value is { tokensBefore: number; summary: string } {
+  return (
+    isRecord(value) && typeof value.tokensBefore === "number" && typeof value.summary === "string"
+  );
+}
+
 function errorMessageFromUnknown(error: unknown) {
   if (typeof error === "string") {
     return error;
@@ -623,6 +714,24 @@ function errorMessageFromUnknown(error: unknown) {
   }
   return "Agent Thread runtime failed.";
 }
+
+type SkillsListHookState = ReturnType<typeof useSkillsList>;
+
+async function expandForLocalTranscript(
+  message: string,
+  projectPath: string,
+  skillsList: SkillsListHookState,
+): Promise<string> {
+  if (skillsList.state.status !== "ready") {
+    return message;
+  }
+  const { bundled, project } = skillsList.state.result;
+  return expandSlashCommandInText(message, {
+    projectPath,
+    skills: [...bundled, ...project],
+  });
+}
+
 export { useAgentThreadConnection };
 export type {
   AgentThreadContextUsageState,

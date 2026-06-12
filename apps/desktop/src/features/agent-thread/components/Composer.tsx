@@ -1,4 +1,4 @@
-import { CornerDownLeft, Loader2 } from "lucide-react";
+import { CornerDownLeft, Loader2, Minimize2, Zap } from "lucide-react";
 import {
   useEffect,
   useLayoutEffect,
@@ -19,17 +19,31 @@ import { Button } from "@/components/ui/button";
 import { getExplorerFileReferenceSuggestions } from "@/features/explorer/api/explorerApi";
 import { cn } from "@/lib/utils";
 
-import type { AgentThreadRuntimeState } from "../hooks/useAgentThreadConnection";
+import type { ComposerSlashCommand } from "../commands/slashCommands";
+import type {
+  AgentThreadContextUsageState,
+  AgentThreadRuntimeState,
+} from "../hooks/useAgentThreadConnection";
 
 import { clearAgentThreadDraft, useAgentThreadDraft } from "../agentThreadDraftStore";
 import { explorerDropPaths, fileReferenceText } from "../explorerDropUtils";
+import { useSlashCommands } from "../hooks/useSlashCommands";
+import { AgentThreadContextMeter } from "./AgentThreadContextMeter";
+
+type ComposerSlashCommandAction = "compact";
 
 type ComposerProps = {
   threadId: string;
   folderPath: string;
   runtimeState: AgentThreadRuntimeState;
+  contextUsageState: AgentThreadContextUsageState;
+  isCompacting: boolean;
   isDropTargetActive?: boolean;
   sendPrompt: (prompt: string) => Promise<boolean>;
+  runSlashCommandAction: (
+    action: ComposerSlashCommandAction,
+    args: string,
+  ) => Promise<{ ok: boolean; error?: string }>;
 };
 
 type FileReferenceToken = {
@@ -37,6 +51,12 @@ type FileReferenceToken = {
   end: number;
   query: string;
   isQuoted: boolean;
+};
+
+type SlashCommandToken = {
+  start: number;
+  end: number;
+  query: string;
 };
 
 type FileReferencePickerState =
@@ -53,15 +73,27 @@ type FileReferencePickerState =
 
 const fileReferenceSuggestionLimit = 20;
 
+type SlashCommandPickerState =
+  | { status: "closed" }
+  | { status: "active"; token: SlashCommandToken; selectedIndex: number };
+
 function Composer({
   threadId,
   folderPath,
   runtimeState,
-  sendPrompt,
+  contextUsageState,
+  isCompacting,
   isDropTargetActive = false,
+  sendPrompt,
+  runSlashCommandAction,
 }: ComposerProps) {
   const [prompt, setPrompt] = useState("");
+  const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [pickerState, setPickerState] = useState<FileReferencePickerState>({ status: "closed" });
+  const [slashPickerState, setSlashPickerState] = useState<SlashCommandPickerState>({
+    status: "closed",
+  });
+  const slashCommands = useSlashCommands({ projectPath: folderPath });
   const [cursorSequence, setCursorSequence] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -71,7 +103,7 @@ function Composer({
   const draft = useAgentThreadDraft(threadId);
   const canSend = runtimeState.status === "ready" || runtimeState.status === "sending";
   const isSending = runtimeState.status === "sending";
-  const isDisabled = !canSend || isSending;
+  const isDisabled = !canSend || isSending || isCompacting;
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
@@ -104,9 +136,29 @@ function Composer({
       return;
     }
 
-    const token = extractFileReferenceToken(prompt, textarea.selectionStart, textarea.selectionEnd);
-    if (token === undefined) {
+    const fileToken = extractFileReferenceToken(
+      prompt,
+      textarea.selectionStart,
+      textarea.selectionEnd,
+    );
+    const slashToken = extractSlashCommandToken(
+      prompt,
+      textarea.selectionStart,
+      textarea.selectionEnd,
+    );
+    if (fileToken === undefined) {
       setPickerState({ status: "closed" });
+    }
+    if (slashToken === undefined) {
+      setSlashPickerState({ status: "closed" });
+    } else {
+      setSlashPickerState((current) => ({
+        status: "active",
+        token: slashToken,
+        selectedIndex: current.status === "active" ? current.selectedIndex : 0,
+      }));
+    }
+    if (fileToken === undefined) {
       return;
     }
 
@@ -114,7 +166,7 @@ function Composer({
     requestSequenceRef.current = requestId;
     setPickerState((current) => ({
       status: "loading",
-      token,
+      token: fileToken,
       selectedIndex:
         current.status === "ready" || current.status === "loading" ? current.selectedIndex : 0,
     }));
@@ -125,7 +177,7 @@ function Composer({
         requestId,
         requestSequenceRef,
         setPickerState,
-        token,
+        token: fileToken,
       });
     }, 120);
 
@@ -142,15 +194,19 @@ function Composer({
       }
     }
 
-    const message = prompt.trim();
-    if (message.length === 0) {
+    const trimmed = prompt.trim();
+    if (trimmed.length === 0) {
       return;
     }
 
-    const sent = await sendPrompt(message);
+    // Send the literal text. Slash commands are expanded at the agent-pi
+    // boundary, mirroring pi's `_expandSkillCommand`, so the Composer never
+    // holds expanded skill bodies.
+    const sent = await sendPrompt(trimmed);
     if (sent) {
       setPrompt("");
       setPickerState({ status: "closed" });
+      setSlashPickerState({ status: "closed" });
     }
   }
 
@@ -179,6 +235,55 @@ function Composer({
       textarea.focus();
       const cursor = token.start + completion.cursorOffset;
       textarea.setSelectionRange(cursor, cursor);
+      resizeComposerTextarea(textarea);
+    });
+  }
+
+  function acceptSlashCommandSuggestion(command: ComposerSlashCommand, token: SlashCommandToken) {
+    setErrorMessage(undefined);
+    // Args are the trailing text after the command name, with leading and
+    // trailing whitespace removed. Skill bodies are expanded at the agent-pi
+    // boundary (mirroring pi's `_expandSkillCommand`); built-in actions like
+    // `/compact` forward args to their side effect.
+    const args = prompt.slice(token.start + command.invocation.length, token.end).trim();
+    const dispatch = command.dispatch(args);
+    setSlashPickerState({ status: "closed" });
+    if (dispatch.type === "insert") {
+      const expansion = `${command.invocation} `;
+      const nextPrompt = `${prompt.slice(0, token.start)}${expansion}${prompt.slice(token.end)}`;
+      setPrompt(nextPrompt);
+      window.requestAnimationFrame(() => {
+        const textarea = textareaRef.current;
+        if (textarea === null) {
+          return;
+        }
+        textarea.focus();
+        const cursor = token.start + expansion.length;
+        textarea.setSelectionRange(cursor, cursor);
+        resizeComposerTextarea(textarea);
+      });
+      return;
+    }
+    // Action: clear the token, run the side effect, surface failures inline.
+    const cleared = `${prompt.slice(0, token.start)}${prompt.slice(token.end)}`.trimEnd();
+    setPrompt(cleared);
+    void (async () => {
+      try {
+        const result = await runSlashCommandAction(dispatch.action, args);
+        if (!result.ok && result.error !== undefined) {
+          setErrorMessage(result.error);
+        }
+      } catch (error: unknown) {
+        setErrorMessage(error instanceof Error ? error.message : String(error));
+      }
+    })();
+    window.requestAnimationFrame(() => {
+      const textarea = textareaRef.current;
+      if (textarea === null) {
+        return;
+      }
+      textarea.focus();
+      textarea.setSelectionRange(cleared.length, cleared.length);
       resizeComposerTextarea(textarea);
     });
   }
@@ -235,6 +340,37 @@ function Composer({
       setPickerState({ status: "closed" });
       return;
     }
+    if (event.key === "Escape" && slashPickerState.status === "active") {
+      event.preventDefault();
+      setSlashPickerState({ status: "closed" });
+      return;
+    }
+
+    if (slashPickerState.status === "active") {
+      const filtered = filterSlashCommands(slashCommands, slashPickerState.token.query);
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        if (filtered.length === 0) {
+          return;
+        }
+        const direction = event.key === "ArrowDown" ? 1 : -1;
+        setSlashPickerState({
+          status: "active",
+          token: slashPickerState.token,
+          selectedIndex: wrapIndex(slashPickerState.selectedIndex + direction, filtered.length),
+        });
+        return;
+      }
+
+      if (event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) {
+        const command = filtered[slashPickerState.selectedIndex];
+        if (command !== undefined) {
+          event.preventDefault();
+          void acceptSlashCommandSuggestion(command, slashPickerState.token);
+          return;
+        }
+      }
+    }
 
     if (pickerState.status === "ready") {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -278,6 +414,11 @@ function Composer({
         onDrop={handleDrop}
       >
         <FileReferencePicker state={pickerState} onSelect={acceptFileReferenceSuggestion} />
+        <SlashCommandPicker
+          state={slashPickerState}
+          commands={slashCommands}
+          onSelect={acceptSlashCommandSuggestion}
+        />
         <textarea
           ref={textareaRef}
           value={prompt}
@@ -287,25 +428,42 @@ function Composer({
           placeholder="Send a prompt to this Agent Thread…"
           disabled={isDisabled}
           className="block min-h-9 w-full resize-none bg-transparent px-2.5 py-2 text-sm leading-5 outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
-          onChange={(event) => handlePromptChange(event, setPrompt)}
+          onChange={(event) => {
+            setErrorMessage(undefined);
+            handlePromptChange(event, setPrompt);
+          }}
           onClick={() => setCursorSequence((sequence) => sequence + 1)}
           onKeyDown={handleKeyDown}
           onSelect={() => setCursorSequence((sequence) => sequence + 1)}
         />
-        <Button
-          type="submit"
-          variant="ghost"
-          size="icon-xs"
-          aria-label={sendButtonLabel(runtimeState)}
-          disabled={!canSend || isSending || prompt.trim().length === 0}
-          className="absolute right-1.5 bottom-1.5 bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
-        >
-          {isSending ? (
-            <Loader2 aria-hidden="true" className="animate-spin" />
-          ) : (
-            <CornerDownLeft aria-hidden="true" />
-          )}
-        </Button>
+        {isCompacting ? (
+          <div
+            aria-live="polite"
+            className="pointer-events-none absolute right-1.5 bottom-1.5 flex items-center gap-1.5 rounded bg-background/80 px-2 py-1 text-xs text-muted-foreground"
+          >
+            <Loader2 aria-hidden="true" className="size-3 animate-spin" />
+            <span>Compacting…</span>
+          </div>
+        ) : (
+          <Button
+            type="submit"
+            variant="ghost"
+            size="icon-xs"
+            aria-label={sendButtonLabel(runtimeState, isCompacting)}
+            disabled={!canSend || isSending || isCompacting || prompt.trim().length === 0}
+            className="absolute right-1.5 bottom-1.5 bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            {isSending ? (
+              <Loader2 aria-hidden="true" className="animate-spin" />
+            ) : (
+              <CornerDownLeft aria-hidden="true" />
+            )}
+          </Button>
+        )}
+      </div>
+      <div className="mt-1 flex items-center justify-between px-1">
+        <span>{composerFootnote(errorMessage, slashPickerState.status === "closed")}</span>
+        <AgentThreadContextMeter state={contextUsageState} />
       </div>
     </form>
   );
@@ -354,7 +512,7 @@ function FileReferencePicker({
               key={suggestion.path}
               type="button"
               data-selected={index === state.selectedIndex}
-              className="flex w-full min-w-0 items-center gap-3 px-2.5 py-1.5 text-left text-sm data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground"
+              className="flex w-full min-w-0 items-center gap-3 px-2.5 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground"
               onClick={() => onSelect(suggestion, state.token)}
               onMouseDown={(event) => event.preventDefault()}
             >
@@ -372,6 +530,90 @@ function FileReferencePicker({
 
 function PickerMessage({ message }: { message: string }) {
   return <div className="px-2.5 py-2 text-sm text-muted-foreground">{message}</div>;
+}
+
+function SlashCommandPicker({
+  state,
+  commands,
+  onSelect,
+}: {
+  state: SlashCommandPickerState;
+  commands: readonly ComposerSlashCommand[];
+  onSelect: (command: ComposerSlashCommand, token: SlashCommandToken) => void;
+}) {
+  const listRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (state.status !== "active") {
+      return;
+    }
+    const listElement = listRef.current;
+    if (listElement === null) {
+      return;
+    }
+    const selectedElement = listElement.querySelector<HTMLElement>('[data-selected="true"]');
+    if (selectedElement === null) {
+      return;
+    }
+    selectedElement.scrollIntoView({ block: "nearest" });
+  }, [state]);
+
+  if (state.status !== "active") {
+    return <></>;
+  }
+
+  if (commands.length === 0) {
+    return (
+      <div className="absolute right-0 bottom-full left-0 z-10 mb-1 overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-xs">
+        <PickerMessage message="No slash commands available" />
+      </div>
+    );
+  }
+
+  const filtered = filterSlashCommands(commands, state.token.query);
+  if (filtered.length === 0) {
+    return (
+      <div className="absolute right-0 bottom-full left-0 z-10 mb-1 overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-xs">
+        <PickerMessage message="No matching commands" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="absolute right-0 bottom-full left-0 z-10 mb-1 overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-xs">
+      <div ref={listRef} aria-label="Slash commands" className="max-h-60 overflow-y-auto py-1">
+        {filtered.map((command, index) => (
+          <button
+            key={command.name}
+            type="button"
+            data-selected={index === state.selectedIndex}
+            className="flex w-full min-w-0 items-center gap-3 px-2.5 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground"
+            onClick={() => onSelect(command, state.token)}
+            onMouseDown={(event) => event.preventDefault()}
+          >
+            <SlashCommandIcon kind={command.kind} />
+            <span className="min-w-0 flex-1 truncate">{command.name}</span>
+            <span className="max-w-1/2 min-w-0 truncate text-xs text-muted-foreground">
+              {command.description}
+            </span>
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center justify-between border-t px-2.5 py-1.5 text-xs text-muted-foreground">
+        <span>
+          {filtered.length} {filtered.length === 1 ? "command" : "commands"}
+        </span>
+        <span className="font-mono">↑ ↓ ⏎ esc</span>
+      </div>
+    </div>
+  );
+}
+
+function SlashCommandIcon({ kind }: { kind: ComposerSlashCommand["kind"] }) {
+  if (kind === "skill") {
+    return <Zap aria-hidden className="size-4 shrink-0 text-muted-foreground" />;
+  }
+  return <Minimize2 aria-hidden className="size-4 shrink-0 text-muted-foreground" />;
 }
 
 type LoadFileReferenceSuggestionsInput = {
@@ -414,6 +656,21 @@ async function loadFileReferenceSuggestions({
   }
 }
 
+function filterSlashCommands(
+  commands: readonly ComposerSlashCommand[],
+  query: string,
+): readonly ComposerSlashCommand[] {
+  const trimmed = query.trim().toLowerCase();
+  if (trimmed.length === 0) {
+    return commands;
+  }
+  return commands.filter(
+    (command) =>
+      command.name.toLowerCase().startsWith(trimmed) ||
+      command.description.toLowerCase().includes(trimmed),
+  );
+}
+
 function extractFileReferenceToken(
   text: string,
   selectionStart: number,
@@ -435,6 +692,59 @@ function extractFileReferenceToken(
   }
 
   return { start: tokenStart, end: selectionStart, query: raw.slice(1), isQuoted: false };
+}
+
+function extractSlashCommandToken(
+  text: string,
+  selectionStart: number,
+  selectionEnd: number,
+): SlashCommandToken | undefined {
+  if (selectionStart !== selectionEnd) {
+    return;
+  }
+
+  const tokenStart = findSlashTokenStart(text, selectionStart);
+  if (tokenStart === -1) {
+    return;
+  }
+
+  const raw = text.slice(tokenStart, selectionStart);
+  return {
+    start: tokenStart,
+    end: selectionStart,
+    // The picker filters against the full typed prefix (e.g. `skill:can`),
+    // not just the part after a colon. The leading `/` is dropped because
+    // the command store uses names like `skill:canon` (no leading slash).
+    query: raw.slice(1),
+  };
+}
+
+function findSlashTokenStart(text: string, cursor: number): number {
+  // Walk back from the cursor looking for the `/` that opens the current
+  // command token. Whitespace or any character that isn't a slash-safe
+  // command char stops the walk. The `/` itself is only accepted when it
+  // sits at a word boundary (start of text, or preceded by whitespace).
+  for (let index = cursor - 1; index >= 0; index -= 1) {
+    const code = text.charCodeAt(index);
+    if (code === 47 /* `/` */) {
+      return isTokenBoundary(text, index) ? index : -1;
+    }
+    if (!isSlashCommandCharCode(code)) {
+      return -1;
+    }
+  }
+  return -1;
+}
+
+function isSlashCommandCharCode(code: number): boolean {
+  return (
+    (code >= 65 && code <= 90) || // A-Z
+    (code >= 97 && code <= 122) || // a-z
+    (code >= 48 && code <= 57) || // 0-9
+    code === 95 || // _
+    code === 58 || // :
+    code === 45 // -
+  );
 }
 
 function findFileReferenceTokenStart(text: string) {
@@ -581,9 +891,13 @@ function maxComposerTextareaHeight() {
   return rootFontSize * 12;
 }
 
-function sendButtonLabel(state: AgentThreadRuntimeState) {
+function sendButtonLabel(state: AgentThreadRuntimeState, isCompacting: boolean) {
   if (state.status === "starting" || state.status === "connecting") {
     return "Starting…";
+  }
+
+  if (isCompacting) {
+    return "Compacting…";
   }
 
   if (state.status === "sending") {
@@ -615,6 +929,24 @@ function handlePromptKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
   if (form instanceof HTMLFormElement) {
     form.requestSubmit();
   }
+}
+
+function composerFootnote(error: string | undefined, slashPickerClosed: boolean) {
+  if (error !== undefined) {
+    return (
+      <span role="alert" className="text-xs text-destructive">
+        {error}
+      </span>
+    );
+  }
+  if (slashPickerClosed) {
+    return (
+      <span className="text-xs text-muted-foreground">
+        Type <span className="font-mono text-foreground/80">/</span> to explore commands.
+      </span>
+    );
+  }
+  return <></>;
 }
 
 export { Composer };

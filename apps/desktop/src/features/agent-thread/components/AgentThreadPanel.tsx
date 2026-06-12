@@ -16,7 +16,6 @@ import {
 } from "../agentThreadStatusStore";
 import { explorerDropPaths, fileReferenceText } from "../explorerDropUtils";
 import { useAgentThreadConnection } from "../hooks/useAgentThreadConnection";
-import { AgentThreadContextMeter } from "./AgentThreadContextMeter";
 import { AgentThreadRawEventStream } from "./AgentThreadRawEventStream";
 import { AgentThreadTranscript } from "./AgentThreadTranscript";
 import { Composer } from "./Composer";
@@ -47,8 +46,16 @@ function AgentThreadPanel({ api, params, onRename }: AgentThreadPanelProps) {
     [api, onRename, params.panelId],
   );
 
-  const { contextUsageState, transcript, respondToRequest, runtimeState, sendPrompt } =
-    useAgentThreadConnection(params, { onAutoTitled: handleAutoTitled });
+  const {
+    compactionSummary,
+    contextUsageState,
+    isCompacting,
+    runSlashCommandAction,
+    transcript,
+    respondToRequest,
+    runtimeState,
+    sendPrompt,
+  } = useAgentThreadConnection(params, { onAutoTitled: handleAutoTitled });
 
   useEffect(() => {
     setAgentThreadRuntimeState(params.threadId, runtimeState);
@@ -105,7 +112,11 @@ function AgentThreadPanel({ api, params, onRename }: AgentThreadPanelProps) {
         {({ isAtBottom, scrollToBottom }) => (
           <>
             <StickToBottom.Content className="mx-auto w-full max-w-5xl" scrollClassName="p-2">
-              <AgentThreadTranscript transcript={transcript} respond={respondToRequest} />
+              <AgentThreadTranscript
+                transcript={transcript}
+                compactionSummary={compactionSummary}
+                respond={respondToRequest}
+              />
               {agentThreadShowRawEventStream ? (
                 <AgentThreadRawEventStream transcript={transcript} />
               ) : undefined}
@@ -135,10 +146,12 @@ function AgentThreadPanel({ api, params, onRename }: AgentThreadPanelProps) {
             threadId={params.threadId}
             folderPath={params.folderPath}
             runtimeState={runtimeState}
+            contextUsageState={contextUsageState}
+            isCompacting={isCompacting}
             sendPrompt={sendPrompt}
+            runSlashCommandAction={runSlashCommandAction}
             isDropTargetActive={isDraggingFile}
           />
-          <AgentThreadContextMeter state={contextUsageState} />
         </div>
       </footer>
     </section>
