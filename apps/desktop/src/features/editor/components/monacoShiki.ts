@@ -5,8 +5,8 @@ import { createHighlighter, type Highlighter } from "shiki";
 
 import { shikiLanguages } from "../language";
 
-const darkTheme = "github-dark";
-const lightTheme = "github-light";
+const darkTheme = "vs-dark";
+const lightTheme = "vs-light";
 
 let shikiSetupPromise: Promise<void> | undefined;
 
