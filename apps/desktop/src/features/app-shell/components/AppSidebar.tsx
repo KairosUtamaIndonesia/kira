@@ -29,6 +29,7 @@ import { getSourceControlStatus } from "@/features/source-control/api/sourceCont
 
 import type { ActiveWorkspaceState } from "../types";
 
+import { ModeMenuButton } from "./ModeMenuButton";
 import { useTitleBarDrag } from "./useTitleBarDrag";
 
 type AppSidebarProps = {
@@ -151,7 +152,10 @@ function AppSidebar({
             void handleTitleBarMouseDown(event);
           }}
         >
-          <span className="font-semibold tracking-tight">Kira</span>
+          <div className="flex items-center gap-2">
+            <span className="font-semibold tracking-tight">Kira</span>
+            <ModeMenuButton />
+          </div>
           {titleBarError === undefined ? undefined : (
             <output className="sr-only">{titleBarError}</output>
           )}

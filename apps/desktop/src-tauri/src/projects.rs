@@ -15,6 +15,7 @@ use uuid::Uuid;
 use crate::persistence::PersistenceStore;
 
 const DEFAULT_SESSION_NAME: &str = "Default";
+const COWORK_PROJECTS_DIRECTORY: &str = "coworks";
 const HEX_DIGITS: [char; 16] = [
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F',
 ];
@@ -32,8 +33,20 @@ pub struct Project {
     id: String,
     name: String,
     folder_path: String,
+    kind: ProjectKind,
     created_at: String,
     updated_at: String,
+}
+
+// `code` projects are the developer library shown in the Code shell; `cowork`
+// projects are auto-created conversation containers owned by the Cowork
+// shell. Each shell only ever sees its own kind.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, sqlx::Type)]
+#[serde(rename_all = "camelCase")]
+#[sqlx(type_name = "TEXT", rename_all = "snake_case")]
+pub enum ProjectKind {
+    Code,
+    Cowork,
 }
 
 #[derive(Debug, Serialize, FromRow)]
@@ -130,6 +143,14 @@ pub enum CreateWorktreeBranchInput {
 pub struct DeleteProjectSessionInput {
     project_id: String,
     session_id: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentThreadPanelListing {
+    project: Project,
+    session_id: String,
+    panel: WorkspacePanel,
 }
 
 #[derive(Debug, Serialize)]
@@ -403,6 +424,8 @@ pub enum ProjectError {
     InvalidTerminalSnapshotSequence(i64),
     #[error("terminal snapshot size must be at least 1 row and 1 column, got {rows} rows and {cols} columns")]
     InvalidTerminalSnapshotSize { rows: i64, cols: i64 },
+    #[error("failed to create Cowork project folder `{path}`: {message}")]
+    CreateCoworkFolder { path: String, message: String },
     #[error("failed to generate project timestamp: {0}")]
     Timestamp(String),
     #[error("failed to query projects: {0}")]
@@ -442,7 +465,29 @@ pub async fn project_create(
     input: CreateProjectInput,
     store: tauri::State<'_, PersistenceStore>,
 ) -> Result<CreatedProject, ProjectError> {
-    create_project(store.pool(), input).await
+    create_project(store.pool(), input, ProjectKind::Code).await
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
+pub async fn cowork_project_create(
+    store: tauri::State<'_, PersistenceStore>,
+) -> Result<CreatedProject, ProjectError> {
+    create_cowork_project(store.pool(), store.app_data_dir()).await
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
+pub async fn cowork_agent_thread_panels_list(
+    store: tauri::State<'_, PersistenceStore>,
+) -> Result<Vec<AgentThreadPanelListing>, ProjectError> {
+    list_cowork_agent_thread_panels(store.pool()).await
 }
 
 #[tauri::command]
@@ -535,7 +580,7 @@ pub async fn project_rename(
         .await
         .map_err(|error| ProjectError::Query(error.to_string()))?;
     sqlx::query_as::<_, Project>(
-        "SELECT id, name, folder_path, created_at, updated_at FROM projects WHERE id = ?",
+        "SELECT id, name, folder_path, kind, created_at, updated_at FROM projects WHERE id = ?",
     )
     .bind(&input.project_id)
     .fetch_optional(store.pool())
@@ -926,9 +971,11 @@ pub async fn workspace_terminal_snapshot_delete(
     Ok(())
 }
 
+// The Code shell's project library: Cowork conversation containers are
+// excluded so they never surface as openable projects.
 async fn list_projects(pool: &SqlitePool) -> Result<Vec<Project>, ProjectError> {
     sqlx::query_as::<_, Project>(
-        "SELECT id, name, folder_path, created_at, updated_at FROM projects ORDER BY name COLLATE NOCASE",
+        "SELECT id, name, folder_path, kind, created_at, updated_at FROM projects WHERE kind = 'code' ORDER BY name COLLATE NOCASE",
     )
     .fetch_all(pool)
     .await
@@ -937,7 +984,7 @@ async fn list_projects(pool: &SqlitePool) -> Result<Vec<Project>, ProjectError> 
 
 async fn open_last_project(pool: &SqlitePool) -> Result<Option<OpenProject>, ProjectError> {
     let project_id = sqlx::query_scalar::<_, String>(
-        "SELECT id FROM projects WHERE last_opened_at IS NOT NULL ORDER BY last_opened_at DESC LIMIT 1",
+        "SELECT id FROM projects WHERE kind = 'code' AND last_opened_at IS NOT NULL ORDER BY last_opened_at DESC LIMIT 1",
     )
     .fetch_optional(pool)
     .await
@@ -1028,7 +1075,7 @@ async fn ensure_project_exists(
     project_id: &str,
 ) -> Result<Project, ProjectError> {
     sqlx::query_as::<_, Project>(
-        "SELECT id, name, folder_path, created_at, updated_at FROM projects WHERE id = ?",
+        "SELECT id, name, folder_path, kind, created_at, updated_at FROM projects WHERE id = ?",
     )
     .bind(project_id)
     .fetch_optional(pool)
@@ -1773,6 +1820,7 @@ fn panel_id_path_segment(file_path: &str) -> String {
 async fn create_project(
     pool: &SqlitePool,
     input: CreateProjectInput,
+    kind: ProjectKind,
 ) -> Result<CreatedProject, ProjectError> {
     let name = validate_name(&input.name)?;
     let folder_path = validate_folder_path(&input.folder_path)?;
@@ -1798,11 +1846,12 @@ async fn create_project(
         .map_err(|error| ProjectError::Create(error.to_string()))?;
 
     sqlx::query(
-        "INSERT INTO projects (id, name, folder_path, created_at, updated_at, last_opened_at) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO projects (id, name, folder_path, kind, created_at, updated_at, last_opened_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&project_id)
     .bind(&name)
     .bind(&folder_path)
+    .bind(kind)
     .bind(&now)
     .bind(&now)
     .bind(&now)
@@ -1834,6 +1883,7 @@ async fn create_project(
             id: project_id.clone(),
             name,
             folder_path,
+            kind,
             created_at: now.clone(),
             updated_at: now.clone(),
         },
@@ -1850,6 +1900,71 @@ async fn create_project(
             layout_json: None,
         },
     })
+}
+
+async fn create_cowork_project(
+    pool: &SqlitePool,
+    app_data_dir: &Path,
+) -> Result<CreatedProject, ProjectError> {
+    let timestamp = current_timestamp()?;
+    let folder_path = app_data_dir
+        .join(COWORK_PROJECTS_DIRECTORY)
+        .join(Uuid::new_v4().to_string());
+    fs::create_dir_all(&folder_path).map_err(|error| ProjectError::CreateCoworkFolder {
+        path: folder_path.display().to_string(),
+        message: error.to_string(),
+    })?;
+
+    create_project(
+        pool,
+        CreateProjectInput {
+            name: cowork_project_name(&timestamp),
+            folder_path: folder_path.display().to_string(),
+        },
+        ProjectKind::Cowork,
+    )
+    .await
+}
+
+fn cowork_project_name(timestamp: &str) -> String {
+    match timestamp.split_once('T') {
+        Some((date, time_of_day)) => {
+            let hour_minute: String = time_of_day.chars().take(5).collect();
+            format!("Cowork {date} {hour_minute}")
+        }
+        None => format!("Cowork {timestamp}"),
+    }
+}
+
+// The Cowork shell's conversation list: every Agent Thread across all Cowork
+// projects, most recent first. Code projects' threads never appear here.
+async fn list_cowork_agent_thread_panels(
+    pool: &SqlitePool,
+) -> Result<Vec<AgentThreadPanelListing>, ProjectError> {
+    let rows = sqlx::query(
+        "SELECT workspace_panels.id, workspace_panels.session_id, workspace_panels.kind, workspace_panels.title, workspace_panels.position_index, workspace_panels.created_at, workspace_panels.updated_at, terminal_panel_state.working_directory, terminal_panel_state.shell, source_control_diff_panel_state.folder_path AS diff_folder_path, source_control_diff_panel_state.file_path AS diff_file_path, source_control_diff_panel_state.old_path AS diff_old_path, source_control_diff_panel_state.source AS diff_source, file_editor_panel_state.folder_path AS editor_folder_path, file_editor_panel_state.file_path AS editor_file_path, agent_thread_panel_state.thread_id AS agent_thread_id, browser_panel_state.url AS browser_url, projects.id AS project_id, projects.name AS project_name, projects.folder_path AS project_folder_path, projects.kind AS project_kind, projects.created_at AS project_created_at, projects.updated_at AS project_updated_at FROM workspace_panels JOIN sessions ON sessions.id = workspace_panels.session_id JOIN projects ON projects.id = sessions.project_id LEFT JOIN terminal_panel_state ON terminal_panel_state.panel_id = workspace_panels.id LEFT JOIN source_control_diff_panel_state ON source_control_diff_panel_state.panel_id = workspace_panels.id LEFT JOIN file_editor_panel_state ON file_editor_panel_state.panel_id = workspace_panels.id LEFT JOIN agent_thread_panel_state ON agent_thread_panel_state.panel_id = workspace_panels.id LEFT JOIN browser_panel_state ON browser_panel_state.panel_id = workspace_panels.id WHERE workspace_panels.kind = 'agent_thread' AND projects.kind = 'cowork' ORDER BY workspace_panels.updated_at DESC",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|error| ProjectError::Query(error.to_string()))?;
+
+    rows.iter()
+        .map(|row| {
+            let panel = workspace_panel_from_row(row)?;
+            Ok(AgentThreadPanelListing {
+                project: Project {
+                    id: panel_column(row, "project_id")?,
+                    name: panel_column(row, "project_name")?,
+                    folder_path: panel_column(row, "project_folder_path")?,
+                    kind: panel_column(row, "project_kind")?,
+                    created_at: panel_column(row, "project_created_at")?,
+                    updated_at: panel_column(row, "project_updated_at")?,
+                },
+                session_id: panel_column(row, "session_id")?,
+                panel,
+            })
+        })
+        .collect()
 }
 
 fn validate_panel_title(title: &str) -> Result<String, ProjectError> {
@@ -1960,7 +2075,7 @@ fn current_timestamp() -> Result<String, ProjectError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        session_worktree_path, validate_branch_name, validate_worktree_slug,
+        cowork_project_name, session_worktree_path, validate_branch_name, validate_worktree_slug,
         CreateWorktreeBranchInput, ProjectError,
     };
     use std::path::Path;
@@ -1996,6 +2111,22 @@ mod tests {
         });
 
         assert!(matches!(error, Err(ProjectError::MissingBranchName)));
+    }
+
+    #[test]
+    fn cowork_project_name_uses_date_and_minute_from_timestamp() {
+        assert_eq!(
+            cowork_project_name("2026-06-12T14:30:21Z"),
+            "Cowork 2026-06-12 14:30"
+        );
+    }
+
+    #[test]
+    fn cowork_project_name_keeps_unexpected_timestamp_verbatim() {
+        assert_eq!(
+            cowork_project_name("not-a-timestamp"),
+            "Cowork not-a-timestamp"
+        );
     }
 
     #[test]

@@ -13,9 +13,16 @@ function describeTitleBarError(error: unknown) {
   return "Could not update the window.";
 }
 
-function isInteractiveTitleBarTarget(target: EventTarget) {
+// React portals re-dispatch events through the React tree, so a press inside
+// portalled UI owned by the title bar (dropdown menus, dialogs) still reaches
+// these handlers even though the target is not a DOM descendant. Such a press
+// must never start a window drag: startDragging() hands the gesture to the OS,
+// which swallows the mouseup and the portalled control never gets its click.
+function isTitleBarSurfaceTarget(titleBar: HTMLElement, target: EventTarget) {
   return (
-    target instanceof Element && target.closest("button, input, [data-window-controls]") !== null
+    target instanceof Element &&
+    titleBar.contains(target) &&
+    target.closest("button, input, [data-window-controls]") === null
   );
 }
 
@@ -33,7 +40,7 @@ function useTitleBarDrag() {
       return;
     }
 
-    if (isInteractiveTitleBarTarget(event.target)) {
+    if (!isTitleBarSurfaceTarget(event.currentTarget, event.target)) {
       return;
     }
 
@@ -47,7 +54,7 @@ function useTitleBarDrag() {
   }
 
   async function handleTitleBarDoubleClick(event: MouseEvent<HTMLElement>) {
-    if (isInteractiveTitleBarTarget(event.target)) {
+    if (!isTitleBarSurfaceTarget(event.currentTarget, event.target)) {
       return;
     }
 

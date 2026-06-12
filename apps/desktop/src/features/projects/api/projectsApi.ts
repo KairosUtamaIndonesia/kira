@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import type {
+  AgentThreadPanelListing,
+  AgentThreadWorkspacePanel,
   CreatedProject,
   CreateAgentThreadPanelInput,
   CreateBrowserPanelInput,
@@ -35,6 +37,33 @@ function listProjects() {
 
 function createProject(input: CreateProjectInput) {
   return invoke<CreatedProject>("project_create", { input });
+}
+
+function createCoworkProject() {
+  return invoke<CreatedProject>("cowork_project_create");
+}
+
+// Every Agent Thread across all Cowork projects, most recent first. Code
+// projects' threads never appear here.
+async function listCoworkAgentThreadPanels(): Promise<AgentThreadPanelListing[]> {
+  type AgentThreadPanelListingRow = Omit<AgentThreadPanelListing, "panel"> & {
+    panel: WorkspacePanel;
+  };
+
+  const listings = await invoke<AgentThreadPanelListingRow[]>("cowork_agent_thread_panels_list");
+  return listings.map((listing) => ({
+    project: listing.project,
+    sessionId: listing.sessionId,
+    panel: requireAgentThreadPanel(listing.panel),
+  }));
+}
+
+function requireAgentThreadPanel(panel: WorkspacePanel): AgentThreadWorkspacePanel {
+  if (panel.kind !== "agent_thread") {
+    throw new Error(`Expected Agent Thread panel, received ${panel.kind}.`);
+  }
+
+  return panel;
 }
 
 function openProject(input: OpenProjectInput) {
@@ -120,7 +149,9 @@ function updateSessionLayout(input: UpdateSessionLayoutInput) {
 export {
   createAgentThreadPanel,
   createBrowserPanel,
+  createCoworkProject,
   createProject,
+  listCoworkAgentThreadPanels,
   createProjectSession,
   createTerminalPanel,
   deleteTerminalSnapshot,
