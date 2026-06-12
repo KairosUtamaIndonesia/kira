@@ -15,6 +15,8 @@ const NOTIFICATION_ENABLED_KEY: &str = "notifications.enabled";
 const NOTIFICATION_VOLUME_KEY: &str = "notifications.volume";
 const NOTIFICATION_SELECTED_SOUND_ID_KEY: &str = "notifications.selectedSoundId";
 const NOTIFICATION_CUSTOM_SOUNDS_KEY: &str = "notifications.customSounds";
+const TERMINAL_SHELL_PATH_KEY: &str = "terminal.shellPath";
+const TERMINAL_SHELL_PATH_TERMINAL_OVERRIDE_KEY: &str = "terminal.shellPath.terminalOverride";
 const DEFAULT_APPEARANCE_THEME: AppearanceTheme = AppearanceTheme::Dark;
 const DEFAULT_AGENT_THREAD_SHOW_RAW_EVENT_STREAM: bool = false;
 const DEFAULT_NOTIFICATION_ENABLED: bool = true;
@@ -111,6 +113,20 @@ pub struct NotificationSettings {
     custom_sounds: Vec<CustomNotificationSound>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalSettingsUpdateInput {
+    pub shell_path: Option<String>,
+    pub terminal_shell_path: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalSettings {
+    pub shell_path: Option<String>,
+    pub terminal_shell_path: Option<String>,
+}
+
 #[derive(Debug, Error)]
 pub enum SettingsError {
     #[error("Appearance theme is invalid in Persistence Store: {0}")]
@@ -133,6 +149,10 @@ pub enum SettingsError {
     UnsupportedCustomNotificationSoundFile(String),
     #[error("Custom notification sound is too large. Maximum size is 5 MiB")]
     CustomNotificationSoundTooLarge,
+    #[error("shell path is not valid: {0}")]
+    InvalidShellPath(String),
+    #[error("shell path is not executable: {0}")]
+    ShellNotExecutable(String),
     #[error("failed to read Appearance settings: {0}")]
     Read(String),
     #[error("failed to update Appearance settings: {0}")]
@@ -237,6 +257,29 @@ pub async fn notification_sound_read(
     store: tauri::State<'_, PersistenceStore>,
 ) -> Result<Vec<u8>, SettingsError> {
     read_notification_sound(&app, store.pool(), &sound_id).await
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
+pub async fn terminal_settings_get(
+    store: tauri::State<'_, PersistenceStore>,
+) -> Result<TerminalSettings, SettingsError> {
+    get_terminal_settings(store.pool()).await
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
+pub async fn terminal_settings_update(
+    input: TerminalSettingsUpdateInput,
+    store: tauri::State<'_, PersistenceStore>,
+) -> Result<TerminalSettings, SettingsError> {
+    update_terminal_settings(store.pool(), input).await
 }
 
 async fn get_appearance_settings(pool: &SqlitePool) -> Result<AppearanceSettings, SettingsError> {
@@ -667,6 +710,145 @@ fn path_to_string(path: &Path) -> Result<String, SettingsError> {
     path.to_str().map(ToString::to_string).ok_or_else(|| {
         SettingsError::ImportNotificationSound("sound path is not valid UTF-8".to_string())
     })
+}
+
+async fn get_terminal_settings(pool: &SqlitePool) -> Result<TerminalSettings, SettingsError> {
+    let shell_path = app_setting_value(pool, TERMINAL_SHELL_PATH_KEY)
+        .await
+        .map_err(SettingsError::Read)?;
+    let terminal_shell_path = app_setting_value(pool, TERMINAL_SHELL_PATH_TERMINAL_OVERRIDE_KEY)
+        .await
+        .map_err(SettingsError::Read)?;
+
+    Ok(TerminalSettings {
+        shell_path,
+        terminal_shell_path,
+    })
+}
+
+fn validate_shell_path(path_str: &str) -> Result<(), SettingsError> {
+    const SHELL_TEST_MARKER: &str = "kira-shell-test";
+
+    let path = Path::new(path_str);
+
+    if !path.exists() {
+        return Err(SettingsError::InvalidShellPath(format!(
+            "path does not exist: {path_str}"
+        )));
+    }
+
+    if !path.is_file() {
+        return Err(SettingsError::InvalidShellPath(format!(
+            "path is not a file: {path_str}"
+        )));
+    }
+
+    // Verify this is actually a shell by running a command and checking the output.
+    // Non-shell binaries will either fail or ignore -c, producing no matching output.
+    let mut cmd = std::process::Command::new(path);
+    cmd.arg("-c").arg(format!("echo {SHELL_TEST_MARKER}"));
+    let output = cmd.output();
+
+    match output {
+        Ok(result) => {
+            let stdout = String::from_utf8_lossy(&result.stdout);
+            if !stdout.contains(SHELL_TEST_MARKER) {
+                return Err(SettingsError::ShellNotExecutable(format!(
+                    "binary did not respond to -c like a shell: {path_str}"
+                )));
+            }
+        }
+        Err(error) => {
+            return Err(SettingsError::ShellNotExecutable(format!(
+                "failed to execute binary: {error}: {path_str}"
+            )));
+        }
+    }
+
+    Ok(())
+}
+
+async fn update_terminal_settings(
+    pool: &SqlitePool,
+    input: TerminalSettingsUpdateInput,
+) -> Result<TerminalSettings, SettingsError> {
+    if let Some(ref path) = input.shell_path {
+        validate_shell_path(path)?;
+    }
+    if let Some(ref path) = input.terminal_shell_path {
+        validate_shell_path(path)?;
+    }
+
+    let mut transaction = pool
+        .begin()
+        .await
+        .map_err(|error| SettingsError::Update(error.to_string()))?;
+
+    upsert_or_delete_option_in_transaction(
+        &mut transaction,
+        TERMINAL_SHELL_PATH_KEY,
+        input.shell_path.as_deref(),
+    )
+    .await
+    .map_err(SettingsError::Update)?;
+
+    upsert_or_delete_option_in_transaction(
+        &mut transaction,
+        TERMINAL_SHELL_PATH_TERMINAL_OVERRIDE_KEY,
+        input.terminal_shell_path.as_deref(),
+    )
+    .await
+    .map_err(SettingsError::Update)?;
+
+    transaction
+        .commit()
+        .await
+        .map_err(|error| SettingsError::Update(error.to_string()))?;
+
+    Ok(TerminalSettings {
+        shell_path: input.shell_path,
+        terminal_shell_path: input.terminal_shell_path,
+    })
+}
+
+/// Returns the effective shell path for the terminal, preferring the terminal-specific
+/// override when set, falling back to the primary shell path.
+pub async fn terminal_shell_path(pool: &SqlitePool) -> Option<String> {
+    let terminal_override = app_setting_value(pool, TERMINAL_SHELL_PATH_TERMINAL_OVERRIDE_KEY)
+        .await
+        .ok()
+        .flatten();
+    if terminal_override.is_some() {
+        return terminal_override;
+    }
+    app_setting_value(pool, TERMINAL_SHELL_PATH_KEY)
+        .await
+        .ok()
+        .flatten()
+}
+
+/// Returns the primary shell path configured for the agent (Pi).
+pub async fn agent_shell_path(pool: &SqlitePool) -> Option<String> {
+    app_setting_value(pool, TERMINAL_SHELL_PATH_KEY)
+        .await
+        .ok()
+        .flatten()
+}
+async fn upsert_or_delete_option_in_transaction(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    key: &str,
+    value: Option<&str>,
+) -> Result<(), String> {
+    if let Some(v) = value {
+        upsert_app_setting_in_transaction(transaction, key, v).await
+    } else {
+        sqlx::query("DELETE FROM app_settings WHERE key = ?")
+            .bind(key)
+            .execute(&mut **transaction)
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    }
 }
 
 pub async fn app_setting_value(pool: &SqlitePool, key: &str) -> Result<Option<String>, String> {

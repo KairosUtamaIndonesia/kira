@@ -568,6 +568,9 @@ async fn start_app_runtime(store: PersistenceStore) -> Result<AppAgentRuntime, A
             })?,
         )
         .kill_on_drop(true);
+    if let Some(shell_path) = crate::settings::agent_shell_path(store.pool()).await {
+        command.env("KIRA_AGENT_SHELL_PATH", shell_path);
+    }
     if let Some(provider_api_key) = crate::desktop_signin::stored_credential() {
         command.env("KIRA_AGENT_PROVIDER_API_KEY", provider_api_key);
     }

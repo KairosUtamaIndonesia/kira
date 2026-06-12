@@ -11,6 +11,9 @@ use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
 use thiserror::Error;
 
+use crate::persistence::PersistenceStore;
+use crate::settings::terminal_shell_path;
+
 const TERMINAL_REPLAY_BUFFER_LIMIT: usize = 1_000_000;
 
 #[derive(Clone, Copy, Debug, Deserialize)]
@@ -138,16 +141,16 @@ struct TerminalSubscriber {
     id: String,
     on_event: Channel<TerminalEvent>,
 }
-
 #[tauri::command]
 #[allow(
     clippy::needless_pass_by_value,
     reason = "Tauri commands require State by value"
 )]
-pub fn terminal_spawn(
+pub async fn terminal_spawn(
     input: TerminalSpawnInput,
     on_event: Channel<TerminalEvent>,
     registry: tauri::State<'_, TerminalRegistry>,
+    store: tauri::State<'_, PersistenceStore>,
 ) -> Result<(), TerminalError> {
     let pty_size = validate_size(input.size)?;
     let working_directory = validate_working_directory(&input.options.working_directory)?;
@@ -183,7 +186,9 @@ pub fn terminal_spawn(
         }
     }
 
-    let shell = default_shell();
+    let shell = terminal_shell_path(store.pool())
+        .await
+        .unwrap_or_else(default_shell);
     let pty_system = native_pty_system();
     let pair = pty_system
         .openpty(pty_size)
@@ -444,7 +449,6 @@ fn validate_size(size: TerminalSize) -> Result<PtySize, TerminalError> {
 }
 
 fn default_shell() -> String {
-    // TODO(#1): Replace this platform default with a settings-backed shell preference.
     #[cfg(windows)]
     {
         "powershell.exe".to_string()

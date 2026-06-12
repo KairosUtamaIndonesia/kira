@@ -4,7 +4,7 @@ import { GeneralSettings } from "@/features/settings/sections/general/GeneralSet
 
 const generalSettingsSection = {
   id: "general",
-  label: "General",
+  label: "Account",
   description: "Account and organization for this installation.",
   icon: User,
   render: GeneralSettings,
