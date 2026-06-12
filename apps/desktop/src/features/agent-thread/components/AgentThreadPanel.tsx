@@ -16,7 +16,6 @@ import {
 } from "../agentThreadStatusStore";
 import { explorerDropPaths, fileReferenceText } from "../explorerDropUtils";
 import { useAgentThreadConnection } from "../hooks/useAgentThreadConnection";
-import { AgentThreadContextMeter } from "./AgentThreadContextMeter";
 import { AgentThreadRawEventStream } from "./AgentThreadRawEventStream";
 import { AgentThreadTranscript } from "./AgentThreadTranscript";
 import { Composer } from "./Composer";
@@ -142,12 +141,12 @@ function AgentThreadPanel({ api, params, onRename }: AgentThreadPanelProps) {
             threadId={params.threadId}
             folderPath={params.folderPath}
             runtimeState={runtimeState}
+            contextUsageState={contextUsageState}
             isCompacting={isCompacting}
             sendPrompt={sendPrompt}
             runSlashCommandAction={runSlashCommandAction}
             isDropTargetActive={isDraggingFile}
           />
-          <AgentThreadContextMeter state={contextUsageState} />
         </div>
       </footer>
     </section>

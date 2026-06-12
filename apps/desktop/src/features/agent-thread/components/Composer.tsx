@@ -20,11 +20,15 @@ import { getExplorerFileReferenceSuggestions } from "@/features/explorer/api/exp
 import { cn } from "@/lib/utils";
 
 import type { ComposerSlashCommand } from "../commands/slashCommands";
-import type { AgentThreadRuntimeState } from "../hooks/useAgentThreadConnection";
+import type {
+  AgentThreadContextUsageState,
+  AgentThreadRuntimeState,
+} from "../hooks/useAgentThreadConnection";
 
 import { clearAgentThreadDraft, useAgentThreadDraft } from "../agentThreadDraftStore";
 import { explorerDropPaths, fileReferenceText } from "../explorerDropUtils";
 import { useSlashCommands } from "../hooks/useSlashCommands";
+import { AgentThreadContextMeter } from "./AgentThreadContextMeter";
 
 type ComposerSlashCommandAction = "compact";
 
@@ -32,6 +36,7 @@ type ComposerProps = {
   threadId: string;
   folderPath: string;
   runtimeState: AgentThreadRuntimeState;
+  contextUsageState: AgentThreadContextUsageState;
   isCompacting: boolean;
   isDropTargetActive?: boolean;
   sendPrompt: (prompt: string) => Promise<boolean>;
@@ -76,6 +81,7 @@ function Composer({
   threadId,
   folderPath,
   runtimeState,
+  contextUsageState,
   isCompacting,
   isDropTargetActive = false,
   sendPrompt,
@@ -455,16 +461,10 @@ function Composer({
           </Button>
         )}
       </div>
-      {slashPickerState.status === "closed" && errorMessage === undefined && (
-        <p className="mt-1 px-1 text-xs text-muted-foreground">
-          Type <span className="font-mono text-foreground/80">/</span> to explore commands.
-        </p>
-      )}
-      {errorMessage !== undefined && (
-        <p role="alert" className="mt-1 px-1 text-xs text-destructive">
-          {errorMessage}
-        </p>
-      )}
+      <div className="mt-1 flex items-center justify-between px-1">
+        <span>{composerFootnote(errorMessage, slashPickerState.status === "closed")}</span>
+        <AgentThreadContextMeter state={contextUsageState} />
+      </div>
     </form>
   );
 }
@@ -929,6 +929,24 @@ function handlePromptKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
   if (form instanceof HTMLFormElement) {
     form.requestSubmit();
   }
+}
+
+function composerFootnote(error: string | undefined, slashPickerClosed: boolean) {
+  if (error !== undefined) {
+    return (
+      <span role="alert" className="text-xs text-destructive">
+        {error}
+      </span>
+    );
+  }
+  if (slashPickerClosed) {
+    return (
+      <span className="text-xs text-muted-foreground">
+        Type <span className="font-mono text-foreground/80">/</span> to explore commands.
+      </span>
+    );
+  }
+  return <></>;
 }
 
 export { Composer };
