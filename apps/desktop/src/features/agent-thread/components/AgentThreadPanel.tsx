@@ -16,6 +16,7 @@ import {
 } from "../agentThreadStatusStore";
 import { explorerDropPaths, fileReferenceText } from "../explorerDropUtils";
 import { useAgentThreadConnection } from "../hooks/useAgentThreadConnection";
+import { AgentThreadCompactionCard } from "./AgentThreadCompactionCard";
 import { AgentThreadRawEventStream } from "./AgentThreadRawEventStream";
 import { AgentThreadTranscript } from "./AgentThreadTranscript";
 import { Composer } from "./Composer";
@@ -47,6 +48,7 @@ function AgentThreadPanel({ api, params, onRename }: AgentThreadPanelProps) {
   );
 
   const {
+    compactionSummary,
     contextUsageState,
     isCompacting,
     runSlashCommandAction,
@@ -147,6 +149,12 @@ function AgentThreadPanel({ api, params, onRename }: AgentThreadPanelProps) {
             runSlashCommandAction={runSlashCommandAction}
             isDropTargetActive={isDraggingFile}
           />
+          {compactionSummary !== undefined ? (
+            <AgentThreadCompactionCard
+              tokensBefore={compactionSummary.tokensBefore}
+              summary={compactionSummary.summary}
+            />
+          ) : undefined}
         </div>
       </footer>
     </section>

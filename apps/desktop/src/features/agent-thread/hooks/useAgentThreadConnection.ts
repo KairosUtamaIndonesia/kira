@@ -52,6 +52,12 @@ type AgentThreadTitleGenerationState =
   | { status: "generating" }
   | { status: "done" };
 
+type CompactionSummary = {
+  tokensBefore: number;
+  summary: string;
+  timestamp: number;
+};
+
 type UseAgentThreadConnectionOptions = {
   onAutoTitled?: (title: string) => void;
 };
@@ -98,6 +104,7 @@ function useAgentThreadConnection(
   );
   const [transcript, setTranscript] = useState(emptyPiTranscriptState);
   const [isCompacting, setIsCompacting] = useState(false);
+  const [compactionSummary, setCompactionSummary] = useState<CompactionSummary>();
   const isCompactingRef = useRef(false);
   const socketRef = useRef<PiAgentSocket | undefined>(void 0);
   const runtimeStateRef = useRef(runtimeState);
@@ -117,6 +124,15 @@ function useAgentThreadConnection(
         setIsCompacting(true);
       } else if (event.type === "compaction_end") {
         setIsCompacting(false);
+        if (event.result !== undefined && isRecord(event.result)) {
+          const result = event.result;
+          const summary = typeof result.summary === "string" ? result.summary : undefined;
+          const tokensBefore =
+            typeof result.tokensBefore === "number" ? result.tokensBefore : undefined;
+          if (summary !== undefined && tokensBefore !== undefined) {
+            setCompactionSummary({ tokensBefore, summary, timestamp: Date.now() });
+          }
+        }
       }
     }
   }
@@ -323,6 +339,7 @@ function useAgentThreadConnection(
 
   return {
     contextUsageState,
+    compactionSummary,
     isCompacting,
     runSlashCommandAction,
     transcript,
