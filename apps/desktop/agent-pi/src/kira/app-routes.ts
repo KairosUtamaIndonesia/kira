@@ -109,7 +109,11 @@ appRoutes.get("/agent-threads/:threadId/session", async (context) => {
     const threadId = context.req.param("threadId");
     const agentThreadContext = requireAgentThreadContext(threadId);
     const host = await getOrCreateAgentSession(agentThreadContext);
-    const contextUsage = contextUsageFromEntries(await host.session.sessionManager.getEntries());
+    const entries = await host.session.sessionManager.getEntries();
+    const contextUsage = contextUsageFromEntries(entries);
+    const latestCompaction = entries.findLast((entry) => entry.type === "compaction") as
+      | { summary?: string; tokensBefore?: number }
+      | undefined;
     return context.json({
       messages: host.session.messages,
       sessionId: host.session.sessionId,
@@ -117,6 +121,12 @@ appRoutes.get("/agent-threads/:threadId/session", async (context) => {
         contextUsage === undefined
           ? undefined
           : { ...contextUsage, updatedAt: new Date().toISOString() },
+      compaction:
+        latestCompaction !== undefined &&
+        typeof latestCompaction.summary === "string" &&
+        typeof latestCompaction.tokensBefore === "number"
+          ? { summary: latestCompaction.summary, tokensBefore: latestCompaction.tokensBefore }
+          : undefined,
     });
   } catch (error) {
     return context.json({ error: error instanceof Error ? error.message : String(error) }, 400);

@@ -188,6 +188,9 @@ function useAgentThreadConnection(
             ? { status: "empty" }
             : { status: "ready", usage: session.contextUsage },
         );
+        if (session.compaction !== undefined) {
+          setCompactionSummary({ ...session.compaction, timestamp: Date.now() });
+        }
         setRuntimeState({ status: "connecting", baseUrl: runtime.baseUrl });
         socket = PiAgentSocket.connect({
           baseUrl: runtime.baseUrl,
@@ -648,6 +651,7 @@ async function delay(durationMs: number) {
 type PiSessionPayload = {
   messages: PiMessage[];
   contextUsage: AgentThreadContextUsage | undefined;
+  compaction: { tokensBefore: number; summary: string } | undefined;
 };
 
 async function loadPiSession(
@@ -664,7 +668,12 @@ async function loadPiSession(
   if (!response.ok) {
     throw new Error(`Failed to load Pi session: ${response.status} ${await response.text()}`);
   }
-  const payload = (await response.json()) as { messages?: unknown[]; contextUsage?: unknown };
+  const payload = (await response.json()) as {
+    messages?: unknown[];
+    contextUsage?: unknown;
+    compaction?: unknown;
+  };
+  const compaction = isCompactionSummary(payload.compaction) ? payload.compaction : undefined;
   return {
     messages: Array.isArray(payload.messages)
       ? payload.messages.filter((message): message is PiMessage => isRecord(message))
@@ -672,6 +681,7 @@ async function loadPiSession(
     contextUsage: isAgentThreadContextUsage(payload.contextUsage)
       ? payload.contextUsage
       : undefined,
+    compaction,
   };
 }
 function isAgentThreadContextUsage(value: unknown): value is AgentThreadContextUsage {
@@ -686,6 +696,12 @@ function isAgentThreadContextUsage(value: unknown): value is AgentThreadContextU
     typeof value.modelId === "string" &&
     isRecord(value.usage) &&
     isRecord(value.cost)
+  );
+}
+
+function isCompactionSummary(value: unknown): value is { tokensBefore: number; summary: string } {
+  return (
+    isRecord(value) && typeof value.tokensBefore === "number" && typeof value.summary === "string"
   );
 }
 
