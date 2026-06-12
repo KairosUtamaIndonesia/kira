@@ -25,8 +25,8 @@ export function readProjectPath(): string {
   return readRequiredEnv("KIRA_AGENT_PROJECT_PATH");
 }
 
-export function readPiSessionRoot(): string {
-  return readRequiredEnv("KIRA_AGENT_PI_SESSION_ROOT");
+export function readPiDataDir(): string {
+  return readRequiredEnv("KIRA_AGENT_PI_DATA_DIR");
 }
 
 export function readAgentProviderApiKey(): string | undefined {

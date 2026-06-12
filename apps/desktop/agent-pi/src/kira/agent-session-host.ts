@@ -12,7 +12,9 @@ import { join } from "node:path";
 
 import type { AgentThreadContext } from "./agent-thread-context";
 
-import { readAgentProviderApiKey, readOptionalEnv, readPiSessionRoot } from "./env";
+import { readAgentProviderApiKey, readOptionalEnv } from "./env";
+import memoryExtension from "./extensions/memory";
+import { AGENT_ROOT } from "./extensions/memory/paths.js";
 import { getDefaultModel } from "./model-catalog";
 import { piModelFromConfig } from "./pi-model";
 import { ToolUiBroker } from "./tool-ui-broker";
@@ -53,7 +55,7 @@ async function buildAgentSession(context: AgentThreadContext): Promise<AgentSess
   const authStorage = AuthStorage.inMemory();
   authStorage.setRuntimeApiKey(model.provider, apiKey);
 
-  const sessionDir = join(readPiSessionRoot(), context.threadId);
+  const sessionDir = join(AGENT_ROOT, "sessions", context.threadId);
   mkdirSync(sessionDir, { recursive: true });
   const sessionFile = join(sessionDir, "session.jsonl");
 
@@ -63,7 +65,8 @@ async function buildAgentSession(context: AgentThreadContext): Promise<AgentSess
 
   const resourceLoader = new DefaultResourceLoader({
     cwd: context.projectPath,
-    agentDir: readPiSessionRoot(),
+    agentDir: AGENT_ROOT,
+    extensionFactories: [memoryExtension],
   });
   await resourceLoader.reload();
 
@@ -75,7 +78,7 @@ async function buildAgentSession(context: AgentThreadContext): Promise<AgentSess
     sessionManager: SessionManager.open(sessionFile, sessionDir, context.projectPath),
     customTools: [createAskUserTool(toolUiBroker)],
     resourceLoader,
-    agentDir: readPiSessionRoot(),
+    agentDir: AGENT_ROOT,
     ...(settingsManager !== undefined && { settingsManager }),
   });
   return { session, toolUiBroker };
