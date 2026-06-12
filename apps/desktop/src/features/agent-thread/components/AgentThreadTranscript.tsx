@@ -4,15 +4,21 @@ import type { AgentThreadActivityBlock } from "../agentThreadDisplay";
 import type { PiTranscriptState, RespondToHumanRequest } from "../types";
 
 import { buildAgentThreadTranscript, stringifyUnknown } from "../agentThreadDisplay";
+import { AgentThreadCompactionCard } from "./AgentThreadCompactionCard";
 import { AgentThreadMarkdown } from "./AgentThreadMarkdown";
 import { AgentThreadUserSkillBlock } from "./AgentThreadUserSkillBlock";
 import { toolComponentForName } from "./tools";
 
 type AgentThreadTranscriptProps = {
   transcript: PiTranscriptState;
+  compactionSummary?: { tokensBefore: number; summary: string } | undefined;
   respond: RespondToHumanRequest;
 };
-function AgentThreadTranscript({ transcript, respond }: AgentThreadTranscriptProps) {
+function AgentThreadTranscript({
+  transcript,
+  compactionSummary,
+  respond,
+}: AgentThreadTranscriptProps) {
   const items = buildAgentThreadTranscript(transcript);
   if (items.length === 0) {
     return (
@@ -65,6 +71,14 @@ function AgentThreadTranscript({ transcript, respond }: AgentThreadTranscriptPro
 
         return exhaustiveTranscriptItem(item);
       })}
+      {compactionSummary !== undefined ? (
+        <li className="flex justify-start">
+          <AgentThreadCompactionCard
+            tokensBefore={compactionSummary.tokensBefore}
+            summary={compactionSummary.summary}
+          />
+        </li>
+      ) : undefined}
     </ol>
   );
 }
