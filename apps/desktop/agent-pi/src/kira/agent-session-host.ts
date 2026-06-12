@@ -10,10 +10,9 @@ import {
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
-
 import type { AgentThreadContext } from "./agent-thread-context";
+
 import { readAgentProviderApiKey, readOptionalEnv, readPiSessionRoot } from "./env";
-import memoryExtension from "./extensions/memory";
 import { getDefaultModel } from "./model-catalog";
 import { piModelFromConfig } from "./pi-model";
 import { ToolUiBroker } from "./tool-ui-broker";
@@ -65,7 +64,6 @@ async function buildAgentSession(context: AgentThreadContext): Promise<AgentSess
   const resourceLoader = new DefaultResourceLoader({
     cwd: context.projectPath,
     agentDir: readPiSessionRoot(),
-    extensionFactories: [memoryExtension],
   });
   await resourceLoader.reload();
 
