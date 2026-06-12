@@ -26,7 +26,7 @@ export function resolveMemoryPolicyPrompt(config: MemoryPolicyConfig): string {
 export async function buildPromptContext(
   config: Pick<MemoryConfig, "memoryMode" | "memoryPolicyStyle" | "memoryPolicyCustomText">,
   store: MemoryStore,
-  projectStore: MemoryStore | null,
+  projectStore: MemoryStore | undefined,
   projectName: string,
 ): Promise<string> {
   if (config.memoryMode === "policy-only") {

@@ -19,9 +19,9 @@ export interface MemoryConfig {
   /** Prompt memory mode. Default: policy-only */
   memoryMode: "policy-only" | "legacy-inject";
   /** Policy prompt style used when memoryMode is policy-only. Default: full */
-  memoryPolicyStyle?: "full" | "compact" | "custom" | "none";
+  memoryPolicyStyle?: "full" | "compact" | "custom" | "none" | undefined;
   /** Custom policy prompt text used when memoryPolicyStyle is custom */
-  memoryPolicyCustomText?: string;
+  memoryPolicyCustomText?: string | undefined;
   /** Max chars for MEMORY.md (agent notes). Default: 5000 */
   memoryCharLimit: number;
   /** Max chars for USER.md (user profile). Default: 5000 */
@@ -31,7 +31,7 @@ export interface MemoryConfig {
   /** Turns between background auto-reviews. Default: 10 */
   nudgeInterval: number;
   /** Recent conversation messages included in background review. 0 = all. Default: 0 */
-  reviewRecentMessages?: number;
+  reviewRecentMessages?: number | undefined;
   /** Enable background learning loop. Default: true */
   reviewEnabled: boolean;
   /** Flush memories before compaction. Default: true */
@@ -41,31 +41,31 @@ export interface MemoryConfig {
   /** Minimum user turns before flush triggers. Default: 6 */
   flushMinTurns: number;
   /** Recent conversation messages included in session flush. 0 = all. Default: 0 */
-  flushRecentMessages?: number;
+  flushRecentMessages?: number | undefined;
   /** Override extension storage directory. Default: AGENT_ROOT/data */
-  memoryDir?: string;
+  memoryDir?: string | undefined;
   /** Directory for project-scoped memory (relative to AGENT_ROOT). Default: "projects" */
-  projectsMemoryDir?: string;
+  projectsMemoryDir?: string | undefined;
   /** Session search configuration. Default: { variant: "legacy" } */
-  sessionSearch?: SessionSearchConfig;
+  sessionSearch?: SessionSearchConfig | undefined;
   /** Override model used for child pi -p subprocess LLM calls. Default: unset */
-  llmModelOverride?: string;
+  llmModelOverride?: string | undefined;
   /** Override thinking level used for child pi -p subprocess LLM calls. Default: unset */
-  llmThinkingOverride?: ThinkingLevel;
+  llmThinkingOverride?: ThinkingLevel | undefined;
   /** Strategy when memory is full. Default: auto-consolidate */
-  memoryOverflowStrategy?: MemoryOverflowStrategy;
+  memoryOverflowStrategy?: MemoryOverflowStrategy | undefined;
   /** Legacy alias for memoryOverflowStrategy. Default: true */
   autoConsolidate: boolean;
   /** Detect user corrections and trigger immediate memory save. Default: true */
   correctionDetection: boolean;
   /** Override strong correction regex sources. Missing = defaults; [] = none. */
-  correctionStrongPatterns?: string[];
+  correctionStrongPatterns?: string[] | undefined;
   /** Override weak correction regex sources. Missing = defaults; [] = none. */
-  correctionWeakPatterns?: string[];
+  correctionWeakPatterns?: string[] | undefined;
   /** Override negative correction regex sources. Missing = defaults; [] = none. */
-  correctionNegativePatterns?: string[];
+  correctionNegativePatterns?: string[] | undefined;
   /** Override directive words used after weak correction patterns. Missing = defaults; [] = none. */
-  correctionDirectiveWords?: string[];
+  correctionDirectiveWords?: string[] | undefined;
   /** Inject recent failure memories into the system prompt. Default: true */
   failureInjectionEnabled: boolean;
   /** Maximum age in days for injected failure memories. Default: 7 */
@@ -125,11 +125,11 @@ export interface SkillIndex {
   /** Absolute path to the skill file */
   path: string;
   /** Active project name for project-scoped skills */
-  projectName?: string;
+  projectName?: string | undefined;
   /** Pi skill slug stored in frontmatter and folder name */
   name: string;
   /** Optional human-friendly title preserved for UI output */
-  displayName?: string;
+  displayName?: string | undefined;
   /** Short description shown in skill listings */
   description: string;
   /** ISO date created */
@@ -166,10 +166,10 @@ export interface SkillResult {
  *
  * Returns the concatenated text, truncated to `maxLength` chars.
  */
-export function getMessageText(msg: unknown, maxLength = 500): string | null {
-  if (typeof msg !== "object" || msg === null) return null;
+export function getMessageText(msg: unknown, maxLength = 500): string | undefined {
+  if (typeof msg !== "object" || !msg) return undefined;
   const { role, content } = msg as Record<string, unknown>;
-  if (typeof role !== "string") return null;
+  if (typeof role !== "string") return undefined;
 
   if (typeof content === "string") {
     return content.slice(0, maxLength);
@@ -181,7 +181,7 @@ export function getMessageText(msg: unknown, maxLength = 500): string | null {
       )
       .map((block) => block.text)
       .join("\n");
-    return text.length > 0 ? text.slice(0, maxLength) : null;
+    return text.length > 0 ? text.slice(0, maxLength) : undefined;
   }
-  return null;
+  return undefined;
 }

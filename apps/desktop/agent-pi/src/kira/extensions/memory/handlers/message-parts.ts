@@ -18,7 +18,7 @@ export function collectMessageParts(entries: unknown[], recentMessages = 0): str
     const text = getMessageText(msg);
     if (!text) continue;
 
-    const role = (msg as { role?: unknown } | null)?.role;
+    const role = msg && (msg as { role?: unknown }).role;
     const prefix = role === "user" ? "[USER]" : "[ASSISTANT]";
     parts.push(`${prefix}: ${text}`);
   }

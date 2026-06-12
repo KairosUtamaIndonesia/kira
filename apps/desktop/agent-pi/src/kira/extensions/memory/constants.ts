@@ -174,10 +174,10 @@ export const CORRECTION_STRONG_PATTERNS: RegExp[] = [
 
 /** Weak patterns — only trigger if followed by a directive (verb or "the/that/this") */
 export const CORRECTION_WEAK_PATTERNS: RegExp[] = [
-  /^no[,\.\s!]/i,
-  /^wrong[,\.\s!]/i,
-  /^actually[,\.\s]/i,
-  /^stop[,\.\s!]/i,
+  /^no[,.\s!]/i,
+  /^wrong[,.\s!]/i,
+  /^actually[,.\s]/i,
+  /^stop[,.\s!]/i,
 ];
 
 /** Negative patterns — suppress trigger even if a positive pattern matches */

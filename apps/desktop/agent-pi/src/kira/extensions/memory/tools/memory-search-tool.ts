@@ -66,7 +66,10 @@ Returns matching memory entries with project context and dates.`,
 
       if (!query || query.trim().length === 0) {
         const result: SearchResult = { success: false, message: "query is required" };
-        return { content: [{ type: "text" as const, text: result.message! }], details: result };
+        return {
+          content: [{ type: "text" as const, text: result.message ?? "" }],
+          details: result,
+        };
       }
 
       const stats = getMemoryStats(dbManager);
@@ -76,10 +79,18 @@ Returns matching memory entries with project context and dates.`,
           message:
             "No memories in extended store yet. Use the memory tool with add action to store memories.",
         };
-        return { content: [{ type: "text" as const, text: result.message! }], details: result };
+        return {
+          content: [{ type: "text" as const, text: result.message ?? "" }],
+          details: result,
+        };
       }
 
-      const results = searchMemories(dbManager, query, { project, target, category, limit });
+      const results = searchMemories(dbManager, query, {
+        ...(project !== undefined && { project }),
+        ...(target !== undefined && { target }),
+        ...(category !== undefined && { category: category as MemoryCategory }),
+        limit,
+      });
 
       if (results.length === 0) {
         const result: SearchResult = {
@@ -87,15 +98,24 @@ Returns matching memory entries with project context and dates.`,
           count: 0,
           message: `No memories found matching "${query}". Try a different search term or broader query.`,
         };
-        return { content: [{ type: "text" as const, text: result.message! }], details: result };
+        return {
+          content: [{ type: "text" as const, text: result.message ?? "" }],
+          details: result,
+        };
       }
 
       let output = `Found ${results.length} memories matching "${query}":\n\n`;
 
       for (const entry of results) {
         const projectLabel = entry.project ? `[${entry.project}]` : "[global]";
-        const targetLabel =
-          entry.target === "user" ? "👤" : entry.target === "failure" ? "⚠️" : "🧠";
+        let targetLabel: string;
+        if (entry.target === "user") {
+          targetLabel = "👤";
+        } else if (entry.target === "failure") {
+          targetLabel = "⚠️";
+        } else {
+          targetLabel = "🧠";
+        }
         const categoryLabel = entry.category ? ` [${entry.category}]` : "";
         output += `${targetLabel} ${projectLabel}${categoryLabel} ${entry.content}\n`;
         output += `   Created: ${entry.created} | Last used: ${entry.lastReferenced}\n\n`;

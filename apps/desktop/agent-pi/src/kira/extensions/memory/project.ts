@@ -9,15 +9,15 @@ import * as path from "node:path";
 import { resolveProjectsRoot } from "./paths.js";
 
 export interface ProjectInfo {
-  /** Project name (directory basename), or null if not in a project. */
-  name: string | null;
-  /** Path to the project-scoped memory directory, or null. */
-  memoryDir: string | null;
+  /** Project name (directory basename), or undefined if not in a project. */
+  name: string | undefined;
+  /** Path to the project-scoped memory directory, or undefined. */
+  memoryDir: string | undefined;
 }
 
 export interface ProjectSkillInfo extends ProjectInfo {
-  /** Path to the project-scoped skills directory, or null. */
-  skillsDir: string | null;
+  /** Path to the project-scoped skills directory, or undefined. */
+  skillsDir: string | undefined;
 }
 
 /**
@@ -41,12 +41,12 @@ export function detectProject(projectsMemoryDir = "projects", cwd?: string): Pro
     !resolved ||
     resolved === resolvedHome + "/"
   ) {
-    return { name: null, memoryDir: null };
+    return { name: undefined, memoryDir: undefined };
   }
 
   const name = path.basename(resolved);
   if (!name || name === "." || name === "..") {
-    return { name: null, memoryDir: null };
+    return { name: undefined, memoryDir: undefined };
   }
 
   return {
@@ -62,6 +62,6 @@ export function detectProjectSkills(
   const project = detectProject(projectsMemoryDir, cwd);
   return {
     ...project,
-    skillsDir: project.memoryDir ? path.join(project.memoryDir, "skills") : null,
+    skillsDir: project.memoryDir ? path.join(project.memoryDir, "skills") : undefined,
   };
 }

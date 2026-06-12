@@ -22,39 +22,35 @@ import {
   DEFAULT_FAILURE_INJECTION_MAX_AGE_DAYS,
   DEFAULT_FAILURE_INJECTION_MAX_ENTRIES,
 } from "./constants.js";
-import { normalizeConfiguredMemoryDir, normalizeProjectsMemoryDir } from "./paths.js";
-import { AGENT_ROOT } from "./paths.js";
+import { AGENT_ROOT, normalizeConfiguredMemoryDir, normalizeProjectsMemoryDir } from "./paths.js";
 
-const MEMORY_OVERFLOW_STRATEGIES: readonly MemoryOverflowStrategy[] = [
-  "auto-consolidate",
-  "reject",
-  "fifo-evict",
-];
-const SESSION_SEARCH_VARIANTS: readonly SessionSearchVariant[] = ["legacy", "anchors"];
-const THINKING_LEVELS: readonly ThinkingLevel[] = [
+const MEMORY_OVERFLOW_STRATEGIES: ReadonlySet<MemoryOverflowStrategy> =
+  new Set<MemoryOverflowStrategy>(["auto-consolidate", "reject", "fifo-evict"]);
+const SESSION_SEARCH_VARIANTS: ReadonlySet<SessionSearchVariant> = new Set<SessionSearchVariant>([
+  "legacy",
+  "anchors",
+]);
+const THINKING_LEVELS: ReadonlySet<ThinkingLevel> = new Set<ThinkingLevel>([
   "off",
   "minimal",
   "low",
   "medium",
   "high",
   "xhigh",
-];
+]);
 
 function isMemoryOverflowStrategy(value: unknown): value is MemoryOverflowStrategy {
   return (
-    typeof value === "string" &&
-    MEMORY_OVERFLOW_STRATEGIES.includes(value as MemoryOverflowStrategy)
+    typeof value === "string" && MEMORY_OVERFLOW_STRATEGIES.has(value as MemoryOverflowStrategy)
   );
 }
 
 function isSessionSearchVariant(value: unknown): value is SessionSearchVariant {
-  return (
-    typeof value === "string" && SESSION_SEARCH_VARIANTS.includes(value as SessionSearchVariant)
-  );
+  return typeof value === "string" && SESSION_SEARCH_VARIANTS.has(value as SessionSearchVariant);
 }
 
 function isThinkingLevel(value: unknown): value is ThinkingLevel {
-  return typeof value === "string" && THINKING_LEVELS.includes(value as ThinkingLevel);
+  return typeof value === "string" && THINKING_LEVELS.has(value as ThinkingLevel);
 }
 
 const DEFAULT_CONFIG: MemoryConfig = {
@@ -84,6 +80,11 @@ const DEFAULT_CONFIG: MemoryConfig = {
 
 export const DEFAULT_CONFIG_PATH = path.join(AGENT_ROOT, "config.json");
 
+const isNonNegativeNumber = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0;
+const isStringArray = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((item) => typeof item === "string");
+
 export function loadConfig(configPath = DEFAULT_CONFIG_PATH): MemoryConfig {
   try {
     if (fs.existsSync(configPath)) {
@@ -91,10 +92,6 @@ export function loadConfig(configPath = DEFAULT_CONFIG_PATH): MemoryConfig {
       const parsed = JSON.parse(raw);
       // Merge: override defaults with user config
       const config: MemoryConfig = { ...DEFAULT_CONFIG };
-      const isNonNegativeNumber = (value: unknown): value is number =>
-        typeof value === "number" && Number.isFinite(value) && value >= 0;
-      const isStringArray = (value: unknown): value is string[] =>
-        Array.isArray(value) && value.every((item) => typeof item === "string");
       let hasLegacyAutoConsolidate = false;
       let hasMemoryOverflowStrategy = false;
       if (parsed.memoryMode === "policy-only" || parsed.memoryMode === "legacy-inject")

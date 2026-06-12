@@ -5,17 +5,17 @@ import path from "node:path";
 import { SCHEMA_SQL } from "./schema.js";
 
 type StatementLike = {
-  run: (...args: any[]) => any;
-  get: (...args: any[]) => any;
-  all: (...args: any[]) => any;
+  run: (...args: unknown[]) => unknown;
+  get: (...args: unknown[]) => unknown;
+  all: (...args: unknown[]) => unknown;
 };
 
 type DatabaseLike = {
   prepare: (sql: string) => StatementLike;
   exec: (sql: string) => void;
   close: () => void;
-  pragma?: (query: string, options?: any) => any;
-  transaction?: (fn: any) => any;
+  pragma?: (query: string, options?: unknown) => unknown;
+  transaction?: (fn: unknown) => unknown;
 };
 
 type DatabaseCtor = new (dbPath: string) => DatabaseLike;
@@ -23,7 +23,7 @@ type BunDatabaseInstance = {
   prepare: (sql: string) => StatementLike;
   exec: (sql: string) => void;
   close: (throwOnError?: boolean) => void;
-  transaction?: (fn: any) => any;
+  transaction?: (fn: unknown) => unknown;
 };
 
 function createBunCompatDatabaseCtor(require: NodeRequire): DatabaseCtor {
@@ -50,7 +50,7 @@ function createBunCompatDatabaseCtor(require: NodeRequire): DatabaseCtor {
       this.db.close();
     }
 
-    transaction(fn: any): any {
+    transaction(fn: unknown): unknown {
       if (!this.db.transaction) {
         return undefined;
       }
@@ -67,18 +67,13 @@ function loadDatabaseCtor(): DatabaseCtor {
     return createBunCompatDatabaseCtor(require);
   }
 
-  try {
-    const mod = require("better-sqlite3") as { default?: DatabaseCtor } | DatabaseCtor;
-    return (mod as { default?: DatabaseCtor }).default ?? (mod as DatabaseCtor);
-  } catch (err) {
-    throw err;
-  }
+  const mod = require("better-sqlite3") as { default?: DatabaseCtor } | DatabaseCtor;
+  return (mod as { default?: DatabaseCtor }).default ?? (mod as DatabaseCtor);
 }
 
 const Database = loadDatabaseCtor();
-
 export class DatabaseManager {
-  private db: DatabaseLike | null = null;
+  private db: DatabaseLike | undefined = undefined;
   private readonly dbPath: string;
 
   constructor(memoryDir: string) {
@@ -169,7 +164,7 @@ export class DatabaseManager {
     const tableSqlRow = db
       .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='memories'")
       .get() as { sql?: string } | undefined;
-    const tableSql = tableSqlRow?.sql ?? "";
+    const tableSql = (tableSqlRow && tableSqlRow.sql) ?? "";
     if (!tableSql) return;
 
     // Legacy schema allowed only memory/user. New schema must allow failure too.
@@ -240,7 +235,7 @@ export class DatabaseManager {
 
       db.exec("DROP TABLE memories");
       db.exec("ALTER TABLE memories_new RENAME TO memories");
-    });
+    }) as () => void;
 
     db.exec("PRAGMA foreign_keys = OFF");
     try {
@@ -271,7 +266,7 @@ export class DatabaseManager {
         /* best effort */
       }
       this.db.close();
-      this.db = null;
+      this.db = undefined;
     }
   }
 

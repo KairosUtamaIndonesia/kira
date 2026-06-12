@@ -24,8 +24,11 @@ export function parseFrontmatter(raw: string): ParsedSkillFile {
   const match = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
   if (!match) return { meta: {}, body: raw.trim() };
 
+  const frontmatter = match[1] ?? "";
+  const body = match[2] ?? "";
+
   const meta: Record<string, string> = {};
-  for (const line of match[1].split("\n")) {
+  for (const line of frontmatter.split("\n")) {
     const idx = line.indexOf(":");
     if (idx > 0) {
       const key = line.slice(0, idx).trim();
@@ -34,7 +37,7 @@ export function parseFrontmatter(raw: string): ParsedSkillFile {
     }
   }
 
-  return { meta, body: match[2].trim() };
+  return { meta, body: body.trim() };
 }
 
 function yamlDoubleQuoted(value: string): string {
@@ -74,7 +77,7 @@ export function slugify(name: string): string {
 }
 
 export function today(): string {
-  return new Date().toISOString().split("T")[0];
+  return new Date().toISOString().slice(0, 10);
 }
 
 const SKILL_SIMILARITY_STOP_WORDS = new Set([
@@ -143,7 +146,7 @@ export function buildSkillId(scope: SkillScope, slug: string, projectName?: stri
 
 export function parseSkillId(
   skillId: string,
-): { scope: SkillScope; projectName?: string; slug: string } | null {
+): { scope: SkillScope; projectName?: string; slug: string } | undefined {
   if (skillId.startsWith("global:")) {
     return { scope: "global", slug: skillId.slice("global:".length) };
   }
@@ -151,7 +154,7 @@ export function parseSkillId(
   if (skillId.startsWith("project:")) {
     const rest = skillId.slice("project:".length);
     const idx = rest.indexOf(":");
-    if (idx <= 0 || idx === rest.length - 1) return null;
+    if (idx <= 0 || idx === rest.length - 1) return undefined;
     return {
       scope: "project",
       projectName: rest.slice(0, idx),
@@ -159,7 +162,7 @@ export function parseSkillId(
     };
   }
 
-  return null;
+  return undefined;
 }
 
 export async function exists(filePath: string): Promise<boolean> {

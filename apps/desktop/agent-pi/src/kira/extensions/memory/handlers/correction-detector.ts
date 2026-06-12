@@ -36,7 +36,7 @@ import type { AgentTool } from "@earendil-works/pi-agent-core";
 function extractCorrectionDirective(text: string): string {
   // Remove common correction starters
   const cleaned = text
-    .replace(/^(no|wrong|actually|stop|don'?t|that'?s not|I said|I told you)[,\.\s!]+/i, "")
+    .replace(/^(no|wrong|actually|stop|don'?t|that'?s not|I said|I told you)[,.\s!]+/i, "")
     .replace(/^(please\s+)?/i, "")
     .trim();
   return cleaned || text;
@@ -80,18 +80,21 @@ type CorrectionPatternConfig = Pick<
 
 export function isCorrection(text: string, config?: CorrectionPatternConfig): boolean {
   const negativePatterns = compileCorrectionPatterns(
-    config?.correctionNegativePatterns,
+    config && config.correctionNegativePatterns,
     CORRECTION_NEGATIVE_PATTERNS,
   );
   const strongPatterns = compileCorrectionPatterns(
-    config?.correctionStrongPatterns,
+    config && config.correctionStrongPatterns,
     CORRECTION_STRONG_PATTERNS,
   );
   const weakPatterns = compileCorrectionPatterns(
-    config?.correctionWeakPatterns,
+    config && config.correctionWeakPatterns,
     CORRECTION_WEAK_PATTERNS,
   );
-  const directiveWords = config?.correctionDirectiveWords ?? CORRECTION_DIRECTIVE_WORDS;
+  const directiveWords =
+    config && config.correctionDirectiveWords
+      ? config.correctionDirectiveWords
+      : CORRECTION_DIRECTIVE_WORDS;
 
   // Check negative patterns first — suppress even if positive matches
   for (const pattern of negativePatterns) {
@@ -125,12 +128,12 @@ export function isCorrection(text: string, config?: CorrectionPatternConfig): bo
 export function setupCorrectionDetector(
   pi: ExtensionAPI,
   store: MemoryStore,
-  projectStore: MemoryStore | null,
+  projectStore: MemoryStore | undefined,
   config: MemoryConfig,
-  dbManager: DatabaseManager | null = null,
+  dbManager: DatabaseManager | undefined = undefined,
   model: KiraModel,
   tools: AgentTool[],
-  projectName?: string | null,
+  projectName?: string | undefined,
 ): void {
   if (!config.correctionDetection) return;
 
@@ -149,7 +152,7 @@ export function setupCorrectionDetector(
   });
 
   // Trigger on turn_end (we need full context: user correction + what agent said)
-  pi.on("turn_end", async (event, ctx) => {
+  pi.on("turn_end", async (_event, ctx) => {
     if (!pendingCorrection) {
       turnsSinceLastCorrection++;
       return;
@@ -184,7 +187,7 @@ export function setupCorrectionDetector(
       const currentUser = store.getUserEntries().join(ENTRY_DELIMITER);
       const currentProject = projectStore
         ? projectStore.getMemoryEntries().join(ENTRY_DELIMITER)
-        : null;
+        : undefined;
 
       const userPrompt = [
         "--- Current Memory ---",
@@ -194,7 +197,7 @@ export function setupCorrectionDetector(
         currentUser || "(empty)",
       ];
 
-      if (currentProject !== null) {
+      if (currentProject !== undefined) {
         userPrompt.push("", "--- Current Project Memory ---", currentProject || "(empty)");
       }
 
@@ -222,12 +225,14 @@ export function setupCorrectionDetector(
         if (correctionText) {
           const directive = extractCorrectionDirective(correctionText);
           const failureReason = "User corrected the agent";
-          const scopedProjectName = projectStore ? projectName?.trim() || null : null;
-          const addResult = await store.addFailure(directive, {
+          const scopedProjectName =
+            projectStore && projectName ? projectName.trim() || undefined : undefined;
+          const failureOpts: Parameters<typeof store.addFailure>[1] = {
             category: "correction",
             failureReason,
-            project: scopedProjectName ?? undefined,
-          });
+            ...(scopedProjectName !== undefined && { project: scopedProjectName }),
+          };
+          const addResult = await store.addFailure(directive, failureOpts);
 
           if (addResult.success && dbManager) {
             try {

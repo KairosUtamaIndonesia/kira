@@ -25,8 +25,6 @@ import type {
 
 import {
   ENTRY_DELIMITER,
-  DEFAULT_MEMORY_CHAR_LIMIT,
-  DEFAULT_USER_CHAR_LIMIT,
   DEFAULT_FAILURE_INJECTION_MAX_AGE_DAYS,
   DEFAULT_FAILURE_INJECTION_MAX_ENTRIES,
   MEMORY_FILE,
@@ -46,7 +44,7 @@ export class MemoryStore {
         target: "memory" | "user" | "failure",
         signal?: AbortSignal,
       ) => Promise<ConsolidationResult>)
-    | null = null;
+    | undefined = undefined;
 
   constructor(private config: MemoryConfig) {}
 
@@ -134,7 +132,7 @@ export class MemoryStore {
     content: string,
     signal?: AbortSignal,
   ): Promise<MemoryResult> {
-    return this._add(target, content, signal);
+    return this.addCore(target, content, signal);
   }
 
   async addFailure(
@@ -148,7 +146,7 @@ export class MemoryStore {
     },
   ): Promise<MemoryResult> {
     const failureText = this.buildFailureMemoryText(content, options);
-    return this._add(
+    return this.addCore(
       "failure",
       failureText,
       undefined,
@@ -160,7 +158,7 @@ export class MemoryStore {
   getFailureEntries(maxAgeDays = 7): string[] {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - maxAgeDays);
-    const cutoffStr = cutoff.toISOString().split("T")[0];
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
 
     return this.failureEntries
       .filter((entry) => {
@@ -170,11 +168,11 @@ export class MemoryStore {
       .map((entry) => this.stripMetadata(entry));
   }
 
-  private async _add(
+  private async addCore(
     target: "memory" | "user" | "failure",
     content: string,
     signal?: AbortSignal,
-    _retriesLeft = 1,
+    retriesLeft = 1,
     addedMessage = "Entry added.",
   ): Promise<MemoryResult> {
     content = content.trim();
@@ -193,7 +191,7 @@ export class MemoryStore {
     }
 
     // Encode metadata: both dates = today
-    const today = new Date().toISOString().split("T")[0];
+    const today = new Date().toISOString().slice(0, 10);
     const encoded = this.encodeEntry(content, today, today);
 
     const newTotal = [...entries, encoded].join(ENTRY_DELIMITER).length;
@@ -205,14 +203,14 @@ export class MemoryStore {
       }
 
       // Auto-consolidate once if configured — limit retries to prevent infinite loops
-      if (strategy === "auto-consolidate" && this.consolidator && _retriesLeft > 0) {
+      if (strategy === "auto-consolidate" && this.consolidator && retriesLeft > 0) {
         try {
           const result = await this.consolidator(target, signal);
           if (result.consolidated) {
             // CRITICAL: reload from disk — child process modified files, our arrays are stale
             await this.loadFromDisk();
             // Retry the add exactly once (retriesLeft = 0 means no more consolidation)
-            return this._add(target, content, signal, _retriesLeft - 1, addedMessage);
+            return this.addCore(target, content, signal, retriesLeft - 1, addedMessage);
           }
         } catch {
           // Consolidation failed — fall through to error
@@ -243,7 +241,8 @@ export class MemoryStore {
     const evictedEntries: string[] = [];
 
     while ([...remaining, encoded].join(ENTRY_DELIMITER).length > limit && remaining.length > 0) {
-      const evicted = remaining.shift()!;
+      const evicted = remaining.shift();
+      if (evicted === undefined) break;
       evictedEntries.push(this.stripMetadata(evicted));
     }
 
@@ -305,10 +304,15 @@ export class MemoryStore {
       };
     }
 
-    const idx = entries.indexOf(matches[0]);
+    const matchedEntry = matches[0];
+    if (matchedEntry === undefined) {
+      return { success: false, error: `No entry matched '${oldText}'.` };
+    }
+
+    const idx = entries.indexOf(matchedEntry);
     // Preserve original created date, update last_referenced to today
-    const decoded = this.decodeEntry(matches[0]);
-    const today = new Date().toISOString().split("T")[0];
+    const decoded = this.decodeEntry(matchedEntry);
+    const today = new Date().toISOString().slice(0, 10);
     const encoded = this.encodeEntry(newContent, decoded.created, today);
 
     const testEntries = [...entries];
@@ -348,7 +352,12 @@ export class MemoryStore {
       };
     }
 
-    const idx = entries.indexOf(matches[0]);
+    const matchedEntry = matches[0];
+    if (matchedEntry === undefined) {
+      return { success: false, error: `No entry matched '${oldText}'.` };
+    }
+
+    const idx = entries.indexOf(matchedEntry);
     entries.splice(idx, 1);
     this.setEntries(target, entries);
     await this.saveToDisk(target);
@@ -415,11 +424,12 @@ export class MemoryStore {
    */
   private decodeEntry(raw: string): { text: string; created: string; lastReferenced: string } {
     const match = raw.match(/^(.*?)\s*<!--\s*created=([^,]+),\s*last=([^>]+)\s*-->\s*$/);
-    if (match) {
-      return { text: match[1].trim(), created: match[2].trim(), lastReferenced: match[3].trim() };
+    const [, g1, g2, g3] = match ?? [];
+    if (g1 && g2 && g3) {
+      return { text: g1.trim(), created: g2.trim(), lastReferenced: g3.trim() };
     }
     // Legacy entry without metadata — use today as default
-    const today = new Date().toISOString().split("T")[0];
+    const today = new Date().toISOString().split("T")[0] ?? "";
     return { text: raw.trim(), created: today, lastReferenced: today };
   }
 

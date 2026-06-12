@@ -25,7 +25,7 @@ async function moveFileSafe(source: string, target: string): Promise<void> {
     await fs.rename(source, target);
     return;
   } catch (error) {
-    const code = (error as NodeJS.ErrnoException)?.code;
+    const code = (error as NodeJS.ErrnoException) && (error as NodeJS.ErrnoException).code;
     if (code !== "EXDEV") throw error;
   }
 
@@ -41,36 +41,38 @@ async function moveDirContents(
   await fs.mkdir(targetDir, { recursive: true });
 
   const entries = await fs.readdir(sourceDir, { withFileTypes: true });
-  for (const entry of entries) {
-    const sourcePath = path.join(sourceDir, entry.name);
-    const targetPath = path.join(targetDir, entry.name);
+  await Promise.all(
+    entries.map(async (entry) => {
+      const sourcePath = path.join(sourceDir, entry.name);
+      const targetPath = path.join(targetDir, entry.name);
 
-    if (!(await pathExists(targetPath))) {
-      try {
-        await moveFileSafe(sourcePath, targetPath);
-        result.moved++;
-      } catch (error) {
-        result.warnings.push(
-          `${sourcePath}: ${error instanceof Error ? error.message : String(error)}`,
-        );
+      if (!(await pathExists(targetPath))) {
+        try {
+          await moveFileSafe(sourcePath, targetPath);
+          result.moved++;
+        } catch (error) {
+          result.warnings.push(
+            `${sourcePath}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+        return;
       }
-      continue;
-    }
 
-    if (entry.isDirectory()) {
-      await moveDirContents(sourcePath, targetPath, result);
-      result.merged++;
-      try {
-        const remaining = await fs.readdir(sourcePath);
-        if (remaining.length === 0) await fs.rmdir(sourcePath);
-      } catch {
-        // best effort
+      if (entry.isDirectory()) {
+        await moveDirContents(sourcePath, targetPath, result);
+        result.merged++;
+        try {
+          const remaining = await fs.readdir(sourcePath);
+          if (remaining.length === 0) await fs.rmdir(sourcePath);
+        } catch {
+          // best effort
+        }
+        return;
       }
-      continue;
-    }
 
-    result.skipped++;
-  }
+      result.skipped++;
+    }),
+  );
 }
 
 /**

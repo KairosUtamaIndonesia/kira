@@ -8,34 +8,38 @@ const DEFAULT_MAX_LINES = 500000;
 const LIST_FIELDS = new Set(["all", "any", "exclude"]);
 const VALUE_FIELDS = new Set(["from", "to", "cwd", "limit"]);
 
+function isListField(field: string): field is "all" | "any" | "exclude" {
+  return LIST_FIELDS.has(field);
+}
+
 export interface SessionAnchorRange {
   path: string;
   startLine: number;
   endLine: number;
-  sessionId?: string;
-  cwd?: string;
-  startTime?: string;
-  endTime?: string;
-  score?: number;
+  sessionId?: string | undefined;
+  cwd?: string | undefined;
+  startTime?: string | undefined;
+  endTime?: string | undefined;
+  score?: number | undefined;
   reason: string;
 }
 
 export interface SessionAnchorSearchResult {
   success: boolean;
   ranges: SessionAnchorRange[];
-  message?: string;
+  message?: string | undefined;
 }
 
 export interface SessionAnchorSearchOptions {
-  sessionsDir?: string;
-  maxFiles?: number;
-  maxLines?: number;
+  sessionsDir?: string | undefined;
+  maxFiles?: number | undefined;
+  maxLines?: number | undefined;
 }
 
 interface ParsedAnchorRequest {
-  from?: Date;
-  to?: Date;
-  cwd?: string;
+  from?: Date | undefined;
+  to?: Date | undefined;
+  cwd?: string | undefined;
   limit: number;
   all: string[];
   any: string[];
@@ -47,10 +51,10 @@ interface ParsedAnchorRequest {
 interface LineHit {
   path: string;
   lineNumber: number;
-  sessionId?: string;
-  cwd?: string;
-  timestamp?: string;
-  timestampMs?: number;
+  sessionId?: string | undefined;
+  cwd?: string | undefined;
+  timestamp?: string | undefined;
+  timestampMs?: number | undefined;
   text: string;
   score: number;
   reason: string;
@@ -60,10 +64,10 @@ interface PendingRange {
   path: string;
   startLine: number;
   endLine: number;
-  sessionId?: string;
-  cwd?: string;
-  startTime?: string;
-  endTime?: string;
+  sessionId?: string | undefined;
+  cwd?: string | undefined;
+  startTime?: string | undefined;
+  endTime?: string | undefined;
   score: number;
   reason: string;
   text: string;
@@ -90,7 +94,7 @@ export function searchSessionAnchors(
     };
   }
 
-  const files = findJsonlFiles(options.sessionsDir).sort();
+  const files = findJsonlFiles(options.sessionsDir).toSorted();
   const maxFiles = options.maxFiles ?? DEFAULT_MAX_FILES;
   const maxLines = options.maxLines ?? DEFAULT_MAX_LINES;
   if (files.length > maxFiles) {
@@ -141,17 +145,20 @@ function parseMarkdownRequest(
   const fields = new Map<string, string>();
   const lists: Record<"all" | "any" | "exclude", string[]> = { all: [], any: [], exclude: [] };
   const seen = new Set<string>();
-  let currentList: "all" | "any" | "exclude" | null = null;
+  let currentList: "all" | "any" | "exclude" | undefined = undefined;
 
   const lines = markdown.split(/\r?\n/);
   for (const line of lines) {
     const trimmed = line.trim();
     if (trimmed.length === 0) continue;
 
-    const fieldMatch = /^([A-Za-z][A-Za-z0-9_-]*):\s*(.*)$/.exec(trimmed);
-    if (fieldMatch) {
-      const field = fieldMatch[1];
-      const value = fieldMatch[2];
+    const fieldMatch = /^(?<field>[A-Za-z][A-Za-z0-9_-]*):\s*(?<value>.*)$/.exec(trimmed);
+    if (fieldMatch !== null && fieldMatch.groups !== undefined) {
+      const field = fieldMatch.groups.field;
+      const value = fieldMatch.groups.value ?? "";
+      if (field === undefined) {
+        return { success: false, message: `Invalid markdown line: ${trimmed}` };
+      }
 
       if (!VALUE_FIELDS.has(field) && !LIST_FIELDS.has(field)) {
         return {
@@ -164,24 +171,24 @@ function parseMarkdownRequest(
       }
       seen.add(field);
 
-      if (LIST_FIELDS.has(field)) {
+      if (isListField(field)) {
         if (value.trim().length > 0) {
           return {
             success: false,
             message: `Invalid list section '${field}'. Use '${field}:' followed by '- item' lines.`,
           };
         }
-        currentList = field as "all" | "any" | "exclude";
+        currentList = field;
       } else {
         fields.set(field, value.trim());
-        currentList = null;
+        currentList = undefined;
       }
       continue;
     }
 
     const listMatch = /^-\s+(.*)$/.exec(trimmed);
     if (listMatch && currentList) {
-      const term = listMatch[1].trim();
+      const term = (listMatch[1] ?? "").trim();
       if (term.length === 0) {
         return {
           success: false,
@@ -250,7 +257,7 @@ function parseMarkdownRequest(
   };
 }
 
-function parseDateTime(value: string, boundary: "from" | "to"): Date | null {
+function parseDateTime(value: string, boundary: "from" | "to"): Date | undefined {
   const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (dateOnly) {
     const year = Number(dateOnly[1]);
@@ -261,13 +268,13 @@ function parseDateTime(value: string, boundary: "from" | "to"): Date | null {
         ? new Date(year, month - 1, day, 0, 0, 0, 0)
         : new Date(year, month - 1, day, 23, 59, 59, 999);
     if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
-      return null;
+      return undefined;
     }
     return date;
   }
 
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
+  return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
 function findJsonlFiles(dir: string): string[] {
@@ -304,7 +311,7 @@ function searchJsonlFile(
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
-    if (line.trim().length === 0) continue;
+    if (!line || line.trim().length === 0) continue;
 
     scannedLines += 1;
     if (scannedLines > maxLines) {
@@ -400,7 +407,7 @@ function mergeAdjacentHits(hits: LineHit[]): PendingRange[] {
 }
 
 function sortRanges(ranges: PendingRange[], textConstrained: boolean): PendingRange[] {
-  return [...ranges].sort((a, b) => {
+  return ranges.toSorted((a, b) => {
     if (textConstrained && b.score !== a.score) return b.score - a.score;
     const timeCompare = Date.parse(a.startTime ?? "") - Date.parse(b.startTime ?? "");
     if (!Number.isNaN(timeCompare) && timeCompare !== 0) return timeCompare;

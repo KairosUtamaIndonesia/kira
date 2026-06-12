@@ -82,7 +82,7 @@ export function registerConsolidateCommand(
   model: KiraModel,
   tools: AgentTool[],
   timeoutMs: number = 60000,
-  projectStore: MemoryStore | null = null,
+  projectStore: MemoryStore | undefined = undefined,
   projectName?: string | null,
 ): void {
   pi.registerCommand("memory-consolidate", {
@@ -119,35 +119,35 @@ export function registerConsolidateCommand(
         // with the consolidation work rather than failing before it starts.
       }
 
-      for (const item of targets) {
-        const entries = entriesForTarget(item.store, item.target);
+      const consolidatedResults = await Promise.all(
+        targets.map(async (item) => {
+          const entries = entriesForTarget(item.store, item.target);
 
-        if (entries.length === 0) {
-          results.push(`${item.label}: (empty, nothing to consolidate)`);
-          continue;
-        }
+          if (entries.length === 0) {
+            return `${item.label}: (empty, nothing to consolidate)`;
+          }
 
-        try {
-          ctx.ui.notify(`⏳ Consolidating ${item.label}...`, "info");
-        } catch {
-          // Best-effort progress feedback only.
-        }
-        const result = await triggerConsolidation(
-          item.store,
-          item.target,
-          model,
-          tools,
-          ctx.signal,
-          manualTimeoutMs,
-          item.toolTarget,
-        );
+          try {
+            ctx.ui.notify(`⏳ Consolidating ${item.label}...`, "info");
+          } catch {
+            // Best-effort progress feedback only.
+          }
+          const result = await triggerConsolidation(
+            item.store,
+            item.target,
+            model,
+            tools,
+            ctx.signal,
+            manualTimeoutMs,
+            item.toolTarget,
+          );
 
-        if (result.consolidated) {
-          results.push(`${item.label}: ✅ consolidated`);
-        } else {
-          results.push(`${item.label}: ❌ ${result.error}`);
-        }
-      }
+          return result.consolidated
+            ? `${item.label}: ✅ consolidated`
+            : `${item.label}: ❌ ${result.error}`;
+        }),
+      );
+      results.push(...consolidatedResults);
 
       const summary = `\n  🔄 Memory Consolidation\n  ${"─".repeat(30)}\n${results.map((r) => `  ${r}`).join("\n")}`;
 

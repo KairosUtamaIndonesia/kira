@@ -38,7 +38,14 @@ export function toolDefToAgentTool<TParams extends TSchema, TDetails>(
           upd: AgentToolUpdateCallback<TDetails> | undefined,
           _ctx: unknown,
         ) => Promise<AgentToolResult<TDetails>>
-      )(toolCallId, params, signal, onUpdate, undefined);
+      )(
+        toolCallId,
+        params,
+        signal,
+        onUpdate,
+        // eslint-disable-next-line unicorn/no-useless-undefined -- 5th arg satisfies cast signature
+        undefined,
+      );
     },
   } as AgentTool<TParams, TDetails>;
 }

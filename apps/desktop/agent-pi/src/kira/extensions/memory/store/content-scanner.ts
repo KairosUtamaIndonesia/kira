@@ -82,7 +82,7 @@ const INVISIBLE_CHARS = new Set([
  * Scan memory content for injection/exfiltration patterns AND secret leaks.
  * Returns an error string if blocked, or null if content is safe.
  */
-export function scanContent(content: string): string | null {
+export function scanContent(content: string): string | undefined {
   // Check invisible unicode
   for (const char of content) {
     if (INVISIBLE_CHARS.has(char)) {
@@ -104,7 +104,7 @@ export function scanContent(content: string): string | null {
     }
   }
 
-  return null;
+  return undefined;
 }
 
 /**

@@ -13,7 +13,7 @@ import { MemoryStore } from "../store/memory-store.js";
 export function registerPreviewContextCommand(
   pi: ExtensionAPI,
   store: MemoryStore,
-  projectStore: MemoryStore | null,
+  projectStore: MemoryStore | undefined,
   projectName: string,
   config: Pick<MemoryConfig, "memoryMode" | "memoryPolicyStyle" | "memoryPolicyCustomText"> = {
     memoryMode: "policy-only",

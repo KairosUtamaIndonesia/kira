@@ -23,7 +23,7 @@ import {
 } from "../store/sqlite-memory-store.js";
 
 function appendSyncWarning(result: MemoryResult, warning: string): MemoryResult {
-  const warnings = [...(((result as any).warnings ?? []) as string[]), warning];
+  const warnings = [...(result.warnings ?? []), warning];
   const message = result.message ? `${result.message} Warning: ${warning}` : warning;
   return {
     ...result,
@@ -60,11 +60,11 @@ function formatMemoryToolText(result: MemoryResult): string {
 function sqliteProjectFor(
   rawTarget: "memory" | "user" | "project" | "failure",
   projectName?: string | null,
-): string | null | undefined {
-  if (rawTarget === "project") return projectName?.trim() || null;
-  if (rawTarget === "memory") return null;
-  if (rawTarget === "user") return null;
-  if (rawTarget === "failure") return null;
+): string | undefined {
+  if (rawTarget === "project") return (projectName && projectName.trim()) || undefined;
+  if (rawTarget === "memory") return undefined;
+  if (rawTarget === "user") return undefined;
+  if (rawTarget === "failure") return undefined;
   return undefined;
 }
 
@@ -80,10 +80,10 @@ async function syncAddToSqlite(
   content: string,
   category: MemoryCategory | undefined,
   failureReason: string | undefined,
-  dbManager: DatabaseManager | null,
+  dbManager: DatabaseManager | undefined,
   projectName?: string | null,
-): Promise<string | null> {
-  if (!dbManager) return null;
+): Promise<string | undefined> {
+  if (!dbManager) return undefined;
 
   try {
     const sqliteTarget = sqliteTargetFor(rawTarget);
@@ -97,19 +97,19 @@ async function syncAddToSqlite(
           failureReason,
         }),
         target: "failure",
-        project: sqliteProject ?? null,
+        project: sqliteProject ?? undefined,
         category: failureCategory,
         failureReason,
       });
-      return null;
+      return undefined;
     }
 
     syncMemoryEntry(dbManager, {
       content,
       target: sqliteTarget,
-      project: sqliteProject ?? null,
+      project: sqliteProject ?? undefined,
     });
-    return null;
+    return undefined;
   } catch (err) {
     return `Saved to Markdown, but SQLite search sync failed: ${err instanceof Error ? err.message : String(err)}`;
   }
@@ -119,10 +119,10 @@ async function syncReplaceToSqlite(
   rawTarget: "memory" | "user" | "project" | "failure",
   oldText: string,
   newContent: string,
-  dbManager: DatabaseManager | null,
+  dbManager: DatabaseManager | undefined,
   projectName?: string | null,
-): Promise<string | null> {
-  if (!dbManager) return null;
+): Promise<string | undefined> {
+  if (!dbManager) return undefined;
 
   try {
     const sqliteTarget = sqliteTargetFor(rawTarget);
@@ -137,7 +137,7 @@ async function syncReplaceToSqlite(
       return "Saved to Markdown, but no matching SQLite memory row was updated. Run /memory-sync-markdown if search results look stale.";
     }
 
-    return null;
+    return undefined;
   } catch (err) {
     return `Saved to Markdown, but SQLite search sync failed: ${err instanceof Error ? err.message : String(err)}`;
   }
@@ -146,10 +146,10 @@ async function syncReplaceToSqlite(
 async function syncRemoveFromSqlite(
   rawTarget: "memory" | "user" | "project" | "failure",
   oldText: string,
-  dbManager: DatabaseManager | null,
+  dbManager: DatabaseManager | undefined,
   projectName?: string | null,
-): Promise<string | null> {
-  if (!dbManager) return null;
+): Promise<string | undefined> {
+  if (!dbManager) return undefined;
 
   try {
     const sqliteTarget = sqliteTargetFor(rawTarget);
@@ -163,7 +163,7 @@ async function syncRemoveFromSqlite(
       return "Saved to Markdown, but no matching SQLite memory row was removed. Run /memory-sync-markdown if search results look stale.";
     }
 
-    return null;
+    return undefined;
   } catch (err) {
     return `Saved to Markdown, but SQLite search sync failed: ${err instanceof Error ? err.message : String(err)}`;
   }
@@ -172,7 +172,7 @@ async function syncRemoveFromSqlite(
 async function syncEvictionsFromSqlite(
   rawTarget: "memory" | "user" | "project" | "failure",
   evictedEntries: string[] | undefined,
-  dbManager: DatabaseManager | null,
+  dbManager: DatabaseManager | undefined,
   projectName?: string | null,
 ): Promise<void> {
   if (!dbManager) return;
@@ -196,8 +196,8 @@ async function syncEvictionsFromSqlite(
 
 export function createMemoryToolDef(
   store: MemoryStore,
-  projectStore: MemoryStore | null,
-  dbManager: DatabaseManager | null = null,
+  projectStore: MemoryStore | undefined,
+  dbManager: DatabaseManager | undefined = undefined,
   projectName?: string | null,
 ): ToolDefinition<typeof memorySchema> {
   return createMemoryTool(store, projectStore, dbManager, projectName);
@@ -206,8 +206,8 @@ export function createMemoryToolDef(
 export function registerMemoryTool(
   pi: ExtensionAPI,
   store: MemoryStore,
-  projectStore: MemoryStore | null,
-  dbManager: DatabaseManager | null = null,
+  projectStore: MemoryStore | undefined,
+  dbManager: DatabaseManager | undefined = undefined,
   projectName?: string | null,
 ): void {
   const tool = createMemoryToolDef(store, projectStore, dbManager, projectName);
@@ -238,8 +238,8 @@ const memorySchema = Type.Object({
 
 function createMemoryTool(
   store: MemoryStore,
-  projectStore: MemoryStore | null,
-  dbManager: DatabaseManager | null,
+  projectStore: MemoryStore | undefined,
+  dbManager: DatabaseManager | undefined,
   projectName?: string | null,
 ): ToolDefinition<typeof memorySchema> {
   return {
@@ -254,7 +254,7 @@ function createMemoryTool(
       "Use target='failure' with category to save what didn't work (failures, corrections, insights).",
     ],
     parameters: memorySchema,
-    async execute(toolCallId, params, signal, onUpdate, _ctx) {
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
       const { action, target: rawTarget, content, old_text, category, failure_reason } = params;
 
       // Route 'project' to projectStore using the normal MEMORY.md target.
@@ -277,11 +277,12 @@ function createMemoryTool(
         };
       }
 
-      // After the guard above, activeStore is guaranteed non-null when rawTarget === 'project'
-      const store_ = activeStore!;
+      // After the guard above, activeStore is guaranteed defined when rawTarget === 'project'
+      if (!activeStore) return { content: [{ type: "text", text: "" }], details: {} };
+      const memoryStore = activeStore;
 
       let result: MemoryResult;
-      let syncWarning: string | null = null;
+      let syncWarning: string | undefined;
       switch (action) {
         case "add":
           if (!content) {
@@ -301,9 +302,9 @@ function createMemoryTool(
           // Handle failure target with category
           if (rawTarget === "failure") {
             const memoryCategory = (category || "failure") as MemoryCategory;
-            result = await store_.addFailure(content, {
+            result = await memoryStore.addFailure(content, {
               category: memoryCategory,
-              failureReason: failure_reason,
+              ...(failure_reason !== undefined && { failureReason: failure_reason }),
             });
             if (result.success) {
               syncWarning = await syncAddToSqlite(
@@ -316,7 +317,7 @@ function createMemoryTool(
               );
             }
           } else {
-            result = await store_.add(target, content);
+            result = await memoryStore.add(target, content);
             if (result.success) {
               await syncEvictionsFromSqlite(
                 rawTarget,
@@ -365,7 +366,7 @@ function createMemoryTool(
               details: {},
             };
           }
-          result = await store_.replace(target, old_text, content);
+          result = await memoryStore.replace(target, old_text, content);
           if (result.success) {
             syncWarning = await syncReplaceToSqlite(
               rawTarget,
@@ -392,7 +393,7 @@ function createMemoryTool(
               details: {},
             };
           }
-          result = await store_.remove(target, old_text);
+          result = await memoryStore.remove(target, old_text);
           if (result.success) {
             syncWarning = await syncRemoveFromSqlite(rawTarget, old_text, dbManager, projectName);
           }

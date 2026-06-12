@@ -131,7 +131,7 @@ export function registerSkillTool(pi: ExtensionAPI, store: SkillStore): void {
       "Do NOT use skills for temporary task state — only for durable, reusable procedures.",
     ],
     parameters: SKILL_TOOL_PARAMETERS,
-    async execute(toolCallId, params, signal, onUpdate, ctx) {
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
       const skillParams = params as {
         action: "create" | "view" | "patch" | "update" | "edit" | "delete";
         name?: string;
@@ -170,7 +170,7 @@ export function registerSkillTool(pi: ExtensionAPI, store: SkillStore): void {
         verificationSteps.length > 0;
 
       const buildBodyOrError = () => {
-        if (content?.trim()) return { body: content.trim() };
+        if (content && content.trim()) return { body: content.trim() };
         if (!hasStructuredBody) {
           return {
             error:
@@ -343,8 +343,8 @@ export function registerSkillTool(pi: ExtensionAPI, store: SkillStore): void {
             };
           }
           const updateBodyResult = buildBodyOrError();
-          const nextDescription = description?.trim() || "";
-          const nextBody = updateBodyResult.body ?? content?.trim() ?? "";
+          const nextDescription = (description && description.trim()) || "";
+          const nextBody = updateBodyResult.body ?? (content && content.trim()) ?? "";
           if (!nextDescription && !nextBody) {
             return {
               content: [

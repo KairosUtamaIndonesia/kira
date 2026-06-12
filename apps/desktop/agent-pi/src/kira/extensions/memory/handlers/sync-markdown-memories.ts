@@ -36,7 +36,7 @@ function importEntries(
   counters: BackfillCounters,
   entries: string[],
   target: "memory" | "user" | "failure",
-  project: string | null = null,
+  project: string | undefined = undefined,
 ): void {
   for (const rawEntry of entries) {
     counters.entriesScanned++;
@@ -74,7 +74,9 @@ function scanProjectDirs(
   const resolvedAgentRoot = path.resolve(agentRoot);
   const resolvedGlobalDir = path.resolve(globalDir);
   const globalDirName =
-    path.dirname(resolvedGlobalDir) === resolvedAgentRoot ? path.basename(resolvedGlobalDir) : null;
+    path.dirname(resolvedGlobalDir) === resolvedAgentRoot
+      ? path.basename(resolvedGlobalDir)
+      : undefined;
   if (fs.existsSync(agentRoot)) {
     for (const name of fs.readdirSync(agentRoot)) {
       if (
@@ -119,7 +121,7 @@ export function syncMarkdownMemoriesToSqlite(
   const importFile = (
     filePath: string,
     target: "memory" | "user" | "failure",
-    project: string | null = null,
+    project?: string,
   ) => {
     if (!fs.existsSync(filePath)) return;
     counters.filesScanned++;

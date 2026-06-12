@@ -6,11 +6,12 @@
  * No subprocess, no pi CLI dependency, no file-reload dance.
  */
 
-import type { AgentTool, ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type {
+  AgentTool,
   SessionMetadata,
   SessionStorage,
   SessionTreeEntry,
+  ThinkingLevel,
 } from "@earendil-works/pi-agent-core";
 import type { Model } from "@earendil-works/pi-ai";
 
@@ -79,7 +80,9 @@ export async function runMemoryPrompt(
   const handleAbort = () => {
     void harness.abort();
   };
-  signal?.addEventListener("abort", handleAbort, { once: true });
+  if (signal) {
+    signal.addEventListener("abort", handleAbort, { once: true });
+  }
 
   try {
     const response = await harness.prompt(prompt);
@@ -96,7 +99,9 @@ export async function runMemoryPrompt(
     const message = error instanceof Error ? error.message : String(error);
     return { ok: false, error: message };
   } finally {
-    signal?.removeEventListener("abort", handleAbort);
+    if (signal) {
+      signal.removeEventListener("abort", handleAbort);
+    }
   }
 }
 

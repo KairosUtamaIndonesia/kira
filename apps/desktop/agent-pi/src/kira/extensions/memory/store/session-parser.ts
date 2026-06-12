@@ -8,7 +8,7 @@ export interface ParsedSession {
   project: string;
   cwd: string;
   startedAt: string;
-  endedAt: string | null;
+  endedAt: string | undefined;
   messages: ParsedMessage[];
 }
 
@@ -107,15 +107,15 @@ function extractToolCalls(content: unknown): string[] | undefined {
  * @param filePath — Path to the .jsonl file
  * @returns Parsed session data, or null if the file is invalid
  */
-export function parseSessionFile(filePath: string): ParsedSession | null {
+export function parseSessionFile(filePath: string): ParsedSession | undefined {
   const content = fs.readFileSync(filePath, "utf-8");
   const lines = content.split("\n").filter((line) => line.trim());
 
-  if (lines.length === 0) return null;
+  if (lines.length === 0) return undefined;
 
-  let sessionId: string | null = null;
-  let sessionCwd: string | null = null;
-  let sessionTimestamp: string | null = null;
+  let sessionId: string | undefined = undefined;
+  let sessionCwd: string | undefined = undefined;
+  let sessionTimestamp: string | undefined = undefined;
   const messages: ParsedMessage[] = [];
 
   for (const line of lines) {
@@ -128,9 +128,9 @@ export function parseSessionFile(filePath: string): ParsedSession | null {
 
     switch (entry.type) {
       case "session":
-        sessionId = entry.id ?? null;
-        sessionCwd = entry.cwd ?? null;
-        sessionTimestamp = entry.timestamp ?? null;
+        sessionId = entry.id ?? undefined;
+        sessionCwd = entry.cwd ?? undefined;
+        sessionTimestamp = entry.timestamp ?? undefined;
         break;
 
       case "message": {
@@ -150,7 +150,7 @@ export function parseSessionFile(filePath: string): ParsedSession | null {
           role,
           content: textContent,
           timestamp: entry.timestamp,
-          toolCalls,
+          ...(toolCalls !== undefined && { toolCalls }),
         });
         break;
       }
@@ -158,7 +158,7 @@ export function parseSessionFile(filePath: string): ParsedSession | null {
     }
   }
 
-  if (!sessionId || !sessionCwd || !sessionTimestamp) return null;
+  if (!sessionId || !sessionCwd || !sessionTimestamp) return undefined;
 
   // Decode project name from cwd-encoded directory name
   // The directory is named like "--Users-chandrateja-Documents-pi-hermes-memory--"
@@ -170,7 +170,7 @@ export function parseSessionFile(filePath: string): ParsedSession | null {
     project,
     cwd: sessionCwd,
     startedAt: sessionTimestamp,
-    endedAt: null, // We don't know when it ended from the JSONL
+    endedAt: undefined, // We don't know when it ended from the JSONL
     messages,
   };
 }

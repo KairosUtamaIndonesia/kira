@@ -21,7 +21,7 @@ const OVERRIDE_FAILURE_REASON =
   /\b(not found|unknown|invalid|unsupported|unavailable|unrecognized|no match|no matches|cannot resolve|failed to resolve)\b/i;
 
 function normalizedModelOverride(config: ChildLlmConfig): string | undefined {
-  const trimmed = config.llmModelOverride?.trim();
+  const trimmed = config.llmModelOverride && config.llmModelOverride.trim();
   return trimmed ? trimmed : undefined;
 }
 
@@ -40,6 +40,7 @@ export function inheritedExtensionArgs(argv: string[] = process.argv.slice(2)): 
 
   for (let i = 0; i < argv.length; i++) {
     const current = argv[i];
+    if (current === undefined) continue;
     if (current === "-e" || current === "--extension") {
       const next = argv[i + 1];
       if (typeof next === "string" && next.length > 0) {
@@ -102,7 +103,7 @@ export async function execChildPrompt(
   options: ExecChildPromptOptions,
 ): Promise<PiExecResult> {
   const execOptions = {
-    signal: options.signal,
+    ...(options.signal && { signal: options.signal }),
     timeout: options.timeoutMs,
   };
 

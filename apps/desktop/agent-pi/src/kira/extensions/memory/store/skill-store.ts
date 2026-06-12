@@ -26,8 +26,8 @@ import {
 
 interface SkillStoreOptions {
   globalSkillsDir?: string;
-  projectSkillsDir?: string | null;
-  projectName?: string | null;
+  projectSkillsDir?: string | undefined;
+  projectName?: string | undefined;
 }
 
 interface SkillLocation {
@@ -36,33 +36,33 @@ interface SkillLocation {
   slug: string;
   fileName: string;
   path: string;
-  projectName?: string;
+  projectName?: string | undefined;
 }
 
 export class SkillStore {
   private globalSkillsDir: string;
-  private projectSkillsDir: string | null;
-  private projectName: string | null;
+  private projectSkillsDir: string | undefined;
+  private projectName: string | undefined;
 
   constructor(options: SkillStoreOptions = {}) {
     this.globalSkillsDir = options.globalSkillsDir ?? path.join(AGENT_ROOT, "skills");
-    this.projectSkillsDir = options.projectSkillsDir ?? null;
-    this.projectName = options.projectName ?? null;
+    this.projectSkillsDir = options.projectSkillsDir ?? undefined;
+    this.projectName = options.projectName ?? undefined;
   }
 
   getGlobalSkillsDir(): string {
     return this.globalSkillsDir;
   }
 
-  getProjectSkillsDir(): string | null {
+  getProjectSkillsDir(): string | undefined {
     return this.projectSkillsDir;
   }
 
-  getProjectName(): string | null {
+  getProjectName(): string | undefined {
     return this.projectName;
   }
 
-  setProjectContext(projectName: string | null, projectSkillsDir: string | null): void {
+  setProjectContext(projectName: string | undefined, projectSkillsDir: string | undefined): void {
     this.projectName = projectName;
     this.projectSkillsDir = projectSkillsDir;
   }
@@ -76,14 +76,12 @@ export class SkillStore {
 
   async loadIndex(scope?: SkillScope): Promise<SkillIndex[]> {
     const locations = await this.collectLocations(scope);
-    const skills: SkillIndex[] = [];
+    const docs = await Promise.all(locations.map((location) => this.readLocation(location)));
+    const skills = docs
+      .filter((doc): doc is SkillDocument => doc !== undefined)
+      .map((doc) => this.toIndex(doc));
 
-    for (const location of locations) {
-      const doc = await this.readLocation(location);
-      if (doc) skills.push(this.toIndex(doc));
-    }
-
-    return skills.sort((a, b) => {
+    return skills.toSorted((a, b) => {
       if (a.updated !== b.updated) return b.updated.localeCompare(a.updated);
       if (a.created !== b.created) return b.created.localeCompare(a.created);
       if (a.scope !== b.scope) return a.scope.localeCompare(b.scope);
@@ -91,9 +89,9 @@ export class SkillStore {
     });
   }
 
-  async loadSkill(skillId: string): Promise<SkillDocument | null> {
+  async loadSkill(skillId: string): Promise<SkillDocument | undefined> {
     const location = await this.findLocationById(skillId);
-    if (!location) return null;
+    if (!location) return undefined;
     return this.readLocation(location);
   }
 
@@ -206,15 +204,21 @@ export class SkillStore {
     const result: string[] = [];
 
     for (let i = 0; i < lines.length; i++) {
-      if (lines[i].startsWith(sectionHeader)) {
+      const line = lines[i];
+      if (!line) continue;
+      if (line.startsWith(sectionHeader)) {
         result.push(sectionHeader);
         result.push(newContent);
         found = true;
         i++;
-        while (i < lines.length && !lines[i].startsWith("## ")) i++;
-        if (i < lines.length) result.push(lines[i]);
+        while (i < lines.length) {
+          const next = lines[i];
+          if (!next || next.startsWith("## ")) break;
+          i++;
+        }
+        if (i < lines.length) result.push(lines[i] ?? "");
       } else {
-        result.push(lines[i]);
+        result.push(line);
       }
     }
 
@@ -224,7 +228,7 @@ export class SkillStore {
       doc.path,
       formatFrontmatter({
         name: doc.name,
-        displayName: doc.displayName,
+        displayName: doc.displayName ?? "",
         description: doc.description,
         version: doc.version + 1,
         created: doc.created,
@@ -263,7 +267,7 @@ export class SkillStore {
       doc.path,
       formatFrontmatter({
         name: doc.name,
-        displayName: doc.displayName,
+        displayName: doc.displayName ?? "",
         description: newDescription,
         version: doc.version + 1,
         created: doc.created,
@@ -365,7 +369,8 @@ export class SkillStore {
         path: targetPath,
       };
     } catch (renameError) {
-      const code = (renameError as NodeJS.ErrnoException)?.code;
+      const errObj = renameError as NodeJS.ErrnoException;
+      const code = errObj && errObj.code;
       if (code !== "EXDEV") {
         return {
           success: false,
@@ -380,7 +385,7 @@ export class SkillStore {
       targetPath,
       formatFrontmatter({
         name: parsed.slug,
-        displayName: doc.displayName,
+        displayName: doc.displayName ?? "",
         description: doc.description,
         version: doc.version,
         created: doc.created,
@@ -480,7 +485,7 @@ export class SkillStore {
     return strongSignals >= 2 || (strongSignals >= 1 && weakerSignals >= 1) ? "project" : "global";
   }
 
-  private getScopeRoot(scope: SkillScope): string | null {
+  private getScopeRoot(scope: SkillScope): string | undefined {
     return scope === "global" ? this.globalSkillsDir : this.projectSkillsDir;
   }
 
@@ -546,7 +551,7 @@ export class SkillStore {
           descriptionSimilarity,
         };
       })
-      .sort((a, b) => {
+      .toSorted((a, b) => {
         const byName = b.nameSimilarity - a.nameSimilarity;
         if (Math.abs(byName) > 0.0001) return byName;
         return b.descriptionSimilarity - a.descriptionSimilarity;
@@ -601,27 +606,30 @@ export class SkillStore {
       const entries = await fs.readdir(dir, { withFileTypes: true });
       const dirs = entries
         .filter((entry) => entry.isDirectory())
-        .sort((a, b) => a.name.localeCompare(b.name));
+        .toSorted((a, b) => a.name.localeCompare(b.name));
       const files = entries
         .filter((entry) => entry.isFile())
-        .sort((a, b) => a.name.localeCompare(b.name));
+        .toSorted((a, b) => a.name.localeCompare(b.name));
 
-      for (const entry of dirs) {
-        if (entry.name.startsWith(".")) continue;
-        const childDir = path.join(dir, entry.name);
-        const skillFile = path.join(childDir, "SKILL.md");
-        if (await exists(skillFile)) {
-          results.push({
-            skillId: buildSkillId(scope, entry.name, projectName),
-            scope,
-            slug: entry.name,
-            fileName: "SKILL.md",
-            path: skillFile,
-            projectName,
-          });
-        }
-        await walk(childDir, false);
-      }
+      await Promise.all(
+        dirs
+          .filter((entry) => !entry.name.startsWith("."))
+          .map(async (entry) => {
+            const childDir = path.join(dir, entry.name);
+            const skillFile = path.join(childDir, "SKILL.md");
+            if (await exists(skillFile)) {
+              results.push({
+                skillId: buildSkillId(scope, entry.name, projectName),
+                scope,
+                slug: entry.name,
+                fileName: "SKILL.md",
+                path: skillFile,
+                projectName,
+              });
+            }
+            await walk(childDir, false);
+          }),
+      );
 
       if (!isRoot || !allowRootMarkdown) return;
 
@@ -644,20 +652,20 @@ export class SkillStore {
     return results;
   }
 
-  private async findLocationById(skillId: string): Promise<SkillLocation | null> {
+  private async findLocationById(skillId: string): Promise<SkillLocation | undefined> {
     const parsed = parseSkillId(skillId);
-    if (!parsed) return null;
+    if (!parsed) return undefined;
 
     const locations = await this.collectLocations(parsed.scope);
-    return locations.find((location) => location.skillId === skillId) ?? null;
+    return locations.find((location) => location.skillId === skillId) ?? undefined;
   }
 
-  private async readLocation(location: SkillLocation): Promise<SkillDocument | null> {
+  private async readLocation(location: SkillLocation): Promise<SkillDocument | undefined> {
     try {
       const raw = await fs.readFile(location.path, "utf-8");
       const { meta, body } = parseFrontmatter(raw);
-      const skillName = meta.name?.trim() || location.slug;
-      const displayName = meta.display_name?.trim() || undefined;
+      const skillName = (meta.name && meta.name.trim()) || location.slug;
+      const displayName = (meta.display_name && meta.display_name.trim()) || undefined;
       return {
         skillId: location.skillId,
         scope: location.scope,
@@ -666,14 +674,14 @@ export class SkillStore {
         projectName: location.projectName,
         name: skillName,
         displayName,
-        description: meta.description?.trim() || "",
+        description: (meta.description && meta.description.trim()) || "",
         version: Number.parseInt(meta.version || "1", 10) || 1,
         created: meta.created || today(),
         updated: meta.updated || today(),
         body,
       };
     } catch {
-      return null;
+      return undefined;
     }
   }
 
@@ -705,14 +713,16 @@ export class SkillStore {
     await fs.rename(tempFile, filePath);
   }
 
-  private async removeEmptyParents(startDir: string, stopDir: string | null): Promise<void> {
+  private async removeEmptyParents(startDir: string, stopDir: string | undefined): Promise<void> {
     if (!stopDir) return;
 
     let current = startDir;
     while (current.startsWith(stopDir) && current !== stopDir) {
       try {
+        // oxlint-disable-next-line no-await-in-loop -- Parent cleanup must proceed upward one level at a time.
         const entries = await fs.readdir(current);
         if (entries.length > 0) return;
+        // oxlint-disable-next-line no-await-in-loop -- Removing a parent is only safe after the child is gone.
         await fs.rmdir(current);
         current = path.dirname(current);
       } catch {

@@ -64,13 +64,13 @@ export function indexSession(dbManager: DatabaseManager, session: ParsedSession)
         msg.role,
         msg.content,
         msg.timestamp,
-        msg.toolCalls ? JSON.stringify(msg.toolCalls) : null,
+        msg.toolCalls ? JSON.stringify(msg.toolCalls) : undefined,
       );
     }
   };
 
   if (db.transaction) {
-    const insertMany = db.transaction(writeMessages);
+    const insertMany = db.transaction(writeMessages) as (msgs: ParsedSession["messages"]) => void;
     insertMany(session.messages);
   } else {
     writeMessages(session.messages);

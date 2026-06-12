@@ -21,7 +21,7 @@ import { applyRecentMessageLimit, collectMessageParts } from "./message-parts.js
 export function setupBackgroundReview(
   pi: ExtensionAPI,
   store: MemoryStore,
-  projectStore: MemoryStore | null,
+  projectStore: MemoryStore | undefined,
   config: MemoryConfig,
   model: KiraModel,
   tools: AgentTool[],
@@ -48,8 +48,8 @@ export function setupBackgroundReview(
     // historical tool calls and re-triggers on every subsequent turn).
     try {
       const msg = event.message;
-      if (msg?.role === "assistant") {
-        const content = msg?.content;
+      if (msg && msg.role === "assistant") {
+        const content = msg && msg.content;
         if (Array.isArray(content)) {
           for (const block of content) {
             if (block && typeof block === "object" && block.type === "toolCall") {
@@ -90,7 +90,7 @@ export function setupBackgroundReview(
 
     const currentMemory = store.getMemoryEntries().join("\n§\n");
     const currentUser = store.getUserEntries().join("\n§\n");
-    const currentProject = projectStore ? projectStore.getMemoryEntries().join("\n§\n") : null;
+    const currentProject = projectStore ? projectStore.getMemoryEntries().join("\n§\n") : undefined;
 
     const userPrompt = [
       "--- Current Memory ---",
@@ -100,7 +100,7 @@ export function setupBackgroundReview(
       currentUser || "(empty)",
     ];
 
-    if (currentProject !== null) {
+    if (currentProject !== undefined) {
       userPrompt.push("", "--- Current Project Memory ---", currentProject || "(empty)");
     }
 
@@ -108,17 +108,15 @@ export function setupBackgroundReview(
 
     // Fire-and-forget: do NOT await. The review runs in-process but is
     // non-blocking; blocking turn_end would freeze the interactive chat.
-    // Notifications are delivered via .then() once the prompt completes.
-    const reviewPromise = runMemoryPrompt(userPrompt.join("\n"), tools, {
-      model,
-      signal: undefined,
-      systemPrompt: COMBINED_REVIEW_PROMPT,
-      thinkingLevel: undefined,
-      timeoutMs: 120000,
-    });
-
-    reviewPromise
-      .then((result) => {
+    void (async () => {
+      try {
+        const result = await runMemoryPrompt(userPrompt.join("\n"), tools, {
+          model,
+          signal: undefined,
+          systemPrompt: COMBINED_REVIEW_PROMPT,
+          thinkingLevel: undefined,
+          timeoutMs: 120000,
+        });
         reviewInProgress = false;
         if (result.ok && result.output) {
           const output = result.output || "";
@@ -126,13 +124,11 @@ export function setupBackgroundReview(
             ctx.ui.notify("💾 Memory auto-reviewed and updated", "info");
           }
         }
-        // Auto-review is best-effort. Failures are silently skipped —
-        // the next review cycle will retry.
-      })
-      .catch(() => {
+      } catch {
         // Best-effort: failures (timeout, signal, errors)
         // are silently ignored. The next review cycle will retry.
         reviewInProgress = false;
-      });
+      }
+    })();
   });
 }

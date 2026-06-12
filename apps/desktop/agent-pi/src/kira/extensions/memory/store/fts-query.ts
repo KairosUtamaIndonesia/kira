@@ -43,15 +43,15 @@ export function normalizeFts5Query(query: string): string {
  * Returns null for explicit operator queries or when the input is already a
  * single searchable term.
  */
-export function buildFallbackFts5Query(query: string): string | null {
+export function buildFallbackFts5Query(query: string): string | undefined {
   const trimmed = query.trim();
   if (trimmed.length === 0 || FTS5_OPERATOR_PATTERN.test(trimmed)) {
-    return null;
+    return undefined;
   }
 
   const terms = collectNaturalLanguageTerms(trimmed);
   if (terms.length <= 1) {
-    return null;
+    return undefined;
   }
 
   return terms.map((term) => `"${term.replace(/"/g, '""')}"`).join(" OR ");

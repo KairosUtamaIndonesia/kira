@@ -17,7 +17,8 @@ import type { MemoryConfig } from "../types.js";
 import { AGENT_ROOT } from "../paths.js";
 
 export function registerSwitchProjectCommand(pi: ExtensionAPI, config?: MemoryConfig): void {
-  const projectsMemoryDir = config?.projectsMemoryDir ?? "projects";
+  const projectsMemoryDir =
+    config && config.projectsMemoryDir ? config.projectsMemoryDir : "projects";
   pi.registerCommand("memory-switch-project", {
     description: "Switch the active project for project-scoped memory",
 
@@ -29,15 +30,19 @@ export function registerSwitchProjectCommand(pi: ExtensionAPI, config?: MemoryCo
       let projects: string[] = [];
       try {
         const entries = await fs.readdir(projectsDir, { withFileTypes: true });
-        for (const entry of entries) {
-          if (!entry.isDirectory()) continue;
-          try {
-            await fs.access(path.join(projectsDir, entry.name, "MEMORY.md"));
-            projects.push(entry.name);
-          } catch {
-            /* no MEMORY.md — skip */
-          }
-        }
+        const projectNames = await Promise.all(
+          entries
+            .filter((entry) => entry.isDirectory())
+            .map(async (entry) => {
+              try {
+                await fs.access(path.join(projectsDir, entry.name, "MEMORY.md"));
+                return entry.name;
+              } catch {
+                return "";
+              }
+            }),
+        );
+        projects = projectNames.filter((name) => name.length > 0);
       } catch {
         // Directory doesn't exist — no projects
       }
@@ -59,18 +64,20 @@ export function registerSwitchProjectCommand(pi: ExtensionAPI, config?: MemoryCo
       lines.push("  Available project memories:");
       lines.push("");
 
-      for (const proj of projects.sort()) {
-        // Read entry count
-        let entryCount = 0;
-        try {
-          const raw = await fs.readFile(path.join(projectsDir, proj, "MEMORY.md"), "utf-8");
-          entryCount = raw.split("\n§\n").filter(Boolean).length;
-        } catch {
-          /* ignore */
-        }
+      const projectRows = await Promise.all(
+        projects.toSorted().map(async (proj) => {
+          let entryCount = 0;
+          try {
+            const raw = await fs.readFile(path.join(projectsDir, proj, "MEMORY.md"), "utf-8");
+            entryCount = raw.split("\n§\n").filter(Boolean).length;
+          } catch {
+            /* ignore */
+          }
 
-        lines.push(`  📁 ${proj} (${entryCount} ${entryCount === 1 ? "entry" : "entries"})`);
-      }
+          return `  📁 ${proj} (${entryCount} ${entryCount === 1 ? "entry" : "entries"})`;
+        }),
+      );
+      lines.push(...projectRows);
 
       lines.push("");
       lines.push("  Use the memory tool with target 'project' to manage");

@@ -18,7 +18,7 @@ import { searchSessions, getIndexedMessageCount } from "../store/session-search.
 interface SearchResult {
   success: boolean;
   count?: number;
-  message?: string;
+  message?: string | undefined;
   output?: string;
   ranges?: SessionAnchorRange[];
 }
@@ -83,7 +83,10 @@ exclude:
 
       if (!markdown || markdown.trim().length === 0) {
         const result: SearchResult = { success: false, message: "markdown is required" };
-        return { content: [{ type: "text" as const, text: result.message! }], details: result };
+        return {
+          content: [{ type: "text" as const, text: result.message ?? "" }],
+          details: result,
+        };
       }
 
       const searchResult = searchSessionAnchors(markdown, { sessionsDir });
@@ -92,7 +95,10 @@ exclude:
           success: false,
           message: searchResult.message ?? "Anchor session search failed.",
         };
-        return { content: [{ type: "text" as const, text: result.message! }], details: result };
+        return {
+          content: [{ type: "text" as const, text: result.message ?? "" }],
+          details: result,
+        };
       }
 
       const output = formatAnchorSearchOutput(searchResult);
@@ -168,7 +174,10 @@ Returns conversation snippets with session dates and project context.`,
 
       if (!query || query.trim().length === 0) {
         const result: SearchResult = { success: false, message: "query is required" };
-        return { content: [{ type: "text" as const, text: result.message! }], details: result };
+        return {
+          content: [{ type: "text" as const, text: result.message ?? "" }],
+          details: result,
+        };
       }
 
       const totalMessages = getIndexedMessageCount(dbManager);
@@ -177,10 +186,17 @@ Returns conversation snippets with session dates and project context.`,
           success: false,
           message: "No sessions indexed yet. Run /memory-index-sessions to import past sessions.",
         };
-        return { content: [{ type: "text" as const, text: result.message! }], details: result };
+        return {
+          content: [{ type: "text" as const, text: result.message ?? "" }],
+          details: result,
+        };
       }
 
-      const results = searchSessions(dbManager, query, { project, role, limit });
+      const results = searchSessions(dbManager, query, {
+        ...(project !== undefined && { project }),
+        ...(role !== undefined && { role }),
+        limit,
+      });
 
       if (results.length === 0) {
         const result: SearchResult = {
@@ -188,7 +204,10 @@ Returns conversation snippets with session dates and project context.`,
           count: 0,
           message: `No results found for "${query}". Try a different search term or broader query.`,
         };
-        return { content: [{ type: "text" as const, text: result.message! }], details: result };
+        return {
+          content: [{ type: "text" as const, text: result.message ?? "" }],
+          details: result,
+        };
       }
 
       let output = `Found ${results.length} results for "${query}":\n\n`;

@@ -18,8 +18,8 @@ import type { AgentTool } from "@earendil-works/pi-agent-core";
 
 export function setupSessionFlush(
   pi: ExtensionAPI,
-  store: MemoryStore,
-  projectStore: MemoryStore | null,
+  _store: MemoryStore,
+  _projectStore: MemoryStore | undefined,
   config: MemoryConfig,
   model: KiraModel,
   tools: AgentTool[],
@@ -31,7 +31,11 @@ export function setupSessionFlush(
   });
 
   /** Shared flush logic — builds conversation snapshot and spawns pi -p */
-  async function flush(ctx: any, signal?: AbortSignal, timeoutMs = 30000): Promise<void> {
+  async function flush(
+    ctx: { sessionManager: { getBranch: () => unknown[] } },
+    signal?: AbortSignal,
+    timeoutMs = 30000,
+  ): Promise<void> {
     if (userTurnCount < config.flushMinTurns) return;
 
     let entries;
@@ -64,10 +68,16 @@ export function setupSessionFlush(
   });
 
   // Flush before session shutdown (must be fast, non-blocking)
-  pi.on("session_shutdown", async (event, ctx) => {
+  pi.on("session_shutdown", async (_event, ctx) => {
     if (!config.flushOnShutdown) return;
     // Fire-and-forget with a short timeout so we don't block Pi's shutdown.
     // We intentionally do NOT await — Pi should not wait for the child process.
-    flush(ctx, undefined, 10000).catch(() => {});
+    void (async () => {
+      try {
+        await flush(ctx, undefined, 10000);
+      } catch {
+        /* fire-and-forget */
+      }
+    })();
   });
 }

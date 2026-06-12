@@ -31,13 +31,13 @@ const FAILURE_CATEGORY_SET = new Set<MemoryCategory>([
  */
 export interface SqliteMemoryEntry {
   id: number;
-  project: string | null;
+  project: string | undefined;
   target: "memory" | "user" | "failure";
-  category: MemoryCategory | null;
+  category: MemoryCategory | undefined;
   content: string;
-  failureReason: string | null;
-  toolState: string | null;
-  correctedTo: string | null;
+  failureReason: string | undefined;
+  toolState: string | undefined;
+  correctedTo: string | undefined;
   created: string;
   lastReferenced: string;
 }
@@ -45,13 +45,13 @@ export interface SqliteMemoryEntry {
 export interface SqliteMemorySyncInput {
   content: string;
   target: "memory" | "user" | "failure";
-  project?: string | null;
-  category?: MemoryCategory | null;
-  failureReason?: string | null;
-  toolState?: string | null;
-  correctedTo?: string | null;
-  created?: string | null;
-  lastReferenced?: string | null;
+  project?: string | undefined;
+  category?: MemoryCategory | undefined;
+  failureReason?: string | undefined;
+  toolState?: string | undefined;
+  correctedTo?: string | undefined;
+  created?: string | undefined;
+  lastReferenced?: string | undefined;
 }
 
 export interface SqliteMemorySyncResult {
@@ -72,23 +72,23 @@ export interface SqliteMemoryRemoveResult {
 
 export interface SqliteMemoryRemoveOptions {
   target: "memory" | "user" | "failure";
-  project?: string | null;
+  project?: string | undefined;
 }
 
-export interface ParsedMarkdownMemoryEntry extends SqliteMemorySyncInput {}
+export type ParsedMarkdownMemoryEntry = SqliteMemorySyncInput;
 
 function today(): string {
-  return new Date().toISOString().split("T")[0];
+  return new Date().toISOString().slice(0, 10);
 }
 
-function normalizeNullable(value?: string | null): string | null {
-  if (value == null) return null;
+function normalizeNullable(value?: string | null): string | undefined {
+  if (value === undefined || value === null) return undefined;
   const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function normalizeCategory(value?: MemoryCategory | null): MemoryCategory | null {
-  return value ?? null;
+function normalizeCategory(value?: MemoryCategory | null): MemoryCategory | undefined {
+  return value ?? undefined;
 }
 
 function mapRow(row: {
@@ -105,13 +105,13 @@ function mapRow(row: {
 }): SqliteMemoryEntry {
   return {
     id: row.id,
-    project: row.project,
+    project: row.project ?? undefined,
     target: row.target as "memory" | "user" | "failure",
-    category: row.category as MemoryCategory | null,
+    category: normalizeCategory(row.category as MemoryCategory | null),
     content: row.content,
-    failureReason: row.failure_reason,
-    toolState: row.tool_state,
-    correctedTo: row.corrected_to,
+    failureReason: row.failure_reason ?? undefined,
+    toolState: row.tool_state ?? undefined,
+    correctedTo: row.corrected_to ?? undefined,
     created: row.created,
     lastReferenced: row.last_referenced,
   };
@@ -120,8 +120,8 @@ function mapRow(row: {
 function buildScopeConditions(
   params: unknown[],
   target?: string,
-  project?: string | null,
-  category?: MemoryCategory | null,
+  project?: string,
+  category?: MemoryCategory,
 ): string[] {
   const conditions: string[] = [];
 
@@ -130,28 +130,20 @@ function buildScopeConditions(
     params.push(target);
   }
 
-  if (project !== undefined) {
-    if (project === null) {
-      conditions.push("project IS NULL");
-    } else {
-      conditions.push("project = ?");
-      params.push(project);
-    }
+  if (project) {
+    conditions.push("project = ?");
+    params.push(project);
   }
 
-  if (category !== undefined) {
-    if (category === null) {
-      conditions.push("category IS NULL");
-    } else {
-      conditions.push("category = ?");
-      params.push(category);
-    }
+  if (category) {
+    conditions.push("category = ?");
+    params.push(category);
   }
 
   return conditions;
 }
 
-function getMemoryById(dbManager: DatabaseManager, id: number): SqliteMemoryEntry | null {
+function getMemoryById(dbManager: DatabaseManager, id: number): SqliteMemoryEntry | undefined {
   const db = dbManager.getDb();
   const row = db
     .prepare(`
@@ -174,7 +166,7 @@ function getMemoryById(dbManager: DatabaseManager, id: number): SqliteMemoryEntr
       }
     | undefined;
 
-  return row ? mapRow(row) : null;
+  return row ? mapRow(row) : undefined;
 }
 
 function minDate(a: string, b: string): string {
@@ -195,11 +187,12 @@ function parseMetadataComment(raw: string): {
   lastReferenced: string;
 } {
   const match = raw.match(/^(.*?)\s*<!--\s*created=([^,]+),\s*last=([^>]+)\s*-->\s*$/);
-  if (match) {
+  const [, g1, g2, g3] = match ?? [];
+  if (g1 && g2 && g3) {
     return {
-      text: match[1].trim(),
-      created: match[2].trim(),
-      lastReferenced: match[3].trim(),
+      text: g1.trim(),
+      created: g2.trim(),
+      lastReferenced: g3.trim(),
     };
   }
 
@@ -218,11 +211,11 @@ export function addMemory(
   dbManager: DatabaseManager,
   content: string,
   target: "memory" | "user" | "failure" = "memory",
-  project: string | null = null,
-  category: MemoryCategory | null = null,
-  failureReason: string | null = null,
-  toolState: string | null = null,
-  correctedTo: string | null = null,
+  project: string | undefined = undefined,
+  category: MemoryCategory | undefined = undefined,
+  failureReason: string | undefined = undefined,
+  toolState: string | undefined = undefined,
+  correctedTo: string | undefined = undefined,
   created = today(),
   lastReferenced = created,
 ): SqliteMemoryEntry {
@@ -243,7 +236,7 @@ export function addMemory(
       correctedTo,
       created,
       lastReferenced,
-    );
+    ) as { lastInsertRowid: number | bigint };
 
   return {
     id: Number(result.lastInsertRowid),
@@ -266,10 +259,10 @@ export function formatFailureMemoryContent(
   content: string,
   options: {
     category: MemoryCategory;
-    failureReason?: string | null;
-    toolState?: string | null;
-    correctedTo?: string | null;
-    project?: string | null;
+    failureReason?: string | undefined;
+    toolState?: string | undefined;
+    correctedTo?: string | undefined;
+    project?: string | undefined;
   },
 ): string {
   const categoryTag = `[${options.category}]`;
@@ -289,7 +282,7 @@ export function formatFailureMemoryContent(
 export function parseMarkdownMemoryEntry(
   rawEntry: string,
   target: "memory" | "user" | "failure",
-  project: string | null = null,
+  project: string | undefined = undefined,
 ): ParsedMarkdownMemoryEntry {
   const { text, created, lastReferenced } = parseMetadataComment(rawEntry);
   const parsedProject = normalizeNullable(project);
@@ -304,10 +297,10 @@ export function parseMarkdownMemoryEntry(
     };
   }
 
-  let category: MemoryCategory | null = null;
-  let failureReason: string | null = null;
-  let toolState: string | null = null;
-  let correctedTo: string | null = null;
+  let category: MemoryCategory | undefined = undefined;
+  let failureReason: string | undefined = undefined;
+  let toolState: string | undefined = undefined;
+  let correctedTo: string | undefined = undefined;
 
   const categoryMatch = text.match(/^\[([^\]]+)\]\s+/);
   if (categoryMatch && FAILURE_CATEGORY_SET.has(categoryMatch[1] as MemoryCategory)) {
@@ -317,15 +310,15 @@ export function parseMarkdownMemoryEntry(
   const segments = text.split(" — ");
   for (const segment of segments.slice(1)) {
     if (segment.startsWith("Failed: ") && !failureReason) {
-      failureReason = segment.slice("Failed: ".length).trim() || null;
+      failureReason = segment.slice("Failed: ".length).trim() || undefined;
       continue;
     }
     if (segment.startsWith("Tool state: ") && !toolState) {
-      toolState = segment.slice("Tool state: ".length).trim() || null;
+      toolState = segment.slice("Tool state: ".length).trim() || undefined;
       continue;
     }
     if (segment.startsWith("Corrected to: ") && !correctedTo) {
-      correctedTo = segment.slice("Corrected to: ".length).trim() || null;
+      correctedTo = segment.slice("Corrected to: ".length).trim() || undefined;
     }
   }
 
@@ -357,8 +350,8 @@ export function syncMemoryEntry(
   const failureReason = normalizeNullable(input.failureReason);
   const toolState = normalizeNullable(input.toolState);
   const correctedTo = normalizeNullable(input.correctedTo);
-  const created = input.created?.trim() || today();
-  const lastReferenced = input.lastReferenced?.trim() || created;
+  const created = (input.created && input.created.trim()) || today();
+  const lastReferenced = (input.lastReferenced && input.lastReferenced.trim()) || created;
 
   const params: unknown[] = [];
   const conditions = buildScopeConditions(params, input.target, project, category);
@@ -408,7 +401,7 @@ export function syncMemoryEntry(
 
   const updatedCreated = minDate(existing.created, created);
   const updatedLastReferenced = maxDate(existing.last_referenced, lastReferenced);
-  const updatedCategory = (existing.category as MemoryCategory | null) ?? category;
+  const updatedCategory = (existing.category as MemoryCategory | undefined) ?? category;
   const updatedFailureReason = existing.failure_reason ?? failureReason;
   const updatedToolState = existing.tool_state ?? toolState;
   const updatedCorrectedTo = existing.corrected_to ?? correctedTo;
@@ -427,9 +420,11 @@ export function syncMemoryEntry(
     existing.id,
   );
 
+  const entry = getMemoryById(dbManager, existing.id);
+  if (!entry) throw new Error(`Memory ${existing.id} not found after update`);
   return {
     action: "existing",
-    entry: getMemoryById(dbManager, existing.id)!,
+    entry,
   };
 }
 
@@ -443,12 +438,12 @@ export function replaceSyncedMemories(
   updates: {
     content: string;
     target: "memory" | "user" | "failure";
-    project?: string | null;
-    category?: MemoryCategory | null;
-    failureReason?: string | null;
-    toolState?: string | null;
-    correctedTo?: string | null;
-    lastReferenced?: string | null;
+    project?: string | undefined;
+    category?: MemoryCategory | undefined;
+    failureReason?: string | undefined;
+    toolState?: string | undefined;
+    correctedTo?: string | undefined;
+    lastReferenced?: string | undefined;
   },
 ): SqliteMemoryUpdateResult {
   const db = dbManager.getDb();
@@ -483,7 +478,7 @@ export function replaceSyncedMemories(
     return { matched: 0, updated: 0, entries: [] };
   }
 
-  const nextLastReferenced = updates.lastReferenced?.trim() || today();
+  const nextLastReferenced = (updates.lastReferenced && updates.lastReferenced.trim()) || today();
 
   for (const row of rows) {
     db.prepare(`
@@ -513,7 +508,7 @@ export function replaceSyncedMemories(
     updated: rows.length,
     entries: rows
       .map((row) => getMemoryById(dbManager, row.id))
-      .filter((entry): entry is SqliteMemoryEntry => entry !== null),
+      .filter((entry): entry is SqliteMemoryEntry => entry !== undefined),
   };
 }
 
@@ -550,7 +545,7 @@ export function removeSyncedMemories(
   const placeholders = deleteParams.map(() => "?").join(", ");
   const result = db
     .prepare(`DELETE FROM memories WHERE id IN (${placeholders})`)
-    .run(...deleteParams);
+    .run(...deleteParams) as { changes: number };
 
   return {
     matched: matchingIds.length,
@@ -590,7 +585,7 @@ export function removeExactSyncedMemories(
   const placeholders = deleteParams.map(() => "?").join(", ");
   const result = db
     .prepare(`DELETE FROM memories WHERE id IN (${placeholders})`)
-    .run(...deleteParams);
+    .run(...deleteParams) as { changes: number };
 
   return {
     matched: matchingIds.length,
@@ -613,9 +608,6 @@ export function searchMemories(
   const db = dbManager.getDb();
   const { project, target, category, limit = 10 } = options;
 
-  const conditions: string[] = [];
-  const params: unknown[] = [];
-
   // FTS5 match via subquery with escaped query
   const normalizedQuery = normalizeFts5Query(query);
   if (normalizedQuery.length === 0) {
@@ -629,13 +621,9 @@ export function searchMemories(
     conditions.push("m.id IN (SELECT rowid FROM memory_fts WHERE memory_fts MATCH ?)");
     params.push(matchQuery);
 
-    if (project !== undefined) {
-      if (project === null) {
-        conditions.push("m.project IS NULL");
-      } else {
-        conditions.push("m.project = ?");
-        params.push(project);
-      }
+    if (project) {
+      conditions.push("m.project = ?");
+      params.push(project);
     }
 
     if (target) {
@@ -699,7 +687,7 @@ export function searchMemories(
  */
 export function getMemories(
   dbManager: DatabaseManager,
-  options: { project?: string | null; target?: string; category?: MemoryCategory } = {},
+  options: { project?: string; target?: string; category?: MemoryCategory } = {},
 ): SqliteMemoryEntry[] {
   const db = dbManager.getDb();
   const { project, target, category } = options;
@@ -707,13 +695,9 @@ export function getMemories(
   const conditions: string[] = [];
   const params: unknown[] = [];
 
-  if (project !== undefined) {
-    if (project === null) {
-      conditions.push("project IS NULL");
-    } else {
-      conditions.push("project = ?");
-      params.push(project);
-    }
+  if (project) {
+    conditions.push("project = ?");
+    params.push(project);
   }
 
   if (target) {
@@ -756,7 +740,7 @@ export function getMemories(
  */
 export function removeMemory(dbManager: DatabaseManager, id: number): boolean {
   const db = dbManager.getDb();
-  const result = db.prepare("DELETE FROM memories WHERE id = ?").run(id);
+  const result = db.prepare("DELETE FROM memories WHERE id = ?").run(id) as { changes: number };
   return result.changes > 0;
 }
 
@@ -766,7 +750,7 @@ export function removeMemory(dbManager: DatabaseManager, id: number): boolean {
 export function getRecentFailures(
   dbManager: DatabaseManager,
   maxAgeDays = 7,
-  project?: string | null,
+  project?: string,
 ): SqliteMemoryEntry[] {
   const db = dbManager.getDb();
   const cutoff = new Date();
@@ -776,13 +760,9 @@ export function getRecentFailures(
   const conditions: string[] = ["target = ?", "created >= ?"];
   const params: unknown[] = ["failure", cutoffStr];
 
-  if (project !== undefined) {
-    if (project === null) {
-      conditions.push("project IS NULL");
-    } else {
-      conditions.push("(project = ? OR project IS NULL)");
-      params.push(project);
-    }
+  if (project) {
+    conditions.push("(project = ? OR project IS NULL)");
+    params.push(project);
   }
 
   const rows = db

@@ -83,7 +83,7 @@ export function registerProjectSkillDiscoveryHandler(
   });
 }
 
-export default function (pi: ExtensionAPI) {
+export default function memoryExtension(pi: ExtensionAPI) {
   const config = loadConfig();
 
   const globalDir = config.memoryDir ?? path.join(AGENT_ROOT, "data");
@@ -93,7 +93,7 @@ export default function (pi: ExtensionAPI) {
   const projectName = project.name ?? "";
   const skillStore = new SkillStore({
     globalSkillsDir: path.join(globalDir, "skills"),
-    projectSkillsDir: project.memoryDir ? path.join(project.memoryDir, "skills") : null,
+    projectSkillsDir: project.memoryDir ? path.join(project.memoryDir, "skills") : undefined,
     projectName: project.name,
   });
   const dbManager = new DatabaseManager(globalDir);
@@ -108,10 +108,13 @@ export default function (pi: ExtensionAPI) {
   };
 
   // Detect project from cwd using shared helper
-  const projectConfig = project.memoryDir
-    ? { ...config, memoryCharLimit: config.projectCharLimit, memoryDir: project.memoryDir }
-    : { ...config, memoryDir: undefined };
-  const projectStore = project.memoryDir ? new MemoryStore(projectConfig) : null;
+  const projectStore = project.memoryDir
+    ? new MemoryStore({
+        ...config,
+        memoryCharLimit: config.projectCharLimit,
+        memoryDir: project.memoryDir,
+      })
+    : undefined;
 
   // Resolve LLM model and prepare memory tools for in-process prompt runners
   const memoryModel = config.llmModelOverride
@@ -134,11 +137,13 @@ export default function (pi: ExtensionAPI) {
   pi.on("before_agent_start", async (event, _ctx) => {
     const promptContext = await buildPromptContext(config, store, projectStore, projectName);
 
-    if (promptContext) {
-      return {
-        systemPrompt: event.systemPrompt + "\n\n" + promptContext,
-      };
+    if (!promptContext) {
+      return;
     }
+
+    return {
+      systemPrompt: event.systemPrompt + "\n\n" + promptContext,
+    };
   });
 
   // ── 3. Register the memory tool (with project store + SQLite sync) ──
@@ -196,9 +201,9 @@ export default function (pi: ExtensionAPI) {
     projectStore,
     config,
     dbManager,
-    projectName,
     memoryModel,
     memoryTools,
+    projectName,
   );
 
   // ── 9. Register commands ──
