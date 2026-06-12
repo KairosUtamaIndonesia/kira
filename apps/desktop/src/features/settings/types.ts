@@ -45,6 +45,16 @@ type NotificationSoundImportInput = {
   bytes: number[];
 };
 
+type TerminalSettings = {
+  shellPath: string | undefined;
+  terminalShellPath: string | undefined;
+};
+
+type TerminalSettingsUpdateInput = {
+  shellPath: string | undefined;
+  terminalShellPath: string | undefined;
+};
+
 export type {
   AppearanceSettings,
   AppearanceSettingsUpdateInput,
@@ -55,4 +65,6 @@ export type {
   NotificationSettingsUpdateInput,
   NotificationSound,
   NotificationSoundImportInput,
+  TerminalSettings,
+  TerminalSettingsUpdateInput,
 };

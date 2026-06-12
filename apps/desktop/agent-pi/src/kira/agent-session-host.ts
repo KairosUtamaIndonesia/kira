@@ -2,15 +2,17 @@ import {
   AuthStorage,
   type AgentSession,
   createAgentSession,
+  DefaultResourceLoader,
   ModelRegistry,
   SessionManager,
+  SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 import type { AgentThreadContext } from "./agent-thread-context";
 
-import { readAgentProviderApiKey, readPiSessionRoot } from "./env";
+import { readAgentProviderApiKey, readOptionalEnv, readPiSessionRoot } from "./env";
 import { getDefaultModel } from "./model-catalog";
 import { piModelFromConfig } from "./pi-model";
 import { ToolUiBroker } from "./tool-ui-broker";
@@ -55,6 +57,16 @@ async function buildAgentSession(context: AgentThreadContext): Promise<AgentSess
   mkdirSync(sessionDir, { recursive: true });
   const sessionFile = join(sessionDir, "session.jsonl");
 
+  const shellPath = readOptionalEnv("KIRA_AGENT_SHELL_PATH");
+  const settingsManager =
+    shellPath !== undefined ? SettingsManager.inMemory({ shellPath }) : undefined;
+
+  const resourceLoader = new DefaultResourceLoader({
+    cwd: context.projectPath,
+    agentDir: readPiSessionRoot(),
+  });
+  await resourceLoader.reload();
+
   const { session } = await createAgentSession({
     cwd: context.projectPath,
     model,
@@ -62,8 +74,9 @@ async function buildAgentSession(context: AgentThreadContext): Promise<AgentSess
     modelRegistry: ModelRegistry.inMemory(authStorage),
     sessionManager: SessionManager.open(sessionFile, sessionDir, context.projectPath),
     customTools: [createAskUserTool(toolUiBroker)],
+    resourceLoader,
     agentDir: readPiSessionRoot(),
+    ...(settingsManager !== undefined && { settingsManager }),
   });
-
   return { session, toolUiBroker };
 }

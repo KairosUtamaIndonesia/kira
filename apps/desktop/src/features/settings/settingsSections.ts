@@ -1,11 +1,12 @@
 import { appearanceSettingsSection } from "@/features/settings/sections/appearance/appearanceSettingsSection";
 import { generalSettingsSection } from "@/features/settings/sections/general/generalSettingsSection";
 import { notificationSettingsSection } from "@/features/settings/sections/notifications/notificationSettingsSection";
+import { terminalSettingsSection } from "@/features/settings/sections/terminal/terminalSettingsSection";
 
 const settingsGroups = [
   {
-    label: "Account",
-    sections: [generalSettingsSection],
+    label: "General",
+    sections: [generalSettingsSection, terminalSettingsSection],
   },
   {
     label: "Interface",
