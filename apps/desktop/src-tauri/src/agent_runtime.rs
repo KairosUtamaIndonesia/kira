@@ -539,7 +539,6 @@ async fn start_app_runtime(store: PersistenceStore) -> Result<AppAgentRuntime, A
         .map_err(|error| AgentRuntimeError::StartFailed {
             reason: format!("failed to fetch organization model catalog: {error}"),
         })?;
-    let pi_session_root = store.app_data_dir().join("agent-pi-sessions");
     let mut command = Command::new("bun");
     match mode {
         AgentRuntimeLaunchMode::Dev => {
@@ -560,7 +559,7 @@ async fn start_app_runtime(store: PersistenceStore) -> Result<AppAgentRuntime, A
         .env("HOSTNAME", AGENT_RUNTIME_HOST)
         .env("PORT", port.to_string())
         .env("KIRA_AGENT_RUNTIME_TOKEN", &token)
-        .env("KIRA_AGENT_PI_SESSION_ROOT", &pi_session_root)
+        .env("KIRA_AGENT_PI_DATA_DIR", store.app_data_dir())
         .env(
             "KIRA_AGENT_MODEL_CATALOG",
             serde_json::to_string(&catalog).map_err(|error| AgentRuntimeError::StartFailed {

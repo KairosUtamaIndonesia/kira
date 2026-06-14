@@ -1,0 +1,90 @@
+/**
+ * Switch project command — /memory-switch-project lets users manually
+ * set the active project for project-scoped memory.
+ *
+ * Normally, the project is auto-detected from cwd at extension load.
+ * This command is useful when the user wants to view or manage memory
+ * for a project they're not currently in.
+ */
+
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+
+import type { MemoryConfig } from "../types.js";
+
+import { AGENT_ROOT } from "../paths.js";
+
+export function registerSwitchProjectCommand(pi: ExtensionAPI, config?: MemoryConfig): void {
+  const projectsMemoryDir =
+    config && config.projectsMemoryDir ? config.projectsMemoryDir : "projects";
+  pi.registerCommand("memory-switch-project", {
+    description: "Switch the active project for project-scoped memory",
+
+    async handler(_args, ctx) {
+      const agentDir = AGENT_ROOT;
+      const projectsDir = path.join(agentDir, projectsMemoryDir);
+
+      // Discover all project directories (subdirectories of projects-memory/ that have MEMORY.md)
+      let projects: string[] = [];
+      try {
+        const entries = await fs.readdir(projectsDir, { withFileTypes: true });
+        const projectNames = await Promise.all(
+          entries
+            .filter((entry) => entry.isDirectory())
+            .map(async (entry) => {
+              try {
+                await fs.access(path.join(projectsDir, entry.name, "MEMORY.md"));
+                return entry.name;
+              } catch {
+                return "";
+              }
+            }),
+        );
+        projects = projectNames.filter((name) => name.length > 0);
+      } catch {
+        // Directory doesn't exist — no projects
+      }
+
+      if (projects.length === 0) {
+        ctx.ui.notify(
+          "\n  📁 No project memories found.\n\n  Project memory is automatically created when you use the memory tool with\n  target 'project' while working in a project directory.\n",
+          "info",
+        );
+        return;
+      }
+
+      const lines: string[] = [];
+      lines.push("");
+      lines.push("  ╔══════════════════════════════════════════════╗");
+      lines.push("  ║        📁 Project Memory — Switch           ║");
+      lines.push("  ╚══════════════════════════════════════════════╝");
+      lines.push("");
+      lines.push("  Available project memories:");
+      lines.push("");
+
+      const projectRows = await Promise.all(
+        projects.toSorted().map(async (proj) => {
+          let entryCount = 0;
+          try {
+            const raw = await fs.readFile(path.join(projectsDir, proj, "MEMORY.md"), "utf-8");
+            entryCount = raw.split("\n§\n").filter(Boolean).length;
+          } catch {
+            /* ignore */
+          }
+
+          return `  📁 ${proj} (${entryCount} ${entryCount === 1 ? "entry" : "entries"})`;
+        }),
+      );
+      lines.push(...projectRows);
+
+      lines.push("");
+      lines.push("  Use the memory tool with target 'project' to manage");
+      lines.push("  project-scoped memory. Project is auto-detected from");
+      lines.push(`  your current directory: ${process.cwd()}`);
+
+      ctx.ui.notify(lines.join("\n"), "info");
+    },
+  });
+}
