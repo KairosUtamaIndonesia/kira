@@ -11,7 +11,6 @@ import type { GitStatusEntry } from "@/features/source-control/types";
 
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { toast } from "@/components/ui/sonner";
-import { startAgentRuntime } from "@/features/agent-thread/api/agentRuntimeApi";
 import { BrowserOverlayGate } from "@/features/browser/components/BrowserOverlayGate";
 import {
   deleteWorkspacePanel,
@@ -75,18 +74,6 @@ function AppShell() {
   const fileEditorSequenceRef = useRef(0);
   const agentThreadSequenceRef = useRef(0);
   const settingsReturnFocusRef = useRef<HTMLElement | undefined>(void 0);
-
-  useEffect(() => {
-    async function startRuntime() {
-      try {
-        await startAgentRuntime();
-      } catch (error) {
-        toast.error(`Agent runtime failed to start: ${errorMessageFromUnknown(error)}`);
-      }
-    }
-
-    void startRuntime();
-  }, []);
 
   useEffect(() => {
     let ignoreResult = false;

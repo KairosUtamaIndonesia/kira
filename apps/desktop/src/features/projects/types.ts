@@ -2,6 +2,7 @@ type Project = {
   id: string;
   name: string;
   folderPath: string;
+  kind: "code" | "cowork";
   createdAt: string;
   updatedAt: string;
 };
@@ -244,7 +245,14 @@ type OpenProject = {
   panels: WorkspacePanel[];
 };
 
+type AgentThreadPanelListing = {
+  project: Project;
+  sessionId: string;
+  panel: AgentThreadWorkspacePanel;
+};
+
 export type {
+  AgentThreadPanelListing,
   AgentThreadPanelState,
   AgentThreadWorkspacePanel,
   BrowserPanelState,
