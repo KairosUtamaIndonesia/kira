@@ -35,12 +35,13 @@ type ComposerSlashCommandAction = "compact";
 type ComposerProps = {
   threadId: string;
   folderPath: string;
-  runtimeState: AgentThreadRuntimeState;
-  contextUsageState: AgentThreadContextUsageState;
-  isCompacting: boolean;
+  runtimeState?: AgentThreadRuntimeState;
+  contextUsageState?: AgentThreadContextUsageState;
+  isCompacting?: boolean;
   isDropTargetActive?: boolean;
+  placeholder?: string;
   sendPrompt: (prompt: string) => Promise<boolean>;
-  runSlashCommandAction: (
+  runSlashCommandAction?: (
     action: ComposerSlashCommandAction,
     args: string,
   ) => Promise<{ ok: boolean; error?: string }>;
@@ -76,14 +77,14 @@ const fileReferenceSuggestionLimit = 20;
 type SlashCommandPickerState =
   | { status: "closed" }
   | { status: "active"; token: SlashCommandToken; selectedIndex: number };
-
 function Composer({
   threadId,
   folderPath,
   runtimeState,
   contextUsageState,
-  isCompacting,
+  isCompacting = false,
   isDropTargetActive = false,
+  placeholder = "Send a prompt to this Agent Thread…",
   sendPrompt,
   runSlashCommandAction,
 }: ComposerProps) {
@@ -101,8 +102,11 @@ function Composer({
   const requestSequenceRef = useRef(0);
   const dragCounterRef = useRef(0);
   const draft = useAgentThreadDraft(threadId);
-  const canSend = runtimeState.status === "ready" || runtimeState.status === "sending";
-  const isSending = runtimeState.status === "sending";
+  const canSend =
+    runtimeState === undefined ||
+    runtimeState.status === "ready" ||
+    runtimeState.status === "sending";
+  const isSending = runtimeState !== undefined && runtimeState.status === "sending";
   const isDisabled = !canSend || isSending || isCompacting;
 
   useLayoutEffect(() => {
@@ -269,6 +273,9 @@ function Composer({
     setPrompt(cleared);
     void (async () => {
       try {
+        if (runSlashCommandAction === undefined) {
+          return;
+        }
         const result = await runSlashCommandAction(dispatch.action, args);
         if (!result.ok && result.error !== undefined) {
           setErrorMessage(result.error);
@@ -425,7 +432,7 @@ function Composer({
           rows={1}
           aria-label="Prompt"
           aria-autocomplete="list"
-          placeholder="Send a prompt to this Agent Thread…"
+          placeholder={placeholder}
           disabled={isDisabled}
           className="block min-h-9 w-full resize-none bg-transparent px-2.5 py-2 text-sm leading-5 outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
           onChange={(event) => {
@@ -463,7 +470,7 @@ function Composer({
       </div>
       <div className="mt-1 flex items-center justify-between px-1">
         <span>{composerFootnote(errorMessage, slashPickerState.status === "closed")}</span>
-        <AgentThreadContextMeter state={contextUsageState} />
+        {contextUsageState !== undefined && <AgentThreadContextMeter state={contextUsageState} />}
       </div>
     </form>
   );
@@ -891,19 +898,19 @@ function maxComposerTextareaHeight() {
   return rootFontSize * 12;
 }
 
-function sendButtonLabel(state: AgentThreadRuntimeState, isCompacting: boolean) {
+function sendButtonLabel(state: AgentThreadRuntimeState | undefined, isCompacting: boolean) {
+  if (state === undefined) {
+    return "Send";
+  }
   if (state.status === "starting" || state.status === "connecting") {
     return "Starting…";
   }
-
   if (isCompacting) {
     return "Compacting…";
   }
-
   if (state.status === "sending") {
     return "Sending…";
   }
-
   return "Send";
 }
 

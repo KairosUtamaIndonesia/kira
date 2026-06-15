@@ -1,7 +1,7 @@
 import type { Event, UnlistenFn } from "@tauri-apps/api/event";
 
 import { type DragDropEvent, getCurrentWebview } from "@tauri-apps/api/webview";
-import { ArrowLeft, File, FolderOpen, Loader2, Pencil, Trash, Upload } from "lucide-react";
+import { ArrowLeft, ChevronRight, File, Loader2, Pencil, Trash, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import type { ExplorerEntry } from "@/features/explorer/types";
@@ -29,6 +29,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/sonner";
+import { Composer } from "@/features/agent-thread/components/Composer";
 import { readEditorFile, writeEditorFile } from "@/features/editor/api/editorApi";
 import { getExplorerTree } from "@/features/explorer/api/explorerApi";
 import {
@@ -38,18 +39,24 @@ import {
   renameProject,
 } from "@/features/projects/api/projectsApi";
 
+// ─── Types ──────────────────────────────────────────────────────────────────
+
 type CoworkProjectDetailProps = {
   project: Project;
   onBack: () => void;
   onThreadSelect: (listing: AgentThreadPanelListing) => void;
+  onNewConversation: (project: Project) => void;
   onProjectRenamed: (project: Project) => void;
   onProjectRemoved: () => void;
 };
+
+// ─── Component ──────────────────────────────────────────────────────────────
 
 function CoworkProjectDetail({
   project,
   onBack,
   onThreadSelect,
+  onNewConversation,
   onProjectRenamed,
   onProjectRemoved,
 }: CoworkProjectDetailProps) {
@@ -66,6 +73,8 @@ function CoworkProjectDetail({
   const [renameOpen, setRenameOpen] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
   const [renameName, setRenameName] = useState("");
+  const [instructionsExpanded, setInstructionsExpanded] = useState(false);
+  const [filesExpanded, setFilesExpanded] = useState(true);
   const promptRef = useRef<HTMLTextAreaElement>(null);
 
   // Load project files.
@@ -74,9 +83,7 @@ function CoworkProjectDetail({
 
     async function load() {
       try {
-        const result = await getExplorerTree({
-          folderPath: project.folderPath,
-        });
+        const result = await getExplorerTree({ folderPath: project.folderPath });
         if (!cancelled) {
           setFiles(result.entries.filter((entry) => entry.path !== "agents.md"));
         }
@@ -181,10 +188,7 @@ function CoworkProjectDetail({
           sourcePaths,
         });
         toast.success(`${sourcePaths.length} file${sourcePaths.length === 1 ? "" : "s"} added`);
-        // Refresh file list.
-        const result = await getExplorerTree({
-          folderPath: project.folderPath,
-        });
+        const result = await getExplorerTree({ folderPath: project.folderPath });
         setFiles(result.entries.filter((entry) => entry.path !== "agents.md"));
       } catch (error) {
         toast.error(`Failed to add files: ${errorMessageFromUnknown(error)}`);
@@ -248,141 +252,34 @@ function CoworkProjectDetail({
   }
 
   return (
-    <div className="flex h-full flex-col overflow-y-auto">
-      {/* Header */}
-      <div className="flex items-center gap-3 border-b border-border px-4 py-3">
-        <Button type="button" variant="ghost" size="icon" onClick={onBack} aria-label="Back">
-          <ArrowLeft aria-hidden="true" className="h-4 w-4" />
-        </Button>
-        <h1 className="flex-1 text-lg font-semibold">{project.name}</h1>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          onClick={() => {
-            setRenameName(project.name);
-            setRenameOpen(true);
-          }}
-          aria-label="Rename project"
-        >
-          <Pencil aria-hidden="true" className="h-4 w-4" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          onClick={() => setRemoveOpen(true)}
-          aria-label="Remove project"
-        >
-          <Trash aria-hidden="true" className="h-4 w-4" />
-        </Button>
-      </div>
+    <div className="flex h-full overflow-hidden">
+      {/* ── Left: Composer + conversations ────────────────────────────── */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex items-center border-b border-border px-3 py-2">
+          <Button type="button" variant="ghost" size="icon" onClick={onBack} aria-label="Back">
+            <ArrowLeft aria-hidden="true" className="h-4 w-4" />
+          </Button>
+          <span className="ml-2 text-sm font-medium">{project.name}</span>
+        </div>
 
-      <div className="flex flex-1 flex-col gap-6 p-6">
-        {/* Files section */}
-        <section className="rounded-xl border border-border bg-card p-4">
-          <div className="mb-3 flex items-center gap-2">
-            <FolderOpen aria-hidden="true" className="h-4 w-4 text-muted-foreground" />
-            <h2 className="text-sm font-semibold text-foreground">Files</h2>
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6">
+          <div className="w-full max-w-xl">
+            <Composer
+              threadId={`project-${project.id}`}
+              folderPath={project.folderPath}
+              placeholder="How can I help you today?"
+              sendPrompt={async () => {
+                onNewConversation(project);
+                return true;
+              }}
+            />
           </div>
-          <section
-            aria-label="Drop zone for project files"
-            className={`rounded-lg border-2 border-dashed p-4 transition-colors ${
-              isDragOver
-                ? "border-primary bg-primary/5"
-                : "border-border hover:border-muted-foreground/30"
-            }`}
-          >
-            {filesLoading && (
-              <div className="flex items-center justify-center py-8">
-                <Loader2
-                  aria-hidden="true"
-                  className="h-5 w-5 animate-spin text-muted-foreground"
-                />
-              </div>
-            )}
-            {!filesLoading && files.length === 0 && (
-              <div className="py-8 text-center">
-                <Upload aria-hidden="true" className="mx-auto h-8 w-8 text-muted-foreground/50" />
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Drop files here to add context for the agent
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground/60">
-                  Files are copied into the project folder
-                </p>
-              </div>
-            )}
-            {!filesLoading && files.length > 0 && (
-              <ul className="space-y-1">
-                {files.map((entry) => (
-                  <li
-                    key={entry.path}
-                    className="flex items-center gap-2 rounded-md px-2 py-1 text-sm transition-colors hover:bg-muted/50"
-                  >
-                    <File aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    <span className="truncate">{entry.path}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        </section>
+        </div>
 
-        {/* Custom prompt section */}
-        <section className="rounded-xl border border-border bg-card p-4">
-          <div className="mb-3 flex items-center gap-2">
-            <Pencil aria-hidden="true" className="h-4 w-4 text-muted-foreground" />
-            <h2 className="text-sm font-semibold text-foreground">Custom Prompt</h2>
-          </div>
-          <p className="mb-3 text-xs text-muted-foreground">
-            Saved as <code className="rounded bg-muted px-1 py-0.5 font-mono">agents.md</code> in
-            the project folder. The agent runtime loads this automatically.
-          </p>
-          {promptLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 aria-hidden="true" className="h-5 w-5 animate-spin text-muted-foreground" />
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <textarea
-                ref={promptRef}
-                aria-label="Custom prompt"
-                value={prompt}
-                onChange={(event) => setPrompt(event.target.value)}
-                placeholder="Enter custom instructions for the agent…"
-                className="min-h-[120px] w-full rounded-lg border border-border bg-editor-surface p-3 font-mono text-sm text-foreground placeholder:text-muted-foreground/50 focus:ring-2 focus:ring-primary focus:outline-none"
-              />
-              {!promptExists && prompt.length === 0 && (
-                <p className="text-xs text-muted-foreground/60">
-                  No custom prompt set. Write one and save to create{" "}
-                  <code className="rounded bg-muted px-1 py-0.5 font-mono">agents.md</code>.
-                </p>
-              )}
-              <div className="flex justify-end">
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={promptSaving}
-                  onClick={() => void handleSavePrompt()}
-                >
-                  {promptSaving ? (
-                    <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
-                  ) : (
-                    "Save Prompt"
-                  )}
-                </Button>
-              </div>
-            </div>
-          )}
-        </section>
-
-        {/* Threads section */}
-        <section className="rounded-xl border border-border bg-card p-4">
-          <h2 className="mb-3 text-sm font-semibold text-foreground">Conversations</h2>
-          {threads.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No conversations in this project yet.</p>
-          ) : (
-            <ul className="space-y-1">
+        {threads.length > 0 && (
+          <div className="border-t border-border px-4 py-3">
+            <h3 className="mb-2 text-xs font-medium text-muted-foreground">Recent</h3>
+            <ul className="space-y-0.5">
               {threads.map((listing) => (
                 <li key={listing.panel.id}>
                   <button
@@ -390,16 +287,155 @@ function CoworkProjectDetail({
                     className="w-full rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
                     onClick={() => onThreadSelect(listing)}
                   >
-                    {listing.panel.title}
+                    <span className="truncate">{listing.panel.title}</span>
+                    {listing.panel.updatedAt !== undefined && (
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        {formatRelativeTime(listing.panel.updatedAt)}
+                      </span>
+                    )}
                   </button>
                 </li>
               ))}
             </ul>
-          )}
-        </section>
+          </div>
+        )}
       </div>
 
-      {/* Rename dialog */}
+      {/* ── Right: Project metadata sidebar ──────────────────────────── */}
+      <aside className="flex w-80 shrink-0 flex-col border-l border-border bg-sidebar">
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <h2 className="text-sm font-semibold">{project.name}</h2>
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                setRenameName(project.name);
+                setRenameOpen(true);
+              }}
+              aria-label="Rename project"
+            >
+              <Pencil aria-hidden="true" className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => setRemoveOpen(true)}
+              aria-label="Remove project"
+            >
+              <Trash aria-hidden="true" className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {/* Memory / Purpose & Context */}
+          <SidebarSection title="Purpose & Context" defaultExpanded>
+            {promptLoading ? (
+              <div className="flex items-center justify-center py-4">
+                <Loader2
+                  aria-hidden="true"
+                  className="h-4 w-4 animate-spin text-muted-foreground"
+                />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <textarea
+                  ref={promptRef}
+                  aria-label="Purpose and context"
+                  value={prompt}
+                  onChange={(event) => setPrompt(event.target.value)}
+                  placeholder="Describe the purpose and context of this project…"
+                  className="min-h-[80px] w-full resize-none rounded-md border border-border bg-editor-surface p-2 text-xs text-foreground placeholder:text-muted-foreground/50 focus:ring-1 focus:ring-primary focus:outline-none"
+                />
+                {!promptExists && prompt.length === 0 && (
+                  <p className="text-xs text-muted-foreground/60">
+                    Saved as{" "}
+                    <code className="rounded bg-muted px-1 py-0.5 font-mono">agents.md</code>.
+                  </p>
+                )}
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={promptSaving}
+                    onClick={() => void handleSavePrompt()}
+                  >
+                    {promptSaving ? (
+                      <Loader2 aria-hidden="true" className="h-3 w-3 animate-spin" />
+                    ) : (
+                      "Save"
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </SidebarSection>
+
+          {/* Instructions */}
+          <SidebarSection
+            title="Instructions"
+            expanded={instructionsExpanded}
+            onToggle={() => setInstructionsExpanded((v) => !v)}
+          >
+            <p className="text-xs text-muted-foreground">
+              Project-specific instructions will appear here.
+            </p>
+          </SidebarSection>
+
+          {/* Files */}
+          <SidebarSection
+            title="Files"
+            expanded={filesExpanded}
+            onToggle={() => setFilesExpanded((v) => !v)}
+          >
+            <section
+              aria-label="Drop zone for project files"
+              className={`rounded-lg border-2 border-dashed p-3 transition-colors ${
+                isDragOver
+                  ? "border-primary bg-primary/5"
+                  : "border-border hover:border-muted-foreground/30"
+              }`}
+            >
+              {filesLoading && (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2
+                    aria-hidden="true"
+                    className="h-4 w-4 animate-spin text-muted-foreground"
+                  />
+                </div>
+              )}
+              {!filesLoading && files.length === 0 && (
+                <div className="py-4 text-center">
+                  <Upload aria-hidden="true" className="mx-auto h-6 w-6 text-muted-foreground/50" />
+                  <p className="mt-1.5 text-xs text-muted-foreground">Add PDFs, documents, etc</p>
+                </div>
+              )}
+              {!filesLoading && files.length > 0 && (
+                <ul className="space-y-0.5">
+                  {files.map((entry) => (
+                    <li
+                      key={entry.path}
+                      className="flex items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors hover:bg-muted/50"
+                    >
+                      <File
+                        aria-hidden="true"
+                        className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                      />
+                      <span className="truncate">{entry.path}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </SidebarSection>
+        </div>
+      </aside>
+
+      {/* ── Dialogs ──────────────────────────────────────────────────── */}
       <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
         <DialogContent>
           <DialogHeader>
@@ -437,7 +473,6 @@ function CoworkProjectDetail({
         </DialogContent>
       </Dialog>
 
-      {/* Remove dialog */}
       <AlertDialog open={removeOpen} onOpenChange={setRemoveOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -460,6 +495,79 @@ function CoworkProjectDetail({
       </AlertDialog>
     </div>
   );
+}
+
+// ─── Sidebar section ────────────────────────────────────────────────────────
+
+type SidebarSectionProps = {
+  title: string;
+  children: React.ReactNode;
+  defaultExpanded?: boolean;
+  expanded?: boolean;
+  onToggle?: () => void;
+};
+
+function SidebarSection({
+  title,
+  children,
+  defaultExpanded = false,
+  expanded: controlledExpanded,
+  onToggle,
+}: SidebarSectionProps) {
+  const [internalExpanded, setInternalExpanded] = useState(defaultExpanded);
+  const isExpanded = controlledExpanded ?? internalExpanded;
+
+  function handleToggle() {
+    if (onToggle !== undefined) {
+      onToggle();
+    } else {
+      setInternalExpanded((v) => !v);
+    }
+  }
+
+  return (
+    <div className="border-b border-border">
+      <button
+        type="button"
+        className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+        onClick={handleToggle}
+      >
+        <ChevronRight
+          aria-hidden="true"
+          className={`h-3.5 w-3.5 shrink-0 transition-transform duration-150 ${
+            isExpanded ? "rotate-90" : ""
+          }`}
+        />
+        {title}
+      </button>
+      {isExpanded && <div className="px-4 pb-3">{children}</div>}
+    </div>
+  );
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function formatRelativeTime(dateString: string): string {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMinutes = Math.floor(diffMs / 60_000);
+
+  if (diffMinutes < 1) {
+    return "just now";
+  }
+  if (diffMinutes < 60) {
+    return `${diffMinutes}m ago`;
+  }
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) {
+    return `${diffHours}h ago`;
+  }
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) {
+    return `${diffDays}d ago`;
+  }
+  return date.toLocaleDateString();
 }
 
 function errorMessageFromUnknown(error: unknown) {

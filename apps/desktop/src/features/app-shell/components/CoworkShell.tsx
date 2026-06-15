@@ -10,8 +10,7 @@ import {
   createAgentThreadPanel,
   createCoworkProject,
   deleteWorkspacePanel,
-  removeProject,
-  renameProject,
+  listProjectSessions,
   renameWorkspacePanel,
 } from "@/features/projects/api/projectsApi";
 import { SettingsPage } from "@/features/settings";
@@ -20,6 +19,7 @@ import { useCoworkProjects } from "../hooks/useCoworkProjects";
 import { useCoworkThreads } from "../hooks/useCoworkThreads";
 import { AppWindowControls } from "./AppWindowControls";
 import { CoworkProjectDetail } from "./CoworkProjectDetail";
+import { CoworkProjectListPage } from "./CoworkProjectListPage";
 import { CoworkSidebar } from "./CoworkSidebar";
 import { ModeMenuButton } from "./ModeMenuButton";
 import { useTitleBarDrag } from "./useTitleBarDrag";
@@ -29,6 +29,7 @@ type SettingsSurfaceState = "closed" | "opening" | "open" | "closing";
 type CoworkView =
   | { kind: "chat"; thread: AgentThreadPanelListing }
   | { kind: "project-detail"; project: Project }
+  | { kind: "projects-list" }
   | { kind: "empty" };
 
 function CoworkShell() {
@@ -101,6 +102,11 @@ function CoworkShell() {
     }
   }
 
+  function handleProjectsListOpen() {
+    previousViewRef.current = currentView;
+    setCurrentView({ kind: "projects-list" });
+  }
+
   function handleProjectDetailRenamed(updatedProject: Project) {
     setCurrentView({ kind: "project-detail", project: updatedProject });
     void refreshProjects();
@@ -127,15 +133,37 @@ function CoworkShell() {
     }
   }
 
-  async function handleProjectRename(project: Project, name: string) {
-    await renameProject({ projectId: project.id, name });
-    await refreshProjects();
-  }
+  async function handleNewConversationInProject(project: Project) {
+    setIsCreatingConversation(true);
+    try {
+      const sessions = await listProjectSessions({ projectId: project.id });
+      const session = sessions[0];
+      if (session === undefined) {
+        throw new Error("Project has no sessions.");
+      }
 
-  async function handleProjectRemove(projectId: string) {
-    await removeProject({ projectId });
-    await refreshProjects();
-    await refreshThreads();
+      const panel = await createAgentThreadPanel({
+        sessionId: session.id,
+        title: "New Thread",
+      });
+      if (panel.kind !== "agent_thread") {
+        throw new Error(`Expected Agent Thread panel, received ${panel.kind}.`);
+      }
+
+      setCurrentView({
+        kind: "chat",
+        thread: {
+          project,
+          sessionId: session.id,
+          panel,
+        },
+      });
+      await refreshThreads();
+    } catch (error) {
+      toast.error(`Failed to start a conversation: ${errorMessageFromUnknown(error)}`);
+    } finally {
+      setIsCreatingConversation(false);
+    }
   }
 
   function handleThreadClose(listing: AgentThreadPanelListing) {
@@ -227,8 +255,19 @@ function CoworkShell() {
             project={currentView.project}
             onBack={handleProjectDetailBack}
             onThreadSelect={(listing) => setCurrentView({ kind: "chat", thread: listing })}
+            onNewConversation={(project) => void handleNewConversationInProject(project)}
             onProjectRenamed={handleProjectDetailRenamed}
             onProjectRemoved={handleProjectDetailRemoved}
+          />
+        );
+      case "projects-list":
+        return (
+          <CoworkProjectListPage
+            projectsState={projectsState}
+            onProjectSelect={handleProjectSelect}
+            onProjectCreate={() => void handleProjectCreate()}
+            isCreatingProject={isCreatingProject}
+            onBack={handleProjectDetailBack}
           />
         );
       case "chat":
@@ -274,16 +313,12 @@ function CoworkShell() {
           activePanelId={activeThread === undefined ? undefined : activeThread.panel.id}
           isCreatingConversation={isCreatingConversation}
           onNewConversation={() => void handleNewConversation()}
-          isCreatingProject={isCreatingProject}
           onSettingsOpen={handleSettingsOpen}
           onThreadClose={handleThreadClose}
           onThreadDelete={handleThreadDelete}
           onThreadRename={handleThreadRename}
           onThreadSelect={(listing) => setCurrentView({ kind: "chat", thread: listing })}
-          onProjectSelect={handleProjectSelect}
-          onProjectCreate={() => void handleProjectCreate()}
-          onProjectRename={handleProjectRename}
-          onProjectRemove={handleProjectRemove}
+          onProjectsListOpen={handleProjectsListOpen}
         />
         <main className="min-h-0 min-w-0 flex-1 bg-editor-surface">{renderMainContent()}</main>
       </div>
