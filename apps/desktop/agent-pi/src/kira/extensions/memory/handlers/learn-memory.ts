@@ -6,11 +6,11 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 
 export function registerLearnMemoryCommand(pi: ExtensionAPI): void {
   pi.registerCommand("learn-memory-tool", {
-    description: "Learn how to use the pi-hermes-memory extension effectively",
+    description: "Learn how to use the memory system effectively",
     handler: async (_args, ctx: ExtensionCommandContext) => {
       // Show main menu first
       const section = await ctx.ui.select(
-        "Pi Hermes Memory Guide",
+        "Memory Guide",
         [
           "📦 What Gets Saved",
           "🔧 Tools Available",
@@ -38,7 +38,7 @@ export function registerLearnMemoryCommand(pi: ExtensionAPI): void {
         lines.push("  🧠 Memory       │ MEMORY.md     │ 5,000 chars");
         lines.push("  👤 User Profile │ USER.md       │ 5,000 chars");
         lines.push("  ⚠️  Failures     │ failures.md   │ 10,000 chars");
-        lines.push("  📚 Skills       │ Pi-native skill dirs │ Unlimited");
+        lines.push("  📚 Skills       │ SKILL.md files          │ Unlimited");
         lines.push("  💾 Extended     │ sessions.db   │ Unlimited");
         lines.push("");
         lines.push("  Memory:   Facts — env details, project conventions, tool quirks");

@@ -1,7 +1,5 @@
 /**
  * Content scanner — blocks injection/exfiltration in memory writes.
- * Ported from hermes-agent/tools/memory_tool.py (_MEMORY_THREAT_PATTERNS, _INVISIBLE_CHARS, _scan_memory_content).
- * See PLAN.md → "Hermes Source File Reference Map" for source lines.
  */
 
 const MEMORY_THREAT_PATTERNS: Array<{ pattern: RegExp; id: string }> = [
@@ -31,7 +29,7 @@ const MEMORY_THREAT_PATTERNS: Array<{ pattern: RegExp; id: string }> = [
 /**
  * Secret detection patterns — checks for credentials, API keys, tokens, and
  * environment variable leaks that should never be persisted to memory.
- * Ported from pk-pi-hermes-evolve engine.ts scanForSecrets().
+
  */
 const SECRET_PATTERNS: Array<{ pattern: RegExp; id: string; severity: "high" | "medium" }> = [
   // API keys

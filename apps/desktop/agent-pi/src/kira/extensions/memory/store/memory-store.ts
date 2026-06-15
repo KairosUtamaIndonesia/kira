@@ -1,12 +1,10 @@
 /**
  * MemoryStore — core persistent memory with file-backed storage.
- * Ported from hermes-agent/tools/memory_tool.py (MemoryStore class).
- * See PLAN.md → "Hermes Source File Reference Map" for source lines.
  *
  * Design:
  * - Two stores: MEMORY.md (agent notes) and USER.md (user profile)
  * - §-delimited entries with character limits
- * - Frozen snapshot at load time for system prompt (preserves Pi's prompt cache)
+ * - Frozen snapshot at load time for system prompt
  * - Atomic writes via temp file + fs.rename()
  * - Content scanning before any write
  */
@@ -553,6 +551,7 @@ export class MemoryStore {
     const content = entries.length ? entries.join(ENTRY_DELIMITER) : "";
 
     // Use the memory directory for temp files so rename stays on the same device
+    await fs.mkdir(this.memoryDir, { recursive: true });
     const tmpDir = await fs.mkdtemp(path.join(this.memoryDir, ".tmp-"));
     const tmpPath = path.join(tmpDir, "write.tmp");
 

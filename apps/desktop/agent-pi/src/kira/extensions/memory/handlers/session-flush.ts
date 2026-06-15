@@ -1,7 +1,5 @@
 /**
  * Session flush — gives the agent one turn to save memories before context is lost.
- * Ported from hermes-agent/run_agent.py (flush_memories).
- * See PLAN.md → "Hermes Source File Reference Map" for source lines.
  */
 
 import type { Model } from "@earendil-works/pi-ai";
@@ -70,8 +68,8 @@ export function setupSessionFlush(
   // Flush before session shutdown (must be fast, non-blocking)
   pi.on("session_shutdown", async (_event, ctx) => {
     if (!config.flushOnShutdown) return;
-    // Fire-and-forget with a short timeout so we don't block Pi's shutdown.
-    // We intentionally do NOT await — Pi should not wait for the child process.
+    // Fire-and-forget with a short timeout so we don't block shutdown.
+    // We intentionally do NOT await.
     void (async () => {
       try {
         await flush(ctx, undefined, 10000);

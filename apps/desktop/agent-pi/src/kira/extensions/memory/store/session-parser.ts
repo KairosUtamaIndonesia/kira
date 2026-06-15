@@ -102,7 +102,7 @@ function extractToolCalls(content: unknown): string[] | undefined {
 }
 
 /**
- * Parse a Pi session JSONL file.
+ * Parse a session JSONL file.
  *
  * @param filePath — Path to the .jsonl file
  * @returns Parsed session data, or null if the file is invalid
@@ -161,7 +161,7 @@ export function parseSessionFile(filePath: string): ParsedSession | undefined {
   if (!sessionId || !sessionCwd || !sessionTimestamp) return undefined;
 
   // Decode project name from cwd-encoded directory name
-  // The directory is named like "--Users-chandrateja-Documents-pi-hermes-memory--"
+  // The directory is named like "--Users-username-Documents-my-project--"
   // We extract the last segment as the project name
   const project = sessionCwd.split("/").pop() ?? sessionCwd;
 
@@ -209,7 +209,7 @@ export function getSessionFiles(sessionsDir: string, projectDir?: string): strin
 
 /**
  * Decode a project directory name to a human-readable project name.
- * "--Users-chandrateja-Documents-pi-hermes-memory--" → "pi-hermes-memory"
+ * "--Users-username-Documents-my-project--" → "my-project"
  */
 export function decodeProjectDir(dirName: string): string {
   // Remove leading/trailing dashes

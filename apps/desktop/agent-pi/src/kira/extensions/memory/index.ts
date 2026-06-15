@@ -1,8 +1,8 @@
 /**
- * Pi Hermes Memory Extension
+ * Memory Extension
  *
- * Brings Hermes-style persistent memory and a learning loop to any Pi user.
- * After `pi install`, users get:
+ * Persistent memory, session search, and learning loop for Kira.
+
  *
  * 1. Persistent Memory — MEMORY.md + USER.md that survive across sessions
  * 2. Background Learning Loop — auto-saves notable facts every N turns
@@ -19,7 +19,7 @@
  * 13. Context Fencing — <memory-context> tags prevent injection through stored memory
  * 14. Memory Aging — entry timestamps guide consolidation
  *
- * See docs/ROADMAP.md for full roadmap and Hermes competitive analysis.
+ *
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";

@@ -15,7 +15,7 @@ const SESSIONS_DIR = path.join(AGENT_ROOT, "sessions");
 
 export function registerIndexSessionsCommand(pi: ExtensionAPI): void {
   pi.registerCommand("memory-index-sessions", {
-    description: "Import past Pi sessions into the search database",
+    description: "Import past sessions into the search database",
     handler: async (_args, ctx: ExtensionCommandContext) => {
       // Show initial progress
       ctx.ui.notify("🔍 Scanning session directories...", "info");

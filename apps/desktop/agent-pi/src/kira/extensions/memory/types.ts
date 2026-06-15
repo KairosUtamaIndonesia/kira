@@ -1,5 +1,5 @@
 /**
- * Shared TypeScript types for the Hermes Memory extension.
+ * Shared TypeScript types for the Memory extension.
  */
 
 import type { TextContent } from "@earendil-works/pi-ai";
@@ -126,7 +126,7 @@ export interface SkillIndex {
   path: string;
   /** Active project name for project-scoped skills */
   projectName?: string | undefined;
-  /** Pi skill slug stored in frontmatter and folder name */
+  /** Skill slug stored in frontmatter and folder name */
   name: string;
   /** Optional human-friendly title preserved for UI output */
   displayName?: string | undefined;
@@ -159,7 +159,7 @@ export interface SkillResult {
 }
 
 /**
- * Extract displayable text from a Pi session entry message.
+ * Extract displayable text from a session entry message.
  *
  * Accepts any value — returns null for non-message entries (BashExecutionMessage,
  * NotificationMessage, etc.) that lack a `content` property.
