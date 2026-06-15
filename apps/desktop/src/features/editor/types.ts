@@ -3,6 +3,12 @@ type EditorFileInput = {
   filePath: string;
 };
 
+type EditorFileWriteInput = {
+  folderPath: string;
+  filePath: string;
+  content: string;
+};
+
 type EditorFileReadResult =
   | {
       kind: "text";
@@ -14,4 +20,4 @@ type EditorFileReadResult =
       path: string;
     };
 
-export type { EditorFileInput, EditorFileReadResult };
+export type { EditorFileInput, EditorFileReadResult, EditorFileWriteInput };

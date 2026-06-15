@@ -31,6 +31,11 @@ import type {
   UpdateBrowserPanelUrlInput,
 } from "../types";
 
+type ProjectFileCopyInput = {
+  projectFolderPath: string;
+  sourcePaths: string[];
+};
+
 function listProjects() {
   return invoke<Project[]>("project_list");
 }
@@ -39,8 +44,8 @@ function createProject(input: CreateProjectInput) {
   return invoke<CreatedProject>("project_create", { input });
 }
 
-function createCoworkProject() {
-  return invoke<CreatedProject>("cowork_project_create");
+function createCoworkProject(intentional: boolean) {
+  return invoke<CreatedProject>("cowork_project_create", { input: { intentional } });
 }
 
 // Every Agent Thread across all Cowork projects, most recent first. Code
@@ -146,18 +151,23 @@ function updateSessionLayout(input: UpdateSessionLayoutInput) {
   return invoke<void>("session_layout_update", { input });
 }
 
+function copyFilesToProject(input: ProjectFileCopyInput) {
+  return invoke<void>("project_file_copy", { input });
+}
+
 export {
+  copyFilesToProject,
   createAgentThreadPanel,
   createBrowserPanel,
   createCoworkProject,
   createProject,
-  listCoworkAgentThreadPanels,
   createProjectSession,
   createTerminalPanel,
   deleteTerminalSnapshot,
   deleteWorkspacePanel,
   deleteProjectSession,
   getTerminalSnapshot,
+  listCoworkAgentThreadPanels,
   listProjectSessions,
   listProjects,
   openFileEditorPanel,

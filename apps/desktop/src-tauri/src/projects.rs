@@ -34,6 +34,7 @@ pub struct Project {
     name: String,
     folder_path: String,
     kind: ProjectKind,
+    intentional: bool,
     created_at: String,
     updated_at: String,
 }
@@ -434,6 +435,8 @@ pub enum ProjectError {
     Create(String),
     #[error("failed to update project: {0}")]
     Update(String),
+    #[error("failed to copy file {path}: {message}")]
+    CopyFile { path: String, message: String },
 }
 
 impl serde::Serialize for ProjectError {
@@ -465,7 +468,12 @@ pub async fn project_create(
     input: CreateProjectInput,
     store: tauri::State<'_, PersistenceStore>,
 ) -> Result<CreatedProject, ProjectError> {
-    create_project(store.pool(), input, ProjectKind::Code).await
+    create_project(store.pool(), input, ProjectKind::Code, false).await
+}
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CoworkProjectCreateInput {
+    intentional: bool,
 }
 
 #[tauri::command]
@@ -474,9 +482,10 @@ pub async fn project_create(
     reason = "Tauri commands require State by value"
 )]
 pub async fn cowork_project_create(
+    input: CoworkProjectCreateInput,
     store: tauri::State<'_, PersistenceStore>,
 ) -> Result<CreatedProject, ProjectError> {
-    create_cowork_project(store.pool(), store.app_data_dir()).await
+    create_cowork_project(store.pool(), store.app_data_dir(), input.intentional).await
 }
 
 #[tauri::command]
@@ -580,7 +589,7 @@ pub async fn project_rename(
         .await
         .map_err(|error| ProjectError::Query(error.to_string()))?;
     sqlx::query_as::<_, Project>(
-        "SELECT id, name, folder_path, kind, created_at, updated_at FROM projects WHERE id = ?",
+        "SELECT id, name, folder_path, kind, intentional, created_at, updated_at FROM projects WHERE id = ?",
     )
     .bind(&input.project_id)
     .fetch_optional(store.pool())
@@ -711,6 +720,80 @@ pub async fn session_layout_update(
         .execute(store.pool())
         .await
         .map_err(|error| ProjectError::Query(error.to_string()))?;
+    Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectFileCopyInput {
+    project_folder_path: String,
+    source_paths: Vec<String>,
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
+pub async fn project_file_copy(input: ProjectFileCopyInput) -> Result<(), ProjectError> {
+    let project_path = PathBuf::from(&input.project_folder_path);
+    if !project_path.exists() {
+        return Err(ProjectError::FolderDoesNotExist(input.project_folder_path));
+    }
+    if !project_path.is_dir() {
+        return Err(ProjectError::FolderIsNotDirectory(
+            input.project_folder_path,
+        ));
+    }
+
+    for source_path_str in &input.source_paths {
+        let source = PathBuf::from(source_path_str);
+        if !source.exists() {
+            return Err(ProjectError::CopyFile {
+                path: source_path_str.clone(),
+                message: "Source file does not exist".to_string(),
+            });
+        }
+
+        let file_name = source
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| ProjectError::CopyFile {
+                path: source_path_str.clone(),
+                message: "Invalid file name".to_string(),
+            })?;
+
+        let destination = project_path.join(file_name);
+
+        // Handle filename collisions by appending a number suffix.
+        let final_destination = if destination.exists() {
+            let stem = destination
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or(file_name);
+            let extension = destination
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| format!(".{e}"))
+                .unwrap_or_default();
+            let mut counter = 1;
+            loop {
+                let candidate = project_path.join(format!("{stem} ({counter}){extension}"));
+                if !candidate.exists() {
+                    break candidate;
+                }
+                counter += 1;
+            }
+        } else {
+            destination
+        };
+
+        fs::copy(&source, &final_destination).map_err(|error| ProjectError::CopyFile {
+            path: source_path_str.clone(),
+            message: error.to_string(),
+        })?;
+    }
+
     Ok(())
 }
 
@@ -975,7 +1058,7 @@ pub async fn workspace_terminal_snapshot_delete(
 // excluded so they never surface as openable projects.
 async fn list_projects(pool: &SqlitePool) -> Result<Vec<Project>, ProjectError> {
     sqlx::query_as::<_, Project>(
-        "SELECT id, name, folder_path, kind, created_at, updated_at FROM projects WHERE kind = 'code' ORDER BY name COLLATE NOCASE",
+        "SELECT id, name, folder_path, kind, intentional, created_at, updated_at FROM projects ORDER BY name COLLATE NOCASE",
     )
     .fetch_all(pool)
     .await
@@ -1075,7 +1158,7 @@ async fn ensure_project_exists(
     project_id: &str,
 ) -> Result<Project, ProjectError> {
     sqlx::query_as::<_, Project>(
-        "SELECT id, name, folder_path, kind, created_at, updated_at FROM projects WHERE id = ?",
+        "SELECT id, name, folder_path, kind, intentional, created_at, updated_at FROM projects WHERE id = ?",
     )
     .bind(project_id)
     .fetch_optional(pool)
@@ -1816,11 +1899,11 @@ fn panel_id_path_segment(file_path: &str) -> String {
 
     segment
 }
-
 async fn create_project(
     pool: &SqlitePool,
     input: CreateProjectInput,
     kind: ProjectKind,
+    intentional: bool,
 ) -> Result<CreatedProject, ProjectError> {
     let name = validate_name(&input.name)?;
     let folder_path = validate_folder_path(&input.folder_path)?;
@@ -1846,12 +1929,13 @@ async fn create_project(
         .map_err(|error| ProjectError::Create(error.to_string()))?;
 
     sqlx::query(
-        "INSERT INTO projects (id, name, folder_path, kind, created_at, updated_at, last_opened_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO projects (id, name, folder_path, kind, intentional, created_at, updated_at, last_opened_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&project_id)
     .bind(&name)
     .bind(&folder_path)
     .bind(kind)
+    .bind(intentional)
     .bind(&now)
     .bind(&now)
     .bind(&now)
@@ -1884,6 +1968,7 @@ async fn create_project(
             name,
             folder_path,
             kind,
+            intentional,
             created_at: now.clone(),
             updated_at: now.clone(),
         },
@@ -1901,10 +1986,10 @@ async fn create_project(
         },
     })
 }
-
 async fn create_cowork_project(
     pool: &SqlitePool,
     app_data_dir: &Path,
+    intentional: bool,
 ) -> Result<CreatedProject, ProjectError> {
     let timestamp = current_timestamp()?;
     let folder_path = app_data_dir
@@ -1922,6 +2007,7 @@ async fn create_cowork_project(
             folder_path: folder_path.display().to_string(),
         },
         ProjectKind::Cowork,
+        intentional,
     )
     .await
 }
@@ -1942,7 +2028,7 @@ async fn list_cowork_agent_thread_panels(
     pool: &SqlitePool,
 ) -> Result<Vec<AgentThreadPanelListing>, ProjectError> {
     let rows = sqlx::query(
-        "SELECT workspace_panels.id, workspace_panels.session_id, workspace_panels.kind, workspace_panels.title, workspace_panels.position_index, workspace_panels.created_at, workspace_panels.updated_at, terminal_panel_state.working_directory, terminal_panel_state.shell, source_control_diff_panel_state.folder_path AS diff_folder_path, source_control_diff_panel_state.file_path AS diff_file_path, source_control_diff_panel_state.old_path AS diff_old_path, source_control_diff_panel_state.source AS diff_source, file_editor_panel_state.folder_path AS editor_folder_path, file_editor_panel_state.file_path AS editor_file_path, agent_thread_panel_state.thread_id AS agent_thread_id, browser_panel_state.url AS browser_url, projects.id AS project_id, projects.name AS project_name, projects.folder_path AS project_folder_path, projects.kind AS project_kind, projects.created_at AS project_created_at, projects.updated_at AS project_updated_at FROM workspace_panels JOIN sessions ON sessions.id = workspace_panels.session_id JOIN projects ON projects.id = sessions.project_id LEFT JOIN terminal_panel_state ON terminal_panel_state.panel_id = workspace_panels.id LEFT JOIN source_control_diff_panel_state ON source_control_diff_panel_state.panel_id = workspace_panels.id LEFT JOIN file_editor_panel_state ON file_editor_panel_state.panel_id = workspace_panels.id LEFT JOIN agent_thread_panel_state ON agent_thread_panel_state.panel_id = workspace_panels.id LEFT JOIN browser_panel_state ON browser_panel_state.panel_id = workspace_panels.id WHERE workspace_panels.kind = 'agent_thread' AND projects.kind = 'cowork' ORDER BY workspace_panels.updated_at DESC",
+        "SELECT workspace_panels.id, workspace_panels.session_id, workspace_panels.kind, workspace_panels.title, workspace_panels.position_index, workspace_panels.created_at, workspace_panels.updated_at, terminal_panel_state.working_directory, terminal_panel_state.shell, source_control_diff_panel_state.folder_path AS diff_folder_path, source_control_diff_panel_state.file_path AS diff_file_path, source_control_diff_panel_state.old_path AS diff_old_path, source_control_diff_panel_state.source AS diff_source, file_editor_panel_state.folder_path AS editor_folder_path, file_editor_panel_state.file_path AS editor_file_path, agent_thread_panel_state.thread_id AS agent_thread_id, browser_panel_state.url AS browser_url, projects.id AS project_id, projects.name AS project_name, projects.folder_path AS project_folder_path, projects.kind AS project_kind, projects.intentional AS project_intentional, projects.created_at AS project_created_at, projects.updated_at AS project_updated_at FROM workspace_panels JOIN sessions ON sessions.id = workspace_panels.session_id JOIN projects ON projects.id = sessions.project_id LEFT JOIN terminal_panel_state ON terminal_panel_state.panel_id = workspace_panels.id LEFT JOIN source_control_diff_panel_state ON source_control_diff_panel_state.panel_id = workspace_panels.id LEFT JOIN file_editor_panel_state ON file_editor_panel_state.panel_id = workspace_panels.id LEFT JOIN agent_thread_panel_state ON agent_thread_panel_state.panel_id = workspace_panels.id LEFT JOIN browser_panel_state ON browser_panel_state.panel_id = workspace_panels.id WHERE workspace_panels.kind = 'agent_thread' AND projects.kind = 'cowork' ORDER BY workspace_panels.updated_at DESC",
     )
     .fetch_all(pool)
     .await
@@ -1957,6 +2043,7 @@ async fn list_cowork_agent_thread_panels(
                     name: panel_column(row, "project_name")?,
                     folder_path: panel_column(row, "project_folder_path")?,
                     kind: panel_column(row, "project_kind")?,
+                    intentional: panel_column(row, "project_intentional")?,
                     created_at: panel_column(row, "project_created_at")?,
                     updated_at: panel_column(row, "project_updated_at")?,
                 },

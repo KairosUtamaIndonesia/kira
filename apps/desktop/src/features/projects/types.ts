@@ -3,6 +3,7 @@ type Project = {
   name: string;
   folderPath: string;
   kind: "code" | "cowork";
+  intentional: boolean;
   createdAt: string;
   updatedAt: string;
 };

@@ -108,7 +108,7 @@ function AppSidebar({
 
     async function loadProjects() {
       try {
-        const loadedProjects = await listProjects();
+        const loadedProjects = (await listProjects()).filter((p) => p.kind === "code");
         if (!ignoreResult) {
           setProjects(loadedProjects);
           setProjectSessions(loadingSessionsState(loadedProjects));

@@ -5,7 +5,13 @@ import type {
   ExplorerDirectoryChildrenResult,
   ExplorerFileReferenceSuggestionsInput,
   ExplorerFileReferenceSuggestionsResult,
+  ExplorerTreeInput,
+  ExplorerTreeResult,
 } from "../types";
+
+function getExplorerTree(input: ExplorerTreeInput) {
+  return invoke<ExplorerTreeResult>("explorer_tree", { input });
+}
 
 function getExplorerDirectoryChildren(input: ExplorerDirectoryChildrenInput) {
   return invoke<ExplorerDirectoryChildrenResult>("explorer_directory_children", { input });
@@ -17,4 +23,4 @@ function getExplorerFileReferenceSuggestions(input: ExplorerFileReferenceSuggest
   });
 }
 
-export { getExplorerDirectoryChildren, getExplorerFileReferenceSuggestions };
+export { getExplorerDirectoryChildren, getExplorerFileReferenceSuggestions, getExplorerTree };

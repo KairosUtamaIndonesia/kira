@@ -1,7 +1,7 @@
 import { MessageCirclePlus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import type { AgentThreadPanelListing } from "@/features/projects/types";
+import type { AgentThreadPanelListing, Project } from "@/features/projects/types";
 
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/sonner";
@@ -10,28 +10,37 @@ import {
   createAgentThreadPanel,
   createCoworkProject,
   deleteWorkspacePanel,
+  removeProject,
+  renameProject,
   renameWorkspacePanel,
 } from "@/features/projects/api/projectsApi";
 import { SettingsPage } from "@/features/settings";
 
+import { useCoworkProjects } from "../hooks/useCoworkProjects";
 import { useCoworkThreads } from "../hooks/useCoworkThreads";
 import { AppWindowControls } from "./AppWindowControls";
+import { CoworkProjectDetail } from "./CoworkProjectDetail";
 import { CoworkSidebar } from "./CoworkSidebar";
 import { ModeMenuButton } from "./ModeMenuButton";
 import { useTitleBarDrag } from "./useTitleBarDrag";
 
 type SettingsSurfaceState = "closed" | "opening" | "open" | "closing";
 
-// Thread-first shell for non-developers: one chat column, no Workspace
-// panels, no Inspector, no Session switching. Each conversation lives in its
-// own auto-created Cowork Project's default Session.
+type CoworkView =
+  | { kind: "chat"; thread: AgentThreadPanelListing }
+  | { kind: "project-detail"; project: Project }
+  | { kind: "empty" };
+
 function CoworkShell() {
   const { handleTitleBarDoubleClick, handleTitleBarMouseDown, titleBarError } = useTitleBarDrag();
+  const { state: projectsState, refresh: refreshProjects } = useCoworkProjects();
   const { state: threadsState, refresh: refreshThreads } = useCoworkThreads();
-  const [activeThread, setActiveThread] = useState<AgentThreadPanelListing>();
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const [currentView, setCurrentView] = useState<CoworkView>({ kind: "empty" });
   const [isCreatingConversation, setIsCreatingConversation] = useState(false);
   const [settingsSurfaceState, setSettingsSurfaceState] = useState<SettingsSurfaceState>("closed");
   const settingsReturnFocusRef = useRef<HTMLElement | undefined>(void 0);
+  const previousViewRef = useRef<CoworkView | undefined>(void 0);
   const didAutoSelectRef = useRef(false);
 
   // Resume the most recent conversation once on startup; afterwards the
@@ -44,14 +53,14 @@ function CoworkShell() {
     didAutoSelectRef.current = true;
     const mostRecentThread = threadsState.threads[0];
     if (mostRecentThread !== undefined) {
-      setActiveThread(mostRecentThread);
+      setCurrentView({ kind: "chat", thread: mostRecentThread });
     }
   }, [threadsState]);
 
   async function handleNewConversation() {
     setIsCreatingConversation(true);
     try {
-      const createdProject = await createCoworkProject();
+      const createdProject = await createCoworkProject(false);
       const panel = await createAgentThreadPanel({
         sessionId: createdProject.defaultSession.id,
         title: "New Thread",
@@ -60,10 +69,13 @@ function CoworkShell() {
         throw new Error(`Expected Agent Thread panel, received ${panel.kind}.`);
       }
 
-      setActiveThread({
-        project: createdProject.project,
-        sessionId: createdProject.defaultSession.id,
-        panel,
+      setCurrentView({
+        kind: "chat",
+        thread: {
+          project: createdProject.project,
+          sessionId: createdProject.defaultSession.id,
+          panel,
+        },
       });
       await refreshThreads();
     } catch (error) {
@@ -73,13 +85,66 @@ function CoworkShell() {
     }
   }
 
+  function handleProjectSelect(project: Project) {
+    // Save the current view so the back button can return to it.
+    previousViewRef.current = currentView;
+    setCurrentView({ kind: "project-detail", project });
+  }
+
+  function handleProjectDetailBack() {
+    const previous = previousViewRef.current;
+    if (previous !== undefined) {
+      setCurrentView(previous);
+      previousViewRef.current = undefined;
+    } else {
+      setCurrentView({ kind: "empty" });
+    }
+  }
+
+  function handleProjectDetailRenamed(updatedProject: Project) {
+    setCurrentView({ kind: "project-detail", project: updatedProject });
+    void refreshProjects();
+  }
+
+  function handleProjectDetailRemoved() {
+    setCurrentView({ kind: "empty" });
+    void refreshProjects();
+    void refreshThreads();
+  }
+
+  async function handleProjectCreate() {
+    setIsCreatingProject(true);
+    try {
+      const created = await createCoworkProject(true);
+      await refreshProjects();
+      await refreshThreads();
+      previousViewRef.current = currentView;
+      setCurrentView({ kind: "project-detail", project: created.project });
+    } catch (error) {
+      toast.error(`Failed to create project: ${errorMessageFromUnknown(error)}`);
+    } finally {
+      setIsCreatingProject(false);
+    }
+  }
+
+  async function handleProjectRename(project: Project, name: string) {
+    await renameProject({ projectId: project.id, name });
+    await refreshProjects();
+  }
+
+  async function handleProjectRemove(projectId: string) {
+    await removeProject({ projectId });
+    await refreshProjects();
+    await refreshThreads();
+  }
+
   function handleThreadClose(listing: AgentThreadPanelListing) {
-    setActiveThread((currentThread) => {
-      if (currentThread === undefined || currentThread.panel.id !== listing.panel.id) {
-        return currentThread;
+    setCurrentView((current) => {
+      if (current.kind !== "chat" || current.thread.panel.id !== listing.panel.id) {
+        return current;
       }
 
-      return void 0;
+      return { kind: "empty" };
     });
   }
 
@@ -102,12 +167,12 @@ function CoworkShell() {
         throw new Error(`Expected renamed Agent Thread panel, received ${panel.kind}.`);
       }
 
-      setActiveThread((currentThread) => {
-        if (currentThread === undefined || currentThread.panel.id !== panel.id) {
-          return currentThread;
+      setCurrentView((current) => {
+        if (current.kind !== "chat" || current.thread.panel.id !== panel.id) {
+          return current;
         }
 
-        return { ...currentThread, panel };
+        return { kind: "chat", thread: { ...current.thread, panel } };
       });
       await refreshThreads();
     } catch (error) {
@@ -117,12 +182,15 @@ function CoworkShell() {
   }
 
   function setActiveThreadTitle(panelId: string, title: string) {
-    setActiveThread((currentThread) => {
-      if (currentThread === undefined || currentThread.panel.id !== panelId) {
-        return currentThread;
+    setCurrentView((current) => {
+      if (current.kind !== "chat" || current.thread.panel.id !== panelId) {
+        return current;
       }
 
-      return { ...currentThread, panel: { ...currentThread.panel, title } };
+      return {
+        kind: "chat",
+        thread: { ...current.thread, panel: { ...current.thread.panel, title } },
+      };
     });
   }
 
@@ -143,6 +211,38 @@ function CoworkShell() {
     }
     settingsReturnFocusRef.current = undefined;
   }
+
+  function renderMainContent() {
+    switch (currentView.kind) {
+      case "empty":
+        return (
+          <CoworkEmptyState
+            isCreatingConversation={isCreatingConversation}
+            onNewConversation={() => void handleNewConversation()}
+          />
+        );
+      case "project-detail":
+        return (
+          <CoworkProjectDetail
+            project={currentView.project}
+            onBack={handleProjectDetailBack}
+            onThreadSelect={(listing) => setCurrentView({ kind: "chat", thread: listing })}
+            onProjectRenamed={handleProjectDetailRenamed}
+            onProjectRemoved={handleProjectDetailRemoved}
+          />
+        );
+      case "chat":
+        return (
+          <ChatView
+            thread={currentView.thread}
+            onRename={handleThreadRename}
+            onTitleChange={setActiveThreadTitle}
+          />
+        );
+    }
+  }
+
+  const activeThread = currentView.kind === "chat" ? currentView.thread : undefined;
 
   return (
     <div className="grid h-dvh grid-rows-[2.75rem_minmax(0,1fr)] overflow-hidden bg-background text-foreground">
@@ -170,39 +270,22 @@ function CoworkShell() {
       <div className="flex min-h-0">
         <CoworkSidebar
           threadsState={threadsState}
+          projectsState={projectsState}
           activePanelId={activeThread === undefined ? undefined : activeThread.panel.id}
           isCreatingConversation={isCreatingConversation}
           onNewConversation={() => void handleNewConversation()}
+          isCreatingProject={isCreatingProject}
           onSettingsOpen={handleSettingsOpen}
           onThreadClose={handleThreadClose}
           onThreadDelete={handleThreadDelete}
           onThreadRename={handleThreadRename}
-          onThreadSelect={setActiveThread}
+          onThreadSelect={(listing) => setCurrentView({ kind: "chat", thread: listing })}
+          onProjectSelect={handleProjectSelect}
+          onProjectCreate={() => void handleProjectCreate()}
+          onProjectRename={handleProjectRename}
+          onProjectRemove={handleProjectRemove}
         />
-        <main className="min-h-0 min-w-0 flex-1 bg-editor-surface">
-          {activeThread === undefined ? (
-            <CoworkEmptyState
-              isCreatingConversation={isCreatingConversation}
-              onNewConversation={() => void handleNewConversation()}
-            />
-          ) : (
-            <AgentThreadPanel
-              key={activeThread.panel.agentThreadState.threadId}
-              api={{ setTitle: (title) => setActiveThreadTitle(activeThread.panel.id, title) }}
-              params={{
-                projectId: activeThread.project.id,
-                folderPath: activeThread.project.folderPath,
-                sessionId: activeThread.sessionId,
-                threadId: activeThread.panel.agentThreadState.threadId,
-                panelId: activeThread.panel.id,
-                title: activeThread.panel.title,
-              }}
-              onRename={(panelId, title) =>
-                handleThreadRename(requireListing(activeThread, panelId), title)
-              }
-            />
-          )}
-        </main>
+        <main className="min-h-0 min-w-0 flex-1 bg-editor-surface">{renderMainContent()}</main>
       </div>
       {settingsSurfaceState === "closed" ? undefined : (
         <SettingsPage
@@ -232,6 +315,29 @@ function requireListing(listing: AgentThreadPanelListing, panelId: string) {
   return listing;
 }
 
+type ChatViewProps = {
+  thread: AgentThreadPanelListing;
+  onRename: (listing: AgentThreadPanelListing, title: string) => Promise<void>;
+  onTitleChange: (panelId: string, title: string) => void;
+};
+
+function ChatView({ thread, onRename, onTitleChange }: ChatViewProps) {
+  return (
+    <AgentThreadPanel
+      key={thread.panel.agentThreadState.threadId}
+      api={{ setTitle: (title) => onTitleChange(thread.panel.id, title) }}
+      params={{
+        projectId: thread.project.id,
+        folderPath: thread.project.folderPath,
+        sessionId: thread.sessionId,
+        threadId: thread.panel.agentThreadState.threadId,
+        panelId: thread.panel.id,
+        title: thread.panel.title,
+      }}
+      onRename={(panelId, title) => onRename(requireListing(thread, panelId), title)}
+    />
+  );
+}
 type CoworkEmptyStateProps = {
   isCreatingConversation: boolean;
   onNewConversation: () => void;
