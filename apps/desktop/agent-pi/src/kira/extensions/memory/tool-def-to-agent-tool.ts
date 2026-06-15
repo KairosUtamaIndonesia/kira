@@ -7,7 +7,7 @@ import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { Static, TSchema } from "typebox";
 
 /**
- * Adapt a Pi ExtensionAPI ToolDefinition to an AgentTool usable by AgentHarness.
+ * Adapt an ExtensionAPI ToolDefinition to an AgentTool usable by Agent.
  *
  * Both interfaces share the same execute callback signature — ToolDefinition
  * receives an extra `ctx` parameter that AgentTool omits. This adapter drops it.

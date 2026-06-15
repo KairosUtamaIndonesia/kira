@@ -1,5 +1,5 @@
 /**
- * SkillStore — procedural memory stored as Pi-native skills.
+ * SkillStore — procedural memory stored as skill files.
  *
  * Global skills live in <AGENT_ROOT>/data/skills/<slug>/SKILL.md.
  * Project skills live in <AGENT_ROOT>/<projectsMemoryDir>/<project>/skills/<slug>/SKILL.md.

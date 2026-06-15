@@ -1,10 +1,7 @@
 /**
  * Background review — learning loop that auto-saves memory every N turns.
- * Ported from hermes-agent/run_agent.py (_spawn_background_review, _memory_nudge_interval).
- * See PLAN.md → "Hermes Source File Reference Map" for source lines.
  *
- * Uses runMemoryPrompt for isolated one-shot review in-process,
- * keeping us within Pi's intended extension API.
+ * Uses runMemoryPrompt for isolated one-shot review in-process.
  */
 
 import type { AgentTool } from "@earendil-works/pi-agent-core";
