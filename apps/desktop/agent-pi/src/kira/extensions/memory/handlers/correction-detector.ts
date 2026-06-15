@@ -203,19 +203,14 @@ export function setupCorrectionDetector(
 
       userPrompt.push("", "--- Recent Conversation ---", recentParts.join("\n\n"));
 
-      const result = await runMemoryPrompt(userPrompt.join("\n"), tools, {
+      const output = await runMemoryPrompt(userPrompt.join("\n"), tools, {
         model,
-        signal: ctx.signal,
-        timeoutMs: 30000,
         systemPrompt: CORRECTION_SAVE_PROMPT,
-        thinkingLevel: undefined,
+        timeoutMs: 30000,
       });
 
-      if (result.ok && result.output) {
-        const output = result.output || "";
-        if (output && !output.toLowerCase().includes("nothing to save")) {
-          ctx.ui.notify("🔧 Correction detected — memory updated", "info");
-        }
+      if (output && !output.toLowerCase().includes("nothing to save")) {
+        ctx.ui.notify("🔧 Correction detected — memory updated", "info");
       }
 
       // Also save as a failure memory for learning

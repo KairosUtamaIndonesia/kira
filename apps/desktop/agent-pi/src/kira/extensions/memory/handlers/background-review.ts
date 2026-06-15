@@ -107,19 +107,14 @@ export function setupBackgroundReview(
     // non-blocking; blocking turn_end would freeze the interactive chat.
     void (async () => {
       try {
-        const result = await runMemoryPrompt(userPrompt.join("\n"), tools, {
+        const output = await runMemoryPrompt(userPrompt.join("\n"), tools, {
           model,
-          signal: undefined,
           systemPrompt: COMBINED_REVIEW_PROMPT,
-          thinkingLevel: undefined,
-          timeoutMs: 120000,
+          timeoutMs: 120_000,
         });
         reviewInProgress = false;
-        if (result.ok && result.output) {
-          const output = result.output || "";
-          if (output && !output.toLowerCase().includes("nothing to save")) {
-            ctx.ui.notify("💾 Memory auto-reviewed and updated", "info");
-          }
+        if (output && !output.toLowerCase().includes("nothing to save")) {
+          ctx.ui.notify("💾 Memory auto-reviewed and updated", "info");
         }
       } catch {
         // Best-effort: failures (timeout, signal, errors)

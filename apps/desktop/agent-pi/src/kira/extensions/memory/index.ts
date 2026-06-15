@@ -159,26 +159,24 @@ export default function memoryExtension(pi: ExtensionAPI) {
   setupSessionFlush(pi, store, projectStore, config, memoryModel, memoryTools);
 
   // ── 7. Setup auto-consolidation (inject consolidator into stores) ──
-  store.setConsolidator(async (target, signal) => {
+  store.setConsolidator(async (target) => {
     return triggerConsolidation(
       store,
       target,
       memoryModel,
       memoryTools,
-      signal,
       config.consolidationTimeoutMs,
       target,
     );
   });
   if (projectStore) {
-    projectStore.setConsolidator(async (target, signal) => {
+    projectStore.setConsolidator(async (target) => {
       const toolTarget = target === "memory" ? "project" : target;
       return triggerConsolidation(
         projectStore,
         target,
         memoryModel,
         memoryTools,
-        signal,
         config.consolidationTimeoutMs,
         toolTarget,
       );

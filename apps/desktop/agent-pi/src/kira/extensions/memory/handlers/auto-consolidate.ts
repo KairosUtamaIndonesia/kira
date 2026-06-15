@@ -36,7 +36,6 @@ export async function triggerConsolidation(
   target: MemoryTarget,
   model: KiraModel,
   tools: AgentTool[],
-  signal?: AbortSignal,
   timeoutMs: number = 60000,
   toolTarget: ToolMemoryTarget = target,
 ): Promise<ConsolidationResult> {
@@ -50,21 +49,12 @@ export async function triggerConsolidation(
     (currentContent || "(empty)");
 
   try {
-    const result = await runMemoryPrompt(prompt, tools, {
+    await runMemoryPrompt(prompt, tools, {
       model,
-      signal,
-      timeoutMs,
       systemPrompt,
-      thinkingLevel: undefined,
+      timeoutMs,
     });
-
-    if (result.ok) {
-      return { consolidated: true };
-    }
-    return {
-      consolidated: false,
-      error: result.error || `Consolidation failed (unknown error)`,
-    };
+    return { consolidated: true };
   } catch (err) {
     return {
       consolidated: false,
@@ -137,7 +127,6 @@ export function registerConsolidateCommand(
             item.target,
             model,
             tools,
-            ctx.signal,
             manualTimeoutMs,
             item.toolTarget,
           );
