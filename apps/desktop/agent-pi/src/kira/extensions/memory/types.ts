@@ -48,9 +48,9 @@ export interface MemoryConfig {
   projectsMemoryDir?: string | undefined;
   /** Session search configuration. Default: { variant: "legacy" } */
   sessionSearch?: SessionSearchConfig | undefined;
-  /** Override model used for child pi -p subprocess LLM calls. Default: unset */
+  /** Override model used for in-process memory LLM calls. Default: unset */
   llmModelOverride?: string | undefined;
-  /** Override thinking level used for child pi -p subprocess LLM calls. Default: unset */
+  /** Override thinking level used for in-process memory LLM calls. Default: unset */
   llmThinkingOverride?: ThinkingLevel | undefined;
   /** Strategy when memory is full. Default: auto-consolidate */
   memoryOverflowStrategy?: MemoryOverflowStrategy | undefined;

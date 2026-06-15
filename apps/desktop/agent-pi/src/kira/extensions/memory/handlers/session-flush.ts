@@ -28,10 +28,9 @@ export function setupSessionFlush(
     if (event.message.role === "user") userTurnCount++;
   });
 
-  /** Shared flush logic — builds conversation snapshot and spawns pi -p */
+  /** Shared flush logic — builds conversation snapshot and runs in-process */
   async function flush(
     ctx: { sessionManager: { getBranch: () => unknown[] } },
-    signal?: AbortSignal,
     timeoutMs = 30000,
   ): Promise<void> {
     if (userTurnCount < config.flushMinTurns) return;
@@ -49,10 +48,8 @@ export function setupSessionFlush(
     try {
       await runMemoryPrompt(userPrompt, tools, {
         model,
-        signal,
-        timeoutMs,
         systemPrompt: FLUSH_PROMPT,
-        thinkingLevel: undefined,
+        timeoutMs,
       });
     } catch {
       // Best-effort flush — never block shutdown
@@ -60,9 +57,9 @@ export function setupSessionFlush(
   }
 
   // Flush before compaction (can afford to wait)
-  pi.on("session_before_compact", async (event, ctx) => {
+  pi.on("session_before_compact", async (_event, ctx) => {
     if (!config.flushOnCompact) return;
-    await flush(ctx, event.signal, 30000);
+    await flush(ctx, 30000);
   });
 
   // Flush before session shutdown (must be fast, non-blocking)
@@ -72,7 +69,7 @@ export function setupSessionFlush(
     // We intentionally do NOT await.
     void (async () => {
       try {
-        await flush(ctx, undefined, 10000);
+        await flush(ctx, 10000);
       } catch {
         /* fire-and-forget */
       }

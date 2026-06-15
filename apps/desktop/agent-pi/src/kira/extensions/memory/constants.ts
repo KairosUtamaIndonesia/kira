@@ -139,7 +139,7 @@ export const COMBINED_REVIEW_PROMPT = `Review the conversation above and conside
 
 For failures, include: what was tried, why it failed, what error occurred, and what worked instead.
 
-**Skills**: Do NOT create or modify skills in this background review. Procedural skills are managed explicitly by the main agent through the skill tool during normal work, not by this review subprocess.
+**Skills**: Do NOT create or modify skills in this background review. Procedural skills are managed explicitly by the main agent through the skill tool during normal work, not by this background review.
 
 Only act if there's something genuinely worth saving. If nothing stands out, just say 'Nothing to save.' and stop.`;
 
