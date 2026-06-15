@@ -22,8 +22,10 @@ function AgentThreadTranscript({
   const items = buildAgentThreadTranscript(transcript);
   if (items.length === 0) {
     return (
-      <div className="flex h-full min-h-40 items-center justify-center rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-        Agent Thread messages will appear here after you send a prompt.
+      <div className="flex h-full items-center justify-center">
+        <div className="max-w-md rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+          Agent Thread messages will appear here after you send a prompt.
+        </div>
       </div>
     );
   }

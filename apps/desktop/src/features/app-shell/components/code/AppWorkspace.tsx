@@ -86,11 +86,11 @@ import type {
   AgentThreadOperationRequest,
   FileEditorOpenRequest,
   SourceControlDiffOpenRequest,
-} from "../types";
+} from "../../types";
 
+import { ThreadTitleText } from "../shared/ThreadTitleText";
+import { useTitleBarDrag } from "../shared/useTitleBarDrag";
 import { TerminalPanel, type TerminalPanelParams } from "./TerminalPanel";
-import { ThreadTitleText } from "./ThreadTitleText";
-import { useTitleBarDrag } from "./useTitleBarDrag";
 
 type WorkspacePanelParams = {
   description: string;

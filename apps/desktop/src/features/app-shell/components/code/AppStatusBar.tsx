@@ -4,7 +4,7 @@ import type { AgentThreadRuntimeState } from "@/features/agent-thread/hooks/useA
 
 import { useAgentThreadRuntimeState } from "@/features/agent-thread/agentThreadStatusStore";
 
-import type { ActiveWorkspaceState } from "../types";
+import type { ActiveWorkspaceState } from "../../types";
 
 type AppStatusBarProps = {
   activeWorkspace: ActiveWorkspaceState;

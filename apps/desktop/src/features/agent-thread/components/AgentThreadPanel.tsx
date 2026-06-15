@@ -7,7 +7,7 @@ import { explorerDragDataKey } from "@/features/explorer";
 import { useAppearanceTheme } from "@/features/settings";
 
 import type { AgentThreadPanelParams } from "../types";
-
+import { buildAgentThreadTranscript } from "../agentThreadDisplay";
 import { setAgentThreadDraft } from "../agentThreadDraftStore";
 import {
   registerOpenAgentThread,
@@ -56,6 +56,8 @@ function AgentThreadPanel({ api, params, onRename }: AgentThreadPanelProps) {
     runtimeState,
     sendPrompt,
   } = useAgentThreadConnection(params, { onAutoTitled: handleAutoTitled });
+
+  const isEmpty = buildAgentThreadTranscript(transcript).length === 0;
 
   useEffect(() => {
     setAgentThreadRuntimeState(params.threadId, runtimeState);
@@ -111,7 +113,10 @@ function AgentThreadPanel({ api, params, onRename }: AgentThreadPanelProps) {
       <StickToBottom className="relative min-h-0 flex-1" initial="instant" resize="smooth">
         {({ isAtBottom, scrollToBottom }) => (
           <>
-            <StickToBottom.Content className="mx-auto w-full max-w-5xl" scrollClassName="p-2">
+            <StickToBottom.Content
+              className={isEmpty ? "mx-auto h-full w-full max-w-5xl" : "mx-auto w-full max-w-5xl"}
+              scrollClassName={isEmpty ? "p-2 h-full" : "p-2"}
+            >
               <AgentThreadTranscript
                 transcript={transcript}
                 compactionSummary={compactionSummary}

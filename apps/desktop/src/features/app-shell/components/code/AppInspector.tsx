@@ -12,11 +12,11 @@ import { SearchInspector } from "@/features/search";
 import { SkillsInspector } from "@/features/skills";
 import { SourceControlInspector } from "@/features/source-control/components/SourceControlInspector";
 
-import type { ActiveWorkspaceState } from "../types";
+import type { ActiveWorkspaceState } from "../../types";
 
+import { AppWindowControls } from "../shared/AppWindowControls";
+import { useTitleBarDrag } from "../shared/useTitleBarDrag";
 import { AgentThreadsInspector } from "./AgentThreadsInspector";
-import { AppWindowControls } from "./AppWindowControls";
-import { useTitleBarDrag } from "./useTitleBarDrag";
 
 type AppInspectorProps = {
   activeWorkspace: ActiveWorkspaceState;

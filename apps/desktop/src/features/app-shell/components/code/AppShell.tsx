@@ -30,7 +30,7 @@ import type {
   AgentThreadOperationRequest,
   FileEditorOpenRequest,
   SourceControlDiffOpenRequest,
-} from "../types";
+} from "../../types";
 
 import { AppInspector } from "./AppInspector";
 import { AppSidebar } from "./AppSidebar";

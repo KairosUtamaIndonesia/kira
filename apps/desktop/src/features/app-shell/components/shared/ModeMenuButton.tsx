@@ -7,7 +7,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-import { appShellModeLabels, useModeStore, type AppShellMode } from "../state/modeStore";
+import { appShellModeLabels, useModeStore, type AppShellMode } from "../../state/modeStore";
 
 const appShellModes: AppShellMode[] = ["code", "cowork"];
 

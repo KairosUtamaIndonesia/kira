@@ -15,14 +15,14 @@ import {
 } from "@/features/projects/api/projectsApi";
 import { SettingsPage } from "@/features/settings";
 
-import { useCoworkProjects } from "../hooks/useCoworkProjects";
-import { useCoworkThreads } from "../hooks/useCoworkThreads";
-import { AppWindowControls } from "./AppWindowControls";
+import { useCoworkProjects } from "../../hooks/useCoworkProjects";
+import { useCoworkThreads } from "../../hooks/useCoworkThreads";
+import { AppWindowControls } from "../shared/AppWindowControls";
+import { ModeMenuButton } from "../shared/ModeMenuButton";
+import { useTitleBarDrag } from "../shared/useTitleBarDrag";
 import { CoworkProjectDetail } from "./CoworkProjectDetail";
 import { CoworkProjectListPage } from "./CoworkProjectListPage";
 import { CoworkSidebar } from "./CoworkSidebar";
-import { ModeMenuButton } from "./ModeMenuButton";
-import { useTitleBarDrag } from "./useTitleBarDrag";
 
 type SettingsSurfaceState = "closed" | "opening" | "open" | "closing";
 
@@ -320,7 +320,7 @@ function CoworkShell() {
           onThreadSelect={(listing) => setCurrentView({ kind: "chat", thread: listing })}
           onProjectsListOpen={handleProjectsListOpen}
         />
-        <main className="min-h-0 min-w-0 flex-1 bg-editor-surface">{renderMainContent()}</main>
+        <main className="h-full min-h-0 min-w-0 flex-1 bg-editor-surface">{renderMainContent()}</main>
       </div>
       {settingsSurfaceState === "closed" ? undefined : (
         <SettingsPage

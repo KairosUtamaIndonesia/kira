@@ -2,9 +2,13 @@ import { useEffect, useRef, useState } from "react";
 
 import type { AgentThreadWorkspacePanel, WorkspacePanel } from "@/features/projects/types";
 
-import type { ActiveWorkspaceState } from "../types";
+import type { ActiveWorkspaceState } from "../../types";
 
-import { AgentThreadRow, DeleteAgentThreadDialog, RenameAgentThreadDialog } from "./AgentThreadRow";
+import {
+  AgentThreadRow,
+  DeleteAgentThreadDialog,
+  RenameAgentThreadDialog,
+} from "../shared/AgentThreadRow";
 
 type AgentThreadsInspectorProps = {
   activeWorkspace: ActiveWorkspaceState;

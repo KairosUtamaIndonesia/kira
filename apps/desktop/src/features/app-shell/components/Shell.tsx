@@ -4,8 +4,8 @@ import { toast } from "@/components/ui/sonner";
 import { startAgentRuntime } from "@/features/agent-thread/api/agentRuntimeApi";
 
 import { useModeStore } from "../state/modeStore";
-import { AppShell } from "./AppShell";
-import { CoworkShell } from "./CoworkShell";
+import { AppShell } from "./code/AppShell";
+import { CoworkShell } from "./cowork/CoworkShell";
 
 // Renders the layout for the current App Shell mode. Both shells share the
 // same data model and Tauri commands; switching is a layout change only.

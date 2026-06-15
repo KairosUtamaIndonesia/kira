@@ -4,38 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import type { AgentThreadPanelListing } from "@/features/projects/types";
 
 import { Button } from "@/components/ui/button";
-<<<<<<< New base: feat(cowork): added projects
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Sidebar,
-  SidebarMenu,
-  SidebarMenuAction,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
-  SidebarProvider,
-} from "@/components/ui/sidebar";
-
-import type { CoworkProjectWithThreads, CoworkProjectsState } from "../hooks/useCoworkProjects";
-import type { CoworkThreadsState } from "../hooks/useCoworkThreads";
-||||||| Common ancestor
 import {
   ContextMenu,
   ContextMenuContent,
@@ -66,13 +34,12 @@ import {
 
 import type { CoworkProjectWithThreads, CoworkProjectsState } from "../../hooks/useCoworkProjects";
 import type { CoworkThreadsState } from "../../hooks/useCoworkThreads";
-=======
 
-import type { CoworkProjectsState } from "../../hooks/useCoworkProjects";
-import type { CoworkThreadsState } from "../../hooks/useCoworkThreads";
->>>>>>> Current commit: refactor(cowork): moved projects
-
-import { AgentThreadRow, DeleteAgentThreadDialog, RenameAgentThreadDialog } from "./AgentThreadRow";
+import {
+  AgentThreadRow,
+  DeleteAgentThreadDialog,
+  RenameAgentThreadDialog,
+} from "../shared/AgentThreadRow";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
