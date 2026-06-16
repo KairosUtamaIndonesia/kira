@@ -1,38 +1,11 @@
-import { FolderKanban, Loader2, Plus, Search, Settings, X } from "lucide-react";
+import { ChevronRight, FolderKanban, Loader2, Plus, Search, Settings, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import type { AgentThreadPanelListing } from "@/features/projects/types";
 
 import { Button } from "@/components/ui/button";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Sidebar,
-  SidebarMenu,
-  SidebarMenuAction,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
-  SidebarProvider,
-} from "@/components/ui/sidebar";
 
-import type { CoworkProjectWithThreads, CoworkProjectsState } from "../../hooks/useCoworkProjects";
+import type { CoworkProjectsState } from "../../hooks/useCoworkProjects";
 import type { CoworkThreadsState } from "../../hooks/useCoworkThreads";
 
 import {
@@ -127,6 +100,19 @@ function CoworkSidebar({
   const [isDeleting, setIsDeleting] = useState(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [collapsedProjects, setCollapsedProjects] = useState<ReadonlySet<string>>(new Set());
+
+  function toggleProjectCollapse(projectId: string) {
+    setCollapsedProjects((prev) => {
+      const next = new Set(prev);
+      if (next.has(projectId)) {
+        next.delete(projectId);
+      } else {
+        next.add(projectId);
+      }
+      return next;
+    });
+  }
 
   useEffect(() => {
     if (listingToRename !== undefined) {
@@ -221,15 +207,33 @@ function CoworkSidebar({
       );
     }
 
+    const visibleGroups = groups.filter((group) => {
+      if (group.kind === "project-thread") {
+        return !collapsedProjects.has(group.thread.project.id);
+      }
+      return true;
+    });
+
     return (
       <ol className="space-y-0.5">
-        {groups.map((group) => {
+        {visibleGroups.map((group) => {
           if (group.kind === "project-header") {
+            const isCollapsed = collapsedProjects.has(group.projectId);
             return (
               <li key={`header-${group.projectId}`} className="px-2 pt-3 pb-1">
-                <span className="text-xs font-medium tracking-wide text-sidebar-foreground/50 uppercase">
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-1.5 text-xs font-medium tracking-wide text-sidebar-foreground/50 uppercase transition-colors hover:text-sidebar-foreground"
+                  onClick={() => toggleProjectCollapse(group.projectId)}
+                >
+                  <ChevronRight
+                    aria-hidden="true"
+                    className={`h-3 w-3 shrink-0 transition-transform duration-150 ${
+                      isCollapsed ? "" : "rotate-90"
+                    }`}
+                  />
                   {group.projectName}
-                </span>
+                </button>
               </li>
             );
           }

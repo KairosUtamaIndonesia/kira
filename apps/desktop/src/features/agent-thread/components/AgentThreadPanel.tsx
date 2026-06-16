@@ -7,6 +7,7 @@ import { explorerDragDataKey } from "@/features/explorer";
 import { useAppearanceTheme } from "@/features/settings";
 
 import type { AgentThreadPanelParams } from "../types";
+
 import { buildAgentThreadTranscript } from "../agentThreadDisplay";
 import { setAgentThreadDraft } from "../agentThreadDraftStore";
 import {
@@ -23,10 +24,10 @@ import { Composer } from "./Composer";
 type AgentThreadPanelProps = {
   api: { setTitle(title: string): void };
   params: AgentThreadPanelParams;
+  initialPrompt?: string;
   onRename?: (panelId: string, title: string) => Promise<void>;
 };
-
-function AgentThreadPanel({ api, params, onRename }: AgentThreadPanelProps) {
+function AgentThreadPanel({ api, params, initialPrompt, onRename }: AgentThreadPanelProps) {
   const { agentThreadShowRawEventStream } = useAppearanceTheme();
   const dragCounterRef = useRef(0);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
@@ -72,6 +73,21 @@ function AgentThreadPanel({ api, params, onRename }: AgentThreadPanelProps) {
     });
     return () => unregisterOpenAgentThread(params.threadId);
   }, [params.threadId, params.panelId, params.title]);
+
+  // Auto-send the initial prompt once the runtime is ready.
+  const initialPromptSentRef = useRef(false);
+  useEffect(() => {
+    if (
+      initialPrompt === undefined ||
+      initialPrompt.trim().length === 0 ||
+      initialPromptSentRef.current ||
+      runtimeState.status !== "ready"
+    ) {
+      return;
+    }
+    initialPromptSentRef.current = true;
+    void sendPrompt(initialPrompt);
+  }, [initialPrompt, runtimeState, sendPrompt]);
 
   return (
     <section

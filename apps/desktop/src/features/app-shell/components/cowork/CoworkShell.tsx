@@ -27,7 +27,7 @@ import { CoworkSidebar } from "./CoworkSidebar";
 type SettingsSurfaceState = "closed" | "opening" | "open" | "closing";
 
 type CoworkView =
-  | { kind: "chat"; thread: AgentThreadPanelListing }
+  | { kind: "chat"; thread: AgentThreadPanelListing; initialPrompt?: string }
   | { kind: "project-detail"; project: Project }
   | { kind: "projects-list" }
   | { kind: "empty" };
@@ -110,6 +110,7 @@ function CoworkShell() {
   function handleProjectDetailRenamed(updatedProject: Project) {
     setCurrentView({ kind: "project-detail", project: updatedProject });
     void refreshProjects();
+    void refreshThreads();
   }
 
   function handleProjectDetailRemoved() {
@@ -133,7 +134,7 @@ function CoworkShell() {
     }
   }
 
-  async function handleNewConversationInProject(project: Project) {
+  async function handleNewConversationInProject(project: Project, initialPrompt?: string) {
     setIsCreatingConversation(true);
     try {
       const sessions = await listProjectSessions({ projectId: project.id });
@@ -157,6 +158,7 @@ function CoworkShell() {
           sessionId: session.id,
           panel,
         },
+        ...(initialPrompt !== undefined && { initialPrompt }),
       });
       await refreshThreads();
     } catch (error) {
@@ -254,8 +256,13 @@ function CoworkShell() {
           <CoworkProjectDetail
             project={currentView.project}
             onBack={handleProjectDetailBack}
+            onThreadClose={handleThreadClose}
+            onThreadDelete={(listing) => handleThreadDelete(listing)}
+            onThreadRename={(listing, title) => handleThreadRename(listing, title)}
             onThreadSelect={(listing) => setCurrentView({ kind: "chat", thread: listing })}
-            onNewConversation={(project) => void handleNewConversationInProject(project)}
+            onNewConversation={(project, prompt) =>
+              void handleNewConversationInProject(project, prompt)
+            }
             onProjectRenamed={handleProjectDetailRenamed}
             onProjectRemoved={handleProjectDetailRemoved}
           />
@@ -274,6 +281,9 @@ function CoworkShell() {
         return (
           <ChatView
             thread={currentView.thread}
+            {...(currentView.initialPrompt !== undefined && {
+              initialPrompt: currentView.initialPrompt,
+            })}
             onRename={handleThreadRename}
             onTitleChange={setActiveThreadTitle}
           />
@@ -320,7 +330,9 @@ function CoworkShell() {
           onThreadSelect={(listing) => setCurrentView({ kind: "chat", thread: listing })}
           onProjectsListOpen={handleProjectsListOpen}
         />
-        <main className="h-full min-h-0 min-w-0 flex-1 bg-editor-surface">{renderMainContent()}</main>
+        <main className="h-full min-h-0 min-w-0 flex-1 bg-editor-surface">
+          {renderMainContent()}
+        </main>
       </div>
       {settingsSurfaceState === "closed" ? undefined : (
         <SettingsPage
@@ -349,14 +361,14 @@ function requireListing(listing: AgentThreadPanelListing, panelId: string) {
 
   return listing;
 }
-
 type ChatViewProps = {
   thread: AgentThreadPanelListing;
+  initialPrompt?: string;
   onRename: (listing: AgentThreadPanelListing, title: string) => Promise<void>;
   onTitleChange: (panelId: string, title: string) => void;
 };
 
-function ChatView({ thread, onRename, onTitleChange }: ChatViewProps) {
+function ChatView({ thread, initialPrompt, onRename, onTitleChange }: ChatViewProps) {
   return (
     <AgentThreadPanel
       key={thread.panel.agentThreadState.threadId}
@@ -369,6 +381,7 @@ function ChatView({ thread, onRename, onTitleChange }: ChatViewProps) {
         panelId: thread.panel.id,
         title: thread.panel.title,
       }}
+      {...(initialPrompt !== undefined && { initialPrompt })}
       onRename={(panelId, title) => onRename(requireListing(thread, panelId), title)}
     />
   );

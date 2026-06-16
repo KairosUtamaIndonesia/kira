@@ -78,6 +78,7 @@ pub fn run() -> tauri::Result<()> {
             org_config::desktop_org_models_get,
             org_config::desktop_org_models_refresh,
             editor::editor_file_read,
+            editor::editor_file_delete,
             editor::editor_file_write,
             explorer::explorer_directory_children,
             explorer::explorer_file_reference_suggestions,

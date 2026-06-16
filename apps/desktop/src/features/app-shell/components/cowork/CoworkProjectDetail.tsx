@@ -1,7 +1,20 @@
 import type { Event, UnlistenFn } from "@tauri-apps/api/event";
 
 import { type DragDropEvent, getCurrentWebview } from "@tauri-apps/api/webview";
-import { ArrowLeft, ChevronRight, File, Loader2, Pencil, Trash, Upload } from "lucide-react";
+import { open } from "@tauri-apps/plugin-dialog";
+import {
+  ArrowLeft,
+  ChevronRight,
+  File,
+  FileText,
+  Loader2,
+  Paperclip,
+  Pencil,
+  Plus,
+  Trash,
+  Upload,
+  X,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import type { ExplorerEntry } from "@/features/explorer/types";
@@ -26,11 +39,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/sonner";
+import { Textarea } from "@/components/ui/textarea";
 import { Composer } from "@/features/agent-thread/components/Composer";
-import { readEditorFile, writeEditorFile } from "@/features/editor/api/editorApi";
+import { deleteEditorFile, readEditorFile, writeEditorFile } from "@/features/editor/api/editorApi";
 import { getExplorerTree } from "@/features/explorer/api/explorerApi";
 import {
   copyFilesToProject,
@@ -39,13 +59,19 @@ import {
   renameProject,
 } from "@/features/projects/api/projectsApi";
 
-// ─── Types ──────────────────────────────────────────────────────────────────
-
+import {
+  AgentThreadRow,
+  DeleteAgentThreadDialog,
+  RenameAgentThreadDialog,
+} from "../shared/AgentThreadRow";
 type CoworkProjectDetailProps = {
   project: Project;
   onBack: () => void;
+  onThreadClose: (listing: AgentThreadPanelListing) => void;
+  onThreadDelete: (listing: AgentThreadPanelListing) => Promise<void>;
+  onThreadRename: (listing: AgentThreadPanelListing, title: string) => Promise<void>;
   onThreadSelect: (listing: AgentThreadPanelListing) => void;
-  onNewConversation: (project: Project) => void;
+  onNewConversation: (project: Project, prompt?: string) => void;
   onProjectRenamed: (project: Project) => void;
   onProjectRemoved: () => void;
 };
@@ -55,6 +81,9 @@ type CoworkProjectDetailProps = {
 function CoworkProjectDetail({
   project,
   onBack,
+  onThreadClose,
+  onThreadDelete,
+  onThreadRename,
   onThreadSelect,
   onNewConversation,
   onProjectRenamed,
@@ -73,9 +102,25 @@ function CoworkProjectDetail({
   const [renameOpen, setRenameOpen] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
   const [renameName, setRenameName] = useState("");
-  const [instructionsExpanded, setInstructionsExpanded] = useState(false);
   const [filesExpanded, setFilesExpanded] = useState(true);
   const promptRef = useRef<HTMLTextAreaElement>(null);
+  const [addTextOpen, setAddTextOpen] = useState(false);
+  const [addTextTitle, setAddTextTitle] = useState("");
+  const [addTextContent, setAddTextContent] = useState("");
+  const [addTextSaving, setAddTextSaving] = useState(false);
+  const [listingToRename, setListingToRename] = useState<AgentThreadPanelListing>();
+  const [listingToDelete, setListingToDelete] = useState<AgentThreadPanelListing>();
+  const [renameThreadTitle, setRenameThreadTitle] = useState("");
+  const [renameThreadError, setRenameThreadError] = useState<string>();
+  const [isDeletingThread, setIsDeletingThread] = useState(false);
+  const renameThreadInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (listingToRename !== undefined) {
+      if (renameThreadInputRef.current !== null) {
+        renameThreadInputRef.current.focus();
+      }
+    }
+  }, [listingToRename]);
 
   // Load project files.
   useEffect(() => {
@@ -177,7 +222,7 @@ function CoworkProjectDetail({
           }
         });
       } catch {
-        // Drag-drop not available — fall back to nothing.
+        // Drag-drop unavailable.
       }
     }
 
@@ -251,6 +296,122 @@ function CoworkProjectDetail({
     }
   }
 
+  async function handleFilePicker() {
+    const selected = await open({
+      multiple: true,
+      directory: false,
+    });
+    if (selected === null) return;
+    const paths = Array.isArray(selected) ? selected : [selected];
+    if (paths.length === 0) return;
+    try {
+      await copyFilesToProject({
+        projectFolderPath: project.folderPath,
+        sourcePaths: paths,
+      });
+      toast.success(`${paths.length} file${paths.length === 1 ? "" : "s"} added`);
+      const result = await getExplorerTree({ folderPath: project.folderPath });
+      setFiles(result.entries.filter((entry) => entry.path !== "agents.md"));
+    } catch (error) {
+      toast.error(`Failed to add files: ${errorMessageFromUnknown(error)}`);
+    }
+  }
+
+  function handleDomDragOver(event: React.DragEvent) {
+    event.preventDefault();
+    setIsDragOver(true);
+  }
+
+  function handleDomDragLeave(event: React.DragEvent) {
+    event.preventDefault();
+    setIsDragOver(false);
+  }
+
+  function handleDomDrop(event: React.DragEvent) {
+    event.preventDefault();
+    setIsDragOver(false);
+    // Native OS drops are handled by the Tauri onDragDropEvent listener above.
+    // DOM drops only fire for in-web drags; nothing to do here for file uploads.
+  }
+
+  async function handleAddTextContent() {
+    if (addTextTitle.trim().length === 0) return;
+    setAddTextSaving(true);
+    try {
+      const slug = addTextTitle
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "");
+      const fileName = `${slug}.md`;
+      await writeEditorFile({
+        folderPath: project.folderPath,
+        filePath: fileName,
+        content: addTextContent,
+      });
+      toast.success(`Created ${fileName}`);
+      setAddTextOpen(false);
+      setAddTextTitle("");
+      setAddTextContent("");
+      const result = await getExplorerTree({ folderPath: project.folderPath });
+      setFiles(result.entries.filter((entry) => entry.path !== "agents.md"));
+    } catch (error) {
+      toast.error(`Failed to create file: ${errorMessageFromUnknown(error)}`);
+    } finally {
+      setAddTextSaving(false);
+    }
+  }
+
+  async function handleDeleteFile(filePath: string) {
+    try {
+      await deleteEditorFile({
+        folderPath: project.folderPath,
+        filePath,
+      });
+      toast.success(`Deleted ${filePath}`);
+      const result = await getExplorerTree({ folderPath: project.folderPath });
+      setFiles(result.entries.filter((entry) => entry.path !== "agents.md"));
+    } catch (error) {
+      toast.error(`Failed to delete file: ${errorMessageFromUnknown(error)}`);
+    }
+  }
+
+  function openRenameThreadDialog(listing: AgentThreadPanelListing) {
+    setListingToRename(listing);
+    setRenameThreadTitle(listing.panel.title);
+    setRenameThreadError(undefined);
+  }
+
+  async function handleRenameThread() {
+    if (listingToRename === undefined) {
+      throw new Error("An Agent Thread is required before it can be renamed.");
+    }
+
+    const title = renameThreadTitle.trim();
+    if (title.length === 0) {
+      setRenameThreadError("Agent Thread title is required.");
+      return;
+    }
+
+    await onThreadRename(listingToRename, title);
+    setListingToRename(undefined);
+    setRenameThreadTitle("");
+    setRenameThreadError(undefined);
+  }
+
+  async function handleDeleteThread() {
+    if (listingToDelete === undefined) {
+      throw new Error("An Agent Thread is required before it can be deleted.");
+    }
+
+    setIsDeletingThread(true);
+    try {
+      await onThreadDelete(listingToDelete);
+      setListingToDelete(undefined);
+    } finally {
+      setIsDeletingThread(false);
+    }
+  }
+
   return (
     <div className="flex h-full overflow-hidden">
       {/* ── Left: Composer + conversations ────────────────────────────── */}
@@ -268,37 +429,13 @@ function CoworkProjectDetail({
               threadId={`project-${project.id}`}
               folderPath={project.folderPath}
               placeholder="How can I help you today?"
-              sendPrompt={async () => {
-                onNewConversation(project);
+              sendPrompt={async (promptText) => {
+                onNewConversation(project, promptText);
                 return true;
               }}
             />
           </div>
         </div>
-
-        {threads.length > 0 && (
-          <div className="border-t border-border px-4 py-3">
-            <h3 className="mb-2 text-xs font-medium text-muted-foreground">Recent</h3>
-            <ul className="space-y-0.5">
-              {threads.map((listing) => (
-                <li key={listing.panel.id}>
-                  <button
-                    type="button"
-                    className="w-full rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
-                    onClick={() => onThreadSelect(listing)}
-                  >
-                    <span className="truncate">{listing.panel.title}</span>
-                    {listing.panel.updatedAt !== undefined && (
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        {formatRelativeTime(listing.panel.updatedAt)}
-                      </span>
-                    )}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
       </div>
 
       {/* ── Right: Project metadata sidebar ──────────────────────────── */}
@@ -375,15 +512,25 @@ function CoworkProjectDetail({
             )}
           </SidebarSection>
 
-          {/* Instructions */}
-          <SidebarSection
-            title="Instructions"
-            expanded={instructionsExpanded}
-            onToggle={() => setInstructionsExpanded((v) => !v)}
-          >
-            <p className="text-xs text-muted-foreground">
-              Project-specific instructions will appear here.
-            </p>
+          {/* Threads */}
+          <SidebarSection title="Threads" defaultExpanded>
+            {threads.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No conversations yet.</p>
+            ) : (
+              <ul className="space-y-0.5">
+                {threads.map((listing) => (
+                  <li key={listing.panel.id}>
+                    <AgentThreadRow
+                      panel={listing.panel}
+                      onClose={() => onThreadClose(listing)}
+                      onDelete={() => setListingToDelete(listing)}
+                      onOpen={() => onThreadSelect(listing)}
+                      onRename={() => openRenameThreadDialog(listing)}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
           </SidebarSection>
 
           {/* Files */}
@@ -391,13 +538,39 @@ function CoworkProjectDetail({
             title="Files"
             expanded={filesExpanded}
             onToggle={() => setFilesExpanded((v) => !v)}
+            actions={
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-sm transition-colors hover:bg-muted hover:text-foreground"
+                  aria-label="Add files"
+                >
+                  <Plus aria-hidden="true" className="h-3.5 w-3.5" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => void handleFilePicker()}>
+                    <Paperclip aria-hidden="true" className="mr-2 h-3.5 w-3.5" />
+                    Upload from device
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setAddTextTitle("");
+                      setAddTextContent("");
+                      setAddTextOpen(true);
+                    }}
+                  >
+                    <FileText aria-hidden="true" className="mr-2 h-3.5 w-3.5" />
+                    Add text content
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            }
           >
-            <section
-              aria-label="Drop zone for project files"
-              className={`rounded-lg border-2 border-dashed p-3 transition-colors ${
-                isDragOver
-                  ? "border-primary bg-primary/5"
-                  : "border-border hover:border-muted-foreground/30"
+            <div
+              onDragOver={handleDomDragOver}
+              onDragLeave={handleDomDragLeave}
+              onDrop={handleDomDrop}
+              className={`rounded-lg transition-colors ${
+                isDragOver ? "bg-primary/5 ring-1 ring-primary" : ""
               }`}
             >
               {filesLoading && (
@@ -409,28 +582,45 @@ function CoworkProjectDetail({
                 </div>
               )}
               {!filesLoading && files.length === 0 && (
-                <div className="py-4 text-center">
-                  <Upload aria-hidden="true" className="mx-auto h-6 w-6 text-muted-foreground/50" />
+                <button
+                  type="button"
+                  className="flex w-full flex-col items-center rounded-lg border-2 border-dashed p-3 transition-colors hover:border-muted-foreground/30"
+                  onClick={() => void handleFilePicker()}
+                >
+                  <Upload aria-hidden="true" className="h-6 w-6 text-muted-foreground/50" />
                   <p className="mt-1.5 text-xs text-muted-foreground">Add PDFs, documents, etc</p>
-                </div>
+                </button>
               )}
               {!filesLoading && files.length > 0 && (
                 <ul className="space-y-0.5">
                   {files.map((entry) => (
                     <li
                       key={entry.path}
-                      className="flex items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors hover:bg-muted/50"
+                      className="group flex items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors hover:bg-muted/50"
                     >
                       <File
                         aria-hidden="true"
                         className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
                       />
-                      <span className="truncate">{entry.path}</span>
+                      <span className="flex-1 truncate">{entry.path}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+                        aria-label={`Delete ${entry.path}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void handleDeleteFile(entry.path);
+                        }}
+                      >
+                        <X aria-hidden="true" className="h-3 w-3" />
+                      </Button>
                     </li>
                   ))}
                 </ul>
               )}
-            </section>
+            </div>
           </SidebarSection>
         </div>
       </aside>
@@ -473,6 +663,73 @@ function CoworkProjectDetail({
         </DialogContent>
       </Dialog>
 
+      <Dialog
+        open={addTextOpen}
+        onOpenChange={(isOpen) => {
+          setAddTextOpen(isOpen);
+          if (!isOpen) {
+            setAddTextTitle("");
+            setAddTextContent("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Text Content</DialogTitle>
+            <DialogDescription>
+              Create a markdown file in the project. Saved as{" "}
+              <code className="rounded bg-muted px-1 py-0.5 font-mono">
+                {addTextTitle.trim().length > 0
+                  ? `${addTextTitle
+                      .toLowerCase()
+                      .replace(/[^a-z0-9]+/g, "-")
+                      .replace(/^-|-$/g, "")}.md`
+                  : "…"}
+              </code>
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            className="grid gap-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleAddTextContent();
+            }}
+          >
+            <div className="grid gap-2">
+              <Label htmlFor="add-text-title">Title</Label>
+              <Input
+                id="add-text-title"
+                value={addTextTitle}
+                onChange={(event) => setAddTextTitle(event.target.value)}
+                placeholder="e.g. Project Brief"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="add-text-content">Content</Label>
+              <Textarea
+                id="add-text-content"
+                value={addTextContent}
+                onChange={(event) => setAddTextContent(event.target.value)}
+                placeholder="Write your content here…"
+                className="min-h-[120px]"
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setAddTextOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={addTextSaving || addTextTitle.trim().length === 0}>
+                {addTextSaving ? (
+                  <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+                ) : (
+                  "Create"
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       <AlertDialog open={removeOpen} onOpenChange={setRemoveOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -493,6 +750,25 @@ function CoworkProjectDetail({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <RenameAgentThreadDialog
+        error={renameThreadError}
+        inputRef={renameThreadInputRef}
+        open={listingToRename !== undefined}
+        title={renameThreadTitle}
+        onOpenChange={(isOpen) => !isOpen && setListingToRename(undefined)}
+        onSubmit={() => void handleRenameThread()}
+        onTitleChange={(title) => {
+          setRenameThreadTitle(title);
+          setRenameThreadError(undefined);
+        }}
+      />
+      <DeleteAgentThreadDialog
+        open={listingToDelete !== undefined}
+        isDeleting={isDeletingThread}
+        onOpenChange={(isOpen) => !isOpen && setListingToDelete(undefined)}
+        onConfirm={() => void handleDeleteThread()}
+      />
     </div>
   );
 }
@@ -502,6 +778,7 @@ function CoworkProjectDetail({
 type SidebarSectionProps = {
   title: string;
   children: React.ReactNode;
+  actions?: React.ReactNode;
   defaultExpanded?: boolean;
   expanded?: boolean;
   onToggle?: () => void;
@@ -510,6 +787,7 @@ type SidebarSectionProps = {
 function SidebarSection({
   title,
   children,
+  actions,
   defaultExpanded = false,
   expanded: controlledExpanded,
   onToggle,
@@ -527,47 +805,25 @@ function SidebarSection({
 
   return (
     <div className="border-b border-border">
-      <button
-        type="button"
-        className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-        onClick={handleToggle}
-      >
-        <ChevronRight
-          aria-hidden="true"
-          className={`h-3.5 w-3.5 shrink-0 transition-transform duration-150 ${
-            isExpanded ? "rotate-90" : ""
-          }`}
-        />
-        {title}
-      </button>
+      <div className="flex w-full items-center gap-1 px-4 py-2.5">
+        <button
+          type="button"
+          className="flex flex-1 items-center gap-2 text-left text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+          onClick={handleToggle}
+        >
+          <ChevronRight
+            aria-hidden="true"
+            className={`h-3.5 w-3.5 shrink-0 transition-transform duration-150 ${
+              isExpanded ? "rotate-90" : ""
+            }`}
+          />
+          {title}
+        </button>
+        {actions}
+      </div>
       {isExpanded && <div className="px-4 pb-3">{children}</div>}
     </div>
   );
-}
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-function formatRelativeTime(dateString: string): string {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMinutes = Math.floor(diffMs / 60_000);
-
-  if (diffMinutes < 1) {
-    return "just now";
-  }
-  if (diffMinutes < 60) {
-    return `${diffMinutes}m ago`;
-  }
-  const diffHours = Math.floor(diffMinutes / 60);
-  if (diffHours < 24) {
-    return `${diffHours}h ago`;
-  }
-  const diffDays = Math.floor(diffHours / 24);
-  if (diffDays < 7) {
-    return `${diffDays}d ago`;
-  }
-  return date.toLocaleDateString();
 }
 
 function errorMessageFromUnknown(error: unknown) {

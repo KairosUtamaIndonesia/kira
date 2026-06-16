@@ -10,4 +10,8 @@ function writeEditorFile(input: EditorFileWriteInput) {
   return invoke<void>("editor_file_write", { input });
 }
 
-export { readEditorFile, writeEditorFile };
+function deleteEditorFile(input: EditorFileInput) {
+  return invoke<void>("editor_file_delete", { input });
+}
+
+export { deleteEditorFile, readEditorFile, writeEditorFile };

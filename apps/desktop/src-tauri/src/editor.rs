@@ -136,6 +136,25 @@ pub async fn editor_file_write(input: EditorFileWriteInput) -> Result<(), Editor
     Ok(())
 }
 
+#[tauri::command]
+pub async fn editor_file_delete(input: EditorFileInput) -> Result<(), EditorError> {
+    let folder_path = validate_project_folder(&input.folder_path)?;
+    let file_path = validate_relative_file_path(&folder_path, &input.file_path)?;
+    let absolute_path = folder_path.join(&file_path);
+
+    if !absolute_path.exists() {
+        return Err(EditorError::FileDoesNotExist(input.file_path));
+    }
+    if !absolute_path.is_file() {
+        return Err(EditorError::PathIsNotFile(input.file_path));
+    }
+
+    fs::remove_file(&absolute_path).map_err(|error| EditorError::WriteFile {
+        path: input.file_path,
+        message: error.to_string(),
+    })
+}
+
 fn validate_project_folder(folder_path: &str) -> Result<PathBuf, EditorError> {
     let trimmed_path = folder_path.trim();
     if trimmed_path.is_empty() {
