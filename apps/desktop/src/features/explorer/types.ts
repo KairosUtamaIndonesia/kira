@@ -3,6 +3,10 @@ type ExplorerDirectoryChildrenInput = {
   directoryPath: string;
 };
 
+type ExplorerTreeInput = {
+  folderPath: string;
+};
+
 type ExplorerFileReferenceSuggestionsInput = {
   folderPath: string;
   query: string;
@@ -40,11 +44,12 @@ type ExplorerFileReferenceSuggestionsResult = {
 
 export type {
   ExplorerDirectoryChildrenInput,
+  ExplorerDirectoryChildrenResult,
   ExplorerFileReferenceSuggestion,
   ExplorerFileReferenceSuggestionsInput,
   ExplorerFileReferenceSuggestionsResult,
-  ExplorerDirectoryChildrenResult,
   ExplorerEntry,
   ExplorerEntryKind,
+  ExplorerTreeInput,
   ExplorerTreeResult,
 };

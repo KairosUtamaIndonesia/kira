@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
-import { AppWindowControls } from "@/features/app-shell/components/AppWindowControls";
-import { useTitleBarDrag } from "@/features/app-shell/components/useTitleBarDrag";
+import { AppWindowControls } from "@/features/app-shell/components/shared/AppWindowControls";
+import { useTitleBarDrag } from "@/features/app-shell/components/shared/useTitleBarDrag";
 
 type SignInShellProps = {
   children: ReactNode;

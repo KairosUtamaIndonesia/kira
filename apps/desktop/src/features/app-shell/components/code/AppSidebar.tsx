@@ -27,10 +27,10 @@ import {
 } from "@/features/projects/components/ProjectList";
 import { getSourceControlStatus } from "@/features/source-control/api/sourceControlApi";
 
-import type { ActiveWorkspaceState } from "../types";
+import type { ActiveWorkspaceState } from "../../types";
 
-import { ModeMenuButton } from "./ModeMenuButton";
-import { useTitleBarDrag } from "./useTitleBarDrag";
+import { ModeMenuButton } from "../shared/ModeMenuButton";
+import { useTitleBarDrag } from "../shared/useTitleBarDrag";
 
 type AppSidebarProps = {
   activeWorkspace: ActiveWorkspaceState;
@@ -108,7 +108,7 @@ function AppSidebar({
 
     async function loadProjects() {
       try {
-        const loadedProjects = await listProjects();
+        const loadedProjects = (await listProjects()).filter((p) => p.kind === "code");
         if (!ignoreResult) {
           setProjects(loadedProjects);
           setProjectSessions(loadingSessionsState(loadedProjects));

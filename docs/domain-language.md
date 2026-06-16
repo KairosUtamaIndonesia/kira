@@ -34,6 +34,10 @@ _Avoid_: Chat when the interaction includes tools, execution, or run state
 A durable conversational/workflow thread inside a Session for interacting with agent activity, messages, Runs, and future tool execution state.
 _Avoid_: Chat when the interaction includes tools, execution, or run state
 
+**Project**:
+A named workspace that owns a folder on disk, a default Session, and zero or more Agent Threads. The folder holds project files and an optional `agents.md` custom prompt that the agent runtime loads automatically. A Project's `kind` is either `Code` (explicitly created by the user, who chooses the folder) or `Cowork` (auto-generated name and folder, created on first message or explicitly from the sidebar). The word "Project" is the canonical name; do not rename it to "Folder" or "Workspace" in code, types, or UI.
+_Avoid_: Folder, Workspace, repo
+
 **Run**:
 A tracked execution of an agent, command, or workflow.
 _Avoid_: Job unless referring to an external scheduler concept

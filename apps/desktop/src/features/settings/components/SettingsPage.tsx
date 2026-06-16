@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
-import { AppWindowControls } from "@/features/app-shell/components/AppWindowControls";
-import { useTitleBarDrag } from "@/features/app-shell/components/useTitleBarDrag";
+import { AppWindowControls } from "@/features/app-shell/components/shared/AppWindowControls";
+import { useTitleBarDrag } from "@/features/app-shell/components/shared/useTitleBarDrag";
 import { SettingsSidebar } from "@/features/settings/components/SettingsSidebar";
 import {
   findSettingsSection,

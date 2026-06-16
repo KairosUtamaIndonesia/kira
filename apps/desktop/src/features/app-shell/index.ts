@@ -1,2 +1,2 @@
-export { AppShell } from "./components/AppShell";
+export { AppShell } from "./components/code/AppShell";
 export { Shell } from "./components/Shell";
