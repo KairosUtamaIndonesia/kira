@@ -4,11 +4,9 @@ WORKDIR /repo
 COPY package.json bun.lock turbo.json ./
 COPY patches patches
 COPY apps/cloud/package.json apps/cloud/package.json
-COPY apps/desktop/package.json apps/desktop/package.json
-COPY apps/desktop/agent-pi/package.json apps/desktop/agent-pi/package.json
 COPY packages/tsconfig/package.json packages/tsconfig/package.json
 
-RUN bun install --frozen-lockfile
+RUN bun install --filter=@kira/cloud --frozen-lockfile
 
 FROM oven/bun:1.3.12-alpine AS builder
 WORKDIR /repo
