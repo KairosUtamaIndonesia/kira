@@ -87,6 +87,10 @@ type ActivePrompt = {
 
 type PiEventListener = (event: unknown) => void;
 
+class AbortError extends Error {
+  readonly name = "AbortError";
+}
+
 const minimumTitleGenerationVisibleMs = 1200;
 
 function useAgentThreadConnection(
@@ -122,7 +126,7 @@ function useAgentThreadConnection(
   runtimeStateRef.current = runtimeState;
   isCompactingRef.current = isCompacting;
   // Stable ref to the Pi event handler — avoids capturing stale deps in effect subscriptions.
-  const handlePiEventRef = useRef<PiEventListener>();
+  const handlePiEventRef = useRef<PiEventListener | null>(null);
   handlePiEventRef.current = function handlePiEvent(event: unknown) {
     setTranscript((currentTranscript) => applyPiEvent(currentTranscript, event));
     if (isRecord(event)) {
@@ -145,7 +149,6 @@ function useAgentThreadConnection(
       }
     }
   };
-
 
   function scheduleTreeRefresh() {
     if (treeDebounceRef.current !== undefined) {
@@ -202,11 +205,8 @@ function useAgentThreadConnection(
     let disposed = false;
     let unsubscribe: (() => void) | undefined;
     let socket: PiAgentSocket | undefined;
-
     async function connectRuntime() {
       try {
-        setTranscript(emptyPiTranscriptState);
-
         const runtime = await prepareAgentThread(runtimeInput);
         if (disposed) {
           return;
@@ -229,7 +229,6 @@ function useAgentThreadConnection(
         } catch {
           // Tree fetch is a UI enhancement; silently ignore errors.
         }
-
 
         const session = await loadPiSession(runtime.baseUrl, runtime.token, params.threadId);
         if (disposed) {
@@ -254,7 +253,7 @@ function useAgentThreadConnection(
         socketRef.current = socket;
         unsubscribe = socket.onEvent((event) => {
           const handler = handlePiEventRef.current;
-          if (handler !== undefined) handler(event);
+          if (handler !== null) handler(event);
         });
         await socket.ready;
 
@@ -287,7 +286,6 @@ function useAgentThreadConnection(
       }
     };
   }, [params.threadId, runtimeInput]);
-
   async function sendPrompt(message: string) {
     const state = runtimeStateRef.current;
     if (state.status !== "ready" && state.status !== "sending") {
@@ -334,9 +332,24 @@ function useAgentThreadConnection(
       setRuntimeState({ status: "ready", baseUrl: state.baseUrl });
       return true;
     } catch (error) {
-      setRuntimeState({ status: "error", message: errorMessageFromUnknown(error) });
+      if (!(error instanceof AbortError)) {
+        setRuntimeState({ status: "error", message: errorMessageFromUnknown(error) });
+      }
       return false;
     }
+  }
+  async function abortPrompt() {
+    const socket = socketRef.current;
+    if (socket === undefined) return;
+    const state = runtimeStateRef.current;
+    if (state.status !== "sending") return;
+    try {
+      await socket.abort();
+    } catch {
+      // Abort command failure shouldn't leave the thread stuck in "sending".
+      // State is set to "ready" regardless; the agent will settle naturally.
+    }
+    setRuntimeState({ status: "ready", baseUrl: state.baseUrl });
   }
   async function navigateTree(entryId: string) {
     const socket = socketRef.current;
@@ -433,6 +446,7 @@ function useAgentThreadConnection(
     treeNodes,
     currentLeafId,
     respondToRequest,
+    abortPrompt,
     runtimeState,
     sendPrompt,
     navigateTree,
@@ -445,6 +459,7 @@ class PiAgentSocket {
   private readonly socket: WebSocket;
   private readonly listeners = new Set<PiEventListener>();
   private readonly pendingCommands = new Map<string, PendingCommand>();
+  private aborted = false;
   private activePrompt: ActivePrompt | undefined;
 
   private constructor(socket: WebSocket, ready: Promise<void>) {
@@ -480,6 +495,7 @@ class PiAgentSocket {
   }
 
   async prompt(message: string) {
+    this.aborted = false;
     const id = crypto.randomUUID();
     const { promise, resolve, reject } = Promise.withResolvers<string>();
     this.activePrompt = { id, parts: [], resolve, reject };
@@ -487,6 +503,16 @@ class PiAgentSocket {
     return promise;
   }
 
+  async abort() {
+    this.aborted = true;
+    const id = crypto.randomUUID();
+    await this.sendCommand({ id, type: "abort" });
+    const activePrompt = this.activePrompt;
+    if (activePrompt !== undefined) {
+      this.activePrompt = undefined;
+      activePrompt.reject(new AbortError("Agent response interrupted by user."));
+    }
+  }
   respondToToolUi(requestId: string, response: unknown) {
     return this.sendCommand({ id: requestId, type: "tool_ui_response", response });
   }
@@ -552,6 +578,9 @@ class PiAgentSocket {
       this.handleResponse(payload);
       return;
     }
+    if (this.aborted) {
+      return;
+    }
     if (isPromptError(payload)) {
       this.rejectActivePrompt(payload.message);
       this.emit(payload);
@@ -563,7 +592,6 @@ class PiAgentSocket {
       this.resolveActivePrompt();
     }
   }
-
   private handleResponse(response: PiCommandResponse) {
     const id = response.id;
     if (id === undefined) {

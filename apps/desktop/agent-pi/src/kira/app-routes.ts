@@ -167,7 +167,7 @@ function serializeSessionTreeNode(raw: unknown): SessionTreeNodeJson {
   const node = raw as Record<string, unknown>;
   const entry = node.entry as Record<string, unknown> | undefined;
   if (entry === undefined) {
-    return { id: "unknown", entry: { type: "unknown" }, children: [] };
+    return { id: "unknown", parentId: undefined, entry: { type: "unknown" }, children: [] };
   }
 
   let role: string | undefined;
@@ -203,10 +203,11 @@ function serializeSessionTreeNode(raw: unknown): SessionTreeNodeJson {
       }
       const toolResults = msg.tool_results;
       if (Array.isArray(toolResults) && toolResults.length > 0) {
-        if (typeof first.tool_name === "string") {
-          toolName = first.tool_name;
-        } else if (typeof first.name === "string") {
-          toolName = first.name;
+        const firstResult = toolResults[0] as Record<string, unknown>;
+        if (typeof firstResult.tool_name === "string") {
+          toolName = firstResult.tool_name;
+        } else if (typeof firstResult.name === "string") {
+          toolName = firstResult.name;
         }
       }
     }
@@ -230,6 +231,7 @@ function serializeSessionTreeNode(raw: unknown): SessionTreeNodeJson {
   const children = Array.isArray(node.children) ? node.children : [];
 
   return {
+    id: typeof entry.id === "string" ? entry.id : "unknown",
     parentId: typeof entry.parentId === "string" ? entry.parentId : undefined,
     entry: entryOut,
     children: children.map((child: unknown) => serializeSessionTreeNode(child)),

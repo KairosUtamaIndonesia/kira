@@ -223,8 +223,8 @@ function TreeNode({
         data-tree-focused={isFocused || undefined}
       >
         {/* Expand/collapse chevron */}
-        <button
-          type="button"
+        <span
+          aria-hidden="true"
           className={`flex size-4 shrink-0 items-center justify-center ${
             hasChildren ? "cursor-pointer opacity-60 hover:opacity-100" : "opacity-0"
           }`}
@@ -234,15 +234,9 @@ function TreeNode({
               onToggle(node.id);
             }
           }}
-          onKeyDown={(e) => {
-            if (hasChildren && (e.key === "Enter" || e.key === " ")) {
-              e.stopPropagation();
-              onToggle(node.id);
-            }
-          }}
         >
           {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        </button>
+        </span>
 
         {/* Entry type icon */}
         <span className="flex size-4 shrink-0 items-center justify-center">

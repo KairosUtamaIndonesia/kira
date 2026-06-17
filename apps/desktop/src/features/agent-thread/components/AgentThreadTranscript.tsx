@@ -61,28 +61,32 @@ function AgentThreadTranscript({
                 <TooltipProvider>
                   <ButtonGroup className="absolute right-2 -bottom-3 rounded-lg border border-border bg-card opacity-0 shadow-xs transition-opacity group-hover:opacity-100">
                     <Tooltip>
-                      <TooltipTrigger>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          onClick={() => onResend(item.id, item.text)}
-                        >
-                          <CornerUpLeft />
-                        </Button>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => onResend(item.id, item.text)}
+                          />
+                        }
+                      >
+                        <CornerUpLeft />
                       </TooltipTrigger>
                       <TooltipContent>Resend</TooltipContent>
                     </Tooltip>
                     <Tooltip>
-                      <TooltipTrigger>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          onClick={() => onEdit(item.id, item.text)}
-                        >
-                          <Pencil />
-                        </Button>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => onEdit(item.id, item.text)}
+                          />
+                        }
+                      >
+                        <Pencil />
                       </TooltipTrigger>
                       <TooltipContent>Edit</TooltipContent>
                     </Tooltip>

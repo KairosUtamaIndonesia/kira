@@ -1,4 +1,4 @@
-import { CornerDownLeft, ListTree, Loader2, Minimize2, X, Zap } from "lucide-react";
+import { CornerDownLeft, ListTree, Loader2, Minimize2, Square, X, Zap } from "lucide-react";
 import {
   useEffect,
   useLayoutEffect,
@@ -41,6 +41,7 @@ type ComposerProps = {
   isDropTargetActive?: boolean;
   placeholder?: string;
   sendPrompt: (prompt: string) => Promise<boolean>;
+  abortPrompt?: () => void;
   runSlashCommandAction?: (
     action: ComposerSlashCommandAction,
     args: string,
@@ -90,6 +91,7 @@ function Composer({
   isDropTargetActive = false,
   placeholder = "Send a prompt to this Agent Thread…",
   sendPrompt,
+  abortPrompt,
   runSlashCommandAction,
   editingMessageId,
   onCancelEdit,
@@ -115,7 +117,7 @@ function Composer({
     runtimeState.status === "ready" ||
     runtimeState.status === "sending";
   const isSending = runtimeState !== undefined && runtimeState.status === "sending";
-  const isDisabled = !canSend || isSending || isCompacting;
+  const isDisabled = !canSend || isCompacting;
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
@@ -441,7 +443,7 @@ function Composer({
           aria-label="Prompt"
           aria-autocomplete="list"
           placeholder={placeholder}
-          disabled={isDisabled}
+          disabled={isDisabled || isSending}
           className="block min-h-9 w-full resize-none bg-transparent px-2.5 py-2 text-sm leading-5 outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
           onChange={(event) => {
             setErrorMessage(undefined);
@@ -473,20 +475,31 @@ function Composer({
                 <X aria-hidden="true" />
               </Button>
             ) : undefined}
-            <Button
-              type="submit"
-              variant="ghost"
-              size="icon-xs"
-              aria-label={sendButtonLabel(runtimeState, isCompacting)}
-              disabled={!canSend || isSending || isCompacting || prompt.trim().length === 0}
-              className="bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
-            >
-              {isSending ? (
-                <Loader2 aria-hidden="true" className="animate-spin" />
-              ) : (
+            {isSending ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                aria-label="Stop agent response"
+                onClick={() => {
+                  if (abortPrompt !== undefined) abortPrompt();
+                }}
+                className="bg-transparent text-destructive hover:bg-muted hover:text-destructive"
+              >
+                <Square aria-hidden="true" className="size-3" />
+              </Button>
+            ) : (
+              <Button
+                type="submit"
+                variant="ghost"
+                size="icon-xs"
+                aria-label={sendButtonLabel(runtimeState, isCompacting)}
+                disabled={!canSend || isSending || isCompacting || prompt.trim().length === 0}
+                className="bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
                 <CornerDownLeft aria-hidden="true" />
-              )}
-            </Button>
+              </Button>
+            )}
           </div>
         )}
       </div>

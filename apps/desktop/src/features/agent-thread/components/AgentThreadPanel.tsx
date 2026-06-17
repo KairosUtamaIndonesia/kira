@@ -60,6 +60,7 @@ function AgentThreadPanel({ api, params, onRename }: AgentThreadPanelProps) {
     respondToRequest,
     runtimeState,
     sendPrompt,
+    abortPrompt,
     navigateTree,
   } = useAgentThreadConnection(params, { onAutoTitled: handleAutoTitled });
 
@@ -220,6 +221,7 @@ function AgentThreadPanel({ api, params, onRename }: AgentThreadPanelProps) {
             runSlashCommandAction={runSlashCommandAction}
             isDropTargetActive={isDraggingFile}
             editingMessageId={editingMessageId}
+            abortPrompt={abortPrompt}
             onCancelEdit={handleCancelEdit}
             isTreeOpen={isTreeOpen}
             onToggleTree={() => setIsTreeOpen((open) => !open)}
