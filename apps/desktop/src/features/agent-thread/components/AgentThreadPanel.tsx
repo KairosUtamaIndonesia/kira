@@ -16,6 +16,8 @@ import type {
 import { buildAgentThreadTranscript } from "../agentThreadDisplay";
 import { clearAgentThreadDraft, setAgentThreadDraft } from "../agentThreadDraftStore";
 import {
+  clearPanelUnread,
+  markPanelUnread,
   registerOpenAgentThread,
   setAgentThreadRuntimeState,
   unregisterOpenAgentThread,
@@ -122,8 +124,15 @@ function AgentThreadPanel({ api, params, onRename, isActive }: AgentThreadPanelP
     }
     if (prevState.status === "sending" && runtimeState.status === "ready" && isActive !== true) {
       void playAgentNotificationSound();
+      markPanelUnread(params.panelId);
     }
-  }, [runtimeState, params.threadId, params.panelId]);
+  }, [runtimeState, params.threadId, params.panelId, isActive]);
+
+  useEffect(() => {
+    if (isActive === true) {
+      clearPanelUnread(params.panelId);
+    }
+  }, [isActive, params.panelId]);
 
   useEffect(() => {
     setAgentThreadRuntimeState(params.threadId, runtimeState);

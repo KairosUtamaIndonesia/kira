@@ -10,7 +10,8 @@ type GenerateCommitMessageInput = {
 export function useCommitMessageGenerator() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string>();
-  const abortRef = useRef<AbortController>();
+  // eslint-disable-next-line unicorn/no-useless-undefined — required: no overload for useRef<T>()
+  const abortRef = useRef<AbortController | undefined>(undefined);
 
   // Abort in-flight generation on unmount
   useEffect(() => {
