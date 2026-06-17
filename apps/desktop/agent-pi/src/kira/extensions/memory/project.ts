@@ -25,9 +25,16 @@ export interface ProjectSkillInfo extends ProjectInfo {
  *
  * A "project" is any directory that is not the user's home directory.
  * The project name is the directory's basename.
- * Project-scoped memory is stored at ~/.pi/agent/<projectsMemoryDir>/<projectName>/.
+ * When a Kira project id is provided, it is used as the memory directory name
+ * instead of the basename, providing a stable identity across renames and
+ * avoiding collisions between same-named directories.
+ * Project-scoped memory is stored at ~/.pi/agent/<projectsMemoryDir>/<projectId|projectName>/.
  */
-export function detectProject(projectsMemoryDir = "projects", cwd?: string): ProjectInfo {
+export function detectProject(
+  projectsMemoryDir = "projects",
+  cwd?: string,
+  projectId?: string | undefined,
+): ProjectInfo {
   const dir = cwd ?? process.cwd();
   const homeDir = os.homedir();
 
@@ -49,17 +56,21 @@ export function detectProject(projectsMemoryDir = "projects", cwd?: string): Pro
     return { name: undefined, memoryDir: undefined };
   }
 
+  // Use projectId for the directory name (stable identifier), fall back to basename
+  const dirName = projectId || name;
+
   return {
     name,
-    memoryDir: path.join(resolveProjectsRoot(projectsMemoryDir), name),
+    memoryDir: path.join(resolveProjectsRoot(projectsMemoryDir), dirName),
   };
 }
 
 export function detectProjectSkills(
   projectsMemoryDir = "projects",
   cwd?: string,
+  projectId?: string | undefined,
 ): ProjectSkillInfo {
-  const project = detectProject(projectsMemoryDir, cwd);
+  const project = detectProject(projectsMemoryDir, cwd, projectId);
   return {
     ...project,
     skillsDir: project.memoryDir ? path.join(project.memoryDir, "skills") : undefined,

@@ -37,7 +37,10 @@ Returns matching memory entries with project context and dates.`,
     parameters: Type.Object({
       query: Type.String({ description: "Search query. Use natural language or specific terms." }),
       project: Type.Optional(
-        Type.String({ description: "Filter by project name. Pass null for global memories only." }),
+        Type.String({
+          description:
+            "Filter by project ID (use the projectId from session context). Omit to search all projects.",
+        }),
       ),
       target: Type.Optional(
         StringEnum(["memory", "user", "failure"] as const, {

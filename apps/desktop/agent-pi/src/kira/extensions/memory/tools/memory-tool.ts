@@ -57,9 +57,9 @@ function formatMemoryToolText(result: MemoryResult): string {
 
 function sqliteProjectFor(
   rawTarget: "memory" | "user" | "project" | "failure",
-  projectName?: string | null,
+  projectId?: string | null,
 ): string | undefined {
-  if (rawTarget === "project") return (projectName && projectName.trim()) || undefined;
+  if (rawTarget === "project") return (projectId && projectId.trim()) || undefined;
   if (rawTarget === "memory") return undefined;
   if (rawTarget === "user") return undefined;
   if (rawTarget === "failure") return undefined;
@@ -79,13 +79,13 @@ async function syncAddToSqlite(
   category: MemoryCategory | undefined,
   failureReason: string | undefined,
   dbManager: DatabaseManager | undefined,
-  projectName?: string | null,
+  projectId?: string | null,
 ): Promise<string | undefined> {
   if (!dbManager) return undefined;
 
   try {
     const sqliteTarget = sqliteTargetFor(rawTarget);
-    const sqliteProject = sqliteProjectFor(rawTarget, projectName);
+    const sqliteProject = sqliteProjectFor(rawTarget, projectId);
 
     if (rawTarget === "failure") {
       const failureCategory = category ?? "failure";
@@ -118,13 +118,13 @@ async function syncReplaceToSqlite(
   oldText: string,
   newContent: string,
   dbManager: DatabaseManager | undefined,
-  projectName?: string | null,
+  projectId?: string | null,
 ): Promise<string | undefined> {
   if (!dbManager) return undefined;
 
   try {
     const sqliteTarget = sqliteTargetFor(rawTarget);
-    const sqliteProject = sqliteProjectFor(rawTarget, projectName);
+    const sqliteProject = sqliteProjectFor(rawTarget, projectId);
     const syncResult = replaceSyncedMemories(dbManager, oldText, {
       content: newContent,
       target: sqliteTarget,
@@ -145,13 +145,13 @@ async function syncRemoveFromSqlite(
   rawTarget: "memory" | "user" | "project" | "failure",
   oldText: string,
   dbManager: DatabaseManager | undefined,
-  projectName?: string | null,
+  projectId?: string | null,
 ): Promise<string | undefined> {
   if (!dbManager) return undefined;
 
   try {
     const sqliteTarget = sqliteTargetFor(rawTarget);
-    const sqliteProject = sqliteProjectFor(rawTarget, projectName);
+    const sqliteProject = sqliteProjectFor(rawTarget, projectId);
     const syncResult = removeSyncedMemories(dbManager, oldText, {
       target: sqliteTarget,
       project: sqliteProject,
@@ -171,13 +171,13 @@ async function syncEvictionsFromSqlite(
   rawTarget: "memory" | "user" | "project" | "failure",
   evictedEntries: string[] | undefined,
   dbManager: DatabaseManager | undefined,
-  projectName?: string | null,
+  projectId?: string | null,
 ): Promise<void> {
   if (!dbManager) return;
   if (!evictedEntries || evictedEntries.length === 0) return;
 
   const sqliteTarget = sqliteTargetFor(rawTarget);
-  const sqliteProject = sqliteProjectFor(rawTarget, projectName);
+  const sqliteProject = sqliteProjectFor(rawTarget, projectId);
 
   for (const entry of evictedEntries) {
     try {
@@ -196,9 +196,9 @@ export function createMemoryToolDef(
   store: MemoryStore,
   projectStore: MemoryStore | undefined,
   dbManager: DatabaseManager | undefined = undefined,
-  projectName?: string | null,
+  projectId?: string | null,
 ): ToolDefinition<typeof memorySchema> {
-  return createMemoryTool(store, projectStore, dbManager, projectName);
+  return createMemoryTool(store, projectStore, dbManager, projectId);
 }
 
 export function registerMemoryTool(
@@ -206,9 +206,9 @@ export function registerMemoryTool(
   store: MemoryStore,
   projectStore: MemoryStore | undefined,
   dbManager: DatabaseManager | undefined = undefined,
-  projectName?: string | null,
+  projectId?: string | null,
 ): void {
-  const tool = createMemoryToolDef(store, projectStore, dbManager, projectName);
+  const tool = createMemoryToolDef(store, projectStore, dbManager, projectId);
   pi.registerTool(tool);
 }
 
@@ -238,7 +238,7 @@ function createMemoryTool(
   store: MemoryStore,
   projectStore: MemoryStore | undefined,
   dbManager: DatabaseManager | undefined,
-  projectName?: string | null,
+  projectId?: string | null,
 ): ToolDefinition<typeof memorySchema> {
   return {
     name: "memory",
@@ -311,7 +311,7 @@ function createMemoryTool(
                 memoryCategory,
                 failure_reason,
                 dbManager,
-                projectName,
+                projectId,
               );
             }
           } else {
@@ -321,7 +321,7 @@ function createMemoryTool(
                 rawTarget,
                 result.evicted_entries,
                 dbManager,
-                projectName,
+                projectId,
               );
               syncWarning = await syncAddToSqlite(
                 rawTarget,
@@ -329,7 +329,7 @@ function createMemoryTool(
                 undefined,
                 undefined,
                 dbManager,
-                projectName,
+                projectId,
               );
             }
           }
@@ -371,7 +371,7 @@ function createMemoryTool(
               old_text,
               content,
               dbManager,
-              projectName,
+              projectId,
             );
           }
           break;
@@ -393,7 +393,7 @@ function createMemoryTool(
           }
           result = await memoryStore.remove(target, old_text);
           if (result.success) {
-            syncWarning = await syncRemoveFromSqlite(rawTarget, old_text, dbManager, projectName);
+            syncWarning = await syncRemoveFromSqlite(rawTarget, old_text, dbManager, projectId);
           }
           break;
 
