@@ -58,14 +58,19 @@ type TranscriptBuildContext = {
 };
 
 function buildAgentThreadTranscript(transcript: PiTranscriptState): AgentThreadTranscriptItem[] {
+  const messages =
+    transcript.treeNodes !== undefined
+      ? filterActivePathMessages(transcript.persistedMessages, transcript.activePath)
+      : transcript.persistedMessages;
+
   const context: TranscriptBuildContext = {
-    toolResultsByCallId: toolResultsByCallId(transcript.persistedMessages),
+    toolResultsByCallId: toolResultsByCallId(messages),
     activeToolsByCallId: transcript.activeToolExecutions,
     anchoredToolCallIds: new Set<string>(),
   };
   let items: AgentThreadTranscriptItem[] = [];
 
-  for (const message of transcript.persistedMessages) {
+  for (const message of messages) {
     const item = transcriptItemFromPiMessage(message, context);
     if (item !== undefined) {
       items = appendTranscriptItem(items, item);
@@ -85,6 +90,25 @@ function buildAgentThreadTranscript(transcript: PiTranscriptState): AgentThreadT
   }
 
   return items;
+}
+
+function filterActivePathMessages(messages: PiMessage[], activePath: string[]): PiMessage[] {
+  if (activePath.length === 0) {
+    return messages;
+  }
+  const pathIds = new Set(activePath);
+  return messages.filter((message) => {
+    const id =
+      stringField(message, "id") ??
+      stringField(message, "responseId") ??
+      messageIdFromTimestamp(message);
+    return id !== undefined && pathIds.has(id);
+  });
+}
+
+function stringField(record: Record<string, unknown>, key: string): string | undefined {
+  const value = record[key];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 function appendTranscriptItem(

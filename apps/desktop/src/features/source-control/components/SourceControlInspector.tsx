@@ -159,7 +159,7 @@ function SourceControlInspector({ folderPath, onOpenDiff }: SourceControlInspect
 
     setMutationError(undefined);
     const msg = await generate({ folderPath });
-    if (msg !== null) {
+    if (msg !== undefined) {
       setCommitMessage(msg);
     }
   }

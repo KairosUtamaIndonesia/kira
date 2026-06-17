@@ -1,4 +1,10 @@
-import type { PiEvent, PiMessage, PiToolExecutionState, PiTranscriptState } from "./types";
+import type {
+  PiEvent,
+  PiMessage,
+  PiToolExecutionState,
+  PiTranscriptState,
+  SessionTreeNodeJson,
+} from "./types";
 
 const emptyPiTranscriptState: PiTranscriptState = {
   persistedMessages: [],
@@ -6,6 +12,10 @@ const emptyPiTranscriptState: PiTranscriptState = {
   activeToolExecutions: {},
   activeToolUiRequests: {},
   liveEvents: [],
+  treeNodes: undefined,
+  activePath: [],
+  activeLeafId: undefined,
+  branchParentId: undefined,
 };
 
 function hydratePiTranscript(messages: PiMessage[]): PiTranscriptState {
@@ -13,17 +23,20 @@ function hydratePiTranscript(messages: PiMessage[]): PiTranscriptState {
 }
 
 function appendLocalUserMessage(state: PiTranscriptState, text: string): PiTranscriptState {
+  const id = `local:${crypto.randomUUID()}`;
   return {
     ...state,
     persistedMessages: [
       ...state.persistedMessages,
       {
-        id: `local:${crypto.randomUUID()}`,
+        id,
         role: "user",
         content: [{ type: "text", text }],
         timestamp: new Date().toISOString(),
       },
     ],
+    // Include local message in active path so it isn't filtered out.
+    activePath: state.activePath.includes(id) ? state.activePath : [...state.activePath, id],
   };
 }
 
@@ -53,6 +66,8 @@ function applyPiEvent(state: PiTranscriptState, event: unknown): PiTranscriptSta
       );
     case "tool_ui_request":
       return upsertToolUiRequest(withEvent, typedEvent);
+    case "tree_updated":
+      return applyTreeUpdated(withEvent, typedEvent);
     case "error":
     case "agent_end":
     case "settled":
@@ -112,11 +127,76 @@ function applyMessageEnd(state: PiTranscriptState, event: PiEvent): PiTranscript
     return { ...state, activeAssistantTurn: undefined };
   }
 
+  const messageId = stringField(message, "id");
+  const parentId = stringField(message, "parentId");
+  const activeLeafId = state.activeLeafId;
+
+  // If we know the active path and this message continues it, append.
+  let activePath = state.activePath;
+  if (messageId !== undefined) {
+    if (parentId === activeLeafId || parentId === undefined || activeLeafId === undefined) {
+      // Continuing on the same path or we don't have a reference point.
+      if (messageId !== undefined && !activePath.includes(messageId)) {
+        activePath = [...activePath, messageId];
+      }
+    } else {
+      // Branch detected: the new message's parent differs from the current leaf.
+      // Truncate activePath to the branch point and append the new leaf.
+      const branchIndex = activePath.indexOf(parentId);
+      if (branchIndex >= 0) {
+        activePath = [...activePath.slice(0, branchIndex + 1), messageId];
+      } else {
+        activePath = [messageId];
+      }
+    }
+  }
+
   return {
     ...state,
     persistedMessages: appendPiMessage(state.persistedMessages, message),
     activeAssistantTurn: undefined,
+    activePath,
+    activeLeafId: messageId ?? activeLeafId,
   };
+}
+
+function applyTreeUpdated(state: PiTranscriptState, event: PiEvent): PiTranscriptState {
+  const nodes = event.nodes;
+  const currentLeafId = event.currentLeafId;
+  if (!Array.isArray(nodes)) {
+    return state;
+  }
+  const treeNodes = nodes as SessionTreeNodeJson[];
+  const activeLeafId = typeof currentLeafId === "string" ? currentLeafId : undefined;
+  const activePath = activeLeafId === undefined ? [] : computeActivePath(treeNodes, activeLeafId);
+  const leafMessageId = activePath.length > 0 ? activePath[activePath.length - 1] : undefined;
+  return {
+    ...state,
+    treeNodes,
+    activePath,
+    activeLeafId: leafMessageId ?? activeLeafId,
+    branchParentId: undefined,
+  };
+}
+
+function computeActivePath(treeNodes: SessionTreeNodeJson[], leafId: string): string[] {
+  const path = buildPath(treeNodes, leafId);
+  return path ?? (treeNodes.length > 0 ? [leafId] : []);
+}
+
+function buildPath(nodes: SessionTreeNodeJson[], targetId: string): string[] | undefined {
+  for (const node of nodes) {
+    if (node.id === targetId) {
+      return [node.entry.messageId ?? node.id];
+    }
+    if (node.children.length > 0) {
+      const childPath = buildPath(node.children, targetId);
+      if (childPath !== undefined) {
+        return [node.entry.messageId ?? node.id, ...childPath];
+      }
+    }
+  }
+  return undefined;
 }
 
 function upsertToolUiRequest(state: PiTranscriptState, event: PiEvent): PiTranscriptState {

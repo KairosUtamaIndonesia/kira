@@ -1,4 +1,4 @@
-import { CornerDownLeft, Loader2, Minimize2, Zap } from "lucide-react";
+import { CornerDownLeft, ListTree, Loader2, Minimize2, X, Zap } from "lucide-react";
 import {
   useEffect,
   useLayoutEffect,
@@ -45,6 +45,10 @@ type ComposerProps = {
     action: ComposerSlashCommandAction,
     args: string,
   ) => Promise<{ ok: boolean; error?: string }>;
+  isTreeOpen?: boolean;
+  onToggleTree?: () => void;
+  onCancelEdit?: () => void;
+  editingMessageId?: string | undefined;
 };
 
 type FileReferenceToken = {
@@ -87,6 +91,10 @@ function Composer({
   placeholder = "Send a prompt to this Agent Thread…",
   sendPrompt,
   runSlashCommandAction,
+  editingMessageId,
+  onCancelEdit,
+  isTreeOpen,
+  onToggleTree,
 }: ComposerProps) {
   const [prompt, setPrompt] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
@@ -452,24 +460,48 @@ function Composer({
             <span>Compacting…</span>
           </div>
         ) : (
-          <Button
-            type="submit"
-            variant="ghost"
-            size="icon-xs"
-            aria-label={sendButtonLabel(runtimeState, isCompacting)}
-            disabled={!canSend || isSending || isCompacting || prompt.trim().length === 0}
-            className="absolute right-1.5 bottom-1.5 bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
-          >
-            {isSending ? (
-              <Loader2 aria-hidden="true" className="animate-spin" />
-            ) : (
-              <CornerDownLeft aria-hidden="true" />
-            )}
-          </Button>
+          <div className="absolute right-1.5 bottom-1.5 flex items-center gap-1">
+            {editingMessageId !== undefined && onCancelEdit !== undefined ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                aria-label="Cancel edit"
+                onClick={onCancelEdit}
+                className="bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <X aria-hidden="true" />
+              </Button>
+            ) : undefined}
+            <Button
+              type="submit"
+              variant="ghost"
+              size="icon-xs"
+              aria-label={sendButtonLabel(runtimeState, isCompacting)}
+              disabled={!canSend || isSending || isCompacting || prompt.trim().length === 0}
+              className="bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              {isSending ? (
+                <Loader2 aria-hidden="true" className="animate-spin" />
+              ) : (
+                <CornerDownLeft aria-hidden="true" />
+              )}
+            </Button>
+          </div>
         )}
       </div>
       <div className="mt-1 flex items-center justify-between px-1">
-        <span>{composerFootnote(errorMessage, slashPickerState.status === "closed")}</span>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            className="flex size-5 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+            title={isTreeOpen ? "Close session tree" : "Open session tree"}
+            onClick={onToggleTree}
+          >
+            <ListTree size={14} />
+          </button>
+          <span>{composerFootnote(errorMessage, slashPickerState.status === "closed")}</span>
+        </div>
         {contextUsageState !== undefined && <AgentThreadContextMeter state={contextUsageState} />}
       </div>
     </form>

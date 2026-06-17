@@ -90,6 +90,10 @@ type PiTranscriptState = {
   activeToolExecutions: Record<string, PiToolExecutionState>;
   activeToolUiRequests: Record<string, PiToolUiRequestState>;
   liveEvents: PiEvent[];
+  treeNodes: SessionTreeNodeJson[] | undefined;
+  activePath: string[];
+  activeLeafId: string | undefined;
+  branchParentId: string | undefined;
 };
 
 type RespondToHumanRequest = (requestId: string, response: unknown) => Promise<boolean>;
@@ -109,3 +113,25 @@ export type {
   PrepareAgentThreadInput,
   RespondToHumanRequest,
 };
+
+type SessionTreeNodeJson = {
+  id: string;
+  parentId: string | null;
+  entry: {
+    type: string;
+    role?: string;
+    text?: string;
+    toolName?: string;
+    timestamp?: string;
+    label?: string;
+    messageId?: string;
+  };
+  children: SessionTreeNodeJson[];
+};
+
+type AgentThreadTree = {
+  nodes: SessionTreeNodeJson[];
+  currentLeafId: string | undefined;
+};
+
+export type { SessionTreeNodeJson, AgentThreadTree };

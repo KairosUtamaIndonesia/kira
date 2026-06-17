@@ -1,4 +1,8 @@
-import { Brain } from "lucide-react";
+import { Brain, CornerUpLeft, Pencil } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { ButtonGroup } from "@/components/ui/button-group";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 import type { AgentThreadActivityBlock } from "../agentThreadDisplay";
 import type { PiTranscriptState, RespondToHumanRequest } from "../types";
@@ -12,12 +16,18 @@ import { toolComponentForName } from "./tools";
 type AgentThreadTranscriptProps = {
   transcript: PiTranscriptState;
   compactionSummary?: { tokensBefore: number; summary: string } | undefined;
+  editingMessageId?: string | undefined;
   respond: RespondToHumanRequest;
+  onResend: (id: string, text: string) => void;
+  onEdit: (id: string, text: string) => void;
 };
 function AgentThreadTranscript({
   transcript,
   compactionSummary,
+  editingMessageId,
   respond,
+  onResend,
+  onEdit,
 }: AgentThreadTranscriptProps) {
   const items = buildAgentThreadTranscript(transcript);
   if (items.length === 0) {
@@ -29,14 +39,55 @@ function AgentThreadTranscript({
       </div>
     );
   }
-
   return (
     <ol className="space-y-5">
       {items.map((item) => {
         if (item.type === "user-message") {
+          const isEditing = editingMessageId === item.id;
           return (
-            <li key={item.id} className="flex justify-end">
-              <article className="max-w-[min(42rem,85%)] space-y-2 rounded-xl border border-border bg-card p-3 text-card-foreground">
+            <li
+              key={item.id}
+              className="flex justify-end"
+              data-message-ids={item.id.split(":").join(" ")}
+            >
+              <article
+                className={
+                  "group relative max-w-[min(42rem,85%)] space-y-2 rounded-xl border p-3 text-card-foreground " +
+                  (isEditing
+                    ? "border-primary bg-primary/5 ring-2 ring-primary/30"
+                    : "border-border bg-card")
+                }
+              >
+                <TooltipProvider>
+                  <ButtonGroup className="absolute right-2 -bottom-3 rounded-lg border border-border bg-card opacity-0 shadow-xs transition-opacity group-hover:opacity-100">
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => onResend(item.id, item.text)}
+                        >
+                          <CornerUpLeft />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Resend</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => onEdit(item.id, item.text)}
+                        >
+                          <Pencil />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Edit</TooltipContent>
+                    </Tooltip>
+                  </ButtonGroup>
+                </TooltipProvider>
                 <MessageHeader label="You" createdAt={item.createdAt} />
                 {item.blocks.length === 0 ? (
                   <p className="text-sm leading-6 whitespace-pre-wrap">{item.text}</p>
@@ -52,7 +103,11 @@ function AgentThreadTranscript({
 
         if (item.type === "assistant-activity") {
           return (
-            <li key={item.id} className="flex justify-start">
+            <li
+              key={item.id}
+              className="flex justify-start"
+              data-message-ids={item.id.split(":").join(" ")}
+            >
               <article className="w-full space-y-3 rounded-xl p-3 text-foreground">
                 <MessageHeader label="Kira" createdAt={item.createdAt} />
                 {item.blocks.length === 0 && item.isStreaming ? (
