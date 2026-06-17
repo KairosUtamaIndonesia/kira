@@ -1,3 +1,4 @@
+import { memorySettingsSection } from "@/features/memory/sections/memorySettingsSection";
 import { appearanceSettingsSection } from "@/features/settings/sections/appearance/appearanceSettingsSection";
 import { generalSettingsSection } from "@/features/settings/sections/general/generalSettingsSection";
 import { guardrailsSettingsSection } from "@/features/settings/sections/guardrails/guardrailsSettingsSection";
@@ -11,7 +12,7 @@ const settingsGroups = [
   },
   {
     label: "Agent",
-    sections: [guardrailsSettingsSection],
+    sections: [guardrailsSettingsSection, memorySettingsSection],
   },
   {
     label: "Interface",
