@@ -32,9 +32,10 @@ type AgentThreadPanelProps = {
   params: AgentThreadPanelParams;
   initialPrompt?: string;
   onRename?: (panelId: string, title: string) => Promise<void>;
+  isActive?: boolean;
 };
 
-function AgentThreadPanel({ api, params, onRename }: AgentThreadPanelProps) {
+function AgentThreadPanel({ api, params, onRename, isActive }: AgentThreadPanelProps) {
   const { agentThreadShowRawEventStream } = useAppearanceTheme();
   const dragCounterRef = useRef(0);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
@@ -119,7 +120,7 @@ function AgentThreadPanel({ api, params, onRename }: AgentThreadPanelProps) {
     } else if (prevState.status !== "error" && runtimeState.status === "error") {
       unregisterOpenAgentThread(params.threadId);
     }
-    if (prevState.status === "sending" && runtimeState.status === "ready") {
+    if (prevState.status === "sending" && runtimeState.status === "ready" && isActive !== true) {
       void playAgentNotificationSound();
     }
   }, [runtimeState, params.threadId, params.panelId]);

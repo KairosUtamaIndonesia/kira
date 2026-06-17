@@ -628,10 +628,22 @@ const agentThreadRenameRef = {
 function AgentThreadPanelWrapper(props: IDockviewPanelProps<AgentThreadPanelParams>) {
   const { workingDirectory } = useWorkspaceRuntimeContext();
   const onRename = agentThreadRenameRef.current;
+  const [isActive, setIsActive] = useState(props.api.isActive);
+
+  useEffect(() => {
+    const disposable = props.api.onDidActiveChange((event) => {
+      setIsActive(event.isActive);
+    });
+    return () => {
+      disposable.dispose();
+    };
+  }, [props.api]);
+
   return (
     <AgentThreadPanel
       api={props.api}
       params={{ ...props.params, folderPath: workingDirectory }}
+      isActive={isActive}
       {...(onRename === undefined ? {} : { onRename })}
     />
   );
