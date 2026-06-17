@@ -14,6 +14,7 @@ mod browser_selector;
 mod desktop_signin;
 mod editor;
 mod explorer;
+mod memory;
 mod org_config;
 mod persistence;
 mod projects;
@@ -38,6 +39,7 @@ fn greet(name: &str) -> String {
 /// Returns an error if Tauri fails to initialize plugins, create the application context, or run
 /// the application event loop.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+#[allow(clippy::too_many_lines)]
 pub fn run() -> tauri::Result<()> {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -85,6 +87,9 @@ pub fn run() -> tauri::Result<()> {
             explorer::explorer_directory_children,
             explorer::explorer_file_reference_suggestions,
             explorer::explorer_tree,
+            memory::memory_get_entries,
+            memory::memory_list_projects,
+            memory::memory_update_entry,
             persistence::persistence_store_health,
             projects::cowork_agent_thread_panels_list,
             projects::cowork_project_create,
