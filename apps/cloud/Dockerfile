@@ -6,7 +6,10 @@ COPY patches patches
 COPY apps/cloud/package.json apps/cloud/package.json
 COPY packages/tsconfig/package.json packages/tsconfig/package.json
 
-RUN bun install --filter=@kira/cloud --frozen-lockfile
+RUN mkdir -p apps/desktop/agent-pi \
+    && echo '{"name":"agent-pi","private":true,"version":"0.0.0"}' > apps/desktop/agent-pi/package.json \
+    && bun install --filter=@kira/cloud \
+    && bun add --dev turbo@2.6.3
 
 FROM oven/bun:1.3.12-alpine AS builder
 WORKDIR /repo
