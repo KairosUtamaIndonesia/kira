@@ -55,12 +55,55 @@ type TerminalSettingsUpdateInput = {
   terminalShellPath: string | undefined;
 };
 
+type GuardrailsProtection = "none" | "readOnly" | "noAccess";
+
+/**
+ * User-facing policy rule for the guardrails settings UI.
+ * Mirrors agent-pi's `PolicyRule` with only the UI-editable fields.
+ * @see apps/desktop/agent-pi/src/kira/extensions/guardrails/types.ts
+ */
+type GuardrailsPolicyRule = {
+  id: string;
+  patterns: string[];
+  protection: GuardrailsProtection;
+};
+
+type GuardrailsCommandPattern = {
+  pattern: string;
+  description: string;
+};
+
+// User-override layer only. Built-in protections live in the agent runtime
+// (`agent-pi` guardrails defaults) and always apply; these fields add to or
+// override them by rule id / pattern string.
+type GuardrailsConfig = {
+  enabled: boolean;
+  features: {
+    policies: boolean;
+    permissionGate: boolean;
+  };
+  policies: {
+    rules: GuardrailsPolicyRule[];
+  };
+  permissionGate: {
+    useBuiltinMatchers: boolean;
+    requireConfirmation: boolean;
+    patterns: GuardrailsCommandPattern[];
+    allowedPatterns: string[];
+    autoDenyPatterns: string[];
+  };
+};
+
 export type {
   AppearanceSettings,
   AppearanceSettingsUpdateInput,
   AppearanceTheme,
   BundledNotificationSound,
   CustomNotificationSound,
+  GuardrailsCommandPattern,
+  GuardrailsConfig,
+  GuardrailsPolicyRule,
+  GuardrailsProtection,
   NotificationSettings,
   NotificationSettingsUpdateInput,
   NotificationSound,

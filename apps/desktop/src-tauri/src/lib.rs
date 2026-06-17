@@ -68,6 +68,8 @@ pub fn run() -> tauri::Result<()> {
             settings::notification_sound_remove,
             settings::terminal_settings_get,
             settings::terminal_settings_update,
+            settings::guardrails_settings_get,
+            settings::guardrails_settings_update,
             desktop_signin::desktop_signin_status,
             desktop_signin::desktop_signin_begin,
             desktop_signin::desktop_sign_out,

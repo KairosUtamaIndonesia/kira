@@ -17,6 +17,7 @@ const NOTIFICATION_SELECTED_SOUND_ID_KEY: &str = "notifications.selectedSoundId"
 const NOTIFICATION_CUSTOM_SOUNDS_KEY: &str = "notifications.customSounds";
 const TERMINAL_SHELL_PATH_KEY: &str = "terminal.shellPath";
 const TERMINAL_SHELL_PATH_TERMINAL_OVERRIDE_KEY: &str = "terminal.shellPath.terminalOverride";
+const GUARDRAILS_CONFIG_KEY: &str = "guardrails_config";
 const DEFAULT_APPEARANCE_THEME: AppearanceTheme = AppearanceTheme::Dark;
 const DEFAULT_AGENT_THREAD_SHOW_RAW_EVENT_STREAM: bool = false;
 const DEFAULT_NOTIFICATION_ENABLED: bool = true;
@@ -166,6 +167,8 @@ pub enum SettingsError {
     ReadNotificationSound(String),
     #[error("failed to remove notification sound: {0}")]
     RemoveNotificationSound(String),
+    #[error("Guardrails config is invalid: {0}")]
+    InvalidGuardrailsConfig(String),
 }
 
 impl serde::Serialize for SettingsError {
@@ -285,6 +288,75 @@ pub async fn terminal_settings_update(
     store: tauri::State<'_, PersistenceStore>,
 ) -> Result<TerminalSettings, SettingsError> {
     update_terminal_settings(store.pool(), input).await
+}
+
+/// User-facing guardrails config. The schema is owned by the agent runtime
+/// (`agent-pi` guardrails extension); this layer only persists it as JSON, so
+/// the payload is an opaque object validated to be a JSON object on write.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GuardrailsSettings {
+    config: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GuardrailsSettingsUpdateInput {
+    config: serde_json::Value,
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
+pub async fn guardrails_settings_get(
+    store: tauri::State<'_, PersistenceStore>,
+) -> Result<GuardrailsSettings, SettingsError> {
+    get_guardrails_settings(store.pool()).await
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
+pub async fn guardrails_settings_update(
+    input: GuardrailsSettingsUpdateInput,
+    store: tauri::State<'_, PersistenceStore>,
+) -> Result<GuardrailsSettings, SettingsError> {
+    update_guardrails_settings(store.pool(), input).await
+}
+
+async fn get_guardrails_settings(pool: &SqlitePool) -> Result<GuardrailsSettings, SettingsError> {
+    let stored = app_setting_value(pool, GUARDRAILS_CONFIG_KEY)
+        .await
+        .map_err(SettingsError::Read)?;
+    let config = match stored {
+        Some(value) => serde_json::from_str(&value)
+            .map_err(|error| SettingsError::InvalidGuardrailsConfig(error.to_string()))?,
+        None => serde_json::Value::Object(serde_json::Map::new()),
+    };
+    Ok(GuardrailsSettings { config })
+}
+
+async fn update_guardrails_settings(
+    pool: &SqlitePool,
+    input: GuardrailsSettingsUpdateInput,
+) -> Result<GuardrailsSettings, SettingsError> {
+    if !input.config.is_object() {
+        return Err(SettingsError::InvalidGuardrailsConfig(
+            "config must be a JSON object".to_owned(),
+        ));
+    }
+    let serialized = serde_json::to_string(&input.config)
+        .map_err(|error| SettingsError::InvalidGuardrailsConfig(error.to_string()))?;
+    upsert_app_setting(pool, GUARDRAILS_CONFIG_KEY, &serialized)
+        .await
+        .map_err(SettingsError::Update)?;
+    Ok(GuardrailsSettings {
+        config: input.config,
+    })
 }
 
 async fn get_appearance_settings(pool: &SqlitePool) -> Result<AppearanceSettings, SettingsError> {

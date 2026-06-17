@@ -1,5 +1,6 @@
 import { appearanceSettingsSection } from "@/features/settings/sections/appearance/appearanceSettingsSection";
 import { generalSettingsSection } from "@/features/settings/sections/general/generalSettingsSection";
+import { guardrailsSettingsSection } from "@/features/settings/sections/guardrails/guardrailsSettingsSection";
 import { notificationSettingsSection } from "@/features/settings/sections/notifications/notificationSettingsSection";
 import { terminalSettingsSection } from "@/features/settings/sections/terminal/terminalSettingsSection";
 
@@ -7,6 +8,10 @@ const settingsGroups = [
   {
     label: "General",
     sections: [generalSettingsSection, terminalSettingsSection],
+  },
+  {
+    label: "Agent",
+    sections: [guardrailsSettingsSection],
   },
   {
     label: "Interface",
