@@ -1,4 +1,4 @@
-import { CornerDownLeft, Loader2, Minimize2, Zap } from "lucide-react";
+import { CornerDownLeft, ListTree, Loader2, Minimize2, Square, X, Zap } from "lucide-react";
 import {
   useEffect,
   useLayoutEffect,
@@ -41,10 +41,15 @@ type ComposerProps = {
   isDropTargetActive?: boolean;
   placeholder?: string;
   sendPrompt: (prompt: string) => Promise<boolean>;
+  abortPrompt?: () => void;
   runSlashCommandAction?: (
     action: ComposerSlashCommandAction,
     args: string,
   ) => Promise<{ ok: boolean; error?: string }>;
+  isTreeOpen?: boolean;
+  onToggleTree?: () => void;
+  onCancelEdit?: () => void;
+  editingMessageId?: string | undefined;
 };
 
 type FileReferenceToken = {
@@ -86,7 +91,12 @@ function Composer({
   isDropTargetActive = false,
   placeholder = "Send a prompt to this Agent Thread…",
   sendPrompt,
+  abortPrompt,
   runSlashCommandAction,
+  editingMessageId,
+  onCancelEdit,
+  isTreeOpen,
+  onToggleTree,
 }: ComposerProps) {
   const [prompt, setPrompt] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
@@ -107,7 +117,7 @@ function Composer({
     runtimeState.status === "ready" ||
     runtimeState.status === "sending";
   const isSending = runtimeState !== undefined && runtimeState.status === "sending";
-  const isDisabled = !canSend || isSending || isCompacting;
+  const isDisabled = !canSend || isCompacting;
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
@@ -203,14 +213,15 @@ function Composer({
       return;
     }
 
-    // Send the literal text. Slash commands are expanded at the agent-pi
-    // boundary, mirroring pi's `_expandSkillCommand`, so the Composer never
-    // holds expanded skill bodies.
+    // Clear optimistically so the user can compose the next message while
+    // the current one streams.
+    setPrompt("");
+    setPickerState({ status: "closed" });
+    setSlashPickerState({ status: "closed" });
     const sent = await sendPrompt(trimmed);
-    if (sent) {
-      setPrompt("");
-      setPickerState({ status: "closed" });
-      setSlashPickerState({ status: "closed" });
+    if (!sent) {
+      // Send failed — restore the prompt so the user can retry.
+      setPrompt(trimmed);
     }
   }
 
@@ -433,7 +444,7 @@ function Composer({
           aria-label="Prompt"
           aria-autocomplete="list"
           placeholder={placeholder}
-          disabled={isDisabled}
+          disabled={isDisabled || isSending}
           className="block min-h-9 w-full resize-none bg-transparent px-2.5 py-2 text-sm leading-5 outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
           onChange={(event) => {
             setErrorMessage(undefined);
@@ -452,24 +463,59 @@ function Composer({
             <span>Compacting…</span>
           </div>
         ) : (
-          <Button
-            type="submit"
-            variant="ghost"
-            size="icon-xs"
-            aria-label={sendButtonLabel(runtimeState, isCompacting)}
-            disabled={!canSend || isSending || isCompacting || prompt.trim().length === 0}
-            className="absolute right-1.5 bottom-1.5 bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
-          >
+          <div className="absolute right-1.5 bottom-1.5 flex items-center gap-1">
+            {editingMessageId !== undefined && onCancelEdit !== undefined ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                aria-label="Cancel edit"
+                onClick={onCancelEdit}
+                className="bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <X aria-hidden="true" />
+              </Button>
+            ) : undefined}
             {isSending ? (
-              <Loader2 aria-hidden="true" className="animate-spin" />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                aria-label="Stop agent response"
+                onClick={() => {
+                  if (abortPrompt !== undefined) abortPrompt();
+                }}
+                className="bg-transparent text-destructive hover:bg-muted hover:text-destructive"
+              >
+                <Square aria-hidden="true" className="size-3" />
+              </Button>
             ) : (
-              <CornerDownLeft aria-hidden="true" />
+              <Button
+                type="submit"
+                variant="ghost"
+                size="icon-xs"
+                aria-label={sendButtonLabel(runtimeState, isCompacting)}
+                disabled={!canSend || isSending || isCompacting || prompt.trim().length === 0}
+                className="bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <CornerDownLeft aria-hidden="true" />
+              </Button>
             )}
-          </Button>
+          </div>
         )}
       </div>
       <div className="mt-1 flex items-center justify-between px-1">
-        <span>{composerFootnote(errorMessage, slashPickerState.status === "closed")}</span>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            className="flex size-5 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+            title={isTreeOpen ? "Close session tree" : "Open session tree"}
+            onClick={onToggleTree}
+          >
+            <ListTree size={14} />
+          </button>
+          <span>{composerFootnote(errorMessage, slashPickerState.status === "closed")}</span>
+        </div>
         {contextUsageState !== undefined && <AgentThreadContextMeter state={contextUsageState} />}
       </div>
     </form>

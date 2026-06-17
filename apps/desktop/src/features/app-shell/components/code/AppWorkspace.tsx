@@ -8,6 +8,7 @@ import {
   type IDockviewPanelProps,
 } from "dockview-react";
 import {
+  Bell,
   Bot,
   LayoutPanelTop,
   Loader2,
@@ -60,7 +61,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { AgentThreadPanel, type AgentThreadPanelParams } from "@/features/agent-thread";
-import { useAgentThreadTitleGenerationState } from "@/features/agent-thread/agentThreadStatusStore";
+import {
+  useAgentThreadRuntimeStateById,
+  useAgentThreadTitleGenerationState,
+  usePanelUnread,
+} from "@/features/agent-thread/agentThreadStatusStore";
 import { BrowserPanel, type BrowserPanelParams } from "@/features/browser";
 import { closeBrowserPanel, closeOrphanBrowserPanels } from "@/features/browser/api/browserApi";
 import { FileEditorPanel, type FileEditorPanelParams } from "@/features/editor";
@@ -180,7 +185,7 @@ function WorkspaceHeaderActions({ containerApi, group }: IDockviewHeaderActionsP
     </div>
   );
 }
-function WorkspacePanelTab({ api, containerApi, params }: IDockviewPanelHeaderProps) {
+function WorkspacePanelTab({ api, containerApi, params: _params }: IDockviewPanelHeaderProps) {
   const title = useSyncExternalStore(
     (callback) => {
       const disposable = api.onDidTitleChange(() => callback());
@@ -188,9 +193,22 @@ function WorkspacePanelTab({ api, containerApi, params }: IDockviewPanelHeaderPr
     },
     () => api.title ?? api.id,
   );
-  const threadId = agentThreadIdFromPanelParams(params);
+  const threadId = agentThreadIdFromPanelParams(_params);
   const titleGeneration = useAgentThreadTitleGenerationState(threadId);
   const isGeneratingTitle = titleGeneration.status === "generating";
+  const runtimeState = useAgentThreadRuntimeStateById(threadId);
+  const unread = usePanelUnread(api.id);
+  const isSending = runtimeState !== undefined && runtimeState.status === "sending";
+
+  let tabIndicator: React.ReactNode;
+  if (isSending) {
+    tabIndicator = <Loader2 className="size-3 shrink-0 animate-spin text-muted-foreground" />;
+  } else if (unread) {
+    tabIndicator = <Bell className="size-3 shrink-0 text-muted-foreground" />;
+  } else {
+    tabIndicator = undefined;
+  }
+
   const panel = containerApi.getPanel(api.id);
   if (panel === undefined) {
     throw new Error(`Workspace Panel tab ${api.id} is missing its Dockview panel.`);
@@ -199,8 +217,9 @@ function WorkspacePanelTab({ api, containerApi, params }: IDockviewPanelHeaderPr
   return (
     <ContextMenu>
       <ContextMenuTrigger
-        render={<div className="group relative flex h-full min-w-0 items-center px-2 pr-6" />}
+        render={<div className="group relative flex h-full min-w-0 items-center gap-1 px-2 pr-6" />}
       >
+        {tabIndicator}
         <ThreadTitleText isGenerating={isGeneratingTitle} text={title} />
         <button
           aria-label={`Close ${title}`}
@@ -628,10 +647,22 @@ const agentThreadRenameRef = {
 function AgentThreadPanelWrapper(props: IDockviewPanelProps<AgentThreadPanelParams>) {
   const { workingDirectory } = useWorkspaceRuntimeContext();
   const onRename = agentThreadRenameRef.current;
+  const [isActive, setIsActive] = useState(props.api.isActive);
+
+  useEffect(() => {
+    const disposable = props.api.onDidActiveChange((event) => {
+      setIsActive(event.isActive);
+    });
+    return () => {
+      disposable.dispose();
+    };
+  }, [props.api]);
+
   return (
     <AgentThreadPanel
       api={props.api}
       params={{ ...props.params, folderPath: workingDirectory }}
+      isActive={isActive}
       {...(onRename === undefined ? {} : { onRename })}
     />
   );

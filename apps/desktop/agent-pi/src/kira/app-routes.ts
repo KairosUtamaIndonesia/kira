@@ -134,6 +134,134 @@ appRoutes.get("/agent-threads/:threadId/session", async (context) => {
   }
 });
 
+type SessionTreeNodeJson = {
+  id: string;
+  parentId: string | undefined;
+  entry: {
+    type: string;
+    role?: string;
+    text?: string;
+    toolName?: string;
+    timestamp?: string;
+    label?: string;
+    messageId?: string;
+  };
+  children: SessionTreeNodeJson[];
+};
+
+appRoutes.get("/agent-threads/:threadId/tree", async (context) => {
+  try {
+    const threadId = context.req.param("threadId");
+    const agentThreadContext = requireAgentThreadContext(threadId);
+    const host = await getOrCreateAgentSession(agentThreadContext);
+    const tree = host.session.sessionManager.getTree();
+    const currentLeafId = host.session.sessionManager.getLeafId();
+    const nodes = tree.map(serializeSessionTreeNode);
+    return context.json({ nodes, currentLeafId });
+  } catch (error) {
+    return context.json({ error: error instanceof Error ? error.message : String(error) }, 400);
+  }
+});
+
+function serializeSessionTreeNode(raw: unknown): SessionTreeNodeJson {
+  const node = raw as Record<string, unknown>;
+  const entry = node.entry as Record<string, unknown> | undefined;
+  if (entry === undefined) {
+    return { id: "unknown", parentId: undefined, entry: { type: "unknown" }, children: [] };
+  }
+
+  let role: string | undefined;
+  let text: string | undefined;
+  let toolName: string | undefined;
+  let messageId: string | undefined;
+
+  if (entry.type === "message") {
+    const msg = entry.message as Record<string, unknown> | undefined;
+    if (msg !== undefined) {
+      const msgRole = msg.role;
+      if (msgRole === "user" || msgRole === "assistant") {
+        role = msgRole;
+      }
+      if (typeof msg.id === "string") {
+        messageId = msg.id;
+      } else if (typeof msg.responseId === "string") {
+        messageId = msg.responseId;
+      } else if (
+        typeof msg.role === "string" &&
+        (typeof msg.timestamp === "string" || typeof msg.timestamp === "number")
+      ) {
+        messageId = `message:${msg.role as string}:${String(msg.timestamp)}`;
+      }
+      text = extractMessagePreview(msg);
+      const toolCalls = msg.tool_calls;
+      if (Array.isArray(toolCalls) && toolCalls.length > 0) {
+        const first = toolCalls[0] as Record<string, unknown>;
+        const fn = first.function as Record<string, unknown> | undefined;
+        if (fn !== undefined && typeof fn.name === "string") {
+          toolName = fn.name;
+        }
+      }
+      const toolResults = msg.tool_results;
+      if (Array.isArray(toolResults) && toolResults.length > 0) {
+        const firstResult = toolResults[0] as Record<string, unknown>;
+        if (typeof firstResult.tool_name === "string") {
+          toolName = firstResult.tool_name;
+        } else if (typeof firstResult.name === "string") {
+          toolName = firstResult.name;
+        }
+      }
+    }
+  }
+
+  if (entry.type === "compaction") {
+    text =
+      typeof (entry as Record<string, unknown>).summary === "string"
+        ? ((entry as Record<string, unknown>).summary as string)
+        : undefined;
+  }
+
+  const entryOut: SessionTreeNodeJson["entry"] = { type: entry.type as string };
+  if (messageId !== undefined) entryOut.messageId = messageId;
+  if (role !== undefined) entryOut.role = role;
+  if (text !== undefined) entryOut.text = text.slice(0, 200);
+  if (toolName !== undefined) entryOut.toolName = toolName;
+  if (typeof entry.timestamp === "string") entryOut.timestamp = entry.timestamp;
+  if (typeof node.label === "string") entryOut.label = node.label;
+
+  const children = Array.isArray(node.children) ? node.children : [];
+
+  return {
+    id: typeof entry.id === "string" ? entry.id : "unknown",
+    parentId: typeof entry.parentId === "string" ? entry.parentId : undefined,
+    entry: entryOut,
+    children: children.map((child: unknown) => serializeSessionTreeNode(child)),
+  };
+}
+
+function extractMessagePreview(msg: Record<string, unknown>): string | undefined {
+  const content = msg.content;
+  if (Array.isArray(content)) {
+    const parts: string[] = [];
+    for (const part of content) {
+      if (
+        typeof part === "object" &&
+        part !== null &&
+        (part as Record<string, unknown>).type === "text"
+      ) {
+        const text = (part as Record<string, unknown>).text;
+        if (typeof text === "string") {
+          parts.push(text);
+        }
+      }
+    }
+    return parts.join(" ").trim();
+  }
+  if (typeof content === "string") {
+    return content.trim();
+  }
+  return undefined;
+}
+
 appRoutes.post("/agent-thread-title", async (context) => {
   try {
     const payload = await context.req.json();

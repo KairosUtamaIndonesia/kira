@@ -224,7 +224,7 @@ async function handleCommand(
         return;
       }
       case "abort": {
-        session.abort();
+        await session.abort();
         respond(ws, command.id, "abort", true);
         return;
       }

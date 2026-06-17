@@ -1,4 +1,9 @@
-import type { PiMessage, PiToolExecutionState, PiTranscriptState } from "./types";
+import type {
+  PiMessage,
+  PiToolExecutionState,
+  PiTranscriptState,
+  SessionTreeNodeJson,
+} from "./types";
 
 import { parseUserMessageBlocks, type UserMessageBlock } from "./userMessageBlocks";
 
@@ -58,14 +63,23 @@ type TranscriptBuildContext = {
 };
 
 function buildAgentThreadTranscript(transcript: PiTranscriptState): AgentThreadTranscriptItem[] {
+  const messages =
+    transcript.treeNodes !== undefined
+      ? filterActivePathMessages(
+          transcript.persistedMessages,
+          transcript.activePath,
+          collectTreeMessageIds(transcript.treeNodes),
+        )
+      : transcript.persistedMessages;
+
   const context: TranscriptBuildContext = {
-    toolResultsByCallId: toolResultsByCallId(transcript.persistedMessages),
+    toolResultsByCallId: toolResultsByCallId(messages),
     activeToolsByCallId: transcript.activeToolExecutions,
     anchoredToolCallIds: new Set<string>(),
   };
   let items: AgentThreadTranscriptItem[] = [];
 
-  for (const message of transcript.persistedMessages) {
+  for (const message of messages) {
     const item = transcriptItemFromPiMessage(message, context);
     if (item !== undefined) {
       items = appendTranscriptItem(items, item);
@@ -85,6 +99,52 @@ function buildAgentThreadTranscript(transcript: PiTranscriptState): AgentThreadT
   }
 
   return items;
+}
+
+function filterActivePathMessages(
+  messages: PiMessage[],
+  activePath: string[],
+  treeMessageIds: Set<string>,
+): PiMessage[] {
+  if (activePath.length === 0) {
+    return messages;
+  }
+  const pathIds = new Set(activePath);
+  return messages.filter((message) => {
+    const id =
+      stringField(message, "id") ??
+      stringField(message, "responseId") ??
+      messageIdFromTimestamp(message);
+    if (id === undefined) {
+      return true;
+    }
+    // Messages the tree has no node for (historical/persisted-only, or
+    // locally-appended) carry no branch information, so keep them. Only hide a
+    // message when the tree knows it AND it sits off the active branch.
+    if (!treeMessageIds.has(id)) {
+      return true;
+    }
+    return pathIds.has(id);
+  });
+}
+
+function collectTreeMessageIds(nodes: SessionTreeNodeJson[]): Set<string> {
+  const ids = new Set<string>();
+  const visit = (node: SessionTreeNodeJson) => {
+    ids.add(node.entry.messageId ?? node.id);
+    for (const child of node.children) {
+      visit(child);
+    }
+  };
+  for (const node of nodes) {
+    visit(node);
+  }
+  return ids;
+}
+
+function stringField(record: Record<string, unknown>, key: string): string | undefined {
+  const value = record[key];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 function appendTranscriptItem(

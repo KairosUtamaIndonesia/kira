@@ -5,6 +5,8 @@ import { useSkillsList } from "@/features/skills/hooks/useSkillsList";
 import type {
   AgentThreadContextUsage,
   AgentThreadPanelParams,
+  AgentThreadTree,
+  SessionTreeNodeJson,
   PiMessage,
   PiTranscriptState,
 } from "../types";
@@ -85,6 +87,10 @@ type ActivePrompt = {
 
 type PiEventListener = (event: unknown) => void;
 
+class AbortError extends Error {
+  readonly name = "AbortError";
+}
+
 const minimumTitleGenerationVisibleMs = 1200;
 
 function useAgentThreadConnection(
@@ -105,6 +111,9 @@ function useAgentThreadConnection(
   const [transcript, setTranscript] = useState(emptyPiTranscriptState);
   const [isCompacting, setIsCompacting] = useState(false);
   const [compactionSummary, setCompactionSummary] = useState<CompactionSummary>();
+  const [treeNodes, setTreeNodes] = useState<SessionTreeNodeJson[]>([]);
+  const [currentLeafId, setCurrentLeafId] = useState<string>();
+  const treeDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(void 0);
   const isCompactingRef = useRef(false);
   const socketRef = useRef<PiAgentSocket | undefined>(void 0);
   const runtimeStateRef = useRef(runtimeState);
@@ -116,8 +125,9 @@ function useAgentThreadConnection(
   onAutoTitledRef.current = options === undefined ? undefined : options.onAutoTitled;
   runtimeStateRef.current = runtimeState;
   isCompactingRef.current = isCompacting;
-
-  function handlePiEvent(event: unknown) {
+  // Stable ref to the Pi event handler — avoids capturing stale deps in effect subscriptions.
+  const handlePiEventRef = useRef<PiEventListener | null>(null);
+  handlePiEventRef.current = function handlePiEvent(event: unknown) {
     setTranscript((currentTranscript) => applyPiEvent(currentTranscript, event));
     if (isRecord(event)) {
       if (event.type === "compaction_start") {
@@ -134,7 +144,36 @@ function useAgentThreadConnection(
           }
         }
       }
+      if (event.type === "message_end" || event.type === "turn_end" || event.type === "settled") {
+        scheduleTreeRefresh();
+      }
     }
+  };
+
+  function scheduleTreeRefresh() {
+    if (treeDebounceRef.current !== undefined) {
+      clearTimeout(treeDebounceRef.current);
+    }
+    treeDebounceRef.current = setTimeout(async () => {
+      const runtime = runtimeInfoRef.current;
+      if (runtime === undefined) {
+        return;
+      }
+      try {
+        const result = await fetchPiTree(runtime.baseUrl, runtime.token, params.threadId);
+        setTreeNodes(result.nodes);
+        setCurrentLeafId(result.currentLeafId);
+        setTranscript((current) =>
+          applyPiEvent(current, {
+            type: "tree_updated",
+            nodes: result.nodes,
+            currentLeafId: result.currentLeafId,
+          }),
+        );
+      } catch {
+        // Tree fetch is a UI enhancement; silently ignore errors.
+      }
+    }, 500);
   }
 
   const runtimeInput = useMemo(
@@ -166,16 +205,30 @@ function useAgentThreadConnection(
     let disposed = false;
     let unsubscribe: (() => void) | undefined;
     let socket: PiAgentSocket | undefined;
-
     async function connectRuntime() {
       try {
-        setTranscript(emptyPiTranscriptState);
-
         const runtime = await prepareAgentThread(runtimeInput);
         if (disposed) {
           return;
         }
         runtimeInfoRef.current = { baseUrl: runtime.baseUrl, token: runtime.token };
+        // Fetch tree data on mount (fire-and-forget, non-critical).
+        try {
+          const result = await fetchPiTree(runtime.baseUrl, runtime.token, params.threadId);
+          if (!disposed) {
+            setTreeNodes(result.nodes);
+            setCurrentLeafId(result.currentLeafId);
+            setTranscript((current) =>
+              applyPiEvent(current, {
+                type: "tree_updated",
+                nodes: result.nodes,
+                currentLeafId: result.currentLeafId,
+              }),
+            );
+          }
+        } catch {
+          // Tree fetch is a UI enhancement; silently ignore errors.
+        }
 
         const session = await loadPiSession(runtime.baseUrl, runtime.token, params.threadId);
         if (disposed) {
@@ -198,7 +251,10 @@ function useAgentThreadConnection(
           threadId: params.threadId,
         });
         socketRef.current = socket;
-        unsubscribe = socket.onEvent(handlePiEvent);
+        unsubscribe = socket.onEvent((event) => {
+          const handler = handlePiEventRef.current;
+          if (handler !== null) handler(event);
+        });
         await socket.ready;
 
         if (!disposed) {
@@ -219,6 +275,9 @@ function useAgentThreadConnection(
       if (unsubscribe !== undefined) {
         unsubscribe();
       }
+      if (treeDebounceRef.current !== undefined) {
+        clearTimeout(treeDebounceRef.current);
+      }
       if (socket !== undefined) {
         socket.close(1000, "Agent Thread panel closed.");
       }
@@ -227,7 +286,6 @@ function useAgentThreadConnection(
       }
     };
   }, [params.threadId, runtimeInput]);
-
   async function sendPrompt(message: string) {
     const state = runtimeStateRef.current;
     if (state.status !== "ready" && state.status !== "sending") {
@@ -274,8 +332,50 @@ function useAgentThreadConnection(
       setRuntimeState({ status: "ready", baseUrl: state.baseUrl });
       return true;
     } catch (error) {
-      setRuntimeState({ status: "error", message: errorMessageFromUnknown(error) });
+      if (!(error instanceof AbortError)) {
+        setRuntimeState({ status: "error", message: errorMessageFromUnknown(error) });
+      }
       return false;
+    }
+  }
+  async function abortPrompt() {
+    const socket = socketRef.current;
+    if (socket === undefined) return;
+    const state = runtimeStateRef.current;
+    if (state.status !== "sending") return;
+    try {
+      await socket.abort();
+    } catch {
+      // Abort command failure shouldn't leave the thread stuck in "sending".
+      // State is set to "ready" regardless; the agent will settle naturally.
+    }
+    setRuntimeState({ status: "ready", baseUrl: state.baseUrl });
+  }
+  async function navigateTree(entryId: string) {
+    const socket = socketRef.current;
+    const runtime = runtimeInfoRef.current;
+    if (socket === undefined || runtime === undefined) {
+      return;
+    }
+    try {
+      await socket.navigateTree(entryId);
+      // Reload session — backend now returns messages for the new branch only.
+      const [treeResult, session] = await Promise.all([
+        fetchPiTree(runtime.baseUrl, runtime.token, params.threadId),
+        loadPiSession(runtime.baseUrl, runtime.token, params.threadId),
+      ]);
+      setTreeNodes(treeResult.nodes);
+      setCurrentLeafId(treeResult.currentLeafId);
+      setTranscript(hydratePiTranscript(session.messages));
+      setTranscript((current) =>
+        applyPiEvent(current, {
+          type: "tree_updated",
+          nodes: treeResult.nodes,
+          currentLeafId: treeResult.currentLeafId,
+        }),
+      );
+    } catch {
+      // Navigation failure is informational; the session state is unchanged.
     }
   }
 
@@ -314,7 +414,7 @@ function useAgentThreadConnection(
   }
 
   async function runSlashCommandAction(
-    kind: "compact",
+    _kind: "compact",
     args: string,
   ): Promise<{ ok: boolean; error?: string }> {
     if (isCompactingRef.current) {
@@ -329,12 +429,9 @@ function useAgentThreadConnection(
       return { ok: false, error: "Agent Thread is not ready." };
     }
     try {
-      if (kind === "compact") {
-        const trimmed = args.trim();
-        await socket.compact(trimmed.length === 0 ? undefined : trimmed);
-        return { ok: true };
-      }
-      return { ok: false, error: `Unknown slash command kind: ${kind}` };
+      await socket.compact(args);
+      scheduleTreeRefresh();
+      return { ok: true };
     } catch (error) {
       return { ok: false, error: errorMessageFromUnknown(error) };
     }
@@ -346,9 +443,13 @@ function useAgentThreadConnection(
     isCompacting,
     runSlashCommandAction,
     transcript,
+    treeNodes,
+    currentLeafId,
     respondToRequest,
+    abortPrompt,
     runtimeState,
     sendPrompt,
+    navigateTree,
     titleGenerationState,
   };
 }
@@ -358,6 +459,7 @@ class PiAgentSocket {
   private readonly socket: WebSocket;
   private readonly listeners = new Set<PiEventListener>();
   private readonly pendingCommands = new Map<string, PendingCommand>();
+  private aborted = false;
   private activePrompt: ActivePrompt | undefined;
 
   private constructor(socket: WebSocket, ready: Promise<void>) {
@@ -393,6 +495,7 @@ class PiAgentSocket {
   }
 
   async prompt(message: string) {
+    this.aborted = false;
     const id = crypto.randomUUID();
     const { promise, resolve, reject } = Promise.withResolvers<string>();
     this.activePrompt = { id, parts: [], resolve, reject };
@@ -400,8 +503,39 @@ class PiAgentSocket {
     return promise;
   }
 
+  async abort() {
+    this.aborted = true;
+    const id = crypto.randomUUID();
+    await this.sendCommand({ id, type: "abort" });
+    const activePrompt = this.activePrompt;
+    if (activePrompt !== undefined) {
+      this.activePrompt = undefined;
+      activePrompt.reject(new AbortError("Agent response interrupted by user."));
+    }
+  }
   respondToToolUi(requestId: string, response: unknown) {
     return this.sendCommand({ id: requestId, type: "tool_ui_response", response });
+  }
+  async navigateTree(
+    targetId: string,
+    options?: {
+      summarize?: boolean;
+      customInstructions?: string;
+      replaceInstructions?: boolean;
+      label?: string;
+    },
+  ) {
+    const id = crypto.randomUUID();
+    const command: {
+      id: string;
+      type: string;
+      targetId: string;
+      options?: Record<string, unknown>;
+    } = { id, type: "navigate_tree", targetId };
+    if (options !== undefined) {
+      command.options = options;
+    }
+    await this.sendCommand(command);
   }
   async compact(customInstructions: string | undefined) {
     const id = crypto.randomUUID();
@@ -416,6 +550,8 @@ class PiAgentSocket {
     type: string;
     message?: string;
     response?: unknown;
+    targetId?: string;
+    options?: Record<string, unknown>;
     customInstructions?: string;
   }) {
     if (this.socket.readyState !== WebSocket.OPEN) {
@@ -442,6 +578,9 @@ class PiAgentSocket {
       this.handleResponse(payload);
       return;
     }
+    if (this.aborted) {
+      return;
+    }
     if (isPromptError(payload)) {
       this.rejectActivePrompt(payload.message);
       this.emit(payload);
@@ -453,7 +592,6 @@ class PiAgentSocket {
       this.resolveActivePrompt();
     }
   }
-
   private handleResponse(response: PiCommandResponse) {
     const id = response.id;
     if (id === undefined) {
@@ -653,6 +791,21 @@ type PiSessionPayload = {
   contextUsage: AgentThreadContextUsage | undefined;
   compaction: { tokensBefore: number; summary: string } | undefined;
 };
+
+function fetchPiTree(baseUrl: string, token: string, threadId: string): Promise<AgentThreadTree> {
+  return fetch(`${baseUrl}/app/agent-threads/${encodeURIComponent(threadId)}/tree`, {
+    headers: { authorization: `Bearer ${token}` },
+  }).then(async (response) => {
+    if (!response.ok) {
+      throw new Error(`Failed to fetch Pi tree: ${response.status}`);
+    }
+    const payload = (await response.json()) as { nodes?: unknown; currentLeafId?: unknown };
+    return {
+      nodes: Array.isArray(payload.nodes) ? payload.nodes : [],
+      currentLeafId: typeof payload.currentLeafId === "string" ? payload.currentLeafId : undefined,
+    } satisfies AgentThreadTree;
+  });
+}
 
 async function loadPiSession(
   baseUrl: string,

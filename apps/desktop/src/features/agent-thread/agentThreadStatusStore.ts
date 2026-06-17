@@ -26,6 +26,8 @@ const runtimeEntries = new Map<string, AgentThreadRuntimeEntry>();
 const titleGenerations = new Map<string, AgentThreadTitleGenerationState>();
 const openThreads = new Map<string, OpenAgentThreadMeta>();
 const idleTitleGeneration = { status: "idle" } as const satisfies AgentThreadTitleGenerationState;
+const panelUnreadNotifications = new Set<string>();
+
 const listeners = new Set<() => void>();
 let snapshotVersion = 0;
 let cachedOpenThreads: OpenAgentThread[] = [];
@@ -115,6 +117,42 @@ export function useAgentThreadTitleGenerationState(
 
 export function useOpenAgentThreads(): OpenAgentThread[] {
   return useSyncExternalStore(subscribe, getOpenAgentThreadsSnapshot);
+}
+
+export function useAgentThreadRuntimeStateById(
+  threadId: string | undefined,
+): AgentThreadRuntimeState | undefined {
+  return useSyncExternalStore(
+    subscribe,
+    useCallback(() => {
+      if (threadId === undefined) {
+        return;
+      }
+      const entry = runtimeEntries.get(threadId);
+      return entry !== undefined ? entry.state : undefined;
+    }, [threadId]),
+  );
+}
+
+export function markPanelUnread(panelId: string): void {
+  if (panelUnreadNotifications.has(panelId)) return;
+  panelUnreadNotifications.add(panelId);
+  notify();
+}
+
+export function clearPanelUnread(panelId: string): void {
+  if (!panelUnreadNotifications.has(panelId)) return;
+  panelUnreadNotifications.delete(panelId);
+  notify();
+}
+
+export function usePanelUnread(panelId: string | undefined): boolean {
+  return useSyncExternalStore(
+    subscribe,
+    useCallback(() => {
+      return panelId !== undefined && panelUnreadNotifications.has(panelId);
+    }, [panelId]),
+  );
 }
 
 function getOpenAgentThreadsSnapshot(): OpenAgentThread[] {
