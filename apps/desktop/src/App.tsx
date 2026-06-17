@@ -3,6 +3,7 @@ import { Shell } from "@/features/app-shell";
 import { SignInGate } from "@/features/desktop-auth";
 import {
   AppearanceThemeProvider,
+  GuardrailsSettingsProvider,
   NotificationSettingsProvider,
   TerminalSettingsProvider,
 } from "@/features/settings";
@@ -13,11 +14,13 @@ function App() {
     <AppearanceThemeProvider>
       <NotificationSettingsProvider>
         <TerminalSettingsProvider>
-          <SignInGate>
-            <Shell />
-            <UpdateChecker />
-          </SignInGate>
-          <Toaster />
+          <GuardrailsSettingsProvider>
+            <SignInGate>
+              <Shell />
+              <UpdateChecker />
+            </SignInGate>
+            <Toaster />
+          </GuardrailsSettingsProvider>
         </TerminalSettingsProvider>
       </NotificationSettingsProvider>
     </AppearanceThemeProvider>

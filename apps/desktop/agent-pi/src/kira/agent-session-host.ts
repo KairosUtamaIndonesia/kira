@@ -13,6 +13,7 @@ import { join } from "node:path";
 import type { AgentThreadContext } from "./agent-thread-context";
 
 import { readAgentProviderApiKey, readOptionalEnv } from "./env";
+import guardrailsExtension from "./extensions/guardrails";
 import memoryExtension from "./extensions/memory";
 import { AGENT_ROOT } from "./extensions/memory/paths.js";
 import { getDefaultModel } from "./model-catalog";
@@ -66,7 +67,7 @@ async function buildAgentSession(context: AgentThreadContext): Promise<AgentSess
   const resourceLoader = new DefaultResourceLoader({
     cwd: context.projectPath,
     agentDir: AGENT_ROOT,
-    extensionFactories: [memoryExtension],
+    extensionFactories: [memoryExtension, guardrailsExtension],
   });
   await resourceLoader.reload();
 

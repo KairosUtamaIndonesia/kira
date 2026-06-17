@@ -4,12 +4,15 @@ import type {
   AppearanceSettings,
   AppearanceSettingsUpdateInput,
   CustomNotificationSound,
+  GuardrailsConfig,
   NotificationSettings,
   NotificationSettingsUpdateInput,
   NotificationSoundImportInput,
   TerminalSettings,
   TerminalSettingsUpdateInput,
 } from "@/features/settings/types";
+
+import { normalizeGuardrailsConfig } from "@/features/settings/guardrailsConfig";
 
 function getAppearanceSettings() {
   return invoke<AppearanceSettings>("appearance_settings_get");
@@ -59,14 +62,28 @@ function updateTerminalSettings(input: TerminalSettingsUpdateInput) {
     terminalShellPath: settings.terminalShellPath ?? undefined,
   }));
 }
+
+function getGuardrailsSettings() {
+  return invoke<{ config: unknown }>("guardrails_settings_get").then((settings) =>
+    normalizeGuardrailsConfig(settings.config),
+  );
+}
+
+function updateGuardrailsSettings(config: GuardrailsConfig) {
+  return invoke<{ config: unknown }>("guardrails_settings_update", { input: { config } }).then(
+    (settings) => normalizeGuardrailsConfig(settings.config),
+  );
+}
 export {
   getAppearanceSettings,
+  getGuardrailsSettings,
   getNotificationSettings,
   getTerminalSettings,
   importNotificationSound,
   readNotificationSound,
   removeNotificationSound,
   updateAppearanceSettings,
+  updateGuardrailsSettings,
   updateNotificationSettings,
   updateTerminalSettings,
 };

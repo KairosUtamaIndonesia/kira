@@ -14,6 +14,7 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@aliou/sh": "^0.2.0",
     "@earendil-works/pi-agent-core": "^0.75.3",
     "@earendil-works/pi-ai": "^0.75.3",
     "@earendil-works/pi-coding-agent": "^0.75.3",
