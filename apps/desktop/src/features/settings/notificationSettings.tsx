@@ -309,4 +309,40 @@ function errorMessageFromUnknown(error: unknown) {
   return "Unknown error";
 }
 
-export { NotificationSettingsProvider, useNotificationSettings };
+/**
+ * Reads the selected notification sound from the Tauri backend and plays it.
+ * Standalone — does NOT use React context, safe to call from any component
+ * without subscribing to NotificationSettingsContext.
+ */
+async function playAgentNotificationSound(): Promise<void> {
+  try {
+    const savedSettings = await getNotificationSettings();
+    if (!savedSettings.enabled) {
+      return;
+    }
+
+    const settings = withBundledSounds(savedSettings);
+    const sound = selectedSoundFromSettings(settings);
+    if (sound === undefined) {
+      return;
+    }
+
+    const source = await notificationSoundSource(sound);
+    const audio = new Audio(source.url);
+    audio.volume = settings.volume;
+
+    audio.addEventListener("ended", () => cleanupSource(source));
+    audio.addEventListener("error", () => cleanupSource(source));
+
+    await audio.play();
+  } catch {
+    // Notification sound is cosmetic; fail silently.
+  }
+}
+
+function cleanupSource(source: { url: string; objectUrl: string | undefined }) {
+  if (source.objectUrl !== undefined) {
+    URL.revokeObjectURL(source.objectUrl);
+  }
+}
+export { NotificationSettingsProvider, playAgentNotificationSound, useNotificationSettings };
