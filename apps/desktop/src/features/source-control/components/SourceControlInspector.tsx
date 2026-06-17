@@ -8,9 +8,10 @@ import {
   RefreshCw,
   RotateCcw,
   Search,
+  Sparkles,
   Trash,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   AlertDialog,
@@ -38,6 +39,7 @@ import {
   unstageSourceControlPath,
   unstageSourceControlPaths,
 } from "../api/sourceControlApi";
+import { useCommitMessageGenerator } from "../hooks/useCommitMessageGenerator";
 import { useSourceControlStatus } from "../hooks/useSourceControlStatus";
 
 type SourceControlInspectorProps = {
@@ -64,6 +66,14 @@ function SourceControlInspector({ folderPath, onOpenDiff }: SourceControlInspect
   const [mutationError, setMutationError] = useState<string>();
   const [pendingDiscard, setPendingDiscard] = useState<PendingDiscard>();
   const [isMutating, setIsMutating] = useState(false);
+  const { generate, isGenerating, error: generateError } = useCommitMessageGenerator();
+
+  // Bridge hook error state to the component's mutationError for display
+  useEffect(() => {
+    if (generateError) {
+      setMutationError(generateError);
+    }
+  }, [generateError]);
 
   const normalizedFilter = filterQuery.trim().toLowerCase();
   const repository =
@@ -140,6 +150,18 @@ function SourceControlInspector({ folderPath, onOpenDiff }: SourceControlInspect
       await commitSourceControlChanges({ folderPath, message: commitMessage });
       setCommitMessage("");
     });
+  }
+
+  async function handleGenerate() {
+    if (folderPath === undefined) {
+      return;
+    }
+
+    setMutationError(undefined);
+    const msg = await generate({ folderPath });
+    if (msg !== null) {
+      setCommitMessage(msg);
+    }
   }
 
   function requestDiscardArea(area: GitStagingArea) {
@@ -252,13 +274,37 @@ function SourceControlInspector({ folderPath, onOpenDiff }: SourceControlInspect
       </div>
 
       <div className="space-y-2 border-t border-border p-3">
-        <textarea
-          aria-label="Commit message"
-          value={commitMessage}
-          onChange={(event) => setCommitMessage(event.target.value)}
-          placeholder="Commit message"
-          className="min-h-20 w-full resize-none rounded-lg border border-input bg-input px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-        />
+        <div className="relative">
+          <textarea
+            aria-label="Commit message"
+            value={commitMessage}
+            onChange={(event) => setCommitMessage(event.target.value)}
+            placeholder="Commit message"
+            className="min-h-20 w-full resize-none rounded-lg border border-input bg-input px-3 py-2 pr-10 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+          />
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="absolute top-1.5 right-1.5"
+                  aria-label="Generate commit message"
+                  disabled={isGenerating || isMutating || stagedCount === 0}
+                  onClick={() => void handleGenerate()}
+                >
+                  {isGenerating ? (
+                    <RefreshCw className="animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Sparkles aria-hidden="true" />
+                  )}
+                </Button>
+              }
+            />
+            <TooltipContent>Generate Commit Message</TooltipContent>
+          </Tooltip>
+        </div>
         <Button
           type="button"
           className="w-full"

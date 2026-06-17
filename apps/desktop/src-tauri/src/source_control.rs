@@ -4,6 +4,10 @@ use std::process::Command;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::desktop_signin::stored_credential;
+use crate::org_config::get_model_catalog;
+use crate::persistence::PersistenceStore;
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SourceControlProjectInput {
@@ -154,6 +158,12 @@ pub enum SourceControlError {
     MissingCommitMessage,
     #[error("path resolves outside the project folder: {0}")]
     PathOutsideProject(String),
+    #[error("no API key configured — sign in to generate commit messages")]
+    MissingApiKey,
+    #[error("no default model found in the organization catalog")]
+    MissingDefaultModel,
+    #[error("failed to read organization configuration: {0}")]
+    OrgConfig(String),
     #[error("failed to run git {operation}: {message}")]
     GitCommand { operation: String, message: String },
     #[error("failed to inspect Git repository: {0}")]
@@ -322,7 +332,57 @@ pub async fn source_control_diff(
     load_diff(&folder_path, &file_path, old_path.as_deref(), &input.source)
 }
 
-fn validate_project_folder(folder_path: &str) -> Result<PathBuf, SourceControlError> {
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StagedDiffLogResult {
+    pub staged_diff: String,
+    pub recent_log: String,
+    pub provider_api_key: String,
+    pub provider_base_url: String,
+    pub upstream_model_id: String,
+}
+
+#[tauri::command]
+pub async fn source_control_staged_diff_log(
+    input: SourceControlProjectInput,
+    store: tauri::State<'_, PersistenceStore>,
+) -> Result<StagedDiffLogResult, SourceControlError> {
+    let folder_path = validate_project_folder(&input.folder_path)?;
+
+    let staged_diff = run_git(
+        &folder_path,
+        "staged diff",
+        &["diff", "--cached", "--no-color"],
+    )?;
+
+    let recent_log = run_git(
+        &folder_path,
+        "recent log",
+        &["log", "--oneline", "-10", "--no-decorate"],
+    )?;
+
+    let api_key = stored_credential().ok_or(SourceControlError::MissingApiKey)?;
+
+    let catalog = get_model_catalog(store.pool())
+        .await
+        .map_err(|e| SourceControlError::OrgConfig(e.to_string()))?;
+
+    let default_model = catalog
+        .models
+        .iter()
+        .find(|m| m.is_default)
+        .ok_or(SourceControlError::MissingDefaultModel)?;
+
+    Ok(StagedDiffLogResult {
+        staged_diff,
+        recent_log,
+        provider_api_key: api_key,
+        provider_base_url: default_model.provider_base_url.clone(),
+        upstream_model_id: default_model.upstream_model_id.clone(),
+    })
+}
+
+pub(crate) fn validate_project_folder(folder_path: &str) -> Result<PathBuf, SourceControlError> {
     if folder_path.trim().is_empty() {
         return Err(SourceControlError::MissingFolderPath);
     }
@@ -379,7 +439,11 @@ fn validate_relative_file_paths(
         .collect()
 }
 
-fn run_git(cwd: &Path, operation: &str, args: &[&str]) -> Result<String, SourceControlError> {
+pub(crate) fn run_git(
+    cwd: &Path,
+    operation: &str,
+    args: &[&str],
+) -> Result<String, SourceControlError> {
     let output = Command::new("git")
         .args(args)
         .current_dir(cwd)

@@ -10,6 +10,7 @@ use tokio::{
 };
 
 use crate::persistence::PersistenceStore;
+use crate::source_control;
 
 const AGENT_RUNTIME_HEALTH_TIMEOUT_MS: u64 = 30_000;
 const AGENT_RUNTIME_HEALTH_TIMEOUT: Duration =
@@ -170,6 +171,24 @@ struct GenerateAgentThreadTitleOutput {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct GenerateCommitMessageInput {
+    pub folder_path: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GenerateCommitMessageOutput {
+    commit_message: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GenerateCommitMessageError {
+    error: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct HealthResponse {
     status: String,
     package_name: String,
@@ -232,6 +251,8 @@ pub enum AgentRuntimeError {
     NotRunning,
     #[error("Agent runtime startup failed: {reason}")]
     RuntimeStartFailed { reason: String },
+    #[error("failed to generate commit message: {reason}")]
+    GenerateCommitMessage { reason: String },
 }
 
 impl serde::Serialize for AgentRuntimeError {
@@ -334,6 +355,81 @@ pub async fn generate_agent_thread_title(
 
     let connection = runtime_connection(&registry).await?;
     request_agent_thread_title(&connection, &input, &context.project_path).await
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
+pub async fn generate_commit_message(
+    input: GenerateCommitMessageInput,
+    registry: tauri::State<'_, AgentRuntimeRegistry>,
+) -> Result<String, AgentRuntimeError> {
+    let folder_path = source_control::validate_project_folder(&input.folder_path).map_err(|e| {
+        AgentRuntimeError::GenerateCommitMessage {
+            reason: e.to_string(),
+        }
+    })?;
+
+    let staged_diff = source_control::run_git(
+        &folder_path,
+        "staged diff",
+        &["diff", "--cached", "--no-color"],
+    )
+    .map_err(|e| AgentRuntimeError::GenerateCommitMessage {
+        reason: e.to_string(),
+    })?;
+
+    let recent_log = source_control::run_git(
+        &folder_path,
+        "recent log",
+        &["log", "--oneline", "-10", "--no-decorate"],
+    )
+    .map_err(|e| AgentRuntimeError::GenerateCommitMessage {
+        reason: e.to_string(),
+    })?;
+
+    let connection = runtime_connection(&registry).await?;
+
+    let http_response = reqwest::Client::new()
+        .post(format!(
+            "{}/app/generate-commit-message",
+            connection.base_url
+        ))
+        .bearer_auth(&connection.token)
+        .json(&serde_json::json!({
+            "stagedDiff": staged_diff,
+            "recentLog": recent_log,
+        }))
+        .send()
+        .await
+        .map_err(|error| AgentRuntimeError::GenerateCommitMessage {
+            reason: error.to_string(),
+        })?;
+
+    let status = http_response.status();
+
+    if !status.is_success() {
+        let error_body = http_response
+            .json::<GenerateCommitMessageError>()
+            .await
+            .unwrap_or(GenerateCommitMessageError {
+                error: format!("HTTP {status}"),
+            });
+        return Err(AgentRuntimeError::GenerateCommitMessage {
+            reason: error_body.error,
+        });
+    }
+
+    let output = http_response
+        .json::<GenerateCommitMessageOutput>()
+        .await
+        .map_err(|error| AgentRuntimeError::GenerateCommitMessage {
+            reason: format!("failed to parse runtime response: {error}"),
+        })?;
+
+    Ok(output.commit_message)
 }
 
 #[tauri::command]
