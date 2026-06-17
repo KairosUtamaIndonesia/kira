@@ -8,6 +8,7 @@ import {
   requireAgentThreadContext,
 } from "./agent-thread-context";
 import { requireRuntimeToken } from "./auth";
+import { generateCommitMessage } from "./commit-message-generation";
 import { contextUsageFromEntries } from "./context-usage";
 import { generateAgentThreadTitle } from "./title-generation";
 
@@ -139,6 +140,22 @@ appRoutes.post("/agent-thread-title", async (context) => {
     const titleInput = parseAgentThreadTitleInput(payload);
     const title = await generateAgentThreadTitle(titleInput);
     return context.json(title);
+  } catch (error) {
+    return context.json({ error: error instanceof Error ? error.message : String(error) }, 400);
+  }
+});
+
+appRoutes.post("/generate-commit-message", async (context) => {
+  try {
+    const payload = await context.req.json();
+    const record = requireRecord(payload, "commit message input");
+    const stagedDiff = requireString(record.stagedDiff, "stagedDiff");
+    const recentLog = requireString(record.recentLog, "recentLog");
+    const result = await generateCommitMessage({ stagedDiff, recentLog });
+    if ("error" in result) {
+      return context.json(result, 400);
+    }
+    return context.json(result);
   } catch (error) {
     return context.json({ error: error instanceof Error ? error.message : String(error) }, 400);
   }

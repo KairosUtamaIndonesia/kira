@@ -71,16 +71,14 @@ type SourceControlDiffResult =
     };
 
 export type {
-  GitConflictOperation,
   GitFileStatus,
-  GitRepositoryStatus,
   GitStagingArea,
   GitStatusEntry,
   GitUpstreamStatus,
   SourceControlCommitInput,
   SourceControlDiffInput,
-  SourceControlDiffResult,
   SourceControlDiffSource,
+  SourceControlDiffResult,
   SourceControlPathInput,
   SourceControlPathsInput,
   SourceControlProjectInput,
