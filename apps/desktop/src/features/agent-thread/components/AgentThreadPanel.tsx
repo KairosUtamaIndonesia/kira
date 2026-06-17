@@ -4,7 +4,7 @@ import { StickToBottom } from "use-stick-to-bottom";
 
 import { Button } from "@/components/ui/button";
 import { explorerDragDataKey } from "@/features/explorer";
-import { useAppearanceTheme } from "@/features/settings";
+import { playAgentNotificationSound, useAppearanceTheme } from "@/features/settings";
 
 import type { AgentThreadPanelParams } from "../types";
 
@@ -59,6 +59,14 @@ function AgentThreadPanel({ api, params, initialPrompt, onRename }: AgentThreadP
   } = useAgentThreadConnection(params, { onAutoTitled: handleAutoTitled });
 
   const isEmpty = buildAgentThreadTranscript(transcript).length === 0;
+  const prevRuntimeStateRef = useRef(runtimeState);
+  useEffect(() => {
+    const prevState = prevRuntimeStateRef.current;
+    prevRuntimeStateRef.current = runtimeState;
+    if (prevState.status === "sending" && runtimeState.status === "ready") {
+      void playAgentNotificationSound();
+    }
+  }, [runtimeState]);
 
   useEffect(() => {
     setAgentThreadRuntimeState(params.threadId, runtimeState);
