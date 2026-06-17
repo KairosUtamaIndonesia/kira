@@ -213,14 +213,15 @@ function Composer({
       return;
     }
 
-    // Send the literal text. Slash commands are expanded at the agent-pi
-    // boundary, mirroring pi's `_expandSkillCommand`, so the Composer never
-    // holds expanded skill bodies.
+    // Clear optimistically so the user can compose the next message while
+    // the current one streams.
+    setPrompt("");
+    setPickerState({ status: "closed" });
+    setSlashPickerState({ status: "closed" });
     const sent = await sendPrompt(trimmed);
-    if (sent) {
-      setPrompt("");
-      setPickerState({ status: "closed" });
-      setSlashPickerState({ status: "closed" });
+    if (!sent) {
+      // Send failed — restore the prompt so the user can retry.
+      setPrompt(trimmed);
     }
   }
 
