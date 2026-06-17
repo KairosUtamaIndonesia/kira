@@ -5,6 +5,16 @@ type AgentThreadContext = {
   projectPath: string;
 };
 
+/** Current project id for the active Agent Thread. Set before extension creation, read by memory extension. */
+let currentProjectId: string | undefined;
+
+export function setCurrentProjectId(id: string | undefined): void {
+  currentProjectId = id;
+}
+
+export function getCurrentProjectId(): string | undefined {
+  return currentProjectId;
+}
 const agentThreadContexts = new Map<string, AgentThreadContext>();
 
 export function listAgentThreadContexts(): AgentThreadContext[] {

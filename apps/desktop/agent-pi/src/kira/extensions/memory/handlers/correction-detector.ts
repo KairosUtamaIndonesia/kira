@@ -133,7 +133,7 @@ export function setupCorrectionDetector(
   dbManager: DatabaseManager | undefined = undefined,
   model: KiraModel,
   tools: AgentTool[],
-  projectName?: string | undefined,
+  projectId?: string | undefined,
 ): void {
   if (!config.correctionDetection) return;
 
@@ -220,12 +220,12 @@ export function setupCorrectionDetector(
         if (correctionText) {
           const directive = extractCorrectionDirective(correctionText);
           const failureReason = "User corrected the agent";
-          const scopedProjectName =
-            projectStore && projectName ? projectName.trim() || undefined : undefined;
+          const scopedProjectId =
+            projectStore && projectId ? projectId.trim() || undefined : undefined;
           const failureOpts: Parameters<typeof store.addFailure>[1] = {
             category: "correction",
             failureReason,
-            ...(scopedProjectName !== undefined && { project: scopedProjectName }),
+            ...(scopedProjectId !== undefined && { project: scopedProjectId }),
           };
           const addResult = await store.addFailure(directive, failureOpts);
 
@@ -235,10 +235,10 @@ export function setupCorrectionDetector(
                 content: formatFailureMemoryContent(directive, {
                   category: "correction",
                   failureReason,
-                  project: scopedProjectName,
+                  project: scopedProjectId,
                 }),
                 target: "failure",
-                project: scopedProjectName,
+                project: scopedProjectId,
                 category: "correction",
                 failureReason,
               });

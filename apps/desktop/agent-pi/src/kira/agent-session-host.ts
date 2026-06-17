@@ -12,6 +12,7 @@ import { join } from "node:path";
 
 import type { AgentThreadContext } from "./agent-thread-context";
 
+import { setCurrentProjectId } from "./agent-thread-context";
 import { readAgentProviderApiKey, readOptionalEnv } from "./env";
 import guardrailsExtension from "./extensions/guardrails";
 import memoryExtension from "./extensions/memory";
@@ -69,7 +70,15 @@ async function buildAgentSession(context: AgentThreadContext): Promise<AgentSess
     agentDir: AGENT_ROOT,
     extensionFactories: [memoryExtension, guardrailsExtension],
   });
+
+  // Set the current project id so the memory extension can use the Kira
+  // project identity instead of deriving it from the filesystem basename.
+  setCurrentProjectId(context.projectId);
+
   await resourceLoader.reload();
+  // Clear the slot immediately after the extension factory runs (it's synchronous
+  // during reload) to prevent stale identity leaking into future session builds.
+  setCurrentProjectId(undefined);
 
   const { session } = await createAgentSession({
     cwd: context.projectPath,
