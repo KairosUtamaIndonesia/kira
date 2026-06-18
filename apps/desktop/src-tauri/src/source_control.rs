@@ -446,9 +446,10 @@ pub(crate) fn run_git(
     operation: &str,
     args: &[&str],
 ) -> Result<String, SourceControlError> {
-    let output = Command::new("git")
-        .args(args)
-        .current_dir(cwd)
+    let mut command = Command::new("git");
+    command.args(args).current_dir(cwd);
+    crate::process_ext::hide_console_window(&mut command);
+    let output = command
         .output()
         .map_err(|error| SourceControlError::GitCommand {
             operation: operation.to_string(),
@@ -479,9 +480,10 @@ fn run_git_bytes(
     operation: &str,
     args: &[&str],
 ) -> Result<Vec<u8>, SourceControlError> {
-    let output = Command::new("git")
-        .args(args)
-        .current_dir(cwd)
+    let mut command = Command::new("git");
+    command.args(args).current_dir(cwd);
+    crate::process_ext::hide_console_window(&mut command);
+    let output = command
         .output()
         .map_err(|error| SourceControlError::GitCommand {
             operation: operation.to_string(),

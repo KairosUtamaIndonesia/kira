@@ -17,6 +17,7 @@ mod explorer;
 mod memory;
 mod org_config;
 mod persistence;
+mod process_ext;
 mod projects;
 mod search;
 mod settings;

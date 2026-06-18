@@ -1,8 +1,5 @@
 use std::{env, net::TcpListener, path::PathBuf, time::Duration};
 
-#[cfg(target_os = "windows")]
-use std::os::windows::process::CommandExt;
-
 use axum::{routing::get, Json, Router};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
@@ -674,7 +671,11 @@ async fn start_app_runtime(store: PersistenceStore) -> Result<AppAgentRuntime, A
             let runtime_dir = resolve_runtime_dir()?;
             let mut cmd = Command::new("bun");
             cmd.current_dir(&runtime_dir);
-            cmd.arg("run").arg("dev").arg("--").arg("--port").arg(port.to_string());
+            cmd.arg("run")
+                .arg("dev")
+                .arg("--")
+                .arg("--port")
+                .arg(port.to_string());
             cmd
         }
         AgentRuntimeLaunchMode::Built => {
@@ -695,21 +696,16 @@ async fn start_app_runtime(store: PersistenceStore) -> Result<AppAgentRuntime, A
     if let Some(shell_path) = crate::settings::agent_shell_path(store.pool()).await {
         command.env("KIRA_AGENT_SHELL_PATH", shell_path);
     }
-    #[cfg(target_os = "windows")]
-    {
-        command.as_std_mut().creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-    }
-    let mut process = command
-        .spawn()
-        .map_err(|error| {
-            let location = match mode {
-                AgentRuntimeLaunchMode::Dev => "agent-pi directory",
-                AgentRuntimeLaunchMode::Built => "binary",
-            };
-            AgentRuntimeError::StartFailed {
-                reason: format!("failed to spawn agent runtime {location}: {error}"),
-            }
-        })?;
+    crate::process_ext::hide_console_window(command.as_std_mut());
+    let mut process = command.spawn().map_err(|error| {
+        let location = match mode {
+            AgentRuntimeLaunchMode::Dev => "agent-pi directory",
+            AgentRuntimeLaunchMode::Built => "binary",
+        };
+        AgentRuntimeError::StartFailed {
+            reason: format!("failed to spawn agent runtime {location}: {error}"),
+        }
+    })?;
     if let Err(error) = wait_for_health(port).await {
         let _kill_result = process.kill().await;
         return Err(error);
