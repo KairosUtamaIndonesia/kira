@@ -1,8 +1,6 @@
 use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 
-
-
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelConfig {
@@ -63,7 +61,10 @@ pub async fn fetch_model_catalog() -> Result<ModelCatalog, OrgConfigError> {
 
     let client = crate::admin_api::client()?;
     let response = client
-        .get(format!("{}/api/desktop/models", crate::admin_api::cloud_base_url()?))
+        .get(format!(
+            "{}/api/desktop/models",
+            crate::admin_api::cloud_base_url()?
+        ))
         .header("x-api-key", api_key)
         .send()
         .await

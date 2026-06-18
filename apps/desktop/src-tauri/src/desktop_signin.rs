@@ -6,7 +6,6 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::time::{timeout, Duration};
 
-
 const IDENTITY_KEY: &str = "desktop.signin.identity";
 const KEYRING_SERVICE: &str = "com.kira.desktop";
 const KEYRING_ACCOUNT: &str = "organization-desktop-access";
@@ -271,7 +270,10 @@ pub async fn desktop_signin_begin(
 
     let client = crate::admin_api::client()?;
     let response = client
-        .post(format!("{}/api/desktop/signin/claim", crate::admin_api::cloud_base_url()?))
+        .post(format!(
+            "{}/api/desktop/signin/claim",
+            crate::admin_api::cloud_base_url()?
+        ))
         .json(&serde_json::json!({ "code": code }))
         .send()
         .await
