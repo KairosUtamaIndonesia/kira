@@ -6,8 +6,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::time::{timeout, Duration};
 
-const ADMIN_SIGNIN_URL: &str = "https://cloud.kira.localhost/desktop-signin";
-const ADMIN_CLAIM_URL: &str = "https://cloud.kira.localhost/api/desktop/signin/claim";
+
 const IDENTITY_KEY: &str = "desktop.signin.identity";
 const KEYRING_SERVICE: &str = "com.kira.desktop";
 const KEYRING_ACCOUNT: &str = "organization-desktop-access";
@@ -242,7 +241,8 @@ pub async fn desktop_signin_begin(
     let state = uuid::Uuid::new_v4().to_string();
     let redirect_uri = format!("http://127.0.0.1:{port}/callback");
 
-    let mut signin_url = reqwest::Url::parse(ADMIN_SIGNIN_URL)
+    let signin_url_base = format!("{}/desktop-signin", crate::admin_api::cloud_base_url());
+    let mut signin_url = reqwest::Url::parse(&signin_url_base)
         .map_err(|error| SigninError::UnexpectedResponse(error.to_string()))?;
     signin_url
         .query_pairs_mut()
@@ -270,7 +270,7 @@ pub async fn desktop_signin_begin(
     let client =
         crate::admin_api::client().map_err(|error| SigninError::Unreachable(error.to_string()))?;
     let response = client
-        .post(ADMIN_CLAIM_URL)
+        .post(format!("{}/api/desktop/signin/claim", crate::admin_api::cloud_base_url()))
         .json(&serde_json::json!({ "code": code }))
         .send()
         .await

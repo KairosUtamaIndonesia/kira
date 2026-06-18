@@ -59,6 +59,6 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            VITE_BETTER_AUTH_URL=https://cloud.kira.internal.kairos-it.com
+            VITE_BETTER_AUTH_URL=${{ vars.KIRA_CLOUD_URL }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

@@ -3,8 +3,21 @@
 //! All desktop-to-cloud calls go through [`client`] so the dev-environment
 //! transport quirks are handled in exactly one place.
 
-/// Hostname the desktop reaches the hosted cloud on.
-pub const ADMIN_HOST: &str = "cloud.kira.localhost";
+const DEFAULT_CLOUD_URL: &str = "https://cloud.kira.localhost";
+const DEFAULT_CLOUD_HOST: &str = "cloud.kira.localhost";
+
+/// Returns the cloud base URL. Override with the `KIRA_CLOUD_URL` env var.
+pub fn cloud_base_url() -> String {
+    std::env::var("KIRA_CLOUD_URL").unwrap_or_else(|_| DEFAULT_CLOUD_URL.to_owned())
+}
+
+/// Returns the hostname of the cloud app, derived from the cloud base URL.
+pub fn cloud_host() -> String {
+    reqwest::Url::parse(&cloud_base_url())
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_owned))
+        .unwrap_or_else(|| DEFAULT_CLOUD_HOST.to_owned())
+}
 
 /// Builds a `reqwest` client configured for the hosted cloud API.
 ///
@@ -28,7 +41,7 @@ pub fn client() -> Result<reqwest::Client, reqwest::Error> {
     #[cfg(debug_assertions)]
     let builder = builder
         .resolve(
-            ADMIN_HOST,
+            &cloud_host(),
             std::net::SocketAddr::from(([127, 0, 0, 1], 443)),
         )
         .danger_accept_invalid_certs(true);

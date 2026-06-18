@@ -1,7 +1,7 @@
 use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 
-const ADMIN_API_URL: &str = "https://cloud.kira.localhost/api/desktop/models";
+
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -60,7 +60,7 @@ pub async fn fetch_model_catalog() -> Result<ModelCatalog, OrgConfigError> {
     let client =
         crate::admin_api::client().map_err(|e| OrgConfigError::FetchFailed(e.to_string()))?;
     let response = client
-        .get(ADMIN_API_URL)
+        .get(format!("{}/api/desktop/models", crate::admin_api::cloud_base_url()))
         .header("x-api-key", api_key)
         .send()
         .await
