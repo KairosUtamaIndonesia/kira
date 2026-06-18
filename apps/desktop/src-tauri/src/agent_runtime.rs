@@ -1,5 +1,8 @@
 use std::{env, net::TcpListener, path::PathBuf, time::Duration};
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
 use axum::{routing::get, Json, Router};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
@@ -237,6 +240,8 @@ pub enum AgentRuntimeError {
     QueryContextUsage(String),
     #[error("Agent runtime directory was not found: {path}")]
     RuntimeDirectoryMissing { path: String },
+    #[error("Agent runtime compiled binary not found: {path}")]
+    RuntimeBinaryMissing { path: String },
     #[error("failed to reserve an agent runtime port: {0}")]
     ReservePort(String),
     #[error("failed to start agent runtime: {reason}")]
@@ -633,12 +638,10 @@ fn runtime_base_url(port: u16) -> String {
 }
 
 async fn start_app_runtime(store: PersistenceStore) -> Result<AppAgentRuntime, AgentRuntimeError> {
-    let runtime_dir = resolve_runtime_dir()?;
     let mode = resolve_launch_mode();
     let port = reserve_port()?;
     let token = generate_runtime_token();
 
-    // Validate cloud connectivity at startup — fail fast if unreachable
     // Validate cloud connectivity at startup — fail fast if unreachable
     crate::org_config::fetch_model_catalog()
         .await
@@ -666,22 +669,22 @@ async fn start_app_runtime(store: PersistenceStore) -> Result<AppAgentRuntime, A
     });
     let backend_url = format!("http://{AGENT_RUNTIME_HOST}:{backend_actual_port}");
 
-    let mut command = Command::new("bun");
-    match mode {
+    let mut command = match mode {
         AgentRuntimeLaunchMode::Dev => {
-            command
-                .arg("run")
-                .arg("dev")
-                .arg("--")
-                .arg("--port")
-                .arg(port.to_string());
+            let runtime_dir = resolve_runtime_dir()?;
+            let mut cmd = Command::new("bun");
+            cmd.current_dir(&runtime_dir);
+            cmd.arg("run").arg("dev").arg("--").arg("--port").arg(port.to_string());
+            cmd
         }
         AgentRuntimeLaunchMode::Built => {
-            command.arg("dist/server.mjs");
+            let binary_path = agent_pi_binary_path()?;
+            let mut cmd = Command::new(&binary_path);
+            cmd.arg("--port").arg(port.to_string());
+            cmd
         }
-    }
+    };
     command
-        .current_dir(&runtime_dir)
         .env("HOST", AGENT_RUNTIME_HOST)
         .env("HOSTNAME", AGENT_RUNTIME_HOST)
         .env("PORT", port.to_string())
@@ -692,13 +695,20 @@ async fn start_app_runtime(store: PersistenceStore) -> Result<AppAgentRuntime, A
     if let Some(shell_path) = crate::settings::agent_shell_path(store.pool()).await {
         command.env("KIRA_AGENT_SHELL_PATH", shell_path);
     }
+    #[cfg(target_os = "windows")]
+    {
+        command.as_std_mut().creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
     let mut process = command
         .spawn()
-        .map_err(|error| AgentRuntimeError::StartFailed {
-            reason: format!(
-                "failed to spawn Bun in `{}`: {error}",
-                runtime_dir.display()
-            ),
+        .map_err(|error| {
+            let location = match mode {
+                AgentRuntimeLaunchMode::Dev => "agent-pi directory",
+                AgentRuntimeLaunchMode::Built => "binary",
+            };
+            AgentRuntimeError::StartFailed {
+                reason: format!("failed to spawn agent runtime {location}: {error}"),
+            }
         })?;
     if let Err(error) = wait_for_health(port).await {
         let _kill_result = process.kill().await;
@@ -771,6 +781,48 @@ fn validate_health_response(port: u16, health: &HealthResponse) -> Result<(), Ag
         });
     }
     Ok(())
+}
+
+fn agent_pi_binary_path() -> Result<PathBuf, AgentRuntimeError> {
+    let binary_name = if cfg!(target_os = "windows") {
+        "kira-agent-pi.exe"
+    } else {
+        "kira-agent-pi"
+    };
+
+    // 1. Environment override: KIRA_AGENT_RUNTIME_DIR/dist/{binary}
+    if let Ok(dir) = env::var("KIRA_AGENT_RUNTIME_DIR") {
+        let path = PathBuf::from(dir).join("dist").join(binary_name);
+        if path.is_file() {
+            return Ok(path);
+        }
+    }
+
+    // 2. Development: relative to CARGO_MANIFEST_DIR
+    let dev_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../agent-pi/dist")
+        .join(binary_name);
+    if dev_path.is_file() {
+        return Ok(dev_path);
+    }
+
+    // 3. Production: next to the executable's resources/ directory
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(exe_dir) = exe.parent() {
+            for sub in &["resources", "../Resources"] {
+                let path = exe_dir.join(sub).join(binary_name);
+                if path.is_file() {
+                    return Ok(path);
+                }
+            }
+        }
+    }
+
+    Err(AgentRuntimeError::RuntimeBinaryMissing {
+        path: format!(
+            "{binary_name} (searched KIRA_AGENT_RUNTIME_DIR, dev dist/, and resources/)"
+        ),
+    })
 }
 
 fn resolve_runtime_dir() -> Result<PathBuf, AgentRuntimeError> {

@@ -40,6 +40,8 @@ type OrganizationApiKey = {
   lastUsedAt: string;
   expiresAt: string;
   status: "active" | "expired" | "disabled";
+  userName: string | null;
+  userEmail: string | null;
 };
 
 type OrganizationModel = {

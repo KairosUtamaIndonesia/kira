@@ -64,6 +64,10 @@ jobs:
           # Updater signing — set these secrets before enabling the updater.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Cloud admin URL baked into the desktop binary. Set the
+          # KIRA_CLOUD_URL repository variable to override the default
+          # (https://cloud.kira.localhost).
+          KIRA_CLOUD_URL: ${{ vars.KIRA_CLOUD_URL }}
         with:
           projectPath: apps/desktop
           # Attach installers to the release-please release when present;

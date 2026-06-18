@@ -2,9 +2,24 @@
 //!
 //! All desktop-to-cloud calls go through [`client`] so the dev-environment
 //! transport quirks are handled in exactly one place.
+//!
+//! The cloud URL is baked into the binary at compile time via `KIRA_CLOUD_URL`.
+//! Set it in `.env` for local dev, or as a CI/repo variable in GitHub Actions.
 
-/// Hostname the desktop reaches the hosted cloud on.
-pub const ADMIN_HOST: &str = "cloud.kira.localhost";
+/// The cloud admin URL, embedded at compile time via `env!("KIRA_CLOUD_URL")`.
+/// Set `KIRA_CLOUD_URL` in `.env` or your shell before building.
+pub fn cloud_base_url() -> &'static str {
+    env!("KIRA_CLOUD_URL")
+}
+
+/// The hostname of the cloud app, derived from [`cloud_base_url()`].
+#[allow(clippy::expect_used)]
+pub fn cloud_host() -> String {
+    let url = reqwest::Url::parse(cloud_base_url()).expect("KIRA_CLOUD_URL must be a valid URL");
+    url.host_str()
+        .expect("KIRA_CLOUD_URL must contain a hostname")
+        .to_owned()
+}
 
 /// Builds a `reqwest` client configured for the hosted cloud API.
 ///
@@ -22,13 +37,14 @@ pub const ADMIN_HOST: &str = "cloud.kira.localhost";
 /// # Errors
 ///
 /// Returns an error if the underlying TLS backend fails to initialize.
+#[allow(clippy::used_underscore_binding)]
 pub fn client() -> Result<reqwest::Client, reqwest::Error> {
     let builder = reqwest::Client::builder();
 
     #[cfg(debug_assertions)]
     let builder = builder
         .resolve(
-            ADMIN_HOST,
+            &cloud_host(),
             std::net::SocketAddr::from(([127, 0, 0, 1], 443)),
         )
         .danger_accept_invalid_certs(true);
