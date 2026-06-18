@@ -23,9 +23,11 @@ COPY . .
 
 RUN bun run turbo build --filter=@kira/cloud
 
+# Build standalone migration script bundle (self-contained, includes pg + drizzle-orm).
+RUN bun build apps/cloud/scripts/db-migrate.ts --target node --outfile apps/cloud/.output/db-migrate.mjs
+
 
 # ---- Runner stage ----
-# Use the same Alpine base as deps/builder for consistency.
 FROM node:22-alpine AS runner
 WORKDIR /app
 
@@ -44,6 +46,10 @@ RUN apk add --no-cache curl \
 # shell/assets under .output/public).
 COPY --from=builder --chown=kira:nodejs /repo/apps/cloud/.output ./.output
 
+# Drizzle migration SQL files inside .output so the migration bundle at
+# ./.output/db-migrate.mjs can find them via import.meta.dirname.
+COPY --from=builder --chown=kira:nodejs /repo/apps/cloud/drizzle ./.output/drizzle
+
 USER kira
 
 EXPOSE 3000
@@ -52,6 +58,8 @@ EXPOSE 3000
 # server binding on 0.0.0.0.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD curl -f http://127.0.0.1:3000/api/health || exit 1
-
-CMD ["node", ".output/server/index.mjs"]
+# Run migrations on startup, then start the Nitro server. The migration bundle
+# is self-contained (pg + drizzle-orm inlined) and only reads DATABASE_URL from
+# the environment — no drizzle-kit or additional tooling needed.
+CMD node ./.output/db-migrate.mjs && node .output/server/index.mjs
 
