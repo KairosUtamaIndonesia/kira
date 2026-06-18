@@ -31,6 +31,7 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=3000
+ENV HOST=0.0.0.0
 
 # Install curl for health checks. node:22-alpine ships BusyBox wget which does
 # not support --spider and can fail on IPv6 localhost resolution.  curl is more
