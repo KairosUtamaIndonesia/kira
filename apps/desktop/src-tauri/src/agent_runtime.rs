@@ -1,5 +1,8 @@
 use std::{env, net::TcpListener, path::PathBuf, time::Duration};
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
 use axum::{routing::get, Json, Router};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
@@ -691,6 +694,10 @@ async fn start_app_runtime(store: PersistenceStore) -> Result<AppAgentRuntime, A
         .kill_on_drop(true);
     if let Some(shell_path) = crate::settings::agent_shell_path(store.pool()).await {
         command.env("KIRA_AGENT_SHELL_PATH", shell_path);
+    }
+    #[cfg(target_os = "windows")]
+    {
+        command.as_std_mut().creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     }
     let mut process = command
         .spawn()
