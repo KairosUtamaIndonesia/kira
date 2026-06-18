@@ -6,9 +6,10 @@ import {
   ModelRegistry,
   SessionManager,
   SettingsManager,
+  loadSkillsFromDir,
 } from "@earendil-works/pi-coding-agent";
 import { mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import type { AgentThreadContext } from "./agent-thread-context";
 
@@ -21,6 +22,7 @@ import { fetchAndCacheCatalog, getDefaultModel } from "./model-catalog";
 import { piModelFromConfig } from "./pi-model";
 import { ToolUiBroker } from "./tool-ui-broker";
 import { createAskUserTool } from "./tools/ask-user-tool";
+import { usingAgentSkillsPrompt } from "./using-agent-skills-prompt";
 
 type AgentSessionHost = {
   session: AgentSession;
@@ -69,10 +71,26 @@ async function buildAgentSession(context: AgentThreadContext): Promise<AgentSess
   const settingsManager =
     shellPath !== undefined ? SettingsManager.inMemory({ shellPath }) : undefined;
 
+  const skillsDir = resolve(import.meta.dirname, "../../skills");
+
+  // using-agent-skills is baked into the system prompt (always present) instead
+  // of living in skills/ as an on-demand skill.
+  const usingAgentSkillsBody = usingAgentSkillsPrompt;
+
+  const { skills: bundledSkills, diagnostics: bundledDiagnostics } = loadSkillsFromDir({
+    dir: skillsDir,
+    source: "bundled",
+  });
+
   const resourceLoader = new DefaultResourceLoader({
     cwd: context.projectPath,
     agentDir: AGENT_ROOT,
     extensionFactories: [memoryExtension, guardrailsExtension],
+    appendSystemPrompt: [usingAgentSkillsBody],
+    skillsOverride: (current) => ({
+      skills: [...current.skills, ...bundledSkills],
+      diagnostics: [...current.diagnostics, ...bundledDiagnostics],
+    }),
   });
 
   // Set the current project id so the memory extension can use the Kira

@@ -40,27 +40,26 @@ appRoutes.get("/skills/:name/body", async (context) => {
   return context.json({ name: match.name, body: match.body });
 });
 
+/**
+ * Bundled Skills are those loaded from apps/desktop/agent-pi/skills/ and
+ * tagged with sourceInfo.source === "bundled" at load time (see the
+ * skillsOverride callback in agent-session-host.ts). We read them from the
+ * resource loader so the list is always consistent with what the agent loads.
+ */
 async function listBundledSkills(): Promise<SkillListItem[]> {
-  // Bundled Skills are identical across Agent Threads, so the first resource
-  // loader that exposes them is enough. Try the registered Agent Threads in
-  // parallel; the first one that succeeds wins.
-  const attempts = await Promise.allSettled(
-    listAgentThreadContexts().map(async (threadContext) => {
-      const host = await getOrCreateAgentSession(threadContext);
-      const loaded = host.session.resourceLoader.getSkills().skills;
-      return loaded.map<SkillListItem>((skill) => ({
-        name: skill.name,
-        description: skill.description,
-        body: readSkillBody(skill.filePath),
-      }));
-    }),
-  );
-  for (const attempt of attempts) {
-    if (attempt.status === "fulfilled") {
-      return attempt.value;
-    }
-  }
-  return [];
+  const contexts = listAgentThreadContexts();
+  const context = contexts[0];
+  if (context === undefined) return [];
+
+  const host = await getOrCreateAgentSession(context);
+  return host.session.resourceLoader
+    .getSkills()
+    .skills.filter((skill) => skill.sourceInfo.source === "bundled")
+    .map<SkillListItem>((skill) => ({
+      name: skill.name,
+      description: skill.description,
+      body: readSkillBody(skill.filePath),
+    }));
 }
 
 function readSkillBody(filePath: string): string {
