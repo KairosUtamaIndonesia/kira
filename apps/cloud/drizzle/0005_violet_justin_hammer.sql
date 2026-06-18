@@ -1,0 +1,1 @@
+ALTER TABLE "organization_models" ADD COLUMN "api_key" text;

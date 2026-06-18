@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { CornerDownLeft, ListTree, Loader2, Minimize2, Square, X, Zap } from "lucide-react";
 import {
   useEffect,
@@ -16,6 +17,14 @@ import {
 import type { ExplorerFileReferenceSuggestion } from "@/features/explorer/types";
 
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { getExplorerFileReferenceSuggestions } from "@/features/explorer/api/explorerApi";
 import { cn } from "@/lib/utils";
 
@@ -46,6 +55,7 @@ type ComposerProps = {
     action: ComposerSlashCommandAction,
     args: string,
   ) => Promise<{ ok: boolean; error?: string }>;
+  switchModel?: (modelLabel: string) => Promise<void>;
   isTreeOpen?: boolean;
   onToggleTree?: () => void;
   onCancelEdit?: () => void;
@@ -93,6 +103,7 @@ function Composer({
   sendPrompt,
   abortPrompt,
   runSlashCommandAction,
+  switchModel,
   editingMessageId,
   onCancelEdit,
   isTreeOpen,
@@ -516,9 +527,94 @@ function Composer({
           </button>
           <span>{composerFootnote(errorMessage, slashPickerState.status === "closed")}</span>
         </div>
-        {contextUsageState !== undefined && <AgentThreadContextMeter state={contextUsageState} />}
+        <div className="flex items-center gap-2">
+          <ModelSelect switchModel={switchModel} />
+          {contextUsageState !== undefined && <AgentThreadContextMeter state={contextUsageState} />}
+        </div>
       </div>
     </form>
+  );
+}
+
+/** Model entry returned by the desktop_org_models_get Tauri command. */
+type ModelCatalogItem = {
+  label: string;
+  upstreamModelId: string;
+  providerId: string;
+  isDefault: boolean;
+};
+
+function ModelSelect({
+  switchModel,
+}: {
+  switchModel: ((label: string) => Promise<void>) | undefined;
+}) {
+  const [models, setModels] = useState<ModelCatalogItem[]>([]);
+  const [currentLabel, setCurrentLabel] = useState<string | undefined>();
+  const [selectOpen, setSelectOpen] = useState(false);
+  const [tooltipOpen, setTooltipOpen] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const catalog: { models: ModelCatalogItem[] } = await invoke("desktop_org_models_get");
+        if (cancelled) return;
+        setModels(catalog.models);
+        const defaultModel = catalog.models.find((m) => m.isDefault);
+        if (defaultModel !== undefined) {
+          setCurrentLabel(defaultModel.label);
+        }
+      } catch {
+        // Model catalog fetch failed — leave dropdown empty.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (models.length === 0) {
+    return false;
+  }
+
+  const handleValueChange = (value: string | null) => {
+    if (value === null) return;
+    setCurrentLabel(value);
+    if (switchModel !== undefined) {
+      void switchModel(value);
+    }
+  };
+
+  return (
+    <Select
+      value={currentLabel}
+      onValueChange={handleValueChange}
+      open={selectOpen}
+      onOpenChange={setSelectOpen}
+    >
+      <Tooltip open={selectOpen ? false : tooltipOpen} onOpenChange={setTooltipOpen}>
+        <TooltipTrigger
+          render={
+            <SelectTrigger
+              size="sm"
+              className="h-5 max-w-36 truncate rounded-sm border-0 bg-transparent px-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground dark:bg-transparent dark:hover:bg-muted [&_svg]:text-muted-foreground/30 hover:[&_svg]:text-foreground"
+              aria-label="Select model"
+            >
+              <SelectValue />
+            </SelectTrigger>
+          }
+        />
+        <TooltipContent side="top">Model Selector</TooltipContent>
+      </Tooltip>
+      <SelectContent align="start" className="rounded-md p-1.5">
+        {models.map((model) => (
+          <SelectItem key={model.label} value={model.label} className="gap-2 py-1.5 pl-2">
+            {model.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 

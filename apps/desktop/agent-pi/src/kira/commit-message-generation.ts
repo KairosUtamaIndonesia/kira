@@ -2,8 +2,7 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 
 import { Agent } from "@earendil-works/pi-agent-core";
 
-import { readAgentProviderApiKey } from "./env";
-import { getDefaultModel } from "./model-catalog";
+import { fetchAndCacheCatalog, getDefaultModel, type ModelConfig } from "./model-catalog";
 import { piModelFromConfig } from "./pi-model";
 
 const SYSTEM_PROMPT = [
@@ -105,17 +104,27 @@ function formatPrompt(input: GenerateCommitMessageInput): string {
 async function generateCommitMessage(
   input: GenerateCommitMessageInput,
 ): Promise<GenerateCommitMessageResult> {
-  const apiKey = readAgentProviderApiKey();
-  if (apiKey === undefined) {
-    return { error: "no API key configured — sign in to generate commit messages" };
+  try {
+    await fetchAndCacheCatalog();
+  } catch (error) {
+    return {
+      error: `failed to load model catalog: ${error instanceof Error ? error.message : String(error)}`,
+    };
   }
 
-  let model;
+  let modelConfig: ModelConfig;
   try {
-    model = piModelFromConfig(getDefaultModel());
+    modelConfig = getDefaultModel();
   } catch {
     return { error: "no default model found in the organization catalog" };
   }
+
+  const apiKey = modelConfig.apiKey;
+  if (apiKey === undefined) {
+    return { error: "no API key configured for the model — add one in the model config" };
+  }
+
+  const model = piModelFromConfig(modelConfig);
 
   const agent = new Agent({
     initialState: {

@@ -6,46 +6,58 @@ type ModelConfig = {
   contextWindow: number;
   maxOutputTokens: number;
   isDefault: boolean;
+  apiKey?: string;
 };
 
 type ModelCatalog = {
   models: ModelConfig[];
 };
 
-function parseModelCatalog(): ModelCatalog {
-  const raw = process.env.KIRA_AGENT_MODEL_CATALOG;
-  if (raw === undefined || raw.length === 0) {
-    throw new Error("KIRA_AGENT_MODEL_CATALOG is not set");
-  }
+let cachedCatalog: ModelCatalog | undefined;
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new Error("KIRA_AGENT_MODEL_CATALOG is not valid JSON");
+function readBackendUrl(): string {
+  const url = process.env.KIRA_AGENT_BACKEND_URL;
+  if (url === undefined || url.length === 0) {
+    throw new Error("KIRA_AGENT_BACKEND_URL is not set");
   }
-
-  if (
-    typeof parsed === "object" &&
-    parsed !== null &&
-    "models" in parsed &&
-    Array.isArray((parsed as Record<string, unknown>).models)
-  ) {
-    return parsed as ModelCatalog;
-  }
-
-  throw new Error("KIRA_AGENT_MODEL_CATALOG has an invalid catalog structure");
+  return url;
 }
 
-const modelCatalog = parseModelCatalog();
+/** Fetch the model catalog from the Rust backend and cache it in memory. */
+async function fetchAndCacheCatalog(): Promise<void> {
+  const backendUrl = readBackendUrl();
+  const response = await fetch(`${backendUrl}/api/org/models`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch model catalog: ${response.status} ${response.statusText}`);
+  }
+
+  const catalog: ModelCatalog = await response.json();
+
+  if (!Array.isArray(catalog.models)) {
+    throw new Error("Model catalog has an invalid structure");
+  }
+
+  cachedCatalog = catalog;
+}
 
 function getDefaultModel(): ModelConfig {
-  const defaultModel = modelCatalog.models.find((model) => model.isDefault);
+  if (cachedCatalog === undefined) {
+    throw new Error("Model catalog not loaded. Call fetchAndCacheCatalog first.");
+  }
+
+  const defaultModel = cachedCatalog.models.find((model) => model.isDefault);
   if (defaultModel === undefined) {
     throw new Error("No default model configured in organization catalog");
   }
   return defaultModel;
 }
 
-export { getDefaultModel, modelCatalog };
+function getModelCatalog(): ModelCatalog {
+  if (cachedCatalog === undefined) {
+    throw new Error("Model catalog not loaded. Call fetchAndCacheCatalog first.");
+  }
+  return cachedCatalog;
+}
+
+export { fetchAndCacheCatalog, getDefaultModel, getModelCatalog };
 export type { ModelCatalog, ModelConfig };

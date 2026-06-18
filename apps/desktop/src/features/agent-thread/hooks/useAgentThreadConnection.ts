@@ -351,6 +351,19 @@ function useAgentThreadConnection(
     }
     setRuntimeState({ status: "ready", baseUrl: state.baseUrl });
   }
+  async function switchModel(modelLabel: string) {
+    const socket = socketRef.current;
+    if (socket === undefined) {
+      return;
+    }
+    try {
+      await socket.switchModel(modelLabel);
+    } catch {
+      // Model switch failure is informational; the session continues with the
+      // previous model.
+    }
+  }
+
   async function navigateTree(entryId: string) {
     const socket = socketRef.current;
     const runtime = runtimeInfoRef.current;
@@ -450,6 +463,7 @@ function useAgentThreadConnection(
     runtimeState,
     sendPrompt,
     navigateTree,
+    switchModel,
     titleGenerationState,
   };
 }
@@ -545,6 +559,12 @@ class PiAgentSocket {
       ...(customInstructions === undefined ? {} : { customInstructions }),
     });
   }
+
+  /** Switch the active model for this agent session. */
+  async switchModel(modelLabel: string) {
+    const id = crypto.randomUUID();
+    await this.sendCommand({ id, type: "switch_model", modelLabel });
+  }
   private sendCommand(command: {
     id: string;
     type: string;
@@ -553,6 +573,7 @@ class PiAgentSocket {
     targetId?: string;
     options?: Record<string, unknown>;
     customInstructions?: string;
+    modelLabel?: string;
   }) {
     if (this.socket.readyState !== WebSocket.OPEN) {
       return Promise.reject(new Error("Agent Thread socket is not open."));

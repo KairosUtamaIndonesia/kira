@@ -3,24 +3,18 @@ import type { Model } from "@earendil-works/pi-ai";
 
 import { Agent } from "@earendil-works/pi-agent-core";
 
-import { readAgentProviderApiKey } from "../../env.js";
-
 /** One-shot in-process LLM call with tools. No subprocess, no session persistence. */
 export async function runMemoryPrompt(
   prompt: string,
   tools: AgentTool[],
   options: {
     model: Model<"openai-responses">;
+    apiKey: string;
     systemPrompt?: string;
     thinkingLevel?: ThinkingLevel;
     timeoutMs?: number;
   },
 ): Promise<string | undefined> {
-  const apiKey = readAgentProviderApiKey();
-  if (apiKey === undefined) {
-    throw new Error("KIRA_AGENT_PROVIDER_API_KEY is not set");
-  }
-
   const agent = new Agent({
     initialState: {
       systemPrompt: options.systemPrompt ?? "",
@@ -28,7 +22,7 @@ export async function runMemoryPrompt(
       tools,
       thinkingLevel: options.thinkingLevel ?? "off",
     },
-    getApiKey: () => apiKey,
+    getApiKey: () => options.apiKey,
   });
 
   if (options.timeoutMs !== undefined) {

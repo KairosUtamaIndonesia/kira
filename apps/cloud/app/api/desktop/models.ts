@@ -86,6 +86,7 @@ export const Route = createFileRoute("/api/desktop/models")({
             contextWindow: model.contextWindow,
             maxOutputTokens: model.maxOutputTokens,
             isDefault: model.isDefault,
+            apiKey: model.apiKey,
           })),
         });
       },

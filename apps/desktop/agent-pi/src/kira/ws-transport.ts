@@ -1,4 +1,4 @@
-import type { ImageContent } from "@earendil-works/pi-ai";
+import type { ImageContent, Model } from "@earendil-works/pi-ai";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { WebSocket } from "ws";
 
@@ -6,6 +6,8 @@ import { readFileSync } from "node:fs";
 
 import type { ToolUiBroker } from "./tool-ui-broker";
 
+import { getModelCatalog, type ModelConfig } from "./model-catalog";
+import { piModelFromConfig } from "./pi-model";
 import { stripSkillFrontmatter } from "./skill-expansion";
 
 /**
@@ -25,6 +27,7 @@ type ParsedCommand = {
   id?: string;
   type: string;
   message?: string;
+  modelLabel?: string;
   images?: ImageContent[];
   streamingBehavior?: "steer" | "followUp";
   targetId?: string;
@@ -124,6 +127,67 @@ function expandSkillCommandsInText(text: string, session: AgentSession): string 
 }
 
 /**
+ * Extract a human-readable error message from an agent_end event if the last
+ * assistant message has stopReason: "error".
+ */
+function agentEndErrorMessage(event: Record<string, unknown>): string | undefined {
+  const messages = event.messages;
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return undefined;
+  }
+  const lastMsg = messages[messages.length - 1];
+  if (
+    typeof lastMsg === "object" &&
+    lastMsg !== null &&
+    (lastMsg as Record<string, unknown>).stopReason === "error" &&
+    typeof (lastMsg as Record<string, unknown>).errorMessage === "string"
+  ) {
+    return (lastMsg as Record<string, unknown>).errorMessage as string;
+  }
+  return undefined;
+}
+
+/**
+ * Map a raw provider/pi error message to something actionable for the user.
+ */
+function userFacingError(raw: string): string {
+  const lower = raw.toLowerCase();
+  if (
+    lower.includes("401") ||
+    lower.includes("403") ||
+    lower.includes("unauthorized") ||
+    lower.includes("forbidden") ||
+    lower.includes("auth") ||
+    lower.includes("api key")
+  ) {
+    return "The model API key is invalid or was rejected. Update it in Organization > Models in the cloud console.";
+  }
+  return raw;
+}
+
+/**
+ * Tracks the error message from the last agent_end event whose final assistant
+ * message had stopReason: "error". Cleared before each prompt call so we can
+ * detect whether the current prompt completed with an error even though pi
+ * resolves internally rather than throwing.
+ */
+class AgentEndErrorTracker {
+  private value: string | undefined;
+
+  get(): string | undefined {
+    return this.value;
+  }
+
+  clear(): void {
+    this.value = undefined;
+  }
+
+  set(newValue: string | undefined): void {
+    this.value = newValue;
+  }
+}
+
+/**
  * Bridge one desktop WebSocket connection to an Agent Thread's Pi AgentSession.
  *
  * Outbound: every Pi session event is forwarded verbatim as a JSON frame.
@@ -136,13 +200,18 @@ export function attachAgentSocket(
   session: AgentSession,
   toolUiBroker: ToolUiBroker,
 ): void {
+  const errorTracker = new AgentEndErrorTracker();
+
   const detachToolUi = toolUiBroker.attach(ws);
   const unsubscribe = session.subscribe((event) => {
+    if (event.type === "agent_end") {
+      errorTracker.set(agentEndErrorMessage(event as Record<string, unknown>));
+    }
     send(ws, event);
   });
 
   ws.on("message", (data) => {
-    void handleCommand(ws, session, toolUiBroker, data.toString());
+    void handleCommand(ws, session, toolUiBroker, data.toString(), errorTracker);
   });
 
   ws.on("close", () => {
@@ -156,6 +225,7 @@ async function handleCommand(
   session: AgentSession,
   toolUiBroker: ToolUiBroker,
   raw: string,
+  errorTracker: AgentEndErrorTracker,
 ): Promise<void> {
   let command: ParsedCommand;
   try {
@@ -181,17 +251,35 @@ async function handleCommand(
       case "prompt": {
         const message = expandSkillCommandsInText(requireMessage(command), session);
         if (command.streamingBehavior === "steer" || command.streamingBehavior === "followUp") {
+          errorTracker.clear();
           await session.prompt(message, promptOptions(command.images, command.streamingBehavior));
+          const completionError = errorTracker.get();
+          if (completionError !== undefined) {
+            respond(ws, command.id, "prompt", false, {
+              error: userFacingError(completionError),
+            });
+          } else {
+            respond(ws, command.id, "prompt", true);
+          }
         } else {
           void (async () => {
             try {
+              errorTracker.clear();
               await session.prompt(message, promptOptions(command.images));
+              const completionError = errorTracker.get();
+              if (completionError !== undefined) {
+                send(ws, {
+                  type: "error",
+                  error: userFacingError(completionError),
+                  message: userFacingError(completionError),
+                });
+              }
             } catch (error) {
-              send(ws, { type: "error", scope: "prompt", message: errorMessage(error) });
+              send(ws, { type: "error", error: errorMessage(error), message: errorMessage(error) });
             }
           })();
+          respond(ws, command.id, "prompt", true);
         }
-        respond(ws, command.id, "prompt", true);
         return;
       }
       case "steer": {
@@ -251,6 +339,26 @@ async function handleCommand(
           ...(summarize === undefined ? {} : { summarize }),
         });
         respond(ws, command.id, "navigate_tree", true);
+        return;
+      }
+      case "switch_model": {
+        if (typeof command.modelLabel !== "string" || command.modelLabel.length === 0) {
+          throw new Error("switch_model requires a non-empty 'modelLabel'.");
+        }
+        const catalog = await getModelCatalog();
+        const modelConfig: ModelConfig | undefined = catalog.models.find(
+          (m: ModelConfig) => m.label === command.modelLabel,
+        );
+        if (modelConfig === undefined) {
+          throw new Error(`Unknown model: ${command.modelLabel}`);
+        }
+        const model: Model<"openai-responses"> = piModelFromConfig(modelConfig);
+        // Ensure the new model's API key is in the auth storage before switching
+        if (modelConfig.apiKey !== undefined) {
+          session.modelRegistry.authStorage.setRuntimeApiKey(model.provider, modelConfig.apiKey);
+        }
+        await session.setModel(model);
+        respond(ws, command.id, "switch_model", true);
         return;
       }
       case "compact": {

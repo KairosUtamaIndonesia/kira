@@ -13,11 +13,11 @@ import { join } from "node:path";
 import type { AgentThreadContext } from "./agent-thread-context";
 
 import { setCurrentProjectId } from "./agent-thread-context";
-import { readAgentProviderApiKey, readOptionalEnv } from "./env";
+import { readOptionalEnv } from "./env";
 import guardrailsExtension from "./extensions/guardrails";
 import memoryExtension from "./extensions/memory";
 import { AGENT_ROOT } from "./extensions/memory/paths.js";
-import { getDefaultModel } from "./model-catalog";
+import { fetchAndCacheCatalog, getDefaultModel } from "./model-catalog";
 import { piModelFromConfig } from "./pi-model";
 import { ToolUiBroker } from "./tool-ui-broker";
 import { createAskUserTool } from "./tools/ask-user-tool";
@@ -47,13 +47,17 @@ export function getOrCreateAgentSession(context: AgentThreadContext): Promise<Ag
 }
 
 async function buildAgentSession(context: AgentThreadContext): Promise<AgentSessionHost> {
-  const apiKey = readAgentProviderApiKey();
+  // Fetch the model catalog from the Rust backend before any consumer needs it.
+  await fetchAndCacheCatalog();
+
+  const modelConfig = getDefaultModel();
+  const model = piModelFromConfig(modelConfig);
+  const apiKey = modelConfig.apiKey;
   if (apiKey === undefined) {
-    throw new Error("KIRA_AGENT_PROVIDER_API_KEY must be set to run the agent.");
+    throw new Error("No API key configured for the default model. Add one in the model config.");
   }
 
   const toolUiBroker = new ToolUiBroker();
-  const model = piModelFromConfig(getDefaultModel());
   const authStorage = AuthStorage.inMemory();
   authStorage.setRuntimeApiKey(model.provider, apiKey);
 

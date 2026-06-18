@@ -2,8 +2,7 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 
 import { Agent } from "@earendil-works/pi-agent-core";
 
-import { readAgentProviderApiKey } from "./env";
-import { getDefaultModel } from "./model-catalog";
+import { fetchAndCacheCatalog, getDefaultModel } from "./model-catalog";
 import { piModelFromConfig } from "./pi-model";
 
 const TITLE_SYSTEM_PROMPT = [
@@ -25,15 +24,18 @@ type GenerateAgentThreadTitleOutput = {
 async function generateAgentThreadTitle(
   input: GenerateAgentThreadTitleInput,
 ): Promise<GenerateAgentThreadTitleOutput> {
-  const apiKey = readAgentProviderApiKey();
+  await fetchAndCacheCatalog();
+
+  const modelConfig = getDefaultModel();
+  const apiKey = modelConfig.apiKey;
   if (apiKey === undefined) {
-    throw new Error("KIRA_AGENT_PROVIDER_API_KEY must be set to generate Agent Thread titles.");
+    throw new Error("No API key configured for the model. Add one in the model config.");
   }
 
   const agent = new Agent({
     initialState: {
       systemPrompt: TITLE_SYSTEM_PROMPT,
-      model: piModelFromConfig(getDefaultModel()),
+      model: piModelFromConfig(modelConfig),
     },
     getApiKey: () => apiKey,
   });

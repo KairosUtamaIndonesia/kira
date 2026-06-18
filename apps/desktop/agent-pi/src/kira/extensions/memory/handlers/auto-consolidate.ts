@@ -36,6 +36,7 @@ export async function triggerConsolidation(
   target: MemoryTarget,
   model: KiraModel,
   tools: AgentTool[],
+  apiKey: string,
   timeoutMs: number = 60000,
   toolTarget: ToolMemoryTarget = target,
 ): Promise<ConsolidationResult> {
@@ -51,6 +52,7 @@ export async function triggerConsolidation(
   try {
     await runMemoryPrompt(prompt, tools, {
       model,
+      apiKey,
       systemPrompt,
       timeoutMs,
     });
@@ -71,6 +73,7 @@ export function registerConsolidateCommand(
   store: MemoryStore,
   model: KiraModel,
   tools: AgentTool[],
+  apiKey: string,
   timeoutMs: number = 60000,
   projectStore: MemoryStore | undefined = undefined,
   projectName?: string | null,
@@ -127,6 +130,7 @@ export function registerConsolidateCommand(
             item.target,
             model,
             tools,
+            apiKey,
             manualTimeoutMs,
             item.toolTarget,
           );

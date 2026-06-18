@@ -65,6 +65,7 @@ function AgentThreadPanel({ api, params, onRename, isActive }: AgentThreadPanelP
     sendPrompt,
     abortPrompt,
     navigateTree,
+    switchModel,
   } = useAgentThreadConnection(params, { onAutoTitled: handleAutoTitled });
 
   const handleSendPrompt = useCallback(
@@ -229,6 +230,7 @@ function AgentThreadPanel({ api, params, onRename, isActive }: AgentThreadPanelP
             isCompacting={isCompacting}
             sendPrompt={handleSendPrompt}
             runSlashCommandAction={runSlashCommandAction}
+            switchModel={switchModel}
             isDropTargetActive={isDraggingFile}
             editingMessageId={editingMessageId}
             abortPrompt={abortPrompt}
