@@ -41,6 +41,10 @@ fn greet(name: &str) -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 #[allow(clippy::too_many_lines)]
 pub fn run() -> tauri::Result<()> {
+    // Load .env file if present (local dev builds).
+    // Ignores errors — missing file is fine in production.
+    let _ = dotenvy::dotenv();
+
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init());
