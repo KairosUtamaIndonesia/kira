@@ -23,13 +23,21 @@ COPY . .
 
 RUN bun run turbo build --filter=@kira/cloud
 
+
+# ---- Runner stage ----
+# Use the same Alpine base as deps/builder for consistency.
 FROM node:22-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=3000
+ENV HOST=0.0.0.0
 
-RUN addgroup --system --gid 1001 nodejs \
+# Install curl for health checks. node:22-alpine ships BusyBox wget which does
+# not support --spider and can fail on IPv6 localhost resolution.  curl is more
+# reliable for container health checks.
+RUN apk add --no-cache curl \
+  && addgroup --system --gid 1001 nodejs \
   && adduser --system --uid 1001 kira
 
 # The Nitro node-server output is self-contained (server + bundled deps + static
@@ -40,7 +48,10 @@ USER kira
 
 EXPOSE 3000
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1
+# Use 127.0.0.1 (not localhost) to avoid IPv6 resolution mismatches with the
+# server binding on 0.0.0.0.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD curl -f http://127.0.0.1:3000/api/health || exit 1
 
 CMD ["node", ".output/server/index.mjs"]
+
