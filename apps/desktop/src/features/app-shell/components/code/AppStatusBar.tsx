@@ -14,7 +14,7 @@ function AppStatusBar({ activeWorkspace }: AppStatusBarProps) {
   const agentThreadRuntimeState = useAgentThreadRuntimeState();
 
   return (
-    <footer className="flex items-center justify-between bg-background px-3 text-muted-foreground">
+    <footer className="flex items-center justify-between bg-background px-3 text-xs text-muted-foreground">
       <div className="flex items-center gap-3">
         <span>{statusLabel(activeWorkspace)}</span>
         <AgentThreadStatusIndicator state={agentThreadRuntimeState} />
@@ -31,7 +31,7 @@ function AgentThreadStatusIndicator({ state }: { state: AgentThreadRuntimeState 
 
   if (state.status === "starting") {
     return (
-      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+      <span className="flex items-center gap-1 text-muted-foreground">
         <Loader2 aria-hidden="true" className="size-3 animate-spin" />
         Agent runtime starting…
       </span>
@@ -40,31 +40,29 @@ function AgentThreadStatusIndicator({ state }: { state: AgentThreadRuntimeState 
 
   if (state.status === "connecting") {
     return (
-      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+      <span className="flex items-center gap-1 text-muted-foreground">
         <Loader2 aria-hidden="true" className="size-3 animate-spin" />
         Agent runtime connecting…
       </span>
     );
   }
 
-  if (state.status === "ready" || state.status === "sending") {
+  if (state.status === "ready") {
+    return;
+  }
+
+  if (state.status === "sending") {
     return (
-      <span className="text-xs text-muted-foreground">
-        {state.status === "sending" ? (
-          <span className="flex items-center gap-1">
-            <Loader2 aria-hidden="true" className="size-3 animate-spin" />
-            {state.baseUrl}
-          </span>
-        ) : (
-          state.baseUrl
-        )}
+      <span className="flex items-center gap-1 text-muted-foreground">
+        <Loader2 aria-hidden="true" className="size-3 animate-spin" />
+        Agent runtime active…
       </span>
     );
   }
 
   if (state.status === "error") {
     return (
-      <span className="max-w-80 truncate text-xs text-destructive" role="alert">
+      <span className="max-w-80 truncate text-destructive" role="alert">
         {state.message}
       </span>
     );
