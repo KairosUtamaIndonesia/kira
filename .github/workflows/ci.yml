@@ -18,6 +18,9 @@ jobs:
     name: Check
     runs-on: ubuntu-latest
 
+    env:
+      KIRA_CLOUD_URL: ${{ vars.KIRA_CLOUD_URL }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
