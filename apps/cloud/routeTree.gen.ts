@@ -16,6 +16,7 @@ import { Route as AccessRouteImport } from './app/access'
 import { Route as ConsoleRouteImport } from './app/_console'
 import { Route as IndexRouteImport } from './app/index'
 import { Route as OrgIndexRouteImport } from './app/org/index'
+import { Route as ApiHealthRouteImport } from './app/api/health'
 import { Route as ConsoleUsersRouteImport } from './app/_console/users'
 import { Route as ConsoleSettingsRouteImport } from './app/_console/settings'
 import { Route as ConsoleDashboardRouteImport } from './app/_console/dashboard'
@@ -64,6 +65,11 @@ const IndexRoute = IndexRouteImport.update({
 const OrgIndexRoute = OrgIndexRouteImport.update({
   id: '/org/',
   path: '/org/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiHealthRoute = ApiHealthRouteImport.update({
+  id: '/api/health',
+  path: '/api/health',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConsoleUsersRoute = ConsoleUsersRouteImport.update({
@@ -158,6 +164,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof ConsoleDashboardRoute
   '/settings': typeof ConsoleSettingsRoute
   '/users': typeof ConsoleUsersRoute
+  '/api/health': typeof ApiHealthRoute
   '/org/': typeof OrgIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/desktop/models': typeof ApiDesktopModelsRoute
@@ -180,6 +187,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof ConsoleDashboardRoute
   '/settings': typeof ConsoleSettingsRoute
   '/users': typeof ConsoleUsersRoute
+  '/api/health': typeof ApiHealthRoute
   '/org': typeof OrgIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/desktop/models': typeof ApiDesktopModelsRoute
@@ -205,6 +213,7 @@ export interface FileRoutesById {
   '/_console/dashboard': typeof ConsoleDashboardRoute
   '/_console/settings': typeof ConsoleSettingsRoute
   '/_console/users': typeof ConsoleUsersRoute
+  '/api/health': typeof ApiHealthRoute
   '/org/': typeof OrgIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/desktop/models': typeof ApiDesktopModelsRoute
@@ -230,6 +239,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/settings'
     | '/users'
+    | '/api/health'
     | '/org/'
     | '/api/auth/$'
     | '/api/desktop/models'
@@ -252,6 +262,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/settings'
     | '/users'
+    | '/api/health'
     | '/org'
     | '/api/auth/$'
     | '/api/desktop/models'
@@ -276,6 +287,7 @@ export interface FileRouteTypes {
     | '/_console/dashboard'
     | '/_console/settings'
     | '/_console/users'
+    | '/api/health'
     | '/org/'
     | '/api/auth/$'
     | '/api/desktop/models'
@@ -298,6 +310,7 @@ export interface RootRouteChildren {
   InvitationAcceptedRoute: typeof InvitationAcceptedRoute
   SignInRoute: typeof SignInRoute
   OrgOrganizationIdRouteRoute: typeof OrgOrganizationIdRouteRouteWithChildren
+  ApiHealthRoute: typeof ApiHealthRoute
   OrgIndexRoute: typeof OrgIndexRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiDesktopModelsRoute: typeof ApiDesktopModelsRoute
@@ -353,6 +366,13 @@ declare module '@tanstack/react-router' {
       path: '/org'
       fullPath: '/org/'
       preLoaderRoute: typeof OrgIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/health': {
+      id: '/api/health'
+      path: '/api/health'
+      fullPath: '/api/health'
+      preLoaderRoute: typeof ApiHealthRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_console/users': {
@@ -515,6 +535,7 @@ const rootRouteChildren: RootRouteChildren = {
   InvitationAcceptedRoute: InvitationAcceptedRoute,
   SignInRoute: SignInRoute,
   OrgOrganizationIdRouteRoute: OrgOrganizationIdRouteRouteWithChildren,
+  ApiHealthRoute: ApiHealthRoute,
   OrgIndexRoute: OrgIndexRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiDesktopModelsRoute: ApiDesktopModelsRoute,
