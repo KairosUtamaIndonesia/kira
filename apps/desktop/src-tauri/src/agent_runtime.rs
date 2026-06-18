@@ -1,4 +1,4 @@
-use std::{env, net::TcpListener, path::PathBuf, time::Duration};
+use std::{env, net::TcpListener, path::{Path, PathBuf}, time::Duration};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -240,6 +240,8 @@ pub enum AgentRuntimeError {
     QueryContextUsage(String),
     #[error("Agent runtime directory was not found: {path}")]
     RuntimeDirectoryMissing { path: String },
+    #[error("Agent runtime compiled binary not found: {path}")]
+    RuntimeBinaryMissing { path: String },
     #[error("failed to reserve an agent runtime port: {0}")]
     ReservePort(String),
     #[error("failed to start agent runtime: {reason}")]
@@ -669,22 +671,21 @@ async fn start_app_runtime(store: PersistenceStore) -> Result<AppAgentRuntime, A
     });
     let backend_url = format!("http://{AGENT_RUNTIME_HOST}:{backend_actual_port}");
 
-    let mut command = Command::new("bun");
-    match mode {
+    let mut command = match mode {
         AgentRuntimeLaunchMode::Dev => {
-            command
-                .arg("run")
-                .arg("dev")
-                .arg("--")
-                .arg("--port")
-                .arg(port.to_string());
+            let mut cmd = Command::new("bun");
+            cmd.current_dir(&runtime_dir);
+            cmd.arg("run").arg("dev").arg("--").arg("--port").arg(port.to_string());
+            cmd
         }
         AgentRuntimeLaunchMode::Built => {
-            command.arg("dist/server.mjs");
+            let binary_path = agent_pi_binary_path(&runtime_dir)?;
+            let mut cmd = Command::new(&binary_path);
+            cmd.arg("--port").arg(port.to_string());
+            cmd
         }
-    }
+    };
     command
-        .current_dir(&runtime_dir)
         .env("HOST", AGENT_RUNTIME_HOST)
         .env("HOSTNAME", AGENT_RUNTIME_HOST)
         .env("PORT", port.to_string())
@@ -703,7 +704,7 @@ async fn start_app_runtime(store: PersistenceStore) -> Result<AppAgentRuntime, A
         .spawn()
         .map_err(|error| AgentRuntimeError::StartFailed {
             reason: format!(
-                "failed to spawn Bun in `{}`: {error}",
+                "failed to spawn agent runtime in `{}`: {error}",
                 runtime_dir.display()
             ),
         })?;
@@ -778,6 +779,21 @@ fn validate_health_response(port: u16, health: &HealthResponse) -> Result<(), Ag
         });
     }
     Ok(())
+}
+
+fn agent_pi_binary_path(runtime_dir: &Path) -> Result<PathBuf, AgentRuntimeError> {
+    let binary_name = if cfg!(target_os = "windows") {
+        "kira-agent-pi.exe"
+    } else {
+        "kira-agent-pi"
+    };
+    let path = runtime_dir.join("dist").join(binary_name);
+    if !path.is_file() {
+        return Err(AgentRuntimeError::RuntimeBinaryMissing {
+            path: path.display().to_string(),
+        });
+    }
+    Ok(path)
 }
 
 fn resolve_runtime_dir() -> Result<PathBuf, AgentRuntimeError> {

@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "bun run build",
+    "beforeBuildCommand": "cd agent-pi && bun run compile && cd .. && bun run build",
     "frontendDist": "../dist"
   },
   "app": {
