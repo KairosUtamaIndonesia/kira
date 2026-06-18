@@ -520,10 +520,16 @@ function humanizeToolName(name: string) {
     edit: "Edit file",
     bash: "Run command",
     grep: "Search files",
+    find: "Find files",
     glob: "Find files",
+    ls: "List directory",
     task: "Delegate task",
     activate_skill: "Activate skill",
     ask_user: "Ask user",
+    memory: "Memory",
+    memory_search: "Memory search",
+    session_search: "Session search",
+    skill: "Skill",
   };
 
   return labels[name];

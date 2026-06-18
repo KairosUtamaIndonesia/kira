@@ -9,7 +9,12 @@ import { AgentThreadToolDefault } from "./AgentThreadToolDefault";
 import { AgentThreadToolEdit } from "./AgentThreadToolEdit";
 import { AgentThreadToolGlob } from "./AgentThreadToolGlob";
 import { AgentThreadToolGrep } from "./AgentThreadToolGrep";
+import { AgentThreadToolLs } from "./AgentThreadToolLs";
+import { AgentThreadToolMemory } from "./AgentThreadToolMemory";
+import { AgentThreadToolMemorySearch } from "./AgentThreadToolMemorySearch";
 import { AgentThreadToolRead } from "./AgentThreadToolRead";
+import { AgentThreadToolSessionSearch } from "./AgentThreadToolSessionSearch";
+import { AgentThreadToolSkill } from "./AgentThreadToolSkill";
 import { AgentThreadToolTask } from "./AgentThreadToolTask";
 import { AgentThreadToolWrite } from "./AgentThreadToolWrite";
 
@@ -25,9 +30,15 @@ const toolComponents: Record<string, ToolComponent> = {
   edit: AgentThreadToolEdit,
   bash: AgentThreadToolBash,
   grep: AgentThreadToolGrep,
+  find: AgentThreadToolGlob,
   glob: AgentThreadToolGlob,
+  ls: AgentThreadToolLs,
   task: AgentThreadToolTask,
   ask_user: AgentThreadToolAskUser,
+  memory: AgentThreadToolMemory,
+  memory_search: AgentThreadToolMemorySearch,
+  session_search: AgentThreadToolSessionSearch,
+  skill: AgentThreadToolSkill,
 };
 
 function toolComponentForName(name: string): ToolComponent {
