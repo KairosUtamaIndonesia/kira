@@ -1,9 +1,7 @@
 use std::path::Path;
 
 fn main() {
-    // Silence the "unexpected cfg condition" lint for Tauri's built-in cfgs.
-    println!("cargo::rustc-check-cfg=cfg(mobile)");
-    println!("cargo::rustc-check-cfg=cfg(desktop)");
+    tauri_build::build();
 
     // CI sets this directly — nothing to do.
     if std::env::var("KIRA_CLOUD_URL").is_ok() {
