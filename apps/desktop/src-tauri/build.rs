@@ -3,6 +3,10 @@ use std::path::Path;
 fn main() {
     tauri_build::build();
 
+    // Tell Cargo to re-run this script when .env or KIRA_CLOUD_URL changes.
+    println!("cargo:rerun-if-changed=.env");
+    println!("cargo:rerun-if-env-changed=KIRA_CLOUD_URL");
+
     // CI sets this directly — nothing to do.
     if std::env::var("KIRA_CLOUD_URL").is_ok() {
         return;
