@@ -806,10 +806,18 @@ fn agent_pi_binary_path() -> Result<PathBuf, AgentRuntimeError> {
         return Ok(dev_path);
     }
 
-    // 3. Production: next to the executable's resources/ directory
+    // 3. Production: Tauri bundles the resource glob `../agent-pi/dist/...`,
+    //    mapping the leading `..` segment to `_up_`, so the binary ships at
+    //    `<resource-dir>/_up_/agent-pi/dist/{binary}`. The resource dir sits
+    //    next to the executable on Windows/Linux and under `Contents/Resources`
+    //    in macOS app bundles.
     if let Ok(exe) = std::env::current_exe() {
         if let Some(exe_dir) = exe.parent() {
-            for sub in &["resources", "../Resources"] {
+            for sub in &[
+                "_up_/agent-pi/dist",
+                "resources/_up_/agent-pi/dist",
+                "../Resources/_up_/agent-pi/dist",
+            ] {
                 let path = exe_dir.join(sub).join(binary_name);
                 if path.is_file() {
                     return Ok(path);
@@ -820,7 +828,7 @@ fn agent_pi_binary_path() -> Result<PathBuf, AgentRuntimeError> {
 
     Err(AgentRuntimeError::RuntimeBinaryMissing {
         path: format!(
-            "{binary_name} (searched KIRA_AGENT_RUNTIME_DIR, dev dist/, and resources/)"
+            "{binary_name} (searched KIRA_AGENT_RUNTIME_DIR, dev dist/, and bundled _up_/agent-pi/dist/)"
         ),
     })
 }
