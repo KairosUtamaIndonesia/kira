@@ -147,5 +147,15 @@ pub fn run() -> tauri::Result<()> {
             browser::browser_close_orphans,
             browser::browser_panel_set_selector_mode
         ])
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())?
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::Exit = event {
+                if let Some(registry) =
+                    app_handle.try_state::<agent_runtime::AgentRuntimeRegistry>()
+                {
+                    agent_runtime::shutdown(registry.inner());
+                }
+            }
+        });
+    Ok(())
 }

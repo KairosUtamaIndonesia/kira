@@ -39,12 +39,25 @@ pub(crate) enum AgentRuntimeState {
 
 pub(crate) struct AppAgentRuntime {
     pub(crate) connection: RuntimeConnection,
-    _process: Child,
+    process: Child,
 }
 #[derive(Clone)]
 pub(crate) struct RuntimeConnection {
     pub(crate) base_url: String,
     pub(crate) token: String,
+}
+
+/// Terminates the agent runtime child process during application shutdown.
+///
+/// Tauri does not run `Drop` for managed state when the process exits, so the
+/// child's `kill_on_drop` guard never fires. Without an explicit kill here the
+/// agent runtime keeps running after the desktop app window closes.
+pub(crate) fn shutdown(registry: &AgentRuntimeRegistry) {
+    let mut state = tauri::async_runtime::block_on(registry.runtime.lock());
+    if let AgentRuntimeState::Running(runtime) = &mut *state {
+        let _kill_result = runtime.process.start_kill();
+    }
+    *state = AgentRuntimeState::NotStarted;
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -715,7 +728,7 @@ async fn start_app_runtime(store: PersistenceStore) -> Result<AppAgentRuntime, A
             base_url: runtime_base_url(port),
             token,
         },
-        _process: process,
+        process,
     })
 }
 
