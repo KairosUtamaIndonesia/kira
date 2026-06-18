@@ -30,6 +30,8 @@ pub enum SigninError {
     StorageFailed(String),
     #[error("Failed to read local sign-in state: {0}")]
     LocalState(String),
+    #[error(transparent)]
+    CloudConfig(#[from] crate::admin_api::CloudConfigError),
 }
 
 impl serde::Serialize for SigninError {
@@ -241,7 +243,7 @@ pub async fn desktop_signin_begin(
     let state = uuid::Uuid::new_v4().to_string();
     let redirect_uri = format!("http://127.0.0.1:{port}/callback");
 
-    let signin_url_base = format!("{}/desktop-signin", crate::admin_api::cloud_base_url());
+    let signin_url_base = format!("{}/desktop-signin", crate::admin_api::cloud_base_url()?);
     let mut signin_url = reqwest::Url::parse(&signin_url_base)
         .map_err(|error| SigninError::UnexpectedResponse(error.to_string()))?;
     signin_url
@@ -267,10 +269,9 @@ pub async fn desktop_signin_begin(
         return Err(SigninError::StateMismatch);
     }
 
-    let client =
-        crate::admin_api::client().map_err(|error| SigninError::Unreachable(error.to_string()))?;
+    let client = crate::admin_api::client()?;
     let response = client
-        .post(format!("{}/api/desktop/signin/claim", crate::admin_api::cloud_base_url()))
+        .post(format!("{}/api/desktop/signin/claim", crate::admin_api::cloud_base_url()?))
         .json(&serde_json::json!({ "code": code }))
         .send()
         .await
