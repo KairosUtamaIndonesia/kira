@@ -86,7 +86,14 @@ function SoundChoiceRow({
         aria-label={isPlaying ? `${sound.label} is playing` : `Preview ${sound.label}`}
         aria-live="polite"
         onClick={() => {
-          void onPreview(sound);
+          void (async () => {
+            try {
+              await onPreview(sound);
+            } catch {
+              // Preview failure is cosmetic; playback errors are already surfaced
+              // by the notification settings provider for persistent failures.
+            }
+          })();
         }}
       >
         <span className="kira-icon-swap" data-state={isPlaying ? "playing" : "idle"}>

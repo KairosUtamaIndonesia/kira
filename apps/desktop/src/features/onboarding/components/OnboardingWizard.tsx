@@ -134,6 +134,8 @@ function renderStep(step: OnboardingStep) {
       return <SoundStep />;
     case "theme":
       return <ThemeStep />;
+    default:
+      throw new Error(`Unknown onboarding step: ${step satisfies never}`);
   }
 }
 
