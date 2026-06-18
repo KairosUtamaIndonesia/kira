@@ -16,6 +16,12 @@ WORKDIR /repo
 
 ENV SKIP_ENV_VALIDATION=1
 
+# VITE_* env vars are baked into the client bundle at build time. Pass the
+# public-facing URL so the client-side Better Auth instance knows where to send
+# requests.  Defaults to the local dev URL for local builds.
+ARG VITE_BETTER_AUTH_URL=https://cloud.kira.localhost
+ENV VITE_BETTER_AUTH_URL=$VITE_BETTER_AUTH_URL
+
 COPY --from=deps /repo/node_modules ./node_modules
 COPY --from=deps /repo/apps ./apps
 COPY --from=deps /repo/packages ./packages
