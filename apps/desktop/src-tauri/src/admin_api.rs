@@ -2,48 +2,23 @@
 //!
 //! All desktop-to-cloud calls go through [`client`] so the dev-environment
 //! transport quirks are handled in exactly one place.
+//!
+//! The cloud URL is baked into the binary at compile time via `KIRA_CLOUD_URL`.
+//! Set it in `.env` for local dev, or as a CI/repo variable in GitHub Actions.
 
-#[derive(Debug, thiserror::Error)]
-pub enum CloudConfigError {
-    #[error("KIRA_CLOUD_URL environment variable is not set. Set it in apps/desktop/src-tauri/.env or your shell.")]
-    MissingCloudUrl,
-    #[error("KIRA_CLOUD_URL is not a valid URL: {0}")]
-    InvalidCloudUrl(String),
-    #[error("Failed to build HTTP client: {0}")]
-    HttpClient(String),
+/// The cloud admin URL, embedded at compile time via `env!("KIRA_CLOUD_URL")`.
+/// Set `KIRA_CLOUD_URL` in `.env` or your shell before building.
+pub fn cloud_base_url() -> &'static str {
+    env!("KIRA_CLOUD_URL")
 }
 
-impl serde::Serialize for CloudConfigError {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(&self.to_string())
-    }
-}
-
-/// Returns the cloud base URL from the `KIRA_CLOUD_URL` env var.
-///
-/// # Errors
-///
-/// Returns [`CloudConfigError::MissingCloudUrl`] if the env var is not set,
-/// or [`CloudConfigError::InvalidCloudUrl`] if it is not a valid URL.
-pub fn cloud_base_url() -> Result<String, CloudConfigError> {
-    let raw = std::env::var("KIRA_CLOUD_URL").map_err(|_| CloudConfigError::MissingCloudUrl)?;
-    reqwest::Url::parse(&raw)
-        .map(|url| url.to_string())
-        .map_err(|e| CloudConfigError::InvalidCloudUrl(format!("{e}: {raw}")))
-}
-
-/// Returns the hostname of the cloud app, derived from the cloud base URL.
-///
-/// # Errors
-///
-/// Returns [`CloudConfigError`] if `KIRA_CLOUD_URL` is missing or invalid.
-pub fn cloud_host() -> Result<String, CloudConfigError> {
-    let url = cloud_base_url()?;
-    reqwest::Url::parse(&url)
-        .map_err(|e| CloudConfigError::InvalidCloudUrl(e.to_string()))?
-        .host_str()
-        .map(str::to_owned)
-        .ok_or_else(|| CloudConfigError::InvalidCloudUrl(format!("no hostname in {url}")))
+/// The hostname of the cloud app, derived from [`cloud_base_url()`].
+#[allow(clippy::expect_used)]
+pub fn cloud_host() -> String {
+    let url = reqwest::Url::parse(cloud_base_url()).expect("KIRA_CLOUD_URL must be a valid URL");
+    url.host_str()
+        .expect("KIRA_CLOUD_URL must contain a hostname")
+        .to_owned()
 }
 
 /// Builds a `reqwest` client configured for the hosted cloud API.
@@ -62,18 +37,17 @@ pub fn cloud_host() -> Result<String, CloudConfigError> {
 /// # Errors
 ///
 /// Returns an error if the underlying TLS backend fails to initialize.
-pub fn client() -> Result<reqwest::Client, CloudConfigError> {
+#[allow(clippy::used_underscore_binding)]
+pub fn client() -> Result<reqwest::Client, reqwest::Error> {
     let builder = reqwest::Client::builder();
 
     #[cfg(debug_assertions)]
     let builder = builder
         .resolve(
-            &cloud_host()?,
+            &cloud_host(),
             std::net::SocketAddr::from(([127, 0, 0, 1], 443)),
         )
         .danger_accept_invalid_certs(true);
 
-    builder
-        .build()
-        .map_err(|e| CloudConfigError::HttpClient(e.to_string()))
+    builder.build()
 }

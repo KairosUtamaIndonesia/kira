@@ -28,8 +28,6 @@ pub enum OrgConfigError {
     ParseFailed(String),
     #[error("API key not configured")]
     ApiKeyNotConfigured,
-    #[error(transparent)]
-    CloudConfig(#[from] crate::admin_api::CloudConfigError),
 }
 
 impl serde::Serialize for OrgConfigError {
@@ -43,9 +41,7 @@ impl IntoResponse for OrgConfigError {
         let status = match &self {
             OrgConfigError::ApiKeyNotConfigured => axum::http::StatusCode::UNAUTHORIZED,
             OrgConfigError::FetchFailed(_) => axum::http::StatusCode::BAD_GATEWAY,
-            OrgConfigError::ParseFailed(_) | OrgConfigError::CloudConfig(_) => {
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR
-            }
+            OrgConfigError::ParseFailed(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
         };
         (
             status,
@@ -59,11 +55,12 @@ pub async fn fetch_model_catalog() -> Result<ModelCatalog, OrgConfigError> {
     let api_key =
         crate::desktop_signin::stored_credential().ok_or(OrgConfigError::ApiKeyNotConfigured)?;
 
-    let client = crate::admin_api::client()?;
+    let client =
+        crate::admin_api::client().map_err(|e| OrgConfigError::FetchFailed(e.to_string()))?;
     let response = client
         .get(format!(
             "{}/api/desktop/models",
-            crate::admin_api::cloud_base_url()?
+            crate::admin_api::cloud_base_url()
         ))
         .header("x-api-key", api_key)
         .send()
