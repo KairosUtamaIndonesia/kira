@@ -826,6 +826,7 @@ fn validate_shell_path(path_str: &str) -> Result<(), SettingsError> {
     // Non-shell binaries will either fail or ignore -c, producing no matching output.
     let mut cmd = std::process::Command::new(path);
     cmd.arg("-c").arg(format!("echo {SHELL_TEST_MARKER}"));
+    crate::process_ext::hide_console_window(&mut cmd);
     let output = cmd.output();
 
     match output {

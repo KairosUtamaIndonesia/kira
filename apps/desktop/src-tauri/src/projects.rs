@@ -1785,14 +1785,13 @@ fn is_missing_git_repository_error(error: &ProjectError) -> bool {
 }
 
 fn run_git(cwd: &Path, operation: &str, args: &[&str]) -> Result<String, ProjectError> {
-    let output = Command::new("git")
-        .args(args)
-        .current_dir(cwd)
-        .output()
-        .map_err(|error| ProjectError::GitCommand {
-            operation: operation.to_string(),
-            message: error.to_string(),
-        })?;
+    let mut command = Command::new("git");
+    command.args(args).current_dir(cwd);
+    crate::process_ext::hide_console_window(&mut command);
+    let output = command.output().map_err(|error| ProjectError::GitCommand {
+        operation: operation.to_string(),
+        message: error.to_string(),
+    })?;
     if output.status.success() {
         return Ok(String::from_utf8_lossy(&output.stdout).to_string());
     }

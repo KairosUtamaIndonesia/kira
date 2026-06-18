@@ -34,7 +34,7 @@
       "icons/icon.ico"
     ],
     "createUpdaterArtifacts": true,
-    "resources": ["../agent-pi/dist/kira-agent-pi*"]
+    "resources": ["../agent-pi/dist/kira-agent-pi*", "../agent-pi/dist/package.json"]
   },
   "plugins": {
     "updater": {

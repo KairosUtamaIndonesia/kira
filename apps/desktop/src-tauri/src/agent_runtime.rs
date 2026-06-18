@@ -1,8 +1,5 @@
 use std::{env, net::TcpListener, path::PathBuf, time::Duration};
 
-#[cfg(target_os = "windows")]
-use std::os::windows::process::CommandExt;
-
 use axum::{routing::get, Json, Router};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
@@ -42,12 +39,25 @@ pub(crate) enum AgentRuntimeState {
 
 pub(crate) struct AppAgentRuntime {
     pub(crate) connection: RuntimeConnection,
-    _process: Child,
+    process: Child,
 }
 #[derive(Clone)]
 pub(crate) struct RuntimeConnection {
     pub(crate) base_url: String,
     pub(crate) token: String,
+}
+
+/// Terminates the agent runtime child process during application shutdown.
+///
+/// Tauri does not run `Drop` for managed state when the process exits, so the
+/// child's `kill_on_drop` guard never fires. Without an explicit kill here the
+/// agent runtime keeps running after the desktop app window closes.
+pub(crate) fn shutdown(registry: &AgentRuntimeRegistry) {
+    let mut state = tauri::async_runtime::block_on(registry.runtime.lock());
+    if let AgentRuntimeState::Running(runtime) = &mut *state {
+        let _kill_result = runtime.process.start_kill();
+    }
+    *state = AgentRuntimeState::NotStarted;
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -674,7 +684,11 @@ async fn start_app_runtime(store: PersistenceStore) -> Result<AppAgentRuntime, A
             let runtime_dir = resolve_runtime_dir()?;
             let mut cmd = Command::new("bun");
             cmd.current_dir(&runtime_dir);
-            cmd.arg("run").arg("dev").arg("--").arg("--port").arg(port.to_string());
+            cmd.arg("run")
+                .arg("dev")
+                .arg("--")
+                .arg("--port")
+                .arg(port.to_string());
             cmd
         }
         AgentRuntimeLaunchMode::Built => {
@@ -695,21 +709,16 @@ async fn start_app_runtime(store: PersistenceStore) -> Result<AppAgentRuntime, A
     if let Some(shell_path) = crate::settings::agent_shell_path(store.pool()).await {
         command.env("KIRA_AGENT_SHELL_PATH", shell_path);
     }
-    #[cfg(target_os = "windows")]
-    {
-        command.as_std_mut().creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-    }
-    let mut process = command
-        .spawn()
-        .map_err(|error| {
-            let location = match mode {
-                AgentRuntimeLaunchMode::Dev => "agent-pi directory",
-                AgentRuntimeLaunchMode::Built => "binary",
-            };
-            AgentRuntimeError::StartFailed {
-                reason: format!("failed to spawn agent runtime {location}: {error}"),
-            }
-        })?;
+    crate::process_ext::hide_console_window(command.as_std_mut());
+    let mut process = command.spawn().map_err(|error| {
+        let location = match mode {
+            AgentRuntimeLaunchMode::Dev => "agent-pi directory",
+            AgentRuntimeLaunchMode::Built => "binary",
+        };
+        AgentRuntimeError::StartFailed {
+            reason: format!("failed to spawn agent runtime {location}: {error}"),
+        }
+    })?;
     if let Err(error) = wait_for_health(port).await {
         let _kill_result = process.kill().await;
         return Err(error);
@@ -719,7 +728,7 @@ async fn start_app_runtime(store: PersistenceStore) -> Result<AppAgentRuntime, A
             base_url: runtime_base_url(port),
             token,
         },
-        _process: process,
+        process,
     })
 }
 
@@ -806,10 +815,18 @@ fn agent_pi_binary_path() -> Result<PathBuf, AgentRuntimeError> {
         return Ok(dev_path);
     }
 
-    // 3. Production: next to the executable's resources/ directory
+    // 3. Production: Tauri bundles the resource glob `../agent-pi/dist/...`,
+    //    mapping the leading `..` segment to `_up_`, so the binary ships at
+    //    `<resource-dir>/_up_/agent-pi/dist/{binary}`. The resource dir sits
+    //    next to the executable on Windows/Linux and under `Contents/Resources`
+    //    in macOS app bundles.
     if let Ok(exe) = std::env::current_exe() {
         if let Some(exe_dir) = exe.parent() {
-            for sub in &["resources", "../Resources"] {
+            for sub in &[
+                "_up_/agent-pi/dist",
+                "resources/_up_/agent-pi/dist",
+                "../Resources/_up_/agent-pi/dist",
+            ] {
                 let path = exe_dir.join(sub).join(binary_name);
                 if path.is_file() {
                     return Ok(path);
@@ -820,7 +837,7 @@ fn agent_pi_binary_path() -> Result<PathBuf, AgentRuntimeError> {
 
     Err(AgentRuntimeError::RuntimeBinaryMissing {
         path: format!(
-            "{binary_name} (searched KIRA_AGENT_RUNTIME_DIR, dev dist/, and resources/)"
+            "{binary_name} (searched KIRA_AGENT_RUNTIME_DIR, dev dist/, and bundled _up_/agent-pi/dist/)"
         ),
     })
 }
