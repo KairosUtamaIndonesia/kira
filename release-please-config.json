@@ -5,7 +5,6 @@
   "packages": {
     ".": {
       "release-type": "simple",
-      "release-as": "3.0.0",
       "package-name": "kira",
       "changelog-path": "CHANGELOG.md",
       "changelog-sections": [
@@ -24,7 +23,7 @@
       ],
       "extra-files": [
         { "type": "json", "path": "package.json", "jsonpath": "$.version" },
-        { "type": "json", "path": "apps/admin/package.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "apps/cloud/package.json", "jsonpath": "$.version" },
         { "type": "json", "path": "apps/desktop/package.json", "jsonpath": "$.version" },
         {
           "type": "json",
