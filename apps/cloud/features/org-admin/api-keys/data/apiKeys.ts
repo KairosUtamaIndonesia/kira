@@ -82,6 +82,8 @@ async function listOrgApiKeys(organizationId: string): Promise<OrganizationApiKe
     lastUsedAt: formatDate(row.lastRequest),
     expiresAt: formatDate(row.expiresAt),
     status: apiKeyStatus(row.enabled, row.expiresAt),
+    userName: undefined,
+    userEmail: undefined,
   }));
 }
 
