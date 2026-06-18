@@ -26,6 +26,7 @@ type ModelFormValues = {
   contextWindow: number;
   maxOutputTokens: number;
   isDefault: boolean;
+  apiKey: string | undefined;
 };
 
 const blankModel: ModelFormValues = {
@@ -36,6 +37,7 @@ const blankModel: ModelFormValues = {
   contextWindow: 0,
   maxOutputTokens: 0,
   isDefault: false,
+  apiKey: undefined,
 };
 
 function fieldErrors(errors: Array<{ message: string } | undefined>) {
@@ -99,6 +101,7 @@ function ModelForm({ organizationId, model, onDone }: ModelFormProperties) {
           contextWindow: model.contextWindow,
           maxOutputTokens: model.maxOutputTokens,
           isDefault: model.isDefault,
+          apiKey: model.apiKey,
         };
 
   const form = useForm({
@@ -224,6 +227,21 @@ function ModelForm({ organizationId, model, onDone }: ModelFormProperties) {
               onBlur={field.handleBlur}
               onChange={(value) => field.handleChange(value === "" ? Number.NaN : Number(value))}
               placeholder="64000"
+            />
+          )}
+        </form.Field>
+        <form.Field name="apiKey">
+          {(field) => (
+            <LabeledInput
+              name={field.name}
+              label="API key"
+              type="password"
+              value={field.state.value ?? ""}
+              invalid={field.state.meta.isTouched && !field.state.meta.isValid}
+              errors={field.state.meta.errors}
+              onBlur={field.handleBlur}
+              onChange={field.handleChange}
+              placeholder="Optional router auth key"
             />
           )}
         </form.Field>

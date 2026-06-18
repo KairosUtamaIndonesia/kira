@@ -4,8 +4,7 @@ use std::process::Command;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::desktop_signin::stored_credential;
-use crate::org_config::get_model_catalog;
+use crate::org_config::fetch_model_catalog;
 use crate::persistence::PersistenceStore;
 
 #[derive(Debug, Deserialize)]
@@ -345,7 +344,7 @@ pub struct StagedDiffLogResult {
 #[tauri::command]
 pub async fn source_control_staged_diff_log(
     input: SourceControlProjectInput,
-    store: tauri::State<'_, PersistenceStore>,
+    _store: tauri::State<'_, PersistenceStore>,
 ) -> Result<StagedDiffLogResult, SourceControlError> {
     let folder_path = validate_project_folder(&input.folder_path)?;
 
@@ -361,9 +360,7 @@ pub async fn source_control_staged_diff_log(
         &["log", "--oneline", "-10", "--no-decorate"],
     )?;
 
-    let api_key = stored_credential().ok_or(SourceControlError::MissingApiKey)?;
-
-    let catalog = get_model_catalog(store.pool())
+    let catalog = fetch_model_catalog()
         .await
         .map_err(|e| SourceControlError::OrgConfig(e.to_string()))?;
 
@@ -373,10 +370,15 @@ pub async fn source_control_staged_diff_log(
         .find(|m| m.is_default)
         .ok_or(SourceControlError::MissingDefaultModel)?;
 
+    let provider_api_key = default_model
+        .api_key
+        .clone()
+        .ok_or(SourceControlError::MissingApiKey)?;
+
     Ok(StagedDiffLogResult {
         staged_diff,
         recent_log,
-        provider_api_key: api_key,
+        provider_api_key,
         provider_base_url: default_model.provider_base_url.clone(),
         upstream_model_id: default_model.upstream_model_id.clone(),
     })

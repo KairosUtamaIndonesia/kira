@@ -20,6 +20,7 @@ function toOrganizationModel(row: typeof organizationModels.$inferSelect): Organ
     contextWindow: row.contextWindow,
     maxOutputTokens: row.maxOutputTokens,
     isDefault: row.isDefault,
+    apiKey: row.apiKey ?? undefined,
     createdAt: row.createdAt.toISOString().slice(0, 10),
   };
 }
@@ -56,6 +57,8 @@ async function createOrganizationModel(
         contextWindow: input.contextWindow,
         maxOutputTokens: input.maxOutputTokens,
         isDefault: input.isDefault,
+        // oxlint-disable-next-line unicorn/no-null — null explicitly sets SQL column to NULL
+        apiKey: input.apiKey ?? null,
       })
       .returning();
 
@@ -88,6 +91,8 @@ async function updateOrganizationModel(
         contextWindow: input.contextWindow,
         maxOutputTokens: input.maxOutputTokens,
         isDefault: input.isDefault,
+        // oxlint-disable-next-line unicorn/no-null — null explicitly sets SQL column to NULL
+        apiKey: input.apiKey ?? null,
         updatedAt: new Date(),
       })
       .where(

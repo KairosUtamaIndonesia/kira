@@ -8,6 +8,7 @@ const organizationModelSchema = z.object({
   contextWindow: z.number().int().positive("Context window must be a positive integer."),
   maxOutputTokens: z.number().int().positive("Max output tokens must be a positive integer."),
   isDefault: z.boolean(),
+  apiKey: z.union([z.string().trim(), z.undefined()]),
 });
 
 const createOrganizationModelSchema = z.object({

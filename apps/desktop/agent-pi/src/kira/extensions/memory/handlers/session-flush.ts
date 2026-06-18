@@ -21,6 +21,7 @@ export function setupSessionFlush(
   config: MemoryConfig,
   model: KiraModel,
   tools: AgentTool[],
+  apiKey: string,
 ): void {
   let userTurnCount = 0;
 
@@ -48,6 +49,7 @@ export function setupSessionFlush(
     try {
       await runMemoryPrompt(userPrompt, tools, {
         model,
+        apiKey,
         systemPrompt: FLUSH_PROMPT,
         timeoutMs,
       });

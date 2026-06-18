@@ -20,6 +20,7 @@ function toOrganizationModel(row: typeof organizationModels.$inferSelect): Organ
     contextWindow: row.contextWindow,
     maxOutputTokens: row.maxOutputTokens,
     isDefault: row.isDefault,
+    apiKey: row.apiKey ?? undefined,
     createdAt: row.createdAt.toISOString().slice(0, 10),
   };
 }

@@ -133,6 +133,7 @@ export function setupCorrectionDetector(
   dbManager: DatabaseManager | undefined = undefined,
   model: KiraModel,
   tools: AgentTool[],
+  apiKey: string,
   projectId?: string | undefined,
 ): void {
   if (!config.correctionDetection) return;
@@ -205,6 +206,7 @@ export function setupCorrectionDetector(
 
       const output = await runMemoryPrompt(userPrompt.join("\n"), tools, {
         model,
+        apiKey,
         systemPrompt: CORRECTION_SAVE_PROMPT,
         timeoutMs: 30000,
       });

@@ -413,7 +413,7 @@ function eventId(event: ObjectRecord) {
 }
 
 function errorFromRecord(id: string, value: ObjectRecord): AgentThreadErrorDisplay | undefined {
-  const message = firstString(value, ["error", "errorMessage"]);
+  const message = firstString(value, ["error", "errorMessage", "message"]);
   if (message === undefined) {
     return undefined;
   }

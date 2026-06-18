@@ -22,6 +22,7 @@ export function setupBackgroundReview(
   config: MemoryConfig,
   model: KiraModel,
   tools: AgentTool[],
+  apiKey: string,
 ): void {
   let turnsSinceReview = 0;
   let toolCallsSinceReview = 0;
@@ -109,6 +110,7 @@ export function setupBackgroundReview(
       try {
         const output = await runMemoryPrompt(userPrompt.join("\n"), tools, {
           model,
+          apiKey,
           systemPrompt: COMBINED_REVIEW_PROMPT,
           timeoutMs: 120_000,
         });

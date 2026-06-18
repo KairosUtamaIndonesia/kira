@@ -1,8 +1,10 @@
 use std::{env, net::TcpListener, path::PathBuf, time::Duration};
 
+use axum::{routing::get, Json, Router};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use tokio::net::TcpListener as TokioTcpListener;
 use tokio::{
     process::{Child, Command},
     sync::Mutex,
@@ -621,6 +623,11 @@ pub async fn fetch_bundled_skills(
     Ok(parsed.skills)
 }
 
+async fn backend_models_handler(
+) -> Result<Json<crate::org_config::ModelCatalog>, crate::org_config::OrgConfigError> {
+    crate::org_config::fetch_model_catalog().await.map(Json)
+}
+
 fn runtime_base_url(port: u16) -> String {
     format!("http://{AGENT_RUNTIME_HOST}:{port}")
 }
@@ -630,11 +637,35 @@ async fn start_app_runtime(store: PersistenceStore) -> Result<AppAgentRuntime, A
     let mode = resolve_launch_mode();
     let port = reserve_port()?;
     let token = generate_runtime_token();
-    let catalog = crate::org_config::get_or_refresh_model_catalog(store.pool())
+
+    // Validate cloud connectivity at startup — fail fast if unreachable
+    // Validate cloud connectivity at startup — fail fast if unreachable
+    crate::org_config::fetch_model_catalog()
         .await
         .map_err(|error| AgentRuntimeError::StartFailed {
             reason: format!("failed to fetch organization model catalog: {error}"),
         })?;
+
+    // Start a lightweight Axum server so agent-pi can fetch the model
+    // catalog on demand (enables model switching without restarts).
+    let backend_port = reserve_port()?;
+    let backend_router = Router::new().route("/api/org/models", get(backend_models_handler));
+    let backend_listener = TokioTcpListener::bind((AGENT_RUNTIME_HOST, backend_port))
+        .await
+        .map_err(|error| AgentRuntimeError::StartFailed {
+            reason: format!("failed to bind backend server: {error}"),
+        })?;
+    let backend_actual_port = backend_listener
+        .local_addr()
+        .map_err(|error| AgentRuntimeError::StartFailed {
+            reason: format!("failed to get backend server port: {error}"),
+        })?
+        .port();
+    tokio::spawn(async move {
+        axum::serve(backend_listener, backend_router).await.ok();
+    });
+    let backend_url = format!("http://{AGENT_RUNTIME_HOST}:{backend_actual_port}");
+
     let mut command = Command::new("bun");
     match mode {
         AgentRuntimeLaunchMode::Dev => {
@@ -656,18 +687,10 @@ async fn start_app_runtime(store: PersistenceStore) -> Result<AppAgentRuntime, A
         .env("PORT", port.to_string())
         .env("KIRA_AGENT_RUNTIME_TOKEN", &token)
         .env("KIRA_AGENT_PI_DATA_DIR", store.app_data_dir())
-        .env(
-            "KIRA_AGENT_MODEL_CATALOG",
-            serde_json::to_string(&catalog).map_err(|error| AgentRuntimeError::StartFailed {
-                reason: format!("failed to serialize model catalog: {error}"),
-            })?,
-        )
+        .env("KIRA_AGENT_BACKEND_URL", &backend_url)
         .kill_on_drop(true);
     if let Some(shell_path) = crate::settings::agent_shell_path(store.pool()).await {
         command.env("KIRA_AGENT_SHELL_PATH", shell_path);
-    }
-    if let Some(provider_api_key) = crate::desktop_signin::stored_credential() {
-        command.env("KIRA_AGENT_PROVIDER_API_KEY", provider_api_key);
     }
     let mut process = command
         .spawn()

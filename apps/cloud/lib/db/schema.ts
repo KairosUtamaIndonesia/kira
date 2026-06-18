@@ -59,6 +59,7 @@ const organizationModels = pgTable(
     providerBaseUrl: text("provider_base_url").notNull(),
     contextWindow: integer("context_window").notNull(),
     maxOutputTokens: integer("max_output_tokens").notNull(),
+    apiKey: text("api_key"),
     isDefault: boolean("is_default").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

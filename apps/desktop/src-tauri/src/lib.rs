@@ -81,7 +81,6 @@ pub fn run() -> tauri::Result<()> {
             agent_runtime::prepare_agent_thread,
             agent_runtime::start_agent_runtime,
             org_config::desktop_org_models_get,
-            org_config::desktop_org_models_refresh,
             editor::editor_file_read,
             editor::editor_file_delete,
             editor::editor_file_write,

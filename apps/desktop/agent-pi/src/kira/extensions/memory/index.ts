@@ -123,10 +123,15 @@ export default function memoryExtension(pi: ExtensionAPI) {
       })
     : undefined;
 
-  // Resolve LLM model and prepare memory tools for in-process prompt runners
+  // Resolve LLM model, API key, and prepare memory tools for in-process prompt runners
+  const defaultModelConfig = getDefaultModel();
   const memoryModel = config.llmModelOverride
-    ? piModelFromConfig({ ...getDefaultModel(), upstreamModelId: config.llmModelOverride })
-    : piModelFromConfig(getDefaultModel());
+    ? piModelFromConfig({ ...defaultModelConfig, upstreamModelId: config.llmModelOverride })
+    : piModelFromConfig(defaultModelConfig);
+  const memoryApiKey = defaultModelConfig.apiKey;
+  if (memoryApiKey === undefined) {
+    throw new Error("No API key configured for the default model. Add one in the model config.");
+  }
   const memoryToolDef = createMemoryToolDef(store, projectStore, dbManager, projectId);
   const memoryTools = [toolDefToAgentTool(memoryToolDef)];
 
@@ -174,10 +179,10 @@ export default function memoryExtension(pi: ExtensionAPI) {
   registerSkillTool(pi, skillStore);
 
   // ── 5. Setup background learning loop (with tool-call-aware nudge) ──
-  setupBackgroundReview(pi, store, projectStore, config, memoryModel, memoryTools);
+  setupBackgroundReview(pi, store, projectStore, config, memoryModel, memoryTools, memoryApiKey);
 
   // ── 6. Setup session-end flush ──
-  setupSessionFlush(pi, store, projectStore, config, memoryModel, memoryTools);
+  setupSessionFlush(pi, store, projectStore, config, memoryModel, memoryTools, memoryApiKey);
 
   // ── 7. Setup auto-consolidation (inject consolidator into stores) ──
   store.setConsolidator(async (target) => {
@@ -186,6 +191,7 @@ export default function memoryExtension(pi: ExtensionAPI) {
       target,
       memoryModel,
       memoryTools,
+      memoryApiKey,
       config.consolidationTimeoutMs,
       target,
     );
@@ -198,6 +204,7 @@ export default function memoryExtension(pi: ExtensionAPI) {
         target,
         memoryModel,
         memoryTools,
+        memoryApiKey,
         config.consolidationTimeoutMs,
         toolTarget,
       );
@@ -208,6 +215,7 @@ export default function memoryExtension(pi: ExtensionAPI) {
     store,
     memoryModel,
     memoryTools,
+    memoryApiKey,
     config.consolidationTimeoutMs,
     projectStore,
     projectName,
@@ -222,6 +230,7 @@ export default function memoryExtension(pi: ExtensionAPI) {
     dbManager,
     memoryModel,
     memoryTools,
+    memoryApiKey,
     projectId,
   );
 

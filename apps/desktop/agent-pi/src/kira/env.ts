@@ -28,7 +28,3 @@ export function readProjectPath(): string {
 export function readPiDataDir(): string {
   return readRequiredEnv("KIRA_AGENT_PI_DATA_DIR");
 }
-
-export function readAgentProviderApiKey(): string | undefined {
-  return readOptionalEnv("KIRA_AGENT_PROVIDER_API_KEY");
-}

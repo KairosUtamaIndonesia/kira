@@ -52,6 +52,7 @@ type OrganizationModel = {
   contextWindow: number;
   maxOutputTokens: number;
   isDefault: boolean;
+  apiKey: string | undefined;
   createdAt: string;
 };
 
