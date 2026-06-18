@@ -3,9 +3,11 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { signOut } from "@/features/desktop-auth/api/desktopAuthApi";
 import { useSigninStatus } from "@/features/desktop-auth/hooks/useSigninStatus";
+import { useOnboardingStore } from "@/features/onboarding";
 
 function GeneralSettings() {
   const status = useSigninStatus();
+  const restartOnboarding = useOnboardingStore((state) => state.restart);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
 
@@ -63,6 +65,16 @@ function GeneralSettings() {
           {errorMessage === undefined ? undefined : (
             <p className="mt-2 text-sm text-destructive">{errorMessage}</p>
           )}
+        </div>
+
+        <div className="border-t border-border pt-4">
+          <h3 className="text-sm font-medium">Welcome guide</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Replay the quick-start setup for mode, notification sound, and theme.
+          </p>
+          <Button variant="outline" className="mt-3" onClick={restartOnboarding}>
+            Replay quick start
+          </Button>
         </div>
       </div>
     </section>

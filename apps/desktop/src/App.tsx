@@ -1,6 +1,7 @@
 import { Toaster } from "@/components/ui/sonner";
 import { Shell } from "@/features/app-shell";
 import { SignInGate } from "@/features/desktop-auth";
+import { OnboardingWizard } from "@/features/onboarding";
 import {
   AppearanceThemeProvider,
   GuardrailsSettingsProvider,
@@ -19,6 +20,7 @@ function App() {
             <MemorySettingsProvider>
               <SignInGate>
                 <Shell />
+                <OnboardingWizard />
                 <UpdateChecker />
               </SignInGate>
               <Toaster />
