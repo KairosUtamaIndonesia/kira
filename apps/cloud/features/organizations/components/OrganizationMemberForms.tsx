@@ -9,10 +9,10 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
-  inviteMemberAction,
-  removeMemberAction,
-  updateMemberRoleAction,
-} from "@/features/organizations/actions/manageOrganization";
+  inviteOrgMemberAction as inviteMemberAction,
+  removeOrgMemberAction as removeMemberAction,
+  updateOrgMemberRoleAction as updateMemberRoleAction,
+} from "@/features/org-admin/members/actions/manageMembers";
 import {
   inviteMemberSchema,
   updateMemberRoleSchema,

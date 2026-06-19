@@ -1,11 +1,12 @@
 import { useRouter } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { verifyInvitedEmailAction } from "@/features/auth/actions/verifyInvitedEmail";
+import { resolvePostAuthDestination } from "@/features/auth/data/postAuthDestination";
 import { authClient } from "@/lib/auth/client";
 
 const signInFailureMessage = "Sign-in failed. Check your email and password, then try again.";
@@ -37,6 +38,42 @@ function SignInForm({ invitationId, invitationContext, redirect }: SignInFormPro
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSsoSubmitting, setIsSsoSubmitting] = useState(false);
+
+  // Resolves the authenticated user's real destination (platform console, org
+  // admin panel, org picker, or desktop-only terminal) and navigates there.
+  // `invited` distinguishes a freshly-accepted invitation (friendly "you're
+  // in" page) from an ordinary member sign-in (the desktop-only notice).
+  const navigatePostAuth = useCallback(
+    async (options: { invited: boolean }) => {
+      const destination = await resolvePostAuthDestination();
+
+      switch (destination.kind) {
+        case "console":
+          await router.navigate({ to: "/dashboard", replace: true });
+          break;
+        case "org":
+          await router.navigate({
+            to: "/org/$organizationId",
+            params: { organizationId: destination.organizationId },
+            replace: true,
+          });
+          break;
+        case "org-picker":
+          await router.navigate({ to: "/org", replace: true });
+          break;
+        case "member-only":
+          if (options.invited) {
+            await router.navigate({ to: "/invitation-accepted", replace: true });
+          } else {
+            await router.navigate({ to: "/access", replace: true });
+          }
+          break;
+      }
+
+      await router.invalidate();
+    },
+    [router],
+  );
 
   useEffect(() => {
     if (!ssoOnlyInvite || invitationId === undefined) {
@@ -82,8 +119,7 @@ function SignInForm({ invitationId, invitationContext, redirect }: SignInFormPro
         return;
       }
 
-      await router.navigate({ to: "/invitation-accepted", replace: true });
-      await router.invalidate();
+      await navigatePostAuth({ invited: true });
     }
 
     void acceptSsoInvitation();
@@ -91,7 +127,7 @@ function SignInForm({ invitationId, invitationContext, redirect }: SignInFormPro
     return () => {
       cancelled = true;
     };
-  }, [invitationId, router, ssoOnlyInvite]);
+  }, [invitationId, navigatePostAuth, router, ssoOnlyInvite]);
 
   let submitLabel = "Sign in";
 
@@ -187,14 +223,7 @@ function SignInForm({ invitationId, invitationContext, redirect }: SignInFormPro
       return;
     }
 
-    if (result.data.user.role === "platform_admin") {
-      await router.navigate({ to: "/dashboard", replace: true });
-      await router.invalidate();
-      return;
-    }
-
-    await router.navigate({ to: "/invitation-accepted", replace: true });
-    await router.invalidate();
+    await navigatePostAuth({ invited: invitationId !== undefined });
   }
 
   if (ssoOnlyInvite && invitationContext !== undefined) {
