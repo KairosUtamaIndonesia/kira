@@ -38,7 +38,7 @@ const createOrganizationAction = createServerFn({ method: "POST" })
       };
     }
 
-    if (session.user.role !== "admin") {
+    if (session.user.role !== "platform_admin") {
       return {
         status: "error",
         message: "Only platform admins can create organizations.",

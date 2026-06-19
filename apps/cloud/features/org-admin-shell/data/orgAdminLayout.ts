@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
-import { and, eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
-import { requireOrgRole } from "@/lib/auth/guards";
+import { isPlatformAdmin, requireOrgRole, resolveOrgRole } from "@/lib/auth/guards";
 import { member, organization } from "@/lib/db/auth-schema";
 import { db } from "@/lib/db/postgres";
 
@@ -28,13 +28,20 @@ const loadOrgAdminLayout = createServerFn({ method: "GET" })
       throw new Error("Organization not found.");
     }
 
-    const adminOrgs = await db
-      .select({ id: member.organizationId, name: organization.name })
+    const allMemberships = await db
+      .select({ id: member.organizationId, name: organization.name, role: member.role })
       .from(member)
       .innerJoin(organization, eq(organization.id, member.organizationId))
-      .where(and(eq(member.userId, session.user.id), inArray(member.role, ["owner", "admin"])));
+      .where(eq(member.userId, session.user.id));
 
-    return { org: orgRow, adminOrgs, isPlatformAdmin: session.user.role === "admin" };
+    const adminOrgs = allMemberships
+      .filter((m) => {
+        const roleObj = resolveOrgRole(m.role);
+        return roleObj !== undefined && roleObj.authorize({ org: ["update"] }).success;
+      })
+      .map((m) => ({ id: m.id, name: m.name }));
+
+    return { org: orgRow, adminOrgs, isPlatformAdmin: isPlatformAdmin(session.user.role) };
   });
 
 export { loadOrgAdminLayout };

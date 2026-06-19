@@ -46,25 +46,31 @@ struct SigninIdentity {
     user_email: String,
     organization_id: String,
     organization_name: String,
+    org_role: Option<String>,
+    is_platform_admin: bool,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SigninStatus {
-    signed_in: bool,
-    user_name: Option<String>,
-    user_email: Option<String>,
-    organization_id: Option<String>,
-    organization_name: Option<String>,
+    pub signed_in: bool,
+    pub user_name: Option<String>,
+    pub user_email: Option<String>,
+    pub organization_id: Option<String>,
+    pub organization_name: Option<String>,
+    pub org_role: Option<String>,
+    pub is_platform_admin: bool,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SigninComplete {
-    user_name: String,
-    user_email: String,
-    organization_id: String,
-    organization_name: String,
+    pub user_name: String,
+    pub user_email: String,
+    pub organization_id: String,
+    pub organization_name: String,
+    pub org_role: Option<String>,
+    pub is_platform_admin: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -75,6 +81,9 @@ struct ClaimResponse {
     organization_name: String,
     user_name: String,
     user_email: String,
+    #[serde(default)]
+    org_role: Option<String>,
+    is_platform_admin: bool,
 }
 
 /// Reads the stored desktop-access credential from the OS keychain. Returns
@@ -212,6 +221,8 @@ pub async fn desktop_signin_status(
             user_email: Some(identity.user_email),
             organization_id: Some(identity.organization_id),
             organization_name: Some(identity.organization_name),
+            org_role: identity.org_role,
+            is_platform_admin: identity.is_platform_admin,
         }),
         _ => Ok(SigninStatus {
             signed_in: false,
@@ -219,6 +230,8 @@ pub async fn desktop_signin_status(
             user_email: None,
             organization_id: None,
             organization_name: None,
+            org_role: None,
+            is_platform_admin: false,
         }),
     }
 }
@@ -287,7 +300,6 @@ pub async fn desktop_signin_begin(
         .json()
         .await
         .map_err(|error| SigninError::UnexpectedResponse(error.to_string()))?;
-
     store_credential(&claim.api_key)?;
     write_identity(
         store.pool(),
@@ -296,15 +308,18 @@ pub async fn desktop_signin_begin(
             user_email: claim.user_email.clone(),
             organization_id: claim.organization_id.clone(),
             organization_name: claim.organization_name.clone(),
+            org_role: claim.org_role.clone(),
+            is_platform_admin: claim.is_platform_admin,
         },
     )
     .await?;
-
     Ok(SigninComplete {
         user_name: claim.user_name,
         user_email: claim.user_email,
         organization_id: claim.organization_id,
         organization_name: claim.organization_name,
+        org_role: claim.org_role,
+        is_platform_admin: claim.is_platform_admin,
     })
 }
 

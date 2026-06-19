@@ -3,6 +3,7 @@ import { getRequest } from "@tanstack/react-start/server";
 import { eq } from "drizzle-orm";
 
 import { auth } from "@/lib/auth/auth";
+import { resolveOrgRole } from "@/lib/auth/guards";
 import { member, organization } from "@/lib/db/auth-schema";
 import { db } from "@/lib/db/postgres";
 
@@ -29,7 +30,7 @@ const resolvePostAuthDestination = createServerFn({ method: "GET" }).handler(
       return { kind: "member-only" };
     }
 
-    if (session.user.role === "admin") {
+    if (session.user.role === "platform_admin") {
       return { kind: "console" };
     }
 
@@ -39,7 +40,10 @@ const resolvePostAuthDestination = createServerFn({ method: "GET" }).handler(
       .innerJoin(organization, eq(organization.id, member.organizationId))
       .where(eq(member.userId, session.user.id));
 
-    const adminOrgs = orgs.filter((r) => r.role === "owner" || r.role === "admin");
+    const adminOrgs = orgs.filter((r) => {
+      const roleObj = resolveOrgRole(r.role);
+      return roleObj !== undefined && roleObj.authorize({ org: ["update"] }).success;
+    });
 
     if (adminOrgs.length === 0) {
       return { kind: "member-only" };

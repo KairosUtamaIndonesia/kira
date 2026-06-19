@@ -12,7 +12,7 @@ export const Route = createFileRoute("/_console")({
       throw redirect({ to: "/sign-in", search: { redirect: location.href } });
     }
 
-    if (session.user.role !== "admin") {
+    if (session.user.role !== "platform_admin") {
       throw redirect({ to: "/invitation-accepted" });
     }
 
