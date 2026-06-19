@@ -129,7 +129,7 @@ useEffect(() => {
 src-tauri/src/
 ├── lib.rs                   # Plugin setup, state registration, command handler list
 ├── main.rs                  # Binary entry point (calls lib::run)
-├── admin_api.rs             # HTTP client for cloud admin API
+├── cloud_api.rs             # HTTP client for the cloud API
 ├── agent_runtime.rs         # Agent Pi lifecycle (start, generate, prepare)
 ├── browser.rs               # Multi-webview browser panel management
 ├── browser_selector.rs      # DOM element selector overlay injection
@@ -194,7 +194,7 @@ pub fn my_command(arg: String) -> Result<String, String> {
 | `sqlx`                 | SQLite access (async, with migrations)                    |
 | `portable-pty`         | PTY terminal sessions                                     |
 | `gix`                  | Git operations (no libgit2 dependency)                    |
-| `reqwest`              | HTTP client for cloud admin API                           |
+| `reqwest`              | HTTP client for the cloud API                             |
 | `keyring`              | OS credential storage                                     |
 | `axum`                 | Loopback HTTP server for desktop sign-in                  |
 | `tauri-plugin-opener`  | Open URLs/files                                           |

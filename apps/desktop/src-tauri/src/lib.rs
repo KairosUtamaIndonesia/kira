@@ -7,10 +7,10 @@
 #![deny(clippy::unwrap_used)]
 #![warn(clippy::pedantic)]
 
-mod admin_api;
 mod agent_runtime;
 mod browser;
 mod browser_selector;
+mod cloud_api;
 mod desktop_signin;
 mod editor;
 mod explorer;

@@ -98,7 +98,7 @@ Cloud feature modules live in `apps/cloud/features/`:
 - `thiserror` for error types
 
 Rust modules (`apps/desktop/src-tauri/src/`):
-`admin_api`, `agent_runtime`, `browser`, `browser_selector`, `desktop_signin`, `editor`, `explorer`, `memory`, `org_config`, `persistence`, `projects`, `search`, `settings`, `skills`, `source_control`, `terminal`
+`cloud_api`, `agent_runtime`, `browser`, `browser_selector`, `desktop_signin`, `editor`, `explorer`, `memory`, `org_config`, `persistence`, `projects`, `search`, `settings`, `skills`, `source_control`, `terminal`
 
 Rust code uses strict crate-level lint policy in app files:
 
@@ -392,7 +392,7 @@ Desktop Rust modules in `apps/desktop/src-tauri/src/` are organized by domain:
 
 | Module                         | Responsibility                                                 |
 | ------------------------------ | -------------------------------------------------------------- |
-| `admin_api`                    | HTTP client for cloud admin API calls                          |
+| `cloud_api`                    | HTTP client for the cloud API                                  |
 | `agent_runtime`                | Agent Pi lifecycle management                                  |
 | `browser` / `browser_selector` | Embedded webview browser panel + element selector              |
 | `desktop_signin`               | Browser-based sign-in flow (loopback callback)                 |

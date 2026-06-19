@@ -56,11 +56,11 @@ pub async fn fetch_model_catalog() -> Result<ModelCatalog, OrgConfigError> {
         crate::desktop_signin::stored_credential().ok_or(OrgConfigError::ApiKeyNotConfigured)?;
 
     let client =
-        crate::admin_api::client().map_err(|e| OrgConfigError::FetchFailed(e.to_string()))?;
+        crate::cloud_api::client().map_err(|e| OrgConfigError::FetchFailed(e.to_string()))?;
     let response = client
         .get(format!(
             "{}/api/desktop/models",
-            crate::admin_api::cloud_base_url()
+            crate::cloud_api::cloud_base_url()
         ))
         .header("x-api-key", api_key)
         .send()
