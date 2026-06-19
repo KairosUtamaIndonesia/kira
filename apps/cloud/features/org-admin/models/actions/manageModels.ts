@@ -14,7 +14,7 @@ import {
   setDefaultOrganizationModelSchema,
   updateOrganizationModelSchema,
 } from "@/features/organizations/validation/organizationModel";
-import { requireOrgRole, requireOrganization } from "@/lib/auth/guards";
+import { requireOrgPermission, requireOrganization } from "@/lib/auth/guards";
 
 import {
   createOrganizationModel,
@@ -37,7 +37,7 @@ const createOrgModelAction = createServerFn({ method: "POST" })
   .validator((input: CreateOrganizationModelInput) => input)
   .handler(async ({ data: input }): Promise<ActionResult> => {
     try {
-      await requireOrgRole(input.organizationId);
+      await requireOrgPermission(input.organizationId, { model: ["create"] });
       const parsedInput = createOrganizationModelSchema.parse(input);
       await requireOrganization(parsedInput.organizationId);
       const model = await createOrganizationModel(parsedInput);
@@ -51,7 +51,7 @@ const updateOrgModelAction = createServerFn({ method: "POST" })
   .validator((input: UpdateOrganizationModelInput) => input)
   .handler(async ({ data: input }): Promise<ActionResult> => {
     try {
-      await requireOrgRole(input.organizationId);
+      await requireOrgPermission(input.organizationId, { model: ["update"] });
       const parsedInput = updateOrganizationModelSchema.parse(input);
       await requireOrganization(parsedInput.organizationId);
       const model = await updateOrganizationModel(parsedInput);
@@ -65,7 +65,7 @@ const deleteOrgModelAction = createServerFn({ method: "POST" })
   .validator((input: DeleteOrganizationModelInput) => input)
   .handler(async ({ data: input }): Promise<ActionResult> => {
     try {
-      await requireOrgRole(input.organizationId);
+      await requireOrgPermission(input.organizationId, { model: ["delete"] });
       const parsedInput = deleteOrganizationModelSchema.parse(input);
       await requireOrganization(parsedInput.organizationId);
       await deleteOrganizationModel(parsedInput.organizationId, parsedInput.modelId);
@@ -79,7 +79,7 @@ const setDefaultOrgModelAction = createServerFn({ method: "POST" })
   .validator((input: SetDefaultOrganizationModelInput) => input)
   .handler(async ({ data: input }): Promise<ActionResult> => {
     try {
-      await requireOrgRole(input.organizationId);
+      await requireOrgPermission(input.organizationId, { model: ["update"] });
       const parsedInput = setDefaultOrganizationModelSchema.parse(input);
       await requireOrganization(parsedInput.organizationId);
       await setDefaultOrganizationModel(parsedInput.organizationId, parsedInput.modelId);

@@ -1,7 +1,7 @@
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { createHash, randomBytes } from "node:crypto";
 
-import { user } from "@/lib/db/auth-schema";
+import { member, user } from "@/lib/db/auth-schema";
 import { db } from "@/lib/db/postgres";
 import { desktopSigninHandoffs } from "@/lib/db/schema";
 
@@ -39,6 +39,8 @@ type ClaimedHandoff = {
   organizationName: string;
   userName: string;
   userEmail: string;
+  orgRole: string | undefined;
+  isPlatformAdmin: boolean;
 };
 
 // Atomically consumes a handoff: the single UPDATE that still sees a present,
@@ -70,9 +72,15 @@ async function claimHandoff(handoffCode: string): Promise<ClaimedHandoff | undef
   }
 
   const [owner] = await db
-    .select({ name: user.name, email: user.email })
+    .select({ name: user.name, email: user.email, role: user.role })
     .from(user)
     .where(eq(user.id, row.userId))
+    .limit(1);
+
+  const [memberRow] = await db
+    .select({ role: member.role })
+    .from(member)
+    .where(and(eq(member.userId, row.userId), eq(member.organizationId, row.organizationId)))
     .limit(1);
 
   return {
@@ -81,6 +89,8 @@ async function claimHandoff(handoffCode: string): Promise<ClaimedHandoff | undef
     organizationName: row.organizationName,
     userName: owner === undefined ? "" : owner.name,
     userEmail: owner === undefined ? "" : owner.email,
+    orgRole: memberRow !== undefined ? memberRow.role : undefined,
+    isPlatformAdmin: owner !== undefined ? owner.role === "platform_admin" : false,
   };
 }
 

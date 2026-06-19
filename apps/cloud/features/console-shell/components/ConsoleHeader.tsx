@@ -184,7 +184,7 @@ function OrgAdminUserMenuDropdown() {
   const name = session !== null && session !== undefined ? session.user.name : "";
   const email = session !== null && session !== undefined ? session.user.email : "";
   const isPlatformAdmin =
-    session !== null && session !== undefined && session.user.role === "admin";
+    session !== null && session !== undefined && session.user.role === "platform_admin";
   const initials = deriveInitials(name);
 
   return (

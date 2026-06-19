@@ -53,13 +53,13 @@ async function ensureSeedAdmin() {
 }
 
 async function ensureAdminRole(userId: string, currentRole: string | null) {
-  if (currentRole === "admin") {
+  if (currentRole === "platform_admin") {
     process.stdout.write("Seed admin role already set.\n");
     return;
   }
 
-  await db.update(user).set({ role: "admin" }).where(eq(user.id, userId));
-  process.stdout.write("Seed admin role set to admin.\n");
+  await db.update(user).set({ role: "platform_admin" }).where(eq(user.id, userId));
+  process.stdout.write("Seed admin role set to platform_admin.\n");
 }
 
 await ensureSeedAdmin();

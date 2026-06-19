@@ -2,7 +2,14 @@ import { getRequest } from "@tanstack/react-start/server";
 import { and, eq } from "drizzle-orm";
 
 import { auth } from "@/lib/auth/auth";
-import { ac, admin, member as memberRole, owner } from "@/lib/auth/permissions";
+import {
+  ac,
+  admin,
+  member as memberRole,
+  owner,
+  platformAdminRole,
+  platformUserRole,
+} from "@/lib/auth/permissions";
 import { member as memberTable, organization } from "@/lib/db/auth-schema";
 import { db } from "@/lib/db/postgres";
 
@@ -26,7 +33,9 @@ async function requirePlatformAdmin() {
     throw new Error("Sign in before performing this action.");
   }
 
-  if (session.user.role !== "admin") {
+  const platformRoles = { platform_admin: platformAdminRole, user: platformUserRole } as const;
+  const roleObj = platformRoles[session.user.role as keyof typeof platformRoles];
+  if (roleObj === undefined || !roleObj.authorize({ platform: ["access_console"] }).success) {
     throw new Error("Only platform admins can perform this action.");
   }
 
@@ -93,6 +102,12 @@ async function requireOrgRole(organizationId: string): Promise<RequireOrgRoleRes
   return { session, memberRow };
 }
 
+function isPlatformAdmin(role: string | null | undefined): boolean {
+  const platformRoles = { platform_admin: platformAdminRole, user: platformUserRole } as const;
+  const roleObj = platformRoles[(role ?? "") as keyof typeof platformRoles];
+  return roleObj !== undefined && roleObj.authorize({ platform: ["access_console"] }).success;
+}
+
 // ---------------------------------------------------------------------------
 // requireOrgPermission
 // ---------------------------------------------------------------------------
@@ -144,5 +159,11 @@ async function requireOrganization(organizationId: string) {
   return row;
 }
 
-export { requireOrgPermission, requireOrgRole, requireOrganization, requirePlatformAdmin };
-export type { OrgMemberRow, OrgPermission };
+export {
+  requireOrgPermission,
+  requireOrgRole,
+  resolveOrgRole,
+  requireOrganization,
+  requirePlatformAdmin,
+  isPlatformAdmin,
+};

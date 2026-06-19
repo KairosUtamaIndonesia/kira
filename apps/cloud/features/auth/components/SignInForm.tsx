@@ -187,7 +187,7 @@ function SignInForm({ invitationId, invitationContext, redirect }: SignInFormPro
       return;
     }
 
-    if (result.data.user.role === "admin") {
+    if (result.data.user.role === "platform_admin") {
       await router.navigate({ to: "/dashboard", replace: true });
       await router.invalidate();
       return;

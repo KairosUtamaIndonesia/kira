@@ -13,7 +13,7 @@ import {
   removeMemberSchema,
   updateMemberRoleSchema,
 } from "@/features/organizations/validation/manageOrganization";
-import { requireOrgRole, requireOrganization } from "@/lib/auth/guards";
+import { requireOrgPermission, requireOrganization } from "@/lib/auth/guards";
 import { invitation, member, user } from "@/lib/db/auth-schema";
 import { db } from "@/lib/db/postgres";
 import { sendInvitationEmail } from "@/lib/email/smtp";
@@ -33,7 +33,9 @@ const inviteOrgMemberAction = createServerFn({ method: "POST" })
   .validator((input: InviteMemberInput) => input)
   .handler(async ({ data: input }): Promise<ActionResult> => {
     try {
-      const { session: currentSession } = await requireOrgRole(input.organizationId);
+      const { session: currentSession } = await requireOrgPermission(input.organizationId, {
+        member: ["invite"],
+      });
       const parsedInput = inviteMemberSchema.parse(input);
       const existingOrganization = await requireOrganization(parsedInput.organizationId);
 
@@ -100,7 +102,7 @@ const updateOrgMemberRoleAction = createServerFn({ method: "POST" })
   .validator((input: UpdateMemberRoleInput) => input)
   .handler(async ({ data: input }): Promise<ActionResult> => {
     try {
-      await requireOrgRole(input.organizationId);
+      await requireOrgPermission(input.organizationId, { member: ["update"] });
       const parsedInput = updateMemberRoleSchema.parse(input);
       await requireOrganization(parsedInput.organizationId);
 
@@ -124,7 +126,7 @@ const removeOrgMemberAction = createServerFn({ method: "POST" })
   .validator((input: RemoveMemberInput) => input)
   .handler(async ({ data: input }): Promise<ActionResult> => {
     try {
-      await requireOrgRole(input.organizationId);
+      await requireOrgPermission(input.organizationId, { member: ["remove"] });
       const parsedInput = removeMemberSchema.parse(input);
       await requireOrganization(parsedInput.organizationId);
 

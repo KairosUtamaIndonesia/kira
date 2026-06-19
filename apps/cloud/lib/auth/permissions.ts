@@ -54,5 +54,22 @@ const member = ac.newRole({
   // Members access Kira through the desktop app only.
 });
 
-export { ac, admin, member, owner };
-export type { statement };
+// ── Platform tier ──────────────────────────────────────────────────
+
+const platformStatement = {
+  platform: ["access_console", "manage_organizations", "manage_users", "manage_settings"],
+  desktop: ["view_admin_features"],
+} as const;
+
+const platformAC = createAccessControl(platformStatement);
+
+const platformAdminRole = platformAC.newRole({
+  platform: ["access_console", "manage_organizations", "manage_users", "manage_settings"],
+  desktop: ["view_admin_features"],
+});
+
+const platformUserRole = platformAC.newRole({
+  // No platform permissions
+});
+
+export { ac, platformAC, admin, member, owner, platformAdminRole, platformUserRole };

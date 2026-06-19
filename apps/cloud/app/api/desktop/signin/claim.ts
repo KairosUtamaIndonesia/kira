@@ -48,6 +48,8 @@ export const Route = createFileRoute("/api/desktop/signin/claim")({
           organizationName: claimed.organizationName,
           userName: claimed.userName,
           userEmail: claimed.userEmail,
+          orgRole: claimed.orgRole,
+          isPlatformAdmin: claimed.isPlatformAdmin,
         });
       },
     },
