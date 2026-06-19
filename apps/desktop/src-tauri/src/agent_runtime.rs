@@ -6,10 +6,14 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::net::TcpListener as TokioTcpListener;
 use tokio::{
-    process::{Child, Command},
+    process::{Child as TokioChild, Command},
     sync::Mutex,
     time::{sleep, timeout},
 };
+
+use tauri::Manager;
+use tauri_plugin_shell::process::CommandChild;
+use tauri_plugin_shell::ShellExt;
 
 use crate::persistence::PersistenceStore;
 use crate::source_control;
@@ -37,9 +41,16 @@ pub(crate) enum AgentRuntimeState {
     },
 }
 
+/// Holds the child process handle for either dev mode (tokio) or built
+/// mode (Tauri sidecar). Both are killed explicitly during shutdown.
+enum ProcessHandle {
+    Dev(Box<TokioChild>),
+    Sidecar(CommandChild),
+}
+
 pub(crate) struct AppAgentRuntime {
     pub(crate) connection: RuntimeConnection,
-    process: Child,
+    process: Option<ProcessHandle>,
 }
 #[derive(Clone)]
 pub(crate) struct RuntimeConnection {
@@ -50,12 +61,22 @@ pub(crate) struct RuntimeConnection {
 /// Terminates the agent runtime child process during application shutdown.
 ///
 /// Tauri does not run `Drop` for managed state when the process exits, so the
-/// child's `kill_on_drop` guard never fires. Without an explicit kill here the
-/// agent runtime keeps running after the desktop app window closes.
+/// dev-mode child's `kill_on_drop` guard never fires, and the sidecar process
+/// also needs explicit cleanup. Without this, the agent runtime keeps running
+/// after the desktop app window closes.
 pub(crate) fn shutdown(registry: &AgentRuntimeRegistry) {
     let mut state = tauri::async_runtime::block_on(registry.runtime.lock());
     if let AgentRuntimeState::Running(runtime) = &mut *state {
-        let _kill_result = runtime.process.start_kill();
+        if let Some(handle) = runtime.process.take() {
+            match handle {
+                ProcessHandle::Dev(mut child) => {
+                    let _ = child.start_kill();
+                }
+                ProcessHandle::Sidecar(child) => {
+                    let _ = child.kill();
+                }
+            }
+        }
     }
     *state = AgentRuntimeState::NotStarted;
 }
@@ -250,8 +271,6 @@ pub enum AgentRuntimeError {
     QueryContextUsage(String),
     #[error("Agent runtime directory was not found: {path}")]
     RuntimeDirectoryMissing { path: String },
-    #[error("Agent runtime compiled binary not found: {path}")]
-    RuntimeBinaryMissing { path: String },
     #[error("failed to reserve an agent runtime port: {0}")]
     ReservePort(String),
     #[error("failed to start agent runtime: {reason}")]
@@ -270,6 +289,8 @@ pub enum AgentRuntimeError {
     RuntimeStartFailed { reason: String },
     #[error("failed to generate commit message: {reason}")]
     GenerateCommitMessage { reason: String },
+    #[error("failed to resolve bundled agent runtime resources: {reason}")]
+    ResourceDirMissing { reason: String },
 }
 
 impl serde::Serialize for AgentRuntimeError {
@@ -287,6 +308,7 @@ impl serde::Serialize for AgentRuntimeError {
     reason = "Tauri commands require State by value"
 )]
 pub async fn start_agent_runtime(
+    app: tauri::AppHandle,
     registry: tauri::State<'_, AgentRuntimeRegistry>,
     store: tauri::State<'_, PersistenceStore>,
 ) -> Result<(), AgentRuntimeError> {
@@ -294,7 +316,7 @@ pub async fn start_agent_runtime(
     match &*runtime_guard {
         AgentRuntimeState::Running(_) => Ok(()),
         AgentRuntimeState::Failed { reason: _ } | AgentRuntimeState::NotStarted => {
-            match start_app_runtime(store.inner().clone()).await {
+            match start_app_runtime(store.inner().clone(), app).await {
                 Ok(runtime) => {
                     *runtime_guard = AgentRuntimeState::Running(Box::new(runtime));
                     Ok(())
@@ -647,7 +669,14 @@ fn runtime_base_url(port: u16) -> String {
     format!("http://{AGENT_RUNTIME_HOST}:{port}")
 }
 
-async fn start_app_runtime(store: PersistenceStore) -> Result<AppAgentRuntime, AgentRuntimeError> {
+#[allow(
+    clippy::too_many_lines,
+    reason = "Function covers the full launch orchestration: validate, bind backend, spawn agent, await health"
+)]
+async fn start_app_runtime(
+    store: PersistenceStore,
+    app_handle: tauri::AppHandle,
+) -> Result<AppAgentRuntime, AgentRuntimeError> {
     let mode = resolve_launch_mode();
     let port = reserve_port()?;
     let token = generate_runtime_token();
@@ -679,7 +708,7 @@ async fn start_app_runtime(store: PersistenceStore) -> Result<AppAgentRuntime, A
     });
     let backend_url = format!("http://{AGENT_RUNTIME_HOST}:{backend_actual_port}");
 
-    let mut command = match mode {
+    let process = match mode {
         AgentRuntimeLaunchMode::Dev => {
             let runtime_dir = resolve_runtime_dir()?;
             let mut cmd = Command::new("bun");
@@ -689,38 +718,70 @@ async fn start_app_runtime(store: PersistenceStore) -> Result<AppAgentRuntime, A
                 .arg("--")
                 .arg("--port")
                 .arg(port.to_string());
-            cmd
+            cmd.env("HOST", AGENT_RUNTIME_HOST)
+                .env("HOSTNAME", AGENT_RUNTIME_HOST)
+                .env("PORT", port.to_string())
+                .env("KIRA_AGENT_RUNTIME_TOKEN", &token)
+                .env("KIRA_AGENT_PI_DATA_DIR", store.app_data_dir())
+                .env("KIRA_AGENT_BACKEND_URL", &backend_url)
+                .kill_on_drop(true);
+            if let Some(shell_path) = crate::settings::agent_shell_path(store.pool()).await {
+                cmd.env("KIRA_AGENT_SHELL_PATH", shell_path);
+            }
+            crate::process_ext::hide_console_window(cmd.as_std_mut());
+            ProcessHandle::Dev(Box::new(cmd.spawn().map_err(|error| {
+                AgentRuntimeError::StartFailed {
+                    reason: format!(
+                        "failed to spawn agent runtime from agent-pi directory: {error}",
+                    ),
+                }
+            })?))
         }
         AgentRuntimeLaunchMode::Built => {
-            let binary_path = agent_pi_binary_path()?;
-            let mut cmd = Command::new(&binary_path);
-            cmd.arg("--port").arg(port.to_string());
-            cmd
+            let resource_dir = app_handle.path().resource_dir().map_err(|e| {
+                AgentRuntimeError::ResourceDirMissing {
+                    reason: format!("failed to resolve resource dir: {e}"),
+                }
+            })?;
+            let pi_package_dir = resource_dir.join("agent-runtime");
+            let sidecar_cmd = app_handle
+                .shell()
+                .sidecar("kira-agent-pi")
+                .map_err(|e| AgentRuntimeError::StartFailed {
+                    reason: format!("failed to create sidecar command: {e}"),
+                })?
+                .args(["--port", &port.to_string()])
+                .env("HOST", AGENT_RUNTIME_HOST)
+                .env("HOSTNAME", AGENT_RUNTIME_HOST)
+                .env("PORT", port.to_string())
+                .env("KIRA_AGENT_RUNTIME_TOKEN", &token)
+                .env("KIRA_AGENT_PI_DATA_DIR", store.app_data_dir())
+                .env("KIRA_AGENT_BACKEND_URL", &backend_url)
+                .env("PI_PACKAGE_DIR", &pi_package_dir);
+            let sidecar_cmd =
+                if let Some(shell_path) = crate::settings::agent_shell_path(store.pool()).await {
+                    sidecar_cmd.env("KIRA_AGENT_SHELL_PATH", shell_path)
+                } else {
+                    sidecar_cmd
+                };
+            let (_, sidecar_child) =
+                sidecar_cmd
+                    .spawn()
+                    .map_err(|error| AgentRuntimeError::StartFailed {
+                        reason: format!("failed to spawn agent runtime binary: {error}"),
+                    })?;
+            ProcessHandle::Sidecar(sidecar_child)
         }
     };
-    command
-        .env("HOST", AGENT_RUNTIME_HOST)
-        .env("HOSTNAME", AGENT_RUNTIME_HOST)
-        .env("PORT", port.to_string())
-        .env("KIRA_AGENT_RUNTIME_TOKEN", &token)
-        .env("KIRA_AGENT_PI_DATA_DIR", store.app_data_dir())
-        .env("KIRA_AGENT_BACKEND_URL", &backend_url)
-        .kill_on_drop(true);
-    if let Some(shell_path) = crate::settings::agent_shell_path(store.pool()).await {
-        command.env("KIRA_AGENT_SHELL_PATH", shell_path);
-    }
-    crate::process_ext::hide_console_window(command.as_std_mut());
-    let mut process = command.spawn().map_err(|error| {
-        let location = match mode {
-            AgentRuntimeLaunchMode::Dev => "agent-pi directory",
-            AgentRuntimeLaunchMode::Built => "binary",
-        };
-        AgentRuntimeError::StartFailed {
-            reason: format!("failed to spawn agent runtime {location}: {error}"),
-        }
-    })?;
     if let Err(error) = wait_for_health(port).await {
-        let _kill_result = process.kill().await;
+        match process {
+            ProcessHandle::Dev(mut child) => {
+                let _ = child.start_kill();
+            }
+            ProcessHandle::Sidecar(child) => {
+                let _ = child.kill();
+            }
+        }
         return Err(error);
     }
     Ok(AppAgentRuntime {
@@ -728,7 +789,7 @@ async fn start_app_runtime(store: PersistenceStore) -> Result<AppAgentRuntime, A
             base_url: runtime_base_url(port),
             token,
         },
-        process,
+        process: Some(process),
     })
 }
 
@@ -790,56 +851,6 @@ fn validate_health_response(port: u16, health: &HealthResponse) -> Result<(), Ag
         });
     }
     Ok(())
-}
-
-fn agent_pi_binary_path() -> Result<PathBuf, AgentRuntimeError> {
-    let binary_name = if cfg!(target_os = "windows") {
-        "kira-agent-pi.exe"
-    } else {
-        "kira-agent-pi"
-    };
-
-    // 1. Environment override: KIRA_AGENT_RUNTIME_DIR/dist/{binary}
-    if let Ok(dir) = env::var("KIRA_AGENT_RUNTIME_DIR") {
-        let path = PathBuf::from(dir).join("dist").join(binary_name);
-        if path.is_file() {
-            return Ok(path);
-        }
-    }
-
-    // 2. Development: relative to CARGO_MANIFEST_DIR
-    let dev_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../agent-pi/dist")
-        .join(binary_name);
-    if dev_path.is_file() {
-        return Ok(dev_path);
-    }
-
-    // 3. Production: Tauri bundles the resource glob `../agent-pi/dist/...`,
-    //    mapping the leading `..` segment to `_up_`, so the binary ships at
-    //    `<resource-dir>/_up_/agent-pi/dist/{binary}`. The resource dir sits
-    //    next to the executable on Windows/Linux and under `Contents/Resources`
-    //    in macOS app bundles.
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(exe_dir) = exe.parent() {
-            for sub in &[
-                "_up_/agent-pi/dist",
-                "resources/_up_/agent-pi/dist",
-                "../Resources/_up_/agent-pi/dist",
-            ] {
-                let path = exe_dir.join(sub).join(binary_name);
-                if path.is_file() {
-                    return Ok(path);
-                }
-            }
-        }
-    }
-
-    Err(AgentRuntimeError::RuntimeBinaryMissing {
-        path: format!(
-            "{binary_name} (searched KIRA_AGENT_RUNTIME_DIR, dev dist/, and bundled _up_/agent-pi/dist/)"
-        ),
-    })
 }
 
 fn resolve_runtime_dir() -> Result<PathBuf, AgentRuntimeError> {
