@@ -1,4 +1,4 @@
-use std::{env, net::TcpListener, path::PathBuf, time::Duration};
+use std::{env, net::TcpListener, path::PathBuf, sync::Arc, time::Duration};
 
 use axum::{routing::get, Json, Router};
 use rand::RngCore;
@@ -6,14 +6,13 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::net::TcpListener as TokioTcpListener;
 use tokio::{
+    io::AsyncReadExt,
     process::{Child as TokioChild, Command},
     sync::Mutex,
     time::{sleep, timeout},
 };
 
 use tauri::Manager;
-use tauri_plugin_shell::process::CommandChild;
-use tauri_plugin_shell::ShellExt;
 
 use crate::persistence::PersistenceStore;
 use crate::source_control;
@@ -41,11 +40,14 @@ pub(crate) enum AgentRuntimeState {
     },
 }
 
-/// Holds the child process handle for either dev mode (tokio) or built
-/// mode (Tauri sidecar). Both are killed explicitly during shutdown.
+/// Holds the child process handle for the agent runtime.
+/// Killed explicitly during shutdown.
 enum ProcessHandle {
     Dev(Box<TokioChild>),
-    Sidecar(CommandChild),
+    Resource {
+        child: TokioChild,
+        stderr_buffer: Arc<std::sync::Mutex<Vec<u8>>>,
+    },
 }
 
 pub(crate) struct AppAgentRuntime {
@@ -67,13 +69,13 @@ pub(crate) struct RuntimeConnection {
 pub(crate) fn shutdown(registry: &AgentRuntimeRegistry) {
     let mut state = tauri::async_runtime::block_on(registry.runtime.lock());
     if let AgentRuntimeState::Running(runtime) = &mut *state {
-        if let Some(handle) = runtime.process.take() {
-            match handle {
-                ProcessHandle::Dev(mut child) => {
+        if let Some(mut handle) = runtime.process.take() {
+            match &mut handle {
+                ProcessHandle::Dev(child) => {
                     let _ = child.start_kill();
                 }
-                ProcessHandle::Sidecar(child) => {
-                    let _ = child.kill();
+                ProcessHandle::Resource { child, .. } => {
+                    let _ = child.start_kill();
                 }
             }
         }
@@ -275,8 +277,12 @@ pub enum AgentRuntimeError {
     ReservePort(String),
     #[error("failed to start agent runtime: {reason}")]
     StartFailed { reason: String },
-    #[error("Agent runtime did not become healthy on port {port} within {timeout_ms}ms")]
-    HealthTimeout { port: u16, timeout_ms: u64 },
+    #[error("Agent runtime did not become healthy on port {port} within {timeout_ms}ms: {stderr}")]
+    HealthTimeout {
+        port: u16,
+        timeout_ms: u64,
+        stderr: String,
+    },
     #[error("Agent runtime returned invalid health response on port {port}: {reason}")]
     InvalidHealthResponse { port: u16, reason: String },
     #[error("Failed to register Agent Thread {thread_id} with agent runtime: {reason}")]
@@ -708,7 +714,7 @@ async fn start_app_runtime(
     });
     let backend_url = format!("http://{AGENT_RUNTIME_HOST}:{backend_actual_port}");
 
-    let process = match mode {
+    let mut process = match mode {
         AgentRuntimeLaunchMode::Dev => {
             let runtime_dir = resolve_runtime_dir()?;
             let mut cmd = Command::new("bun");
@@ -744,45 +750,91 @@ async fn start_app_runtime(
                 }
             })?;
             let pi_package_dir = resource_dir.join("agent-runtime");
-            let sidecar_cmd = app_handle
-                .shell()
-                .sidecar("kira-agent-pi")
-                .map_err(|e| AgentRuntimeError::StartFailed {
-                    reason: format!("failed to create sidecar command: {e}"),
-                })?
-                .args(["--port", &port.to_string()])
+            let agent_binary = resource_dir.join("agent-runtime").join("kira-agent-pi");
+            let mut cmd = Command::new(&agent_binary);
+            cmd.arg("--port")
+                .arg(port.to_string())
                 .env("HOST", AGENT_RUNTIME_HOST)
                 .env("HOSTNAME", AGENT_RUNTIME_HOST)
                 .env("PORT", port.to_string())
                 .env("KIRA_AGENT_RUNTIME_TOKEN", &token)
                 .env("KIRA_AGENT_PI_DATA_DIR", store.app_data_dir())
                 .env("KIRA_AGENT_BACKEND_URL", &backend_url)
-                .env("PI_PACKAGE_DIR", &pi_package_dir);
-            let sidecar_cmd =
-                if let Some(shell_path) = crate::settings::agent_shell_path(store.pool()).await {
-                    sidecar_cmd.env("KIRA_AGENT_SHELL_PATH", shell_path)
-                } else {
-                    sidecar_cmd
-                };
-            let (_, sidecar_child) =
-                sidecar_cmd
-                    .spawn()
-                    .map_err(|error| AgentRuntimeError::StartFailed {
-                        reason: format!("failed to spawn agent runtime binary: {error}"),
-                    })?;
-            ProcessHandle::Sidecar(sidecar_child)
+                .env("PI_PACKAGE_DIR", &pi_package_dir)
+                .kill_on_drop(true);
+            if let Some(shell_path) = crate::settings::agent_shell_path(store.pool()).await {
+                cmd.env("KIRA_AGENT_SHELL_PATH", shell_path);
+            }
+            crate::process_ext::hide_console_window(cmd.as_std_mut());
+
+            cmd.stderr(std::process::Stdio::piped());
+            let mut child = cmd.spawn().map_err(|error| {
+                AgentRuntimeError::StartFailed {
+                    reason: format!("failed to spawn agent runtime binary: {error}"),
+                }
+            })?;
+
+            let stderr_buffer: Arc<std::sync::Mutex<Vec<u8>>> = Arc::default();
+            if let Some(stderr) = child.stderr.take() {
+                let buf = Arc::clone(&stderr_buffer);
+                tokio::spawn(async move {
+                    let mut stderr = stderr;
+                    let mut tmp = vec![0u8; 4096];
+                    loop {
+                        match stderr.read(&mut tmp).await {
+                            Ok(0) => break,
+                            Ok(n) => {
+                                if let Ok(mut guard) = buf.lock() {
+                                    guard.extend_from_slice(&tmp[..n]);
+                                }
+                            }
+                            Err(_) => break,
+                        }
+                    }
+                });
+            }
+
+            ProcessHandle::Resource {
+                child,
+                stderr_buffer,
+            }
         }
     };
     if let Err(error) = wait_for_health(port).await {
+        let stderr = match &process {
+            ProcessHandle::Resource { stderr_buffer, .. } => {
+                stderr_buffer.lock()
+                    .map(|guard| String::from_utf8_lossy(&guard).to_string())
+                    .unwrap_or_default()
+            }
+            _ => String::new(),
+        };
         match process {
             ProcessHandle::Dev(mut child) => {
                 let _ = child.start_kill();
             }
-            ProcessHandle::Sidecar(child) => {
-                let _ = child.kill();
+            ProcessHandle::Resource { ref mut child, .. } => {
+                let _ = child.start_kill();
             }
         }
-        return Err(error);
+        if stderr.is_empty() {
+            return Err(error);
+        }
+        // Fold stderr into health timeout so the desktop app sees the error
+        return Err(match error {
+            AgentRuntimeError::HealthTimeout { port, timeout_ms, .. } => {
+                AgentRuntimeError::HealthTimeout {
+                    port,
+                    timeout_ms,
+                    stderr,
+                }
+            }
+            other => AgentRuntimeError::HealthTimeout {
+                port: 0,
+                timeout_ms: AGENT_RUNTIME_HEALTH_TIMEOUT_MS,
+                stderr: format!("{other}\n{stderr}"),
+            },
+        });
     }
     Ok(AppAgentRuntime {
         connection: RuntimeConnection {
@@ -822,6 +874,7 @@ async fn wait_for_health(port: u16) -> Result<(), AgentRuntimeError> {
         .map_err(|_| AgentRuntimeError::HealthTimeout {
             port,
             timeout_ms: AGENT_RUNTIME_HEALTH_TIMEOUT_MS,
+            stderr: String::new(),
         })?
 }
 
