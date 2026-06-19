@@ -16,7 +16,7 @@ fn main() {
     let env_path = Path::new(".env");
     if !env_path.exists() {
         // Neither CI nor .env — the compiler will fail with a clear error
-        // from the `env!()` macro in admin_api.rs.
+        // from the `env!()` macro in cloud_api.rs.
         return;
     }
 
