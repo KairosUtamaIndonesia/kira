@@ -92,12 +92,12 @@ const auth = betterAuth({
       },
     }),
     sso({
-      disableImplicitSignUp: true,
+      disableImplicitSignUp: false,
       domainVerification: {
         enabled: true,
       },
       organizationProvisioning: {
-        disabled: false,
+        disabled: true,
         defaultRole: "member",
       },
     }),
