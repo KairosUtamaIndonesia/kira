@@ -8,6 +8,7 @@ import { ac, admin as orgAdmin, member, owner } from "@/lib/auth/permissions";
 import * as authSchema from "@/lib/db/auth-schema";
 import { db } from "@/lib/db/postgres";
 import { env } from "@/lib/env";
+import { logger } from "@/lib/log";
 
 const betterAuthUrl = env.BETTER_AUTH_URL;
 
@@ -18,6 +19,31 @@ const auth = betterAuth({
     provider: "pg",
     schema: authSchema,
   }),
+  // -------------------------------------------------------------------------
+  // Auth observability: log sign-ups and sign-ins through entity hooks
+  // -------------------------------------------------------------------------
+  databaseHooks: {
+    user: {
+      create: {
+        after: async (user) => {
+          logger.info("auth.user.created", {
+            userId: user.id,
+            email: user.email,
+          });
+        },
+      },
+    },
+    session: {
+      create: {
+        after: async (session) => {
+          logger.info("auth.session.created", {
+            userId: session.userId,
+            sessionId: session.id,
+          });
+        },
+      },
+    },
+  },
   emailAndPassword: {
     enabled: true,
   },
