@@ -1,4 +1,4 @@
-use std::{env, net::TcpListener, path::PathBuf, time::Duration};
+use std::{env, io::Write, net::TcpListener, path::PathBuf, time::Duration};
 
 use axum::{routing::get, Json, Router};
 use rand::RngCore;
@@ -12,8 +12,6 @@ use tokio::{
 };
 
 use tauri::Manager;
-use tauri_plugin_shell::process::CommandChild;
-use tauri_plugin_shell::ShellExt;
 
 use crate::persistence::PersistenceStore;
 use crate::source_control;
@@ -41,11 +39,11 @@ pub(crate) enum AgentRuntimeState {
     },
 }
 
-/// Holds the child process handle for either dev mode (tokio) or built
-/// mode (Tauri sidecar). Both are killed explicitly during shutdown.
+/// Holds the child process handle for the agent runtime.
+/// Killed explicitly during shutdown.
 enum ProcessHandle {
     Dev(Box<TokioChild>),
-    Sidecar(CommandChild),
+    Resource(Box<TokioChild>),
 }
 
 pub(crate) struct AppAgentRuntime {
@@ -69,11 +67,8 @@ pub(crate) fn shutdown(registry: &AgentRuntimeRegistry) {
     if let AgentRuntimeState::Running(runtime) = &mut *state {
         if let Some(handle) = runtime.process.take() {
             match handle {
-                ProcessHandle::Dev(mut child) => {
+                ProcessHandle::Dev(mut child) | ProcessHandle::Resource(mut child) => {
                     let _ = child.start_kill();
-                }
-                ProcessHandle::Sidecar(child) => {
-                    let _ = child.kill();
                 }
             }
         }
@@ -744,42 +739,63 @@ async fn start_app_runtime(
                 }
             })?;
             let pi_package_dir = resource_dir.join("agent-runtime");
-            let sidecar_cmd = app_handle
-                .shell()
-                .sidecar("kira-agent-pi")
-                .map_err(|e| AgentRuntimeError::StartFailed {
-                    reason: format!("failed to create sidecar command: {e}"),
-                })?
-                .args(["--port", &port.to_string()])
+            let agent_binary = resource_dir.join("agent-runtime").join("kira-agent-pi");
+            let mut cmd = Command::new(&agent_binary);
+            cmd.arg("--port")
+                .arg(port.to_string())
                 .env("HOST", AGENT_RUNTIME_HOST)
                 .env("HOSTNAME", AGENT_RUNTIME_HOST)
                 .env("PORT", port.to_string())
                 .env("KIRA_AGENT_RUNTIME_TOKEN", &token)
                 .env("KIRA_AGENT_PI_DATA_DIR", store.app_data_dir())
                 .env("KIRA_AGENT_BACKEND_URL", &backend_url)
-                .env("PI_PACKAGE_DIR", &pi_package_dir);
-            let sidecar_cmd =
-                if let Some(shell_path) = crate::settings::agent_shell_path(store.pool()).await {
-                    sidecar_cmd.env("KIRA_AGENT_SHELL_PATH", shell_path)
-                } else {
-                    sidecar_cmd
-                };
-            let (_, sidecar_child) =
-                sidecar_cmd
-                    .spawn()
-                    .map_err(|error| AgentRuntimeError::StartFailed {
-                        reason: format!("failed to spawn agent runtime binary: {error}"),
-                    })?;
-            ProcessHandle::Sidecar(sidecar_child)
+                .env("PI_PACKAGE_DIR", &pi_package_dir)
+                .kill_on_drop(true);
+            if let Some(shell_path) = crate::settings::agent_shell_path(store.pool()).await {
+                cmd.env("KIRA_AGENT_SHELL_PATH", shell_path);
+            }
+            crate::process_ext::hide_console_window(cmd.as_std_mut());
+
+            // Capture stderr so we can see startup errors
+            cmd.stderr(std::process::Stdio::piped());
+            let mut child = cmd.spawn().map_err(|error| {
+                AgentRuntimeError::StartFailed {
+                    reason: format!("failed to spawn agent runtime binary: {error}"),
+                }
+            })?;
+
+            if let Some(stderr) = child.stderr.take() {
+                tokio::spawn(async move {
+                    use tokio::io::AsyncReadExt;
+                    let log_path = "/tmp/kira-agent-pi.stderr.log";
+                    let mut stderr = stderr;
+                    let mut buf = vec![0u8; 4096];
+                    loop {
+                        match stderr.read(&mut buf).await {
+                            Ok(0) => break,
+                            Ok(n) => {
+                                if let Ok(mut f) = std::fs::OpenOptions::new()
+                                    .create(true)
+                                    .append(true)
+                                    .open(log_path)
+                                {
+                                    let _ = writeln!(f, "[kira-agent-pi] {}",
+                                        String::from_utf8_lossy(&buf[..n]).trim_end());
+                                }
+                            }
+                            Err(_) => break,
+                        }
+                    }
+                });
+            }
+
+            ProcessHandle::Resource(Box::new(child))
         }
     };
     if let Err(error) = wait_for_health(port).await {
         match process {
-            ProcessHandle::Dev(mut child) => {
+            ProcessHandle::Dev(mut child) | ProcessHandle::Resource(mut child) => {
                 let _ = child.start_kill();
-            }
-            ProcessHandle::Sidecar(child) => {
-                let _ = child.kill();
             }
         }
         return Err(error);
