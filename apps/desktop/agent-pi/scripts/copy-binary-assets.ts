@@ -1,4 +1,4 @@
-import { copyFileSync } from "node:fs";
+import { copyFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -17,3 +17,12 @@ const target = join(distDir, "package.json");
 
 copyFileSync(sdkPackageJson, target);
 process.stdout.write(`copied ${sdkPackageJson} -> ${target}\n`);
+
+// On Windows, bun appends `.exe` to the output file. The Tauri resource config
+// references the binary without extension, so create a copy without `.exe`.
+const exePath = join(distDir, "kira-agent-pi.exe");
+const binPath = join(distDir, "kira-agent-pi");
+if (process.platform === "win32" && existsSync(exePath) && !existsSync(binPath)) {
+  copyFileSync(exePath, binPath);
+  process.stdout.write(`normalized ${exePath} -> ${binPath}\n`);
+}

@@ -6,7 +6,7 @@
   "scripts": {
     "build": "bun build src/server.ts --target=bun --outdir=dist --entry-naming=server.mjs",
     "check": "tsc --noEmit",
-    "compile": "bun build src/server.ts --compile --target=bun --outfile=dist/kira-agent-pi && bun run scripts/copy-binary-assets.ts",
+    "compile": "bun build src/server.ts --compile --outfile=dist/kira-agent-pi && bun run scripts/copy-binary-assets.ts",
     "dev": "bun --watch run src/server.ts",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
