@@ -26,9 +26,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "externalBin": [
-      "binaries/kira-agent-pi"
-    ],
+    "externalBin": ["binaries/kira-agent-pi"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -37,6 +35,9 @@
       "icons/icon.ico"
     ],
     "createUpdaterArtifacts": true,
+    "macOS": {
+      "signingIdentity": "-"
+    },
     "resources": {
       "../agent-pi/dist/package.json": "agent-runtime/package.json"
     }
