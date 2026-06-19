@@ -11,6 +11,7 @@
     "core:window:allow-toggle-maximize",
     "dialog:default",
     "opener:default",
+    "shell:default",
     "updater:default",
     "process:default"
   ]
