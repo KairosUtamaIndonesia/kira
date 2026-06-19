@@ -2,6 +2,7 @@ import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 
 import { env } from "@/lib/env";
+import { logger } from "@/lib/log";
 
 import * as authSchema from "./auth-schema";
 import * as appSchema from "./schema";
@@ -26,7 +27,10 @@ function createPool(): Pool {
   // process. The faulted client is already evicted and the next query opens a
   // fresh one, so we surface the error as a warning rather than crash on it.
   pool.on("error", (error) => {
-    process.emitWarning(error);
+    logger.error("db.pool.error", {
+      error: error.message,
+      stack: error.stack,
+    });
   });
 
   return pool;
