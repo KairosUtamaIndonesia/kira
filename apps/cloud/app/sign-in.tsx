@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import { createFileRoute } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
@@ -31,6 +33,31 @@ function SignInPage() {
   const { invitationId, redirect } = Route.useSearch();
   const { invitationContext } = Route.useLoaderData();
 
+  const isExpiredInvitation =
+    invitationId !== undefined && invitationContext !== undefined && invitationContext.isExpired;
+
+  let invitationMessage: ReactNode;
+  if (isExpiredInvitation) {
+    invitationMessage = (
+      <div className="mt-4 space-y-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
+        <p className="font-medium text-destructive">Invitation expired</p>
+        <p className="text-muted-foreground">
+          This invitation to{" "}
+          <span className="font-medium">{invitationContext.organizationName}</span> has expired. Ask
+          an organization administrator to send a new invitation.
+        </p>
+      </div>
+    );
+  } else if (invitationContext !== undefined) {
+    invitationMessage = (
+      <div className="mt-4 rounded-lg border border-border bg-muted p-3 text-sm text-muted-foreground">
+        {invitationContext.ssoRequired
+          ? `${invitationContext.organizationName} requires Single Sign-On. Continue with your organization identity provider to accept this invitation.`
+          : "If you do not have a password yet, create an account with the invited email address."}
+      </div>
+    );
+  }
+
   return (
     <main className="flex min-h-svh items-center justify-center bg-background px-4 py-12 text-foreground">
       <section className="w-full max-w-sm rounded-xl border bg-card p-6 text-card-foreground shadow-xs">
@@ -47,18 +74,14 @@ function SignInPage() {
               : "Create an account or sign in with the invited email address."}
           </p>
         </div>
-        {invitationId === undefined || invitationContext === undefined ? undefined : (
-          <div className="mt-4 rounded-lg border border-border bg-muted p-3 text-sm text-muted-foreground">
-            {invitationContext.ssoRequired
-              ? `${invitationContext.organizationName} requires Single Sign-On. Continue with your organization identity provider to accept this invitation.`
-              : "If you do not have a password yet, create an account with the invited email address."}
-          </div>
+        {invitationMessage}
+        {isExpiredInvitation ? undefined : (
+          <SignInForm
+            invitationId={invitationId}
+            invitationContext={invitationContext}
+            redirect={redirect}
+          />
         )}
-        <SignInForm
-          invitationId={invitationId}
-          invitationContext={invitationContext}
-          redirect={redirect}
-        />
       </section>
     </main>
   );
