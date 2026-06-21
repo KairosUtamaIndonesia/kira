@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import type { OrganizationApiKey } from "@/features/organizations/types";
 
@@ -69,7 +69,7 @@ async function listOrganizationApiKeysForAdmin(
     .where(
       and(
         eq(apikey.configId, organizationDesktopAccessConfigId),
-        eq(apikey.referenceId, organizationId),
+        sql`${apikey.metadata}::jsonb @> ${JSON.stringify({ organizationId })}::jsonb`,
       ),
     )
     .orderBy(apikey.createdAt);

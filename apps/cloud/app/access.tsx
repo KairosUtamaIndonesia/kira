@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 
 import { SignOutButton } from "@/features/auth/components/SignOutButton";
 
@@ -23,11 +23,7 @@ function AccessPage() {
             web panel is available to organization owners and admins.
           </p>
           <p className="text-sm text-muted-foreground">
-            To use Kira, open the{" "}
-            <Link to="/desktop-signin" className="underline underline-offset-4">
-              desktop app
-            </Link>{" "}
-            and sign in with your organization credentials.
+            To use Kira, open the Kira desktop app and sign in with your organization credentials.
           </p>
         </div>
         <div className="mt-6">
