@@ -28,3 +28,4 @@ tsconfig.tsbuildinfo
 
 .env
 .tanstack/
+.understand-anything/

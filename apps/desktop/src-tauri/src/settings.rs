@@ -17,6 +17,7 @@ const NOTIFICATION_SELECTED_SOUND_ID_KEY: &str = "notifications.selectedSoundId"
 const NOTIFICATION_CUSTOM_SOUNDS_KEY: &str = "notifications.customSounds";
 const TERMINAL_SHELL_PATH_KEY: &str = "terminal.shellPath";
 const TERMINAL_SHELL_PATH_TERMINAL_OVERRIDE_KEY: &str = "terminal.shellPath.terminalOverride";
+const AGENT_RUNTIME_BUN_PATH_KEY: &str = "agentRuntime.bunPath";
 const GUARDRAILS_CONFIG_KEY: &str = "guardrails_config";
 const DEFAULT_APPEARANCE_THEME: AppearanceTheme = AppearanceTheme::Dark;
 const DEFAULT_AGENT_THREAD_SHOW_RAW_EVENT_STREAM: bool = false;
@@ -326,6 +327,31 @@ pub async fn guardrails_settings_update(
     store: tauri::State<'_, PersistenceStore>,
 ) -> Result<GuardrailsSettings, SettingsError> {
     update_guardrails_settings(store.pool(), input).await
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
+pub async fn agent_runtime_bun_path_get(
+    store: tauri::State<'_, PersistenceStore>,
+) -> Result<Option<String>, SettingsError> {
+    Ok(bun_path_get(store.pool()).await)
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
+pub async fn agent_runtime_bun_path_set(
+    path: String,
+    store: tauri::State<'_, PersistenceStore>,
+) -> Result<(), SettingsError> {
+    upsert_app_setting(store.pool(), AGENT_RUNTIME_BUN_PATH_KEY, &path)
+        .await
+        .map_err(SettingsError::Update)
 }
 
 async fn get_guardrails_settings(pool: &SqlitePool) -> Result<GuardrailsSettings, SettingsError> {
@@ -911,6 +937,14 @@ pub async fn terminal_shell_path(pool: &SqlitePool) -> Option<String> {
 /// Returns the primary shell path configured for the agent (Pi).
 pub async fn agent_shell_path(pool: &SqlitePool) -> Option<String> {
     app_setting_value(pool, TERMINAL_SHELL_PATH_KEY)
+        .await
+        .ok()
+        .flatten()
+}
+
+/// Returns the configured Bun binary path override, if set.
+pub async fn bun_path_get(pool: &SqlitePool) -> Option<String> {
+    app_setting_value(pool, AGENT_RUNTIME_BUN_PATH_KEY)
         .await
         .ok()
         .flatten()

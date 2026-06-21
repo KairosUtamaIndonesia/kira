@@ -74,6 +74,8 @@ pub fn run() -> tauri::Result<()> {
             settings::terminal_settings_update,
             settings::guardrails_settings_get,
             settings::guardrails_settings_update,
+            settings::agent_runtime_bun_path_get,
+            settings::agent_runtime_bun_path_set,
             desktop_signin::desktop_signin_status,
             desktop_signin::desktop_signin_begin,
             desktop_signin::desktop_sign_out,
