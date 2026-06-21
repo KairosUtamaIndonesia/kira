@@ -143,10 +143,17 @@ function SignInForm({ invitationId, invitationContext, redirect }: SignInFormPro
     setErrorMessage(undefined);
     setIsSsoSubmitting(true);
 
+    // Preserve the redirect param (desktop loopback URL + state) through the
+    // SSO redirect chain. Without this the desktop sign-in flow collapses:
+    // SSO redirects to /dashboard instead of back to /desktop-signin?…,
+    // the user lands on a terminal page, and has to relaunch from the app.
+    const callbackURL =
+      redirect ??
+      (invitationId === undefined ? "/dashboard" : `/sign-in?invitationId=${invitationId}`);
+
     const result = await authClient.signIn.sso({
       email,
-      callbackURL:
-        invitationId === undefined ? "/dashboard" : `/sign-in?invitationId=${invitationId}`,
+      callbackURL,
       requestSignUp: invitationId !== undefined,
     });
 

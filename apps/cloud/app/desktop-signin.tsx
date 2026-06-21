@@ -1,6 +1,7 @@
 import { createFileRoute, notFound, redirect } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
+import { and, eq, sql } from "drizzle-orm";
 import { useState } from "react";
 import { z } from "zod";
 
@@ -13,6 +14,8 @@ import { createHandoff } from "@/features/desktop-signin/data/desktopSignin";
 import { organizationDesktopAccessConfigId } from "@/features/org-admin/api-keys/data/apiKeys";
 import { auth } from "@/lib/auth/auth";
 import { getSessionFn } from "@/lib/auth/session";
+import { account, invitation, organization, ssoProvider } from "@/lib/db/auth-schema";
+import { db } from "@/lib/db/postgres";
 
 const desktopSigninSearchSchema = z.object({
   redirect_uri: z.string().optional(),
@@ -65,13 +68,47 @@ function firstOrganizationName(organizations: MembershipOrganization[]): string 
 
 const getDesktopSigninContext = createServerFn({ method: "GET" }).handler(
   async (): Promise<DesktopSigninContext> => {
-    const session = await auth.api.getSession({ headers: getRequest().headers });
+    const headers = getRequest().headers;
+    const session = await auth.api.getSession({ headers });
 
     if (session === null) {
       throw notFound();
     }
 
-    const organizations = await listOrganizationsForMember(session.user.id);
+    let organizations = await listOrganizationsForMember(session.user.id);
+
+    if (organizations.length === 0) {
+      // Auto-accept pending invitations — only when the org has a domain-verified
+      // SSO provider matching the user's email domain.  SSO already proved email
+      // ownership, so bare-email matching is safe here.
+      const [pendingInvitation] = await db
+        .select({ id: invitation.id })
+        .from(invitation)
+        .innerJoin(organization, eq(organization.id, invitation.organizationId))
+        .innerJoin(ssoProvider, eq(ssoProvider.organizationId, organization.id))
+        .innerJoin(
+          account,
+          and(eq(account.userId, session.user.id), eq(account.providerId, ssoProvider.providerId)),
+        )
+        .where(
+          and(
+            sql`LOWER(${invitation.email}) = LOWER(${session.user.email})`,
+            eq(invitation.status, "pending"),
+            eq(ssoProvider.domainVerified, true),
+            sql`${ssoProvider.domain} = SPLIT_PART(LOWER(${session.user.email}), '@', 2)`,
+          ),
+        )
+        .limit(1);
+
+      if (pendingInvitation !== undefined) {
+        await auth.api.acceptInvitation({
+          headers,
+          body: { invitationId: pendingInvitation.id },
+        });
+
+        organizations = await listOrganizationsForMember(session.user.id);
+      }
+    }
 
     if (organizations.length === 0) {
       return { state: "no-organization" };
@@ -98,9 +135,9 @@ const completeDesktopSignin = createServerFn({ method: "POST" })
     }
 
     const organizations = await listOrganizationsForMember(session.user.id);
-    const organization = organizations.find((entry) => entry.id === input.organizationId);
+    const matchedOrganization = organizations.find((entry) => entry.id === input.organizationId);
 
-    if (organization === undefined) {
+    if (matchedOrganization === undefined) {
       return { status: "error", message: "Select an organization you belong to." };
     }
 
@@ -109,14 +146,14 @@ const completeDesktopSignin = createServerFn({ method: "POST" })
       body: {
         configId: organizationDesktopAccessConfigId,
         name: "Kira Desktop",
-        metadata: { organizationId: organization.id },
+        metadata: { organizationId: matchedOrganization.id },
       },
     });
 
     const code = await createHandoff({
       userId: session.user.id,
-      organizationId: organization.id,
-      organizationName: organization.name,
+      organizationId: matchedOrganization.id,
+      organizationName: matchedOrganization.name,
       apiKey: created.key,
     });
 
@@ -217,9 +254,9 @@ function DesktopSigninPage() {
                   onChange={(event) => setSelectedOrganizationId(event.target.value)}
                   className="mt-1 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm text-foreground"
                 >
-                  {context.organizations.map((organization) => (
-                    <option key={organization.id} value={organization.id}>
-                      {organization.name}
+                  {context.organizations.map((org) => (
+                    <option key={org.id} value={org.id}>
+                      {org.name}
                     </option>
                   ))}
                 </select>

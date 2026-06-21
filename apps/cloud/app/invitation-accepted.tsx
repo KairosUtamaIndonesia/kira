@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 
 import { SignOutButton } from "@/features/auth/components/SignOutButton";
 
@@ -21,11 +21,7 @@ function InvitationAcceptedPage() {
             Your invitation has been accepted and your organization membership is active.
           </p>
           <p className="text-sm text-muted-foreground">
-            Open the{" "}
-            <Link to="/desktop-signin" className="underline underline-offset-4">
-              Kira desktop app
-            </Link>{" "}
-            and sign in to get started.
+            Open the Kira desktop app to sign in and start using your organization's tools.
           </p>
         </div>
         <div className="mt-6">

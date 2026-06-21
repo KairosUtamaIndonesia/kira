@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import type {
   Organization,
@@ -32,7 +32,10 @@ async function getOrganizationCounts(): Promise<OrganizationCounts> {
   const [memberRows, apiKeyRows] = await Promise.all([
     db.select({ organizationId: member.organizationId }).from(member),
     db
-      .select({ organizationId: apikey.referenceId })
+      .select({
+        organizationId:
+          sql<string>`${apikey.metadata}::jsonb ->> 'organizationId'`,
+      })
       .from(apikey)
       .where(eq(apikey.configId, organizationDesktopAccessConfigId)),
   ]);
