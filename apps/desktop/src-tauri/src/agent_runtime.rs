@@ -771,6 +771,8 @@ async fn start_app_runtime(
                 .arg(&script_path)
                 .arg("--port")
                 .arg(port.to_string());
+            #[cfg(target_os = "windows")]
+            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
             cmd.env("HOST", AGENT_RUNTIME_HOST)
                 .env("HOSTNAME", AGENT_RUNTIME_HOST)
                 .env("PORT", port.to_string())

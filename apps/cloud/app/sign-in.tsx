@@ -10,6 +10,8 @@ import { getInvitationSignInContext } from "@/features/auth/data/membership";
 const signInSearchSchema = z.object({
   invitationId: z.string().optional(),
   redirect: z.string().optional(),
+  sso_error: z.string().optional(),
+  sso_error_description: z.string().optional(),
 });
 
 const loadInvitationContext = createServerFn()
@@ -30,7 +32,12 @@ export const Route = createFileRoute("/sign-in")({
 });
 
 function SignInPage() {
-  const { invitationId, redirect } = Route.useSearch();
+  const {
+    invitationId,
+    redirect,
+    sso_error: ssoError,
+    sso_error_description: ssoErrorDescription,
+  } = Route.useSearch();
   const { invitationContext } = Route.useLoaderData();
 
   const isExpiredInvitation =
@@ -57,6 +64,17 @@ function SignInPage() {
       </div>
     );
   }
+  const ssoErrorMessage: ReactNode =
+    ssoError === undefined ? undefined : (
+      <div className="mt-4 space-y-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
+        <p className="font-medium text-destructive">Single sign-on failed</p>
+        <p className="text-muted-foreground">
+          {ssoErrorDescription ??
+            ssoError ??
+            "Could not complete SSO sign-in. Contact your administrator to check the identity provider configuration."}
+        </p>
+      </div>
+    );
 
   return (
     <main className="flex min-h-svh items-center justify-center bg-background px-4 py-12 text-foreground">
@@ -75,6 +93,7 @@ function SignInPage() {
           </p>
         </div>
         {invitationMessage}
+        {ssoErrorMessage}
         {isExpiredInvitation ? undefined : (
           <SignInForm
             invitationId={invitationId}

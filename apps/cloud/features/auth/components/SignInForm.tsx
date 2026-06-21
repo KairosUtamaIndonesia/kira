@@ -159,7 +159,9 @@ function SignInForm({ invitationId, invitationContext, redirect }: SignInFormPro
 
     if (result.error) {
       setIsSsoSubmitting(false);
-      setErrorMessage("Single sign-on is not available for this email. Use your password instead.");
+      setErrorMessage(
+        "Could not start single sign-on. Check that your SSO provider is configured correctly.",
+      );
     }
   }
 
