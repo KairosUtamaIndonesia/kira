@@ -33,8 +33,7 @@ async function getOrganizationCounts(): Promise<OrganizationCounts> {
     db.select({ organizationId: member.organizationId }).from(member),
     db
       .select({
-        organizationId:
-          sql<string>`${apikey.metadata}::jsonb ->> 'organizationId'`,
+        organizationId: sql<string>`${apikey.metadata}::jsonb ->> 'organizationId'`,
       })
       .from(apikey)
       .where(eq(apikey.configId, organizationDesktopAccessConfigId)),
