@@ -8,6 +8,7 @@ type InvitationSignInContext = {
   organizationName: string;
   organizationSlug: string;
   ssoRequired: boolean;
+  isExpired: boolean;
 };
 
 type MembershipOrganization = { id: string; name: string };
@@ -22,6 +23,7 @@ async function getInvitationSignInContext(
       organizationName: organization.name,
       organizationSlug: organization.slug,
       ssoProviderId: ssoProvider.id,
+      expiresAt: invitation.expiresAt,
     })
     .from(invitation)
     .innerJoin(organization, eq(organization.id, invitation.organizationId))
@@ -41,6 +43,7 @@ async function getInvitationSignInContext(
     organizationName: row.organizationName,
     organizationSlug: row.organizationSlug,
     ssoRequired: row.ssoProviderId !== null,
+    isExpired: row.expiresAt.getTime() <= Date.now(),
   };
 }
 
