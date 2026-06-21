@@ -5,18 +5,19 @@ import { eq } from "drizzle-orm";
 import type { SsoActionResult } from "@/features/sso/types";
 import type {
   RegisterAzureSsoProviderInput,
+  UpdateSsoProviderInput,
   VerifySsoDomainInput,
 } from "@/features/sso/validation/ssoProvider";
 
 import {
   registerAzureSsoProviderSchema,
+  updateSsoProviderSchema,
   verifySsoDomainSchema,
 } from "@/features/sso/validation/ssoProvider";
 import { auth } from "@/lib/auth/auth";
-import { requirePlatformAdmin } from "@/lib/auth/guards";
-import { organization } from "@/lib/db/auth-schema";
+import { requireOrgRole, requirePlatformAdmin } from "@/lib/auth/guards";
+import { organization, ssoProvider } from "@/lib/db/auth-schema";
 import { db } from "@/lib/db/postgres";
-
 function providerIdForOrganizationSlug(organizationSlug: string) {
   return `${organizationSlug}-entra`;
 }
@@ -146,7 +147,49 @@ const verifySsoDomainAction = createServerFn({ method: "POST" })
     }
   });
 
+const updateSsoProviderAction = createServerFn({ method: "POST" })
+  .validator((input: UpdateSsoProviderInput) => input)
+  .handler(async ({ data: input }): Promise<SsoActionResult> => {
+    try {
+      await requireOrgRole(input.organizationId);
+      const parsedInput = updateSsoProviderSchema.parse(input);
+
+      const [existing] = await db
+        .select({ oidcConfig: ssoProvider.oidcConfig })
+        .from(ssoProvider)
+        .where(eq(ssoProvider.providerId, parsedInput.providerId))
+        .limit(1);
+
+      if (existing === undefined) {
+        return failure(new Error("SSO provider not found."));
+      }
+
+      const existingConfig: Record<string, unknown> = existing.oidcConfig
+        ? JSON.parse(existing.oidcConfig)
+        : {};
+
+      const mergedConfig = {
+        ...existingConfig,
+        clientId: parsedInput.clientId,
+        ...(parsedInput.clientSecret && { clientSecret: parsedInput.clientSecret }),
+      };
+
+      await db
+        .update(ssoProvider)
+        .set({
+          oidcConfig: JSON.stringify(mergedConfig),
+          domain: parsedInput.domain,
+        })
+        .where(eq(ssoProvider.providerId, parsedInput.providerId));
+
+      return success("Updated SSO provider configuration.");
+    } catch (error) {
+      return failure(error);
+    }
+  });
+
 export {
+  updateSsoProviderAction,
   registerAzureSsoProviderAction,
   requestSsoDomainVerificationAction,
   verifySsoDomainAction,

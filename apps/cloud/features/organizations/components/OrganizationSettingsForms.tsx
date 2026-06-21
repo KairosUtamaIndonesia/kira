@@ -7,8 +7,16 @@ import type { Organization } from "@/features/organizations/types";
 import type { OrganizationSsoConnection, SsoActionResult } from "@/features/sso/types";
 
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   deleteOrganizationAction,
   renameOrganizationAction,
@@ -21,6 +29,7 @@ import {
 import {
   registerAzureSsoProviderAction,
   requestSsoDomainVerificationAction,
+  updateSsoProviderAction,
   verifySsoDomainAction,
 } from "@/features/sso/actions/manageSsoProvider";
 
@@ -124,6 +133,8 @@ type SingleSignOnFormProperties = OrganizationFormProperties & {
 
 function SingleSignOnForm({ organization, ssoConnection }: SingleSignOnFormProperties) {
   const [result, setResult] = useState<SsoActionResult>(emptySsoResult);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editResult, setEditResult] = useState<SsoActionResult>(emptySsoResult);
   const router = useRouter();
   const form = useForm({
     defaultValues: {
@@ -172,6 +183,77 @@ function SingleSignOnForm({ organization, ssoConnection }: SingleSignOnFormPrope
             <dd className="mt-1 font-mono text-xs break-all">{ssoConnection.issuer}</dd>
           </div>
         </dl>
+        <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+          <DialogTrigger
+            render={
+              <Button type="button" variant="secondary">
+                Edit configuration
+              </Button>
+            }
+          />
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit SSO configuration</DialogTitle>
+            </DialogHeader>
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.currentTarget);
+                const actionResult = await updateSsoProviderAction({
+                  data: {
+                    organizationId: organization.id,
+                    providerId: ssoConnection.providerId,
+                    clientId: formData.get("clientId") as string,
+                    clientSecret: (formData.get("clientSecret") as string) || undefined,
+                    domain: formData.get("domain") as string,
+                  },
+                });
+                setEditResult(actionResult);
+
+                if (actionResult.status === "success") {
+                  await router.invalidate();
+                  setEditDialogOpen(false);
+                }
+              }}
+            >
+              <div className="grid gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="clientId">Client ID</Label>
+                  <Input
+                    id="clientId"
+                    name="clientId"
+                    defaultValue={ssoConnection.providerId}
+                    required
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="clientSecret">Client secret</Label>
+                  <Input
+                    id="clientSecret"
+                    name="clientSecret"
+                    placeholder="Leave blank to keep existing"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="domain">Domain</Label>
+                  <Input id="domain" name="domain" defaultValue={ssoConnection.domain} required />
+                </div>
+                {editResult.message.length > 0 ? (
+                  <p
+                    className={
+                      editResult.status === "error"
+                        ? "text-sm text-destructive"
+                        : "text-sm text-muted-foreground"
+                    }
+                  >
+                    {editResult.message}
+                  </p>
+                ) : undefined}
+                <Button type="submit">Save</Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
         {ssoConnection.domainVerified ? undefined : (
           <div className="mt-4 rounded-lg border border-border bg-muted p-3 text-sm text-muted-foreground">
             <p>
