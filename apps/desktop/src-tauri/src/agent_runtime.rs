@@ -12,8 +12,6 @@ use tokio::{
 };
 
 use tauri::Manager;
-use tauri_plugin_shell::process::CommandChild;
-use tauri_plugin_shell::ShellExt;
 
 use crate::persistence::PersistenceStore;
 use crate::source_control;
@@ -41,11 +39,8 @@ pub(crate) enum AgentRuntimeState {
     },
 }
 
-/// Holds the child process handle for either dev mode (tokio) or built
-/// mode (Tauri sidecar). Both are killed explicitly during shutdown.
 enum ProcessHandle {
     Dev(Box<TokioChild>),
-    Sidecar(CommandChild),
     Bun(Box<TokioChild>),
 }
 
@@ -62,20 +57,14 @@ pub(crate) struct RuntimeConnection {
 /// Terminates the agent runtime child process during application shutdown.
 ///
 /// Tauri does not run `Drop` for managed state when the process exits, so the
-/// dev-mode child's `kill_on_drop` guard never fires, and the sidecar process
-/// also needs explicit cleanup. Without this, the agent runtime keeps running
+/// child's `kill_on_drop` guard never fires. Without this, the agent runtime
+/// keeps running.
 pub(crate) fn shutdown(registry: &AgentRuntimeRegistry) {
     let mut state = tauri::async_runtime::block_on(registry.runtime.lock());
     if let AgentRuntimeState::Running(runtime) = &mut *state {
         if let Some(handle) = runtime.process.take() {
-            match handle {
-                ProcessHandle::Dev(mut child) | ProcessHandle::Bun(mut child) => {
-                    let _ = child.start_kill();
-                }
-                ProcessHandle::Sidecar(child) => {
-                    let _ = child.kill();
-                }
-            }
+            let (ProcessHandle::Dev(mut child) | ProcessHandle::Bun(mut child)) = handle;
+            let _ = child.start_kill();
         }
     }
     *state = AgentRuntimeState::NotStarted;
@@ -238,10 +227,8 @@ struct AgentThreadProjectContext {
     project_path: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AgentRuntimeLaunchMode {
     Dev,
-    Built,
     Bun,
 }
 
@@ -270,8 +257,6 @@ pub enum AgentRuntimeError {
     QueryProjectContext(String),
     #[error("failed to query Agent Thread context usage: {0}")]
     QueryContextUsage(String),
-    #[error("Agent runtime directory was not found: {path}")]
-    RuntimeDirectoryMissing { path: String },
     #[error("failed to reserve an agent runtime port: {0}")]
     ReservePort(String),
     #[error("failed to start agent runtime: {reason}")]
@@ -673,7 +658,6 @@ async fn backend_models_handler(
 fn runtime_base_url(port: u16) -> String {
     format!("http://{AGENT_RUNTIME_HOST}:{port}")
 }
-
 #[allow(
     clippy::too_many_lines,
     reason = "Function covers the full launch orchestration: validate, bind backend, spawn agent, await health"
@@ -715,7 +699,16 @@ async fn start_app_runtime(
 
     let process = match mode {
         AgentRuntimeLaunchMode::Dev => {
-            let runtime_dir = resolve_runtime_dir()?;
+            let runtime_dir = if let Ok(path) = env::var("KIRA_AGENT_RUNTIME_DIR") {
+                PathBuf::from(path)
+            } else {
+                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../agent-pi")
+            };
+            if !runtime_dir.is_dir() {
+                return Err(AgentRuntimeError::StartFailed {
+                    reason: format!("agent runtime directory not found: {}", runtime_dir.display()),
+                });
+            }
             let mut cmd = Command::new("bun");
             cmd.current_dir(&runtime_dir);
             cmd.arg("run")
@@ -723,13 +716,8 @@ async fn start_app_runtime(
                 .arg("--")
                 .arg("--port")
                 .arg(port.to_string());
-            cmd.env("HOST", AGENT_RUNTIME_HOST)
-                .env("HOSTNAME", AGENT_RUNTIME_HOST)
-                .env("PORT", port.to_string())
-                .env("KIRA_AGENT_RUNTIME_TOKEN", &token)
-                .env("KIRA_AGENT_PI_DATA_DIR", store.app_data_dir())
-                .env("KIRA_AGENT_BACKEND_URL", &backend_url)
-                .kill_on_drop(true);
+            apply_runtime_env(&mut cmd, port, &token, store.app_data_dir(), &backend_url);
+            cmd.kill_on_drop(true);
             if let Some(shell_path) = crate::settings::agent_shell_path(store.pool()).await {
                 cmd.env("KIRA_AGENT_SHELL_PATH", shell_path);
             }
@@ -748,10 +736,22 @@ async fn start_app_runtime(
                     reason: format!("failed to resolve resource dir: {e}"),
                 }
             })?;
-            let staging_dir = PathBuf::from(store.app_data_dir()).join("agent-runtime");
+            let staging_dir = app_handle.path().app_cache_dir().map_err(|e| {
+                AgentRuntimeError::ResourceDirMissing {
+                    reason: format!("failed to resolve app cache dir: {e}"),
+                }
+            })?.join("agent-runtime");
+            let app_version = app_handle.config().version.as_deref().unwrap_or("0.0.0");
+            let version_file = staging_dir.join(".version");
+            if staging_dir.join("server.mjs").exists()
+                && std::fs::read_to_string(&version_file).ok().as_deref() != Some(app_version)
+            {
+                let _ = std::fs::remove_dir_all(&staging_dir);
+            }
             if !staging_dir.join("server.mjs").exists() {
                 let bundle_dir = resource_dir.join("agent-runtime");
-                stage_runtime_bundle(&bundle_dir, &staging_dir)?;
+                copy_dir_recursive(&bundle_dir, &staging_dir)?;
+                let _ = std::fs::write(&version_file, app_version);
             }
             let bun_path = resolve_bun_path(&store).await?;
 
@@ -766,13 +766,8 @@ async fn start_app_runtime(
                 .arg(port.to_string());
             #[cfg(target_os = "windows")]
             cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-            cmd.env("HOST", AGENT_RUNTIME_HOST)
-                .env("HOSTNAME", AGENT_RUNTIME_HOST)
-                .env("PORT", port.to_string())
-                .env("KIRA_AGENT_RUNTIME_TOKEN", &token)
-                .env("KIRA_AGENT_PI_DATA_DIR", store.app_data_dir())
-                .env("KIRA_AGENT_BACKEND_URL", &backend_url)
-                .env(
+            apply_runtime_env(&mut cmd, port, &token, store.app_data_dir(), &backend_url);
+            cmd.env(
                     "KIRA_AGENT_SKILLS_DIR",
                     skills_dir.to_string_lossy().as_ref(),
                 )
@@ -787,51 +782,10 @@ async fn start_app_runtime(
                 }
             })?))
         }
-        AgentRuntimeLaunchMode::Built => {
-            let resource_dir = app_handle.path().resource_dir().map_err(|e| {
-                AgentRuntimeError::ResourceDirMissing {
-                    reason: format!("failed to resolve resource dir: {e}"),
-                }
-            })?;
-            let pi_package_dir = resource_dir.join("agent-runtime");
-            let sidecar_cmd = app_handle
-                .shell()
-                .sidecar("kira-agent-pi")
-                .map_err(|e| AgentRuntimeError::StartFailed {
-                    reason: format!("failed to create sidecar command: {e}"),
-                })?
-                .args(["--port", &port.to_string()])
-                .env("HOST", AGENT_RUNTIME_HOST)
-                .env("HOSTNAME", AGENT_RUNTIME_HOST)
-                .env("PORT", port.to_string())
-                .env("KIRA_AGENT_RUNTIME_TOKEN", &token)
-                .env("KIRA_AGENT_PI_DATA_DIR", store.app_data_dir())
-                .env("KIRA_AGENT_BACKEND_URL", &backend_url)
-                .env("PI_PACKAGE_DIR", &pi_package_dir);
-            let sidecar_cmd =
-                if let Some(shell_path) = crate::settings::agent_shell_path(store.pool()).await {
-                    sidecar_cmd.env("KIRA_AGENT_SHELL_PATH", shell_path)
-                } else {
-                    sidecar_cmd
-                };
-            let (_, sidecar_child) =
-                sidecar_cmd
-                    .spawn()
-                    .map_err(|error| AgentRuntimeError::StartFailed {
-                        reason: format!("failed to spawn agent runtime binary: {error}"),
-                    })?;
-            ProcessHandle::Sidecar(sidecar_child)
-        }
     };
     if let Err(error) = wait_for_health(port).await {
-        match process {
-            ProcessHandle::Dev(mut child) | ProcessHandle::Bun(mut child) => {
-                let _ = child.start_kill();
-            }
-            ProcessHandle::Sidecar(child) => {
-                let _ = child.kill();
-            }
-        }
+        let (ProcessHandle::Dev(mut child) | ProcessHandle::Bun(mut child)) = process;
+        let _ = child.start_kill();
         return Err(error);
     }
     Ok(AppAgentRuntime {
@@ -903,29 +857,22 @@ fn validate_health_response(port: u16, health: &HealthResponse) -> Result<(), Ag
     Ok(())
 }
 
-fn resolve_runtime_dir() -> Result<PathBuf, AgentRuntimeError> {
-    let runtime_dir = if let Ok(path) = env::var("KIRA_AGENT_RUNTIME_DIR") {
-        PathBuf::from(path)
-    } else {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../agent-pi")
-    };
-
-    if !runtime_dir.is_dir() {
-        return Err(AgentRuntimeError::RuntimeDirectoryMissing {
-            path: runtime_dir.display().to_string(),
-        });
-    }
-    Ok(runtime_dir)
-}
-
 fn resolve_launch_mode() -> AgentRuntimeLaunchMode {
     match env::var("KIRA_AGENT_RUNTIME_MODE") {
         Ok(value) if value == "bun" => AgentRuntimeLaunchMode::Bun,
-        Ok(value) if value == "built" => AgentRuntimeLaunchMode::Built,
         Ok(value) if value == "dev" => AgentRuntimeLaunchMode::Dev,
         _ if cfg!(debug_assertions) => AgentRuntimeLaunchMode::Dev,
         _ => AgentRuntimeLaunchMode::Bun,
     }
+}
+
+fn apply_runtime_env(cmd: &mut Command, port: u16, token: &str, app_data_dir: &Path, backend_url: &str) {
+    cmd.env("HOST", AGENT_RUNTIME_HOST)
+        .env("HOSTNAME", AGENT_RUNTIME_HOST)
+        .env("PORT", port.to_string())
+        .env("KIRA_AGENT_RUNTIME_TOKEN", token)
+        .env("KIRA_AGENT_PI_DATA_DIR", app_data_dir.to_string_lossy().as_ref())
+        .env("KIRA_AGENT_BACKEND_URL", backend_url);
 }
 
 /// Resolves the Bun binary path by probing known locations, then validates the
@@ -1123,46 +1070,6 @@ fn generate_runtime_token() -> String {
     token
 }
 
-/// Copies the agent-runtime bundle from the install directory to the app data
-/// directory on first launch. Bun on Windows cannot read files from Program
-/// Files (EPERM), so we keep a persistent copy under the user-writable app
-/// data directory.
-///
-/// Subsequent launches skip the copy — the staged copy persists across app
-/// restarts (but not reinstalls; a fresh install creates a fresh app data dir).
-fn stage_runtime_bundle(source: &Path, dest: &Path) -> Result<(), AgentRuntimeError> {
-    fs::create_dir_all(dest).map_err(|e| AgentRuntimeError::StartFailed {
-        reason: format!("failed to create runtime dir \"{}\": {e}", dest.display()),
-    })?;
-
-    for entry in fs::read_dir(source).map_err(|e| AgentRuntimeError::StartFailed {
-        reason: format!("failed to read bundle dir \"{}\": {e}", source.display()),
-    })? {
-        let entry = entry.map_err(|e| AgentRuntimeError::StartFailed {
-            reason: format!("failed to read bundle entry: {e}"),
-        })?;
-        let file_type = entry
-            .file_type()
-            .map_err(|e| AgentRuntimeError::StartFailed {
-                reason: format!("failed to get file type: {e}"),
-            })?;
-        let src_path = entry.path();
-        let dst_path = dest.join(entry.file_name());
-
-        if file_type.is_dir() {
-            copy_dir_recursive(&src_path, &dst_path)?;
-        } else {
-            fs::copy(&src_path, &dst_path).map_err(|e| AgentRuntimeError::StartFailed {
-                reason: format!(
-                    "failed to copy \"{}\" to \"{}\": {e}",
-                    src_path.display(),
-                    dst_path.display(),
-                ),
-            })?;
-        }
-    }
-    Ok(())
-}
 
 fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), AgentRuntimeError> {
     fs::create_dir_all(dst).map_err(|e| AgentRuntimeError::StartFailed {

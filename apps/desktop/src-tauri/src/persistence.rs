@@ -17,7 +17,6 @@ pub struct PersistenceStore {
 }
 
 impl PersistenceStore {
-    #[must_use]
     pub fn new(pool: SqlitePool, app_data_dir: PathBuf) -> Self {
         Self { pool, app_data_dir }
     }
@@ -31,6 +30,9 @@ impl PersistenceStore {
     pub fn app_data_dir(&self) -> &PathBuf {
         &self.app_data_dir
     }
+
+
+
 }
 
 #[derive(Debug, Error)]
