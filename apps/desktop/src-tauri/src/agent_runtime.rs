@@ -296,10 +296,7 @@ pub enum AgentRuntimeError {
     #[error("failed to resolve bundled agent runtime resources: {reason}")]
     ResourceDirMissing { reason: String },
     #[error("Bun version {found} is too old. Required: {required}")]
-    BunVersionTooLow {
-        found: String,
-        required: String,
-    },
+    BunVersionTooLow { found: String, required: String },
     #[error("Bun runtime not found. Install Bun from https://bun.sh or configure a custom path in settings.")]
     BunNotFound,
 }
@@ -761,7 +758,6 @@ async fn start_app_runtime(
             }
             let bun_path = resolve_bun_path(&store).await?;
 
-
             let script_path = staging_dir.join("server.mjs");
             let skills_dir = staging_dir.join("skills");
             let pi_package_dir = staging_dir.join("pi-sdk");
@@ -779,7 +775,10 @@ async fn start_app_runtime(
                 .env("KIRA_AGENT_RUNTIME_TOKEN", &token)
                 .env("KIRA_AGENT_PI_DATA_DIR", store.app_data_dir())
                 .env("KIRA_AGENT_BACKEND_URL", &backend_url)
-                .env("KIRA_AGENT_SKILLS_DIR", skills_dir.to_string_lossy().as_ref())
+                .env(
+                    "KIRA_AGENT_SKILLS_DIR",
+                    skills_dir.to_string_lossy().as_ref(),
+                )
                 .env("PI_PACKAGE_DIR", pi_package_dir.to_string_lossy().as_ref())
                 .kill_on_drop(true);
             if let Some(shell_path) = crate::settings::agent_shell_path(store.pool()).await {
@@ -965,7 +964,10 @@ async fn resolve_bun_candidate(store: &PersistenceStore) -> Result<String, Agent
         }
     }
     // Official Bun installer: ~/.bun/bin/bun (macOS/Linux) / bun.exe (Windows)
-    if let Some(home) = env::var("HOME").ok().or_else(|| env::var("USERPROFILE").ok()) {
+    if let Some(home) = env::var("HOME")
+        .ok()
+        .or_else(|| env::var("USERPROFILE").ok())
+    {
         let home_path = Path::new(&home);
         let bun_path = home_path.join(".bun").join("bin").join("bun");
         if bun_path.is_file() {
@@ -990,7 +992,10 @@ async fn resolve_bun_candidate(store: &PersistenceStore) -> Result<String, Agent
 
     // Windows Local AppData
     if let Ok(local_app_data) = env::var("LOCALAPPDATA") {
-        let bun_path = PathBuf::from(local_app_data).join("bun").join("bin").join("bun.exe");
+        let bun_path = PathBuf::from(local_app_data)
+            .join("bun")
+            .join("bin")
+            .join("bun.exe");
         if bun_path.is_file() {
             return Ok(bun_path.to_string_lossy().to_string());
         }
@@ -1124,7 +1129,6 @@ fn generate_runtime_token() -> String {
     token
 }
 
-
 /// Copies the agent-runtime bundle from the install directory to the app data
 /// directory on first launch. Bun on Windows cannot read files from Program
 /// Files (EPERM), so we keep a persistent copy under the user-writable app
@@ -1143,9 +1147,11 @@ fn stage_runtime_bundle(source: &Path, dest: &Path) -> Result<(), AgentRuntimeEr
         let entry = entry.map_err(|e| AgentRuntimeError::StartFailed {
             reason: format!("failed to read bundle entry: {e}"),
         })?;
-        let file_type = entry.file_type().map_err(|e| AgentRuntimeError::StartFailed {
-            reason: format!("failed to get file type: {e}"),
-        })?;
+        let file_type = entry
+            .file_type()
+            .map_err(|e| AgentRuntimeError::StartFailed {
+                reason: format!("failed to get file type: {e}"),
+            })?;
         let src_path = entry.path();
         let dst_path = dest.join(entry.file_name());
 
@@ -1175,9 +1181,11 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), AgentRuntimeError> {
         let entry = entry.map_err(|e| AgentRuntimeError::StartFailed {
             reason: format!("failed to read entry: {e}"),
         })?;
-        let file_type = entry.file_type().map_err(|e| AgentRuntimeError::StartFailed {
-            reason: format!("failed to get file type: {e}"),
-        })?;
+        let file_type = entry
+            .file_type()
+            .map_err(|e| AgentRuntimeError::StartFailed {
+                reason: format!("failed to get file type: {e}"),
+            })?;
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());
 

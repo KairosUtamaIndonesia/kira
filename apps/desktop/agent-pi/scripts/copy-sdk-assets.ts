@@ -5,12 +5,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 function main(): void {
-  const sdkDir = join(
-    ROOT,
-    "node_modules",
-    "@earendil-works",
-    "pi-coding-agent",
-  );
+  const sdkDir = join(ROOT, "node_modules", "@earendil-works", "pi-coding-agent");
 
   // Destination: a dedicated pi-sdk directory alongside the server.mjs bundle.
   // PI_PACKAGE_DIR will point here in the Bun launch arm.
