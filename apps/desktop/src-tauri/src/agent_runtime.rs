@@ -69,14 +69,11 @@ pub(crate) fn shutdown(registry: &AgentRuntimeRegistry) {
     if let AgentRuntimeState::Running(runtime) = &mut *state {
         if let Some(handle) = runtime.process.take() {
             match handle {
-                ProcessHandle::Dev(mut child) => {
+                ProcessHandle::Dev(mut child) | ProcessHandle::Bun(mut child) => {
                     let _ = child.start_kill();
                 }
                 ProcessHandle::Sidecar(child) => {
                     let _ = child.kill();
-                }
-                ProcessHandle::Bun(mut child) => {
-                    let _ = child.start_kill();
                 }
             }
         }
@@ -768,7 +765,7 @@ async fn start_app_runtime(
                 .arg("--port")
                 .arg(port.to_string());
             #[cfg(target_os = "windows")]
-            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+            cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
             cmd.env("HOST", AGENT_RUNTIME_HOST)
                 .env("HOSTNAME", AGENT_RUNTIME_HOST)
                 .env("PORT", port.to_string())
@@ -828,14 +825,11 @@ async fn start_app_runtime(
     };
     if let Err(error) = wait_for_health(port).await {
         match process {
-            ProcessHandle::Dev(mut child) => {
+            ProcessHandle::Dev(mut child) | ProcessHandle::Bun(mut child) => {
                 let _ = child.start_kill();
             }
             ProcessHandle::Sidecar(child) => {
                 let _ = child.kill();
-            }
-            ProcessHandle::Bun(mut child) => {
-                let _ = child.start_kill();
             }
         }
         return Err(error);
@@ -939,7 +933,7 @@ fn resolve_launch_mode() -> AgentRuntimeLaunchMode {
 ///
 /// Preference order:
 /// 1. `KIRA_AGENT_BUN_PATH` env var override (for testing/debugging)
-/// 2. SQLite setting `agentRuntime.bunPath` (user-configured)
+/// 2. `SQLite` setting `agentRuntime.bunPath` (user-configured)
 /// 3. Known install locations (`~/.bun/bin/bun`, Homebrew paths, `%LOCALAPPDATA%/bun/bin`)
 /// 4. `PATH` fallback
 async fn resolve_bun_path(store: &PersistenceStore) -> Result<String, AgentRuntimeError> {
@@ -1030,8 +1024,8 @@ fn validate_bun_version(path: &str) -> Result<String, AgentRuntimeError> {
     if parts.len() >= 3 {
         let major = parts[0];
         let minor = parts[1];
-        let patch = parts[2];
-        if major > 1 || (major == 1 && minor > 3) || (major == 1 && minor == 3 && patch >= 14) {
+        let patch_num = parts[2];
+        if major > 1 || (major == 1 && minor > 3) || (major == 1 && minor == 3 && patch_num >= 14) {
             return Ok(path.to_string());
         }
     }
