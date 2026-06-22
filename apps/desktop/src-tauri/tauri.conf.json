@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "cd agent-pi && bun run compile && cd .. && bun scripts/copy-agent-pi-sidecar.ts && bun run build",
+    "beforeBuildCommand": "cd agent-pi && bun run build && bun run scripts/copy-sdk-assets.ts && cd .. && bun run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -26,7 +26,6 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "externalBin": ["binaries/kira-agent-pi"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -39,7 +38,9 @@
       "signingIdentity": "-"
     },
     "resources": {
-      "../agent-pi/dist/package.json": "agent-runtime/package.json"
+      "../agent-pi/dist/server.mjs": "agent-runtime/server.mjs",
+      "../agent-pi/dist/pi-sdk": "agent-runtime/pi-sdk",
+      "../agent-pi/skills": "agent-runtime/skills"
     }
   },
   "plugins": {

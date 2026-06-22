@@ -71,7 +71,8 @@ async function buildAgentSession(context: AgentThreadContext): Promise<AgentSess
   const settingsManager =
     shellPath !== undefined ? SettingsManager.inMemory({ shellPath }) : undefined;
 
-  const skillsDir = resolve(import.meta.dirname, "../../skills");
+  const skillsDir =
+    readOptionalEnv("KIRA_AGENT_SKILLS_DIR") ?? resolve(import.meta.dirname, "../../skills");
 
   // using-agent-skills is baked into the system prompt (always present) instead
   // of living in skills/ as an on-demand skill.

@@ -54,9 +54,6 @@ jobs:
 
       - name: Format check
         run: bun run format:all:check
-      - name: Build agent-pi binary
-        run: bun run compile
-        working-directory: apps/desktop/agent-pi
 
       - name: Lint
         run: bun run lint:all

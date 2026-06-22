@@ -1,4 +1,4 @@
-use std::{env, net::TcpListener, path::PathBuf, time::Duration};
+use std::{env, fs, net::TcpListener, path::Path, path::PathBuf, time::Duration};
 
 use axum::{routing::get, Json, Router};
 use rand::RngCore;
@@ -46,6 +46,7 @@ pub(crate) enum AgentRuntimeState {
 enum ProcessHandle {
     Dev(Box<TokioChild>),
     Sidecar(CommandChild),
+    Bun(Box<TokioChild>),
 }
 
 pub(crate) struct AppAgentRuntime {
@@ -63,13 +64,12 @@ pub(crate) struct RuntimeConnection {
 /// Tauri does not run `Drop` for managed state when the process exits, so the
 /// dev-mode child's `kill_on_drop` guard never fires, and the sidecar process
 /// also needs explicit cleanup. Without this, the agent runtime keeps running
-/// after the desktop app window closes.
 pub(crate) fn shutdown(registry: &AgentRuntimeRegistry) {
     let mut state = tauri::async_runtime::block_on(registry.runtime.lock());
     if let AgentRuntimeState::Running(runtime) = &mut *state {
         if let Some(handle) = runtime.process.take() {
             match handle {
-                ProcessHandle::Dev(mut child) => {
+                ProcessHandle::Dev(mut child) | ProcessHandle::Bun(mut child) => {
                     let _ = child.start_kill();
                 }
                 ProcessHandle::Sidecar(child) => {
@@ -242,6 +242,7 @@ struct AgentThreadProjectContext {
 enum AgentRuntimeLaunchMode {
     Dev,
     Built,
+    Bun,
 }
 
 #[derive(Debug, Error)]
@@ -291,6 +292,10 @@ pub enum AgentRuntimeError {
     GenerateCommitMessage { reason: String },
     #[error("failed to resolve bundled agent runtime resources: {reason}")]
     ResourceDirMissing { reason: String },
+    #[error("Bun version {found} is too old. Required: {required}")]
+    BunVersionTooLow { found: String, required: String },
+    #[error("Bun runtime not found. Install Bun from https://bun.sh or configure a custom path in settings.")]
+    BunNotFound,
 }
 
 impl serde::Serialize for AgentRuntimeError {
@@ -737,6 +742,51 @@ async fn start_app_runtime(
                 }
             })?))
         }
+        AgentRuntimeLaunchMode::Bun => {
+            let resource_dir = app_handle.path().resource_dir().map_err(|e| {
+                AgentRuntimeError::ResourceDirMissing {
+                    reason: format!("failed to resolve resource dir: {e}"),
+                }
+            })?;
+            let staging_dir = PathBuf::from(store.app_data_dir()).join("agent-runtime");
+            if !staging_dir.join("server.mjs").exists() {
+                let bundle_dir = resource_dir.join("agent-runtime");
+                stage_runtime_bundle(&bundle_dir, &staging_dir)?;
+            }
+            let bun_path = resolve_bun_path(&store).await?;
+
+            let script_path = staging_dir.join("server.mjs");
+            let skills_dir = staging_dir.join("skills");
+            let pi_package_dir = staging_dir.join("pi-sdk");
+
+            let mut cmd = Command::new(&bun_path);
+            cmd.arg("run")
+                .arg(&script_path)
+                .arg("--port")
+                .arg(port.to_string());
+            #[cfg(target_os = "windows")]
+            cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+            cmd.env("HOST", AGENT_RUNTIME_HOST)
+                .env("HOSTNAME", AGENT_RUNTIME_HOST)
+                .env("PORT", port.to_string())
+                .env("KIRA_AGENT_RUNTIME_TOKEN", &token)
+                .env("KIRA_AGENT_PI_DATA_DIR", store.app_data_dir())
+                .env("KIRA_AGENT_BACKEND_URL", &backend_url)
+                .env(
+                    "KIRA_AGENT_SKILLS_DIR",
+                    skills_dir.to_string_lossy().as_ref(),
+                )
+                .env("PI_PACKAGE_DIR", pi_package_dir.to_string_lossy().as_ref())
+                .kill_on_drop(true);
+            if let Some(shell_path) = crate::settings::agent_shell_path(store.pool()).await {
+                cmd.env("KIRA_AGENT_SHELL_PATH", shell_path);
+            }
+            ProcessHandle::Bun(Box::new(cmd.spawn().map_err(|error| {
+                AgentRuntimeError::StartFailed {
+                    reason: format!("failed to spawn agent runtime: {error}"),
+                }
+            })?))
+        }
         AgentRuntimeLaunchMode::Built => {
             let resource_dir = app_handle.path().resource_dir().map_err(|e| {
                 AgentRuntimeError::ResourceDirMissing {
@@ -775,7 +825,7 @@ async fn start_app_runtime(
     };
     if let Err(error) = wait_for_health(port).await {
         match process {
-            ProcessHandle::Dev(mut child) => {
+            ProcessHandle::Dev(mut child) | ProcessHandle::Bun(mut child) => {
                 let _ = child.start_kill();
             }
             ProcessHandle::Sidecar(child) => {
@@ -870,11 +920,137 @@ fn resolve_runtime_dir() -> Result<PathBuf, AgentRuntimeError> {
 
 fn resolve_launch_mode() -> AgentRuntimeLaunchMode {
     match env::var("KIRA_AGENT_RUNTIME_MODE") {
+        Ok(value) if value == "bun" => AgentRuntimeLaunchMode::Bun,
         Ok(value) if value == "built" => AgentRuntimeLaunchMode::Built,
         Ok(value) if value == "dev" => AgentRuntimeLaunchMode::Dev,
         _ if cfg!(debug_assertions) => AgentRuntimeLaunchMode::Dev,
-        _ => AgentRuntimeLaunchMode::Built,
+        _ => AgentRuntimeLaunchMode::Bun,
     }
+}
+
+/// Resolves the Bun binary path by probing known locations, then validates the
+/// version is >= 1.3.14.
+///
+/// Preference order:
+/// 1. `KIRA_AGENT_BUN_PATH` env var override (for testing/debugging)
+/// 2. `SQLite` setting `agentRuntime.bunPath` (user-configured)
+/// 3. Known install locations (`~/.bun/bin/bun`, Homebrew paths, `%LOCALAPPDATA%/bun/bin`)
+/// 4. `PATH` fallback
+async fn resolve_bun_path(store: &PersistenceStore) -> Result<String, AgentRuntimeError> {
+    let candidate = resolve_bun_candidate(store).await?;
+    let path = validate_bun_version(&candidate)?;
+    Ok(path)
+}
+
+/// Probes known locations for a Bun binary path without version validation.
+async fn resolve_bun_candidate(store: &PersistenceStore) -> Result<String, AgentRuntimeError> {
+    // Env var override (for testing/debugging)
+    if let Ok(path) = env::var("KIRA_AGENT_BUN_PATH") {
+        if Path::new(&path).is_file() {
+            return Ok(path);
+        }
+    }
+
+    // SQLite setting override (user-configured path in Settings)
+    if let Some(path) = crate::settings::bun_path_get(store.pool()).await {
+        if Path::new(&path).is_file() {
+            return Ok(path);
+        }
+    }
+    // Official Bun installer: ~/.bun/bin/bun (macOS/Linux) / bun.exe (Windows)
+    if let Some(home) = env::var("HOME")
+        .ok()
+        .or_else(|| env::var("USERPROFILE").ok())
+    {
+        let home_path = Path::new(&home);
+        let bun_path = home_path.join(".bun").join("bin").join("bun");
+        if bun_path.is_file() {
+            return Ok(bun_path.to_string_lossy().to_string());
+        }
+        let bun_exe_path = home_path.join(".bun").join("bin").join("bun.exe");
+        if bun_exe_path.is_file() {
+            return Ok(bun_exe_path.to_string_lossy().to_string());
+        }
+    }
+
+    // macOS Homebrew paths
+    let brew_paths = [
+        PathBuf::from("/opt/homebrew/bin/bun"),
+        PathBuf::from("/usr/local/bin/bun"),
+    ];
+    for path in &brew_paths {
+        if path.is_file() {
+            return Ok(path.to_string_lossy().to_string());
+        }
+    }
+
+    // Windows Local AppData
+    if let Ok(local_app_data) = env::var("LOCALAPPDATA") {
+        let bun_path = PathBuf::from(local_app_data)
+            .join("bun")
+            .join("bin")
+            .join("bun.exe");
+        if bun_path.is_file() {
+            return Ok(bun_path.to_string_lossy().to_string());
+        }
+    }
+
+    // PATH fallback (for terminal-launched / CI)
+    if let Some(path) = probe_path_for_bun() {
+        return Ok(path.to_string_lossy().to_string());
+    }
+
+    Err(AgentRuntimeError::BunNotFound)
+}
+
+/// Validates the Bun binary version is >= 1.3.14.
+fn validate_bun_version(path: &str) -> Result<String, AgentRuntimeError> {
+    let output = std::process::Command::new(path)
+        .arg("--version")
+        .output()
+        .map_err(|_| AgentRuntimeError::BunNotFound)?;
+
+    if !output.status.success() {
+        return Err(AgentRuntimeError::BunNotFound);
+    }
+
+    let version_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+    let parts: Vec<u32> = version_str
+        .split('.')
+        .filter_map(|s| s.parse().ok())
+        .collect();
+
+    if parts.len() >= 3 {
+        let major = parts[0];
+        let minor = parts[1];
+        let patch_num = parts[2];
+        if major > 1 || (major == 1 && minor > 3) || (major == 1 && minor == 3 && patch_num >= 14) {
+            return Ok(path.to_string());
+        }
+    }
+
+    Err(AgentRuntimeError::BunVersionTooLow {
+        found: version_str,
+        required: ">=1.3.14".to_string(),
+    })
+}
+
+/// Searches `PATH` for a `bun` or `bun.exe` executable.
+fn probe_path_for_bun() -> Option<PathBuf> {
+    env::var_os("PATH").and_then(|paths| {
+        env::split_paths(&paths).find_map(|dir| {
+            let bun = dir.join("bun");
+            if bun.is_file() {
+                return Some(bun);
+            }
+            let bun_exe = dir.join("bun.exe");
+            if bun_exe.is_file() {
+                return Some(bun_exe);
+            }
+            None
+        })
+    })
 }
 
 fn validate_required_prompt(prompt: &str) -> Result<(), AgentRuntimeError> {
@@ -945,4 +1121,79 @@ fn generate_runtime_token() -> String {
         token.push(char::from(HEX[usize::from(byte & 0x0f)]));
     }
     token
+}
+
+/// Copies the agent-runtime bundle from the install directory to the app data
+/// directory on first launch. Bun on Windows cannot read files from Program
+/// Files (EPERM), so we keep a persistent copy under the user-writable app
+/// data directory.
+///
+/// Subsequent launches skip the copy — the staged copy persists across app
+/// restarts (but not reinstalls; a fresh install creates a fresh app data dir).
+fn stage_runtime_bundle(source: &Path, dest: &Path) -> Result<(), AgentRuntimeError> {
+    fs::create_dir_all(dest).map_err(|e| AgentRuntimeError::StartFailed {
+        reason: format!("failed to create runtime dir \"{}\": {e}", dest.display()),
+    })?;
+
+    for entry in fs::read_dir(source).map_err(|e| AgentRuntimeError::StartFailed {
+        reason: format!("failed to read bundle dir \"{}\": {e}", source.display()),
+    })? {
+        let entry = entry.map_err(|e| AgentRuntimeError::StartFailed {
+            reason: format!("failed to read bundle entry: {e}"),
+        })?;
+        let file_type = entry
+            .file_type()
+            .map_err(|e| AgentRuntimeError::StartFailed {
+                reason: format!("failed to get file type: {e}"),
+            })?;
+        let src_path = entry.path();
+        let dst_path = dest.join(entry.file_name());
+
+        if file_type.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            fs::copy(&src_path, &dst_path).map_err(|e| AgentRuntimeError::StartFailed {
+                reason: format!(
+                    "failed to copy \"{}\" to \"{}\": {e}",
+                    src_path.display(),
+                    dst_path.display(),
+                ),
+            })?;
+        }
+    }
+    Ok(())
+}
+
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), AgentRuntimeError> {
+    fs::create_dir_all(dst).map_err(|e| AgentRuntimeError::StartFailed {
+        reason: format!("failed to create dir \"{}\": {e}", dst.display()),
+    })?;
+
+    for entry in fs::read_dir(src).map_err(|e| AgentRuntimeError::StartFailed {
+        reason: format!("failed to read dir \"{}\": {e}", src.display()),
+    })? {
+        let entry = entry.map_err(|e| AgentRuntimeError::StartFailed {
+            reason: format!("failed to read entry: {e}"),
+        })?;
+        let file_type = entry
+            .file_type()
+            .map_err(|e| AgentRuntimeError::StartFailed {
+                reason: format!("failed to get file type: {e}"),
+            })?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+
+        if file_type.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            fs::copy(&src_path, &dst_path).map_err(|e| AgentRuntimeError::StartFailed {
+                reason: format!(
+                    "failed to copy \"{}\" to \"{}\": {e}",
+                    src_path.display(),
+                    dst_path.display(),
+                ),
+            })?;
+        }
+    }
+    Ok(())
 }
