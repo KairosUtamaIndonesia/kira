@@ -22,7 +22,11 @@ function UpdateChecker() {
         if (result) {
           update = result;
         }
-      } catch {
+      } catch (error) {
+        toast.error("Update check failed", {
+          description: errorMessageFromUnknown(error),
+          duration: 15000,
+        });
         return;
       }
 
