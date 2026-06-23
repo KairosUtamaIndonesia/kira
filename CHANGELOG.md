@@ -6,6 +6,19 @@ side-by-side with your app, and team management is coming through the cloud cons
 
 This is just the start. More surface, more capability, more agentic.
 
+## [3.1.0](https://github.com/KairosUtamaIndonesia/kira/compare/v3.0.2...v3.1.0) (2026-06-23)
+
+
+### Features
+
+* organization providers with reference-based credential resolution ([#104](https://github.com/KairosUtamaIndonesia/kira/issues/104)) ([b69238d](https://github.com/KairosUtamaIndonesia/kira/commit/b69238dab321dc8378ecfc967fa72e61e00036a6))
+* recursive fuzzy file reference picker with ([#103](https://github.com/KairosUtamaIndonesia/kira/issues/103)) ([f3af3c5](https://github.com/KairosUtamaIndonesia/kira/commit/f3af3c5be31b2429a93d25c5ee1303313eb0807a))
+
+
+### Bug Fixes
+
+* **ci:** remove mold from Linux release build ([e4dcf2e](https://github.com/KairosUtamaIndonesia/kira/commit/e4dcf2e80c9711608c6657538dfb4798dc43cf25))
+
 ## [3.0.2](https://github.com/KairosUtamaIndonesia/kira/compare/v3.0.1...v3.0.2) (2026-06-23)
 
 
