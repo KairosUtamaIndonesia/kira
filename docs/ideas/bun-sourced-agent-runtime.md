@@ -25,6 +25,7 @@ Bun installation is handled with a guided in-app flow: on first launch when no B
 ## MVP Scope
 
 **In:**
+
 - New `AgentRuntimeLaunchMode::Bun` variant in `agent_runtime.rs`
 - `start_app_runtime` spawns `bun run <resource-path>/server.mjs` via resolved path
 - Resource config in `tauri.conf.json`: bundle `agent-pi/dist/` → `agent-runtime/`
@@ -34,6 +35,7 @@ Bun installation is handled with a guided in-app flow: on first launch when no B
 - Remove `externalBin`, `build.rs` placeholder, `copy-agent-pi-sidecar.ts`, `copy-binary-assets.ts`, and the `compile` script
 
 **Out:**
+
 - No system daemon / service installer
 - No app-downloaded Bun binary (user's own installation)
 - No in-process JS engine (rusty_v8 / boa)
@@ -44,13 +46,15 @@ Bun installation is handled with a guided in-app flow: on first launch when no B
 **Risk:** macOS apps launched from Finder/Dock do NOT inherit the user's shell PATH. `Command::new("bun")` fails silently. The production spawn must use a fully resolved path.
 
 **Strategy — probe then override:**
+
 1. At startup, probe known locations in order: `~/.bun/bin/bun`, `/opt/homebrew/bin/bun`, `/usr/local/bin/bun`, then system `PATH`.
 2. If a probe succeeds, cache the resolved path in memory for the app session.
 3. If the user has configured `agentRuntime.bunPath` in settings, that takes priority over probes (mirrors the `agent_shell_path` pattern in `settings.rs`).
 4. If no probe finds Bun → trigger the guided install flow.
 
 **Guided install flow:**
-1. Show dialog: *"Kira needs Bun to run the agent — install it now?"*
+
+1. Show dialog: _"Kira needs Bun to run the agent — install it now?"_
 2. On accept, spawn the official install script as a subprocess (no TTY needed):
    - macOS/Linux: `/bin/bash -c "curl -fsSL https://bun.sh/install | bash"`
    - Windows: PowerShell `irm bun.sh/install.ps1 | iex`

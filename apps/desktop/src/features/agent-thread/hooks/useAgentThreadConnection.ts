@@ -284,6 +284,18 @@ function useAgentThreadConnection(
       if (socketRef.current === socket) {
         socketRef.current = undefined;
       }
+      // Best-effort cleanup: release the session from the agent-pi's in-memory cache.
+      // The session persists on disk (JSONL) and will reload if the panel reopens.
+      const runtime = runtimeInfoRef.current;
+      if (runtime !== undefined) {
+        fetch(`${runtime.baseUrl}/app/agent-threads/${encodeURIComponent(params.threadId)}`, {
+          method: "DELETE",
+          headers: { authorization: `Bearer ${runtime.token}` },
+          // oxlint-disable-next-line promise/prefer-await-to-then — fire-and-forget in a sync cleanup
+        }).catch(() => {
+          /* best-effort cleanup */
+        });
+      }
     };
   }, [params.threadId, runtimeInput]);
   async function sendPrompt(message: string) {

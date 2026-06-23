@@ -48,6 +48,15 @@ export function getOrCreateAgentSession(context: AgentThreadContext): Promise<Ag
   return created;
 }
 
+/**
+ * Removes the cached AgentSession for a thread from memory.
+ * The session remains on disk (JSONL) and can be reloaded later.
+ * Call when the agent thread panel is closed or the thread is deleted.
+ */
+export function disposeAgentSession(threadId: string): void {
+  sessionsByThread.delete(threadId);
+}
+
 async function buildAgentSession(context: AgentThreadContext): Promise<AgentSessionHost> {
   // Fetch the model catalog from the Rust backend before any consumer needs it.
   await fetchAndCacheCatalog();

@@ -25,6 +25,10 @@ export function registerAgentThreadContext(context: AgentThreadContext): void {
   agentThreadContexts.set(context.threadId, context);
 }
 
+export function unregisterAgentThreadContext(threadId: string): void {
+  agentThreadContexts.delete(threadId);
+}
+
 export function requireAgentThreadContext(threadId: string): AgentThreadContext {
   const context = agentThreadContexts.get(threadId);
   if (context === undefined) {
