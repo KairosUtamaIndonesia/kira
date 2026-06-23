@@ -11,7 +11,7 @@ This is just the start. More surface, more capability, more agentic.
 
 ### Features
 
-* organization providers with reference-based credential resolution ([#104](https://github.com/KairosUtamaIndonesia/kira/issues/104)) ([b69238d](https://github.com/KairosUtamaIndonesia/kira/commit/b69238dab321dc8378ecfc967fa72e61e00036a6))
+* fixed agent stopping mid response ([#104](https://github.com/KairosUtamaIndonesia/kira/issues/104)) ([b69238d](https://github.com/KairosUtamaIndonesia/kira/commit/b69238dab321dc8378ecfc967fa72e61e00036a6))
 * recursive fuzzy file reference picker with ([#103](https://github.com/KairosUtamaIndonesia/kira/issues/103)) ([f3af3c5](https://github.com/KairosUtamaIndonesia/kira/commit/f3af3c5be31b2429a93d25c5ee1303313eb0807a))
 
 
