@@ -4,6 +4,7 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import { FitAddon } from "@xterm/addon-fit";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import "@xterm/xterm/css/xterm.css";
+import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal as XtermTerminal, type ITheme } from "@xterm/xterm";
 import { XIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -333,6 +334,15 @@ async function getOrCreateTerminalRuntime(terminalId: string) {
   const fitAddon = new FitAddon();
   const serializeAddon = new SerializeAddon();
   terminal.loadAddon(fitAddon);
+  try {
+    const webglAddon = new WebglAddon();
+    webglAddon.onContextLoss(() => {
+      /* WebglAddon auto-disposes on context loss; canvas renderer takes over */
+    });
+    terminal.loadAddon(webglAddon);
+  } catch {
+    /* WebGL not available, falling back to canvas renderer */
+  }
   terminal.loadAddon(serializeAddon);
 
   const runtime: TerminalRuntime = {

@@ -69,11 +69,12 @@ function applyPiEvent(state: PiTranscriptState, event: unknown): PiTranscriptSta
     case "tree_updated":
       return applyTreeUpdated(withEvent, typedEvent);
     case "error":
-    case "agent_end":
-    case "settled":
     case "turn_start":
     case "message_start":
       return withEvent;
+    case "agent_end":
+    case "settled":
+      return { ...state, liveEvents: [] };
     default:
       return withEvent;
   }

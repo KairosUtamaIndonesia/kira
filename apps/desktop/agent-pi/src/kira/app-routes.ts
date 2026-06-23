@@ -1,11 +1,12 @@
 import { Hono } from "hono";
 import { readFileSync } from "node:fs";
 
-import { getOrCreateAgentSession } from "./agent-session-host";
+import { disposeAgentSession, getOrCreateAgentSession } from "./agent-session-host";
 import {
   listAgentThreadContexts,
   registerAgentThreadContext,
   requireAgentThreadContext,
+  unregisterAgentThreadContext,
 } from "./agent-thread-context";
 import { requireRuntimeToken } from "./auth";
 import { generateCommitMessage } from "./commit-message-generation";
@@ -102,6 +103,13 @@ appRoutes.post("/agent-threads", async (context) => {
   const agentThreadContext = parseAgentThreadContext(payload);
   registerAgentThreadContext(agentThreadContext);
   return context.json({ status: "registered", threadId: agentThreadContext.threadId });
+});
+
+appRoutes.delete("/agent-threads/:threadId", (context) => {
+  const threadId = context.req.param("threadId");
+  unregisterAgentThreadContext(threadId);
+  disposeAgentSession(threadId);
+  return context.json({ status: "disposed", threadId });
 });
 
 appRoutes.get("/agent-threads/:threadId/session", async (context) => {

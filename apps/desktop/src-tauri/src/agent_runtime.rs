@@ -758,7 +758,13 @@ async fn start_app_runtime(
                 copy_dir_recursive(&bundle_dir, &staging_dir)?;
                 let _ = std::fs::write(&version_file, app_version);
             }
-            let bun_path = resolve_bun_path(&store).await?;
+            let bun_path = match resolve_bun_path(&store).await {
+                Ok(path) => path,
+                Err(error) => {
+                    show_bun_dialog(&app_handle, &error);
+                    return Err(error);
+                }
+            };
 
             let script_path = staging_dir.join("server.mjs");
             let skills_dir = staging_dir.join("skills");
@@ -1116,4 +1122,47 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), AgentRuntimeError> {
         }
     }
     Ok(())
+}
+
+/// Shows a native dialog when Bun is not found or too old, with a button
+/// that opens bun.sh in the browser so the user can install/upgrade.
+fn show_bun_dialog(app_handle: &tauri::AppHandle, error: &AgentRuntimeError) {
+    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+    use tauri_plugin_opener::OpenerExt;
+
+    let (title, message) = match error {
+        AgentRuntimeError::BunNotFound => (
+            "Bun Required".to_string(),
+            concat!(
+                "Kira needs Bun to run the agent runtime.\n\n",
+                "Bun was not found on your system. ",
+                "Install it from bun.sh or configure a custom path in Settings.",
+            )
+            .to_string(),
+        ),
+        AgentRuntimeError::BunVersionTooLow { found, required } => (
+            "Bun Version Too Old".to_string(),
+            format!(
+                "Kira requires Bun {required}, but found Bun {found}.\n\n\
+                 Please upgrade Bun from https://bun.sh.",
+            ),
+        ),
+        _ => return,
+    };
+
+    let handle = app_handle.clone();
+    app_handle
+        .dialog()
+        .message(message)
+        .title(title)
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            "Download Bun".to_string(),
+            "Close".to_string(),
+        ))
+        .kind(MessageDialogKind::Error)
+        .show(move |ok| {
+            if ok {
+                let _ = handle.opener().open_url("https://bun.sh", None::<&str>);
+            }
+        });
 }
