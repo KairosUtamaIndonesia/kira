@@ -13,6 +13,7 @@
     "opener:default",
     "shell:default",
     "updater:default",
-    "process:default"
+    "process:default",
+    "core:webview:allow-set-webview-zoom"
   ]
 }

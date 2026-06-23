@@ -3,6 +3,8 @@ import { useEffect } from "react";
 import { toast } from "@/components/ui/sonner";
 import { startAgentRuntime } from "@/features/agent-thread/api/agentRuntimeApi";
 
+import { useZoom } from "@/hooks/useZoom";
+
 import { useModeStore } from "../state/modeStore";
 import { AppShell } from "./code/AppShell";
 import { CoworkShell } from "./cowork/CoworkShell";
@@ -10,6 +12,8 @@ import { CoworkShell } from "./cowork/CoworkShell";
 // Renders the layout for the current App Shell mode. Both shells share the
 // same data model and Tauri commands; switching is a layout change only.
 function Shell() {
+  useZoom();
+
   const mode = useModeStore((state) => state.mode);
 
   // The agent runtime serves both shells, so it starts here rather than
