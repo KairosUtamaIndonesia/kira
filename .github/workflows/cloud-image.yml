@@ -21,13 +21,35 @@ env:
   IMAGE_NAME: ${{ github.repository_owner }}/kira-cloud
 
 jobs:
+  changes:
+    name: Detect cloud changes
+    runs-on: ubuntu-latest
+    outputs:
+      cloud: ${{ steps.filter.outputs.cloud }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            cloud:
+              - "apps/cloud/**"
+              - "packages/**"
+              - "package.json"
+              - "bun.lock"
+              - "Dockerfile*"
+
   build:
     name: Build and push cloud image
     runs-on: ubuntu-latest
-
+    needs: changes
+    # Always on tag pushes or manual dispatch; on branch push only when cloud changed
+    if: |
+      needs.changes.outputs.cloud == 'true' ||
+      github.ref_type == 'tag' ||
+      github.event_name == 'workflow_dispatch'
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
