@@ -3,6 +3,15 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ModelCapabilities {
+    pub reasoning: Option<bool>,
+    pub thinking: Option<bool>,
+    pub tool_calling: Option<bool>,
+    pub vision: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ModelConfig {
     pub label: String,
     pub upstream_model_id: String,
@@ -11,6 +20,8 @@ pub struct ModelConfig {
     pub context_window: i32,
     pub max_output_tokens: i32,
     pub is_default: bool,
+    pub max_input_tokens: Option<i32>,
+    pub capabilities: Option<ModelCapabilities>,
     pub api_key: Option<String>,
 }
 

@@ -1,8 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { and, eq } from "drizzle-orm";
 
 import { userBelongsToOrganization } from "@/features/auth/data/membership";
-import { listOrganizationModels } from "@/features/org-admin/models/data/models";
 import { auth } from "@/lib/auth/auth";
+import { db } from "@/lib/db/postgres";
+import { organizationModels, organizationProviders } from "@/lib/db/schema";
 import { logger } from "@/lib/log";
 
 function organizationIdFromMetadata(metadata: unknown): string | undefined {
@@ -33,76 +35,78 @@ export const Route = createFileRoute("/api/desktop/models")({
         const apiKeyHeader = request.headers.get("x-api-key");
 
         if (apiKeyHeader === null || apiKeyHeader.length === 0) {
-          logger.warn("desktop.models.missing_api_key");
-          return Response.json({ error: "Missing API key" }, { status: 401 });
+          return Response.json({ error: "Missing x-api-key header", models: [] }, { status: 400 });
         }
 
         const verification = await auth.api
-          .verifyApiKey({
-            body: {
-              configId: "organization-desktop-access",
-              key: apiKeyHeader,
-              permissions: { desktopAccess: ["read"] },
-            },
-          })
+          .verifyApiKey({ body: { key: apiKeyHeader } })
           .catch((error: unknown) => {
-            logger.error("desktop.models.verify_api_key_failed", {
-              error: String(error),
-            });
-            throw error;
+            logger.error("Failed to verify API key", { error: String(error) });
+            // oxlint-disable-next-line unicorn/no-null — null explicitly sets SQL column to NULL
+            return { valid: false, key: null };
           });
 
         if (!verification.valid || verification.key === null) {
-          logger.warn("desktop.models.invalid_api_key");
-          return Response.json({ error: "Invalid API key" }, { status: 401 });
+          return Response.json({ error: "Invalid API key", models: [] }, { status: 401 });
         }
 
         const userId = verification.key.referenceId;
         const organizationId = organizationIdFromMetadata(verification.key.metadata);
 
         if (organizationId === undefined) {
-          logger.warn("desktop.models.api_key_not_scoped", { userId });
           return Response.json(
-            { error: "API key is not scoped to an organization" },
-            {
-              status: 401,
-            },
+            { error: "API key metadata is missing organizationId", models: [] },
+            { status: 400 },
           );
         }
 
         if (!(await userBelongsToOrganization(userId, organizationId))) {
-          logger.warn("desktop.models.user_not_member", {
-            userId,
-            organizationId,
-          });
           return Response.json(
-            { error: "API key user is not a member of the organization" },
-            {
-              status: 403,
-            },
+            { error: "User does not belong to this organization", models: [] },
+            { status: 403 },
           );
         }
 
-        const models = await listOrganizationModels(organizationId);
+        // JOIN with organization_providers to resolve credentials from the provider
+        // (reference-based resolution — models no longer store providerBaseUrl/apiKey directly).
+        // Falls back to model row columns for backward compat with models created before
+        // the reference-based approach was introduced.
+        const rows = await db
+          .select({
+            model: organizationModels,
+            provider: organizationProviders,
+          })
+          .from(organizationModels)
+          .leftJoin(
+            organizationProviders,
+            eq(organizationModels.providerConfigId, organizationProviders.id),
+          )
+          .where(and(eq(organizationModels.organizationId, organizationId)))
+          .orderBy(organizationModels.createdAt);
 
-        if (models.length === 0) {
-          logger.info("desktop.models.none_configured", { organizationId });
-          return Response.json(
-            { error: "No models configured for this organization" },
-            { status: 404 },
-          );
+        if (rows.length === 0) {
+          return Response.json({ models: [] });
         }
 
         return Response.json({
-          models: models.map((model) => ({
+          models: rows.map(({ model, provider }) => ({
             label: model.label,
             upstreamModelId: model.upstreamModelId,
             providerId: model.providerId,
-            providerBaseUrl: model.providerBaseUrl,
+            // Resolve baseUrl from the provider row; fall back to the model column
+            // for backward compatibility with legacy snapshot records.
+            providerBaseUrl:
+              (provider !== null ? provider.providerBaseUrl : undefined) ??
+              model.providerBaseUrl ??
+              "",
             contextWindow: model.contextWindow,
             maxOutputTokens: model.maxOutputTokens,
+            maxInputTokens: model.maxInputTokens,
+            capabilities: model.capabilities,
             isDefault: model.isDefault,
-            apiKey: model.apiKey,
+            // Resolve apiKey from the provider row; fall back to the model column
+            // for backward compatibility with legacy snapshot records.
+            apiKey: (provider !== null ? provider.apiKey : undefined) ?? model.apiKey ?? undefined,
           })),
         });
       },

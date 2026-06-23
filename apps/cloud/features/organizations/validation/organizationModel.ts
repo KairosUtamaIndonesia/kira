@@ -1,14 +1,22 @@
 import * as z from "zod";
 
+const capabilitySchema = z.object({
+  reasoning: z.boolean().optional(),
+  thinking: z.boolean().optional(),
+  tool_calling: z.boolean().optional(),
+  vision: z.boolean().optional(),
+});
+
 const organizationModelSchema = z.object({
   label: z.string().trim().min(1, "Label is required."),
   upstreamModelId: z.string().trim().min(1, "Model ID is required."),
   providerId: z.string().trim().min(1, "Provider ID is required."),
-  providerBaseUrl: z.string().trim().min(1, "Base URL is required.").url("Enter a valid URL."),
+  providerConfigId: z.string().uuid("Provider configuration is required."),
   contextWindow: z.number().int().positive("Context window must be a positive integer."),
   maxOutputTokens: z.number().int().positive("Max output tokens must be a positive integer."),
+  maxInputTokens: z.union([z.number().int().positive(), z.undefined()]),
   isDefault: z.boolean(),
-  apiKey: z.union([z.string().trim(), z.undefined()]),
+  capabilities: z.union([capabilitySchema, z.undefined()]),
 });
 
 const createOrganizationModelSchema = z.object({
@@ -38,6 +46,7 @@ type DeleteOrganizationModelInput = z.infer<typeof deleteOrganizationModelSchema
 type SetDefaultOrganizationModelInput = z.infer<typeof setDefaultOrganizationModelSchema>;
 
 export {
+  capabilitySchema,
   createOrganizationModelSchema,
   deleteOrganizationModelSchema,
   organizationModelSchema,

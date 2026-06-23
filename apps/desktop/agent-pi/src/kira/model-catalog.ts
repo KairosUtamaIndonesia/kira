@@ -5,6 +5,13 @@ type ModelConfig = {
   providerBaseUrl: string;
   contextWindow: number;
   maxOutputTokens: number;
+  maxInputTokens?: number;
+  capabilities?: {
+    reasoning?: boolean;
+    thinking?: boolean;
+    tool_calling?: boolean;
+    vision?: boolean;
+  };
   isDefault: boolean;
   apiKey?: string;
 };
