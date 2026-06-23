@@ -1,10 +1,15 @@
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
+use std::sync::Mutex;
 
+use ignore::Walk;
+use nucleo_matcher::pattern::{Atom, AtomKind, CaseMatching, Normalization};
+use nucleo_matcher::{Config, Matcher, Utf32Str};
 use serde::{Deserialize, Serialize};
+use tauri::State;
 use thiserror::Error;
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExplorerTreeInput {
@@ -70,10 +75,14 @@ pub enum ExplorerEntryKind {
     File,
 }
 
-#[derive(Debug)]
-struct ScoredExplorerEntry {
-    entry: ScannedExplorerEntry,
-    score: u8,
+#[derive(Debug, Default)]
+pub struct FileReferenceCache(pub(crate) Mutex<HashMap<PathBuf, Vec<CachedEntry>>>);
+
+#[derive(Debug, Clone)]
+pub(crate) struct CachedEntry {
+    relative_path: String,
+    name: String,
+    kind: ExplorerEntryKind,
 }
 
 #[derive(Debug)]
@@ -148,17 +157,138 @@ pub async fn explorer_directory_children(
 #[tauri::command]
 pub async fn explorer_file_reference_suggestions(
     input: ExplorerFileReferenceSuggestionsInput,
+    cache: State<'_, FileReferenceCache>,
 ) -> Result<ExplorerFileReferenceSuggestionsResult, ExplorerError> {
     let root_path = validate_project_folder(&input.folder_path)?;
+    let raw_query = input
+        .query
+        .trim_start_matches('@')
+        .trim_matches('"')
+        .to_string();
+    let limit = input.limit.clamp(1, 50);
+    let scoped_query = resolve_file_reference_query(&root_path, &raw_query)?;
+    let scope_prefix = compute_scope_prefix(&root_path, &scoped_query.folder_path);
+
+    // Cache lookup (sync, fast)
+    let cached = {
+        let guard = cache
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        guard.get(&root_path).cloned()
+    };
+
+    let entries = if let Some(entries) = cached {
+        entries
+    } else {
+        let walked = walk_project_tree(&root_path)?;
+        let mut guard = cache
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let walked_clone = walked.clone();
+        guard.insert(root_path.clone(), walked_clone);
+        walked
+    };
+
+    let filter = scoped_query.filter;
+
     tauri::async_runtime::spawn_blocking(move || {
-        collect_file_reference_suggestions(&root_path, &input.query, input.limit)
-            .map(|suggestions| ExplorerFileReferenceSuggestionsResult { suggestions })
+        Ok::<_, ExplorerError>(score_cached_entries(
+            &entries,
+            &filter,
+            &scope_prefix,
+            limit,
+        ))
     })
     .await
-    .map_err(|error| ExplorerError::InspectFolder {
+    .map_err(|join_error| ExplorerError::InspectFolder {
         path: input.folder_path,
-        message: error.to_string(),
+        message: join_error.to_string(),
     })?
+}
+
+fn score_cached_entries(
+    entries: &[CachedEntry],
+    filter: &str,
+    scope_prefix: &str,
+    limit: usize,
+) -> ExplorerFileReferenceSuggestionsResult {
+    let empty_filter = filter.is_empty();
+    let atoms = if empty_filter {
+        None
+    } else {
+        Some((
+            Atom::new(
+                filter,
+                CaseMatching::Ignore,
+                Normalization::Smart,
+                AtomKind::Fuzzy,
+                false,
+            ),
+            Atom::new(
+                filter,
+                CaseMatching::Ignore,
+                Normalization::Smart,
+                AtomKind::Substring,
+                false,
+            ),
+        ))
+    };
+    let mut matcher = Matcher::new(Config::DEFAULT.match_paths());
+    let mut scored: Vec<(&CachedEntry, u32)> = Vec::new();
+    let mut char_buf = Vec::new();
+
+    for entry in entries {
+        if !scope_prefix.is_empty() && !entry.relative_path.starts_with(scope_prefix) {
+            continue;
+        }
+
+        let score = match &atoms {
+            Some((name_atom, path_atom)) => {
+                // Name: fuzzy match (tolerant, short string, few false positives)
+                char_buf.clear();
+                let name_haystack = Utf32Str::new(&entry.name, &mut char_buf);
+                if let Some(s) = name_atom.score(name_haystack, &mut matcher) {
+                    u32::from(s) + 10000
+                } else {
+                    // Path: substring match (exact contiguous, prevents scattered noise)
+                    char_buf.clear();
+                    let path_haystack = Utf32Str::new(&entry.relative_path, &mut char_buf);
+                    path_atom
+                        .score(path_haystack, &mut matcher)
+                        .map_or(0, u32::from)
+                }
+            }
+            None => 1,
+        };
+
+        if score > 0 {
+            scored.push((entry, score));
+        }
+    }
+
+    scored.sort_by(|a, b| {
+        b.1.cmp(&a.1)
+            .then(a.0.relative_path.cmp(&b.0.relative_path))
+    });
+    scored.truncate(limit);
+
+    ExplorerFileReferenceSuggestionsResult {
+        suggestions: scored
+            .into_iter()
+            .map(|(entry, _)| ExplorerFileReferenceSuggestion {
+                path: entry.relative_path.clone(),
+                kind: entry.kind,
+                label: if entry.kind == ExplorerEntryKind::Directory {
+                    format!("{}/", entry.name)
+                } else {
+                    entry.name.clone()
+                },
+                description: entry.relative_path.trim_end_matches('/').to_string(),
+            })
+            .collect(),
+    }
 }
 
 fn collect_directory_entries(
@@ -174,34 +304,70 @@ fn collect_directory_entries(
         .collect()
 }
 
-fn collect_file_reference_suggestions(
-    root_path: &Path,
-    raw_query: &str,
-    limit: usize,
-) -> Result<Vec<ExplorerFileReferenceSuggestion>, ExplorerError> {
-    let query = raw_query.trim_start_matches('@').trim_matches('"');
-    let limit = limit.clamp(1, 50);
-    let scoped_query = resolve_file_reference_query(root_path, query)?;
-    let mut entries = scan_folder(&scoped_query.folder_path)?;
-    let normalized_filter = scoped_query.filter.to_lowercase();
+fn walk_project_tree(root_path: &Path) -> Result<Vec<CachedEntry>, ExplorerError> {
+    let mut entries = Vec::new();
+    for result in Walk::new(root_path) {
+        let dir_entry = result.map_err(|err| ExplorerError::InspectFolder {
+            path: root_path.to_string_lossy().to_string(),
+            message: err.to_string(),
+        })?;
 
-    let mut scored_entries = Vec::new();
-    for entry in entries.drain(..) {
-        let relative_path = relative_explorer_path(root_path, &entry.path, entry.kind)?;
-        let score = score_file_reference(&relative_path, &entry.name, &normalized_filter);
-        if score == 0 {
+        if dir_entry.depth() == 0 {
             continue;
         }
 
-        scored_entries.push(ScoredExplorerEntry { entry, score });
+        let Some(file_type) = dir_entry.file_type() else {
+            continue;
+        };
+
+        let kind = if file_type.is_dir() {
+            ExplorerEntryKind::Directory
+        } else if file_type.is_file() {
+            ExplorerEntryKind::File
+        } else {
+            continue;
+        };
+
+        let relative_path =
+            dir_entry
+                .path()
+                .strip_prefix(root_path)
+                .map_err(|_| ExplorerError::InspectFolder {
+                    path: dir_entry.path().to_string_lossy().to_string(),
+                    message: "path outside root".to_string(),
+                })?;
+
+        let relative_path_str = relative_path.to_string_lossy().replace('\\', "/");
+        let name = dir_entry.file_name().to_string_lossy().to_string();
+
+        entries.push(CachedEntry {
+            relative_path: if kind == ExplorerEntryKind::Directory {
+                format!("{relative_path_str}/")
+            } else {
+                relative_path_str
+            },
+            name,
+            kind,
+        });
     }
 
-    scored_entries.sort_by(compare_scored_entries);
-    scored_entries
-        .into_iter()
-        .take(limit)
-        .map(|scored| to_file_reference_suggestion(root_path, &scored.entry))
-        .collect()
+    Ok(entries)
+}
+
+fn compute_scope_prefix(root_path: &Path, scope_abs: &Path) -> String {
+    if scope_abs == root_path {
+        return String::new();
+    }
+    let Ok(prefix) = scope_abs.strip_prefix(root_path) else {
+        return String::new();
+    };
+    let prefix_str = prefix.to_string_lossy().replace('\\', "/");
+    let trimmed = prefix_str.trim_end_matches('/');
+    if trimmed.is_empty() {
+        String::new()
+    } else {
+        format!("{trimmed}/")
+    }
 }
 
 struct FileReferenceQuery {
@@ -279,50 +445,6 @@ fn compare_scanned_entries(left: &ScannedExplorerEntry, right: &ScannedExplorerE
             compare_names(&left.name, &right.name)
         }
     }
-}
-
-fn compare_scored_entries(left: &ScoredExplorerEntry, right: &ScoredExplorerEntry) -> Ordering {
-    match right.score.cmp(&left.score) {
-        Ordering::Equal => compare_scanned_entries(&left.entry, &right.entry),
-        ordering => ordering,
-    }
-}
-
-fn score_file_reference(relative_path: &str, name: &str, normalized_filter: &str) -> u8 {
-    if normalized_filter.is_empty() {
-        return 1;
-    }
-
-    let normalized_name = name.to_lowercase();
-    let normalized_path = relative_path.to_lowercase();
-    if normalized_name == normalized_filter {
-        100
-    } else if normalized_name.starts_with(normalized_filter) {
-        80
-    } else if normalized_name.contains(normalized_filter) {
-        50
-    } else if normalized_path.contains(normalized_filter) {
-        30
-    } else {
-        0
-    }
-}
-
-fn to_file_reference_suggestion(
-    root_path: &Path,
-    scanned_entry: &ScannedExplorerEntry,
-) -> Result<ExplorerFileReferenceSuggestion, ExplorerError> {
-    let path = relative_explorer_path(root_path, &scanned_entry.path, scanned_entry.kind)?;
-    let label = match scanned_entry.kind {
-        ExplorerEntryKind::Directory => format!("{}/", scanned_entry.name),
-        ExplorerEntryKind::File => scanned_entry.name.clone(),
-    };
-    Ok(ExplorerFileReferenceSuggestion {
-        description: path.trim_end_matches('/').to_string(),
-        path,
-        kind: scanned_entry.kind,
-        label,
-    })
 }
 
 fn compare_names(left: &str, right: &str) -> Ordering {

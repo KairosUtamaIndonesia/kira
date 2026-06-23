@@ -63,6 +63,7 @@ pub fn run() -> tauri::Result<()> {
         })
         .manage(terminal::TerminalRegistry::default())
         .manage(agent_runtime::AgentRuntimeRegistry::default())
+        .manage(explorer::FileReferenceCache::default())
         .invoke_handler(tauri::generate_handler![
             greet,
             settings::appearance_settings_get,
