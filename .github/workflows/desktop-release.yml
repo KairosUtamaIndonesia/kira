@@ -70,21 +70,14 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libappindicator3-dev \
             librsvg2-dev \
-            patchelf \
-            mold
+            patchelf
 
       - name: Install lld-link (Windows)
         if: matrix.platform == 'windows-latest'
         run: choco install llvm --no-progress -y
-
-      - name: Use mold linker (Linux)
-        if: matrix.platform == 'ubuntu-latest'
-        run: echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=mold" >> "$GITHUB_ENV"
-
       - name: Use lld-link (Windows)
         if: matrix.platform == 'windows-latest'
         run: echo "CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER=lld-link" >> "$GITHUB_ENV"
-
       - name: Install dependencies
         if: steps.bun-deps.outputs.cache-hit != 'true'
         run: bun install --frozen-lockfile
