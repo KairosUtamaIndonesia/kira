@@ -1,6 +1,5 @@
-import { useEffect, useRef } from "react";
-
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { useEffect, useRef } from "react";
 
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 2.0;

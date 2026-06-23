@@ -706,7 +706,10 @@ async fn start_app_runtime(
             };
             if !runtime_dir.is_dir() {
                 return Err(AgentRuntimeError::StartFailed {
-                    reason: format!("agent runtime directory not found: {}", runtime_dir.display()),
+                    reason: format!(
+                        "agent runtime directory not found: {}",
+                        runtime_dir.display()
+                    ),
                 });
             }
             let mut cmd = Command::new("bun");
@@ -736,11 +739,13 @@ async fn start_app_runtime(
                     reason: format!("failed to resolve resource dir: {e}"),
                 }
             })?;
-            let staging_dir = app_handle.path().app_cache_dir().map_err(|e| {
-                AgentRuntimeError::ResourceDirMissing {
+            let staging_dir = app_handle
+                .path()
+                .app_cache_dir()
+                .map_err(|e| AgentRuntimeError::ResourceDirMissing {
                     reason: format!("failed to resolve app cache dir: {e}"),
-                }
-            })?.join("agent-runtime");
+                })?
+                .join("agent-runtime");
             let app_version = app_handle.config().version.as_deref().unwrap_or("0.0.0");
             let version_file = staging_dir.join(".version");
             if staging_dir.join("server.mjs").exists()
@@ -768,11 +773,11 @@ async fn start_app_runtime(
             cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
             apply_runtime_env(&mut cmd, port, &token, store.app_data_dir(), &backend_url);
             cmd.env(
-                    "KIRA_AGENT_SKILLS_DIR",
-                    skills_dir.to_string_lossy().as_ref(),
-                )
-                .env("PI_PACKAGE_DIR", pi_package_dir.to_string_lossy().as_ref())
-                .kill_on_drop(true);
+                "KIRA_AGENT_SKILLS_DIR",
+                skills_dir.to_string_lossy().as_ref(),
+            )
+            .env("PI_PACKAGE_DIR", pi_package_dir.to_string_lossy().as_ref())
+            .kill_on_drop(true);
             if let Some(shell_path) = crate::settings::agent_shell_path(store.pool()).await {
                 cmd.env("KIRA_AGENT_SHELL_PATH", shell_path);
             }
@@ -866,12 +871,21 @@ fn resolve_launch_mode() -> AgentRuntimeLaunchMode {
     }
 }
 
-fn apply_runtime_env(cmd: &mut Command, port: u16, token: &str, app_data_dir: &Path, backend_url: &str) {
+fn apply_runtime_env(
+    cmd: &mut Command,
+    port: u16,
+    token: &str,
+    app_data_dir: &Path,
+    backend_url: &str,
+) {
     cmd.env("HOST", AGENT_RUNTIME_HOST)
         .env("HOSTNAME", AGENT_RUNTIME_HOST)
         .env("PORT", port.to_string())
         .env("KIRA_AGENT_RUNTIME_TOKEN", token)
-        .env("KIRA_AGENT_PI_DATA_DIR", app_data_dir.to_string_lossy().as_ref())
+        .env(
+            "KIRA_AGENT_PI_DATA_DIR",
+            app_data_dir.to_string_lossy().as_ref(),
+        )
         .env("KIRA_AGENT_BACKEND_URL", backend_url);
 }
 
@@ -1069,7 +1083,6 @@ fn generate_runtime_token() -> String {
     }
     token
 }
-
 
 fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), AgentRuntimeError> {
     fs::create_dir_all(dst).map_err(|e| AgentRuntimeError::StartFailed {

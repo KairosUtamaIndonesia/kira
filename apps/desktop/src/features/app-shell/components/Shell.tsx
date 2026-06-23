@@ -2,7 +2,6 @@ import { useEffect } from "react";
 
 import { toast } from "@/components/ui/sonner";
 import { startAgentRuntime } from "@/features/agent-thread/api/agentRuntimeApi";
-
 import { useZoom } from "@/hooks/useZoom";
 
 import { useModeStore } from "../state/modeStore";

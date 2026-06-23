@@ -30,9 +30,6 @@ impl PersistenceStore {
     pub fn app_data_dir(&self) -> &PathBuf {
         &self.app_data_dir
     }
-
-
-
 }
 
 #[derive(Debug, Error)]
