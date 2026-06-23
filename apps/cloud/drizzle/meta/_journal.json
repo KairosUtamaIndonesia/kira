@@ -43,6 +43,20 @@
       "when": 1781752879693,
       "tag": "0005_violet_justin_hammer",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1782208800716,
+      "tag": "0006_cold_harry_osborn",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1782219805946,
+      "tag": "0007_secret_hobgoblin",
+      "breakpoints": true
     }
   ]
 }

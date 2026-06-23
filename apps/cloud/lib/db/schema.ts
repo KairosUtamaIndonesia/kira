@@ -48,6 +48,22 @@ const desktopAccessChecks = pgTable(
   ],
 );
 
+const organizationProviders = pgTable(
+  "organization_providers",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: text("organization_id").notNull(),
+    label: text("label").notNull(),
+    providerId: text("provider_id").notNull(),
+    providerBaseUrl: text("provider_base_url").notNull(),
+    apiKey: text("api_key"),
+    modelsEndpoint: text("models_endpoint").default("/models"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("organization_providers_organization_id_idx").on(table.organizationId)],
+);
+
 const organizationModels = pgTable(
   "organization_models",
   {
@@ -55,16 +71,24 @@ const organizationModels = pgTable(
     organizationId: text("organization_id").notNull(),
     label: text("label").notNull(),
     upstreamModelId: text("upstream_model_id").notNull(),
+    providerConfigId: uuid("provider_config_id").references(() => organizationProviders.id, {
+      onDelete: "set null",
+    }),
     providerId: text("provider_id").notNull(),
-    providerBaseUrl: text("provider_base_url").notNull(),
+    providerBaseUrl: text("provider_base_url"),
     contextWindow: integer("context_window").notNull(),
     maxOutputTokens: integer("max_output_tokens").notNull(),
+    maxInputTokens: integer("max_input_tokens"),
     apiKey: text("api_key"),
+    capabilities: jsonb("capabilities"),
     isDefault: boolean("is_default").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("organization_models_organization_id_idx").on(table.organizationId)],
+  (table) => [
+    index("organization_models_organization_id_idx").on(table.organizationId),
+    index("organization_models_provider_config_id_idx").on(table.providerConfigId),
+  ],
 );
 
 const desktopSigninHandoffs = pgTable(
@@ -89,6 +113,8 @@ type DesktopAccessPolicy = typeof desktopAccessPolicies.$inferSelect;
 type NewDesktopAccessPolicy = typeof desktopAccessPolicies.$inferInsert;
 type DesktopAccessCheck = typeof desktopAccessChecks.$inferSelect;
 type NewDesktopAccessCheck = typeof desktopAccessChecks.$inferInsert;
+type OrganizationProvider = typeof organizationProviders.$inferSelect;
+type NewOrganizationProvider = typeof organizationProviders.$inferInsert;
 type OrganizationModel = typeof organizationModels.$inferSelect;
 type NewOrganizationModel = typeof organizationModels.$inferInsert;
 type DesktopSigninHandoff = typeof desktopSigninHandoffs.$inferSelect;
@@ -101,6 +127,7 @@ export {
   desktopAccessPolicyStatus,
   desktopSigninHandoffs,
   organizationModels,
+  organizationProviders,
 };
 export type {
   DesktopAccessCheck,
@@ -110,5 +137,7 @@ export type {
   NewDesktopAccessPolicy,
   NewDesktopSigninHandoff,
   NewOrganizationModel,
+  NewOrganizationProvider,
   OrganizationModel,
+  OrganizationProvider,
 };

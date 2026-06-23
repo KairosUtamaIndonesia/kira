@@ -2,10 +2,12 @@ import { createFileRoute, notFound } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 
 import { listOrganizationModels } from "@/features/org-admin/models/data/models";
+import { ProviderList } from "@/features/org-admin/providers/components/ProviderList";
 import {
   ModelActions,
   ModelForm,
 } from "@/features/organizations/components/OrganizationModelForms";
+import { listOrganizationProviders } from "@/features/organizations/data/organizationProviders";
 import { getOrganizationForPlatform } from "@/features/platform/organizations/data/organizations";
 import { requireOrgRole } from "@/lib/auth/guards";
 
@@ -20,8 +22,9 @@ const loadModels = createServerFn()
     }
 
     const models = await listOrganizationModels(organizationId);
+    const providers = await listOrganizationProviders(organizationId);
 
-    return { organization, models };
+    return { organization, models, providers };
   });
 
 export const Route = createFileRoute("/org/$organizationId/models")({
@@ -30,7 +33,7 @@ export const Route = createFileRoute("/org/$organizationId/models")({
 });
 
 function OrganizationModelsPage() {
-  const { organization, models } = Route.useLoaderData();
+  const { organization, models, providers } = Route.useLoaderData();
   const { organizationId } = Route.useParams();
 
   return (
@@ -39,6 +42,10 @@ function OrganizationModelsPage() {
         <p className="text-sm text-muted-foreground">{organization.name}</p>
         <h1 className="text-2xl font-semibold tracking-tight">Models</h1>
       </div>
+
+      <section className="rounded-xl border border-border bg-card p-4 text-card-foreground">
+        <ProviderList organizationId={organizationId} providers={providers} />
+      </section>
 
       <section className="rounded-xl border border-border bg-card p-4 text-card-foreground">
         <div className="mb-4">

@@ -18,7 +18,7 @@ const statement = {
   member: ["invite", "update", "remove"],
   apiKey: ["create", "revoke"],
   sso: ["configure"],
-  model: ["create", "update", "delete"],
+  model: ["create", "read", "update", "delete"],
   org: ["update", "delete", "setActive"],
 } as const;
 
@@ -37,7 +37,7 @@ const owner = ac.newRole({
   member: ["invite", "update", "remove"],
   apiKey: ["create", "revoke"],
   sso: ["configure"],
-  model: ["create", "update", "delete"],
+  model: ["create", "read", "update", "delete"],
   org: ["update", "delete", "setActive"],
 });
 
@@ -45,7 +45,7 @@ const admin = ac.newRole({
   ...adminAc.statements,
   member: ["invite", "update", "remove"],
   apiKey: ["create", "revoke"],
-  model: ["create", "update", "delete"],
+  model: ["create", "read", "update", "delete"],
   org: ["update", "setActive"],
 });
 

@@ -16,11 +16,15 @@ function toOrganizationModel(row: typeof organizationModels.$inferSelect): Organ
     label: row.label,
     upstreamModelId: row.upstreamModelId,
     providerId: row.providerId,
-    providerBaseUrl: row.providerBaseUrl,
+    providerBaseUrl: row.providerBaseUrl ?? undefined,
+    // oxlint-disable-next-line zod/required-property — DB column is nullable for legacy rows
+    providerConfigId: row.providerConfigId ?? (undefined as unknown as string),
+    maxInputTokens: row.maxInputTokens ?? undefined,
     contextWindow: row.contextWindow,
     maxOutputTokens: row.maxOutputTokens,
     isDefault: row.isDefault,
     apiKey: row.apiKey ?? undefined,
+    capabilities: row.capabilities ?? undefined,
     createdAt: row.createdAt.toISOString().slice(0, 10),
   };
 }
@@ -53,10 +57,14 @@ async function createOrganizationModel(
         label: input.label,
         upstreamModelId: input.upstreamModelId,
         providerId: input.providerId,
-        providerBaseUrl: input.providerBaseUrl,
+        providerConfigId: input.providerConfigId,
         contextWindow: input.contextWindow,
         maxOutputTokens: input.maxOutputTokens,
+        // oxlint-disable-next-line unicorn/no-null — null explicitly sets SQL column to NULL
+        maxInputTokens: input.maxInputTokens ?? null,
         isDefault: input.isDefault,
+        // oxlint-disable-next-line unicorn/no-null — null explicitly sets SQL column to NULL
+        capabilities: input.capabilities ?? null,
       })
       .returning();
 
@@ -85,10 +93,14 @@ async function updateOrganizationModel(
         label: input.label,
         upstreamModelId: input.upstreamModelId,
         providerId: input.providerId,
-        providerBaseUrl: input.providerBaseUrl,
+        providerConfigId: input.providerConfigId,
         contextWindow: input.contextWindow,
         maxOutputTokens: input.maxOutputTokens,
+        // oxlint-disable-next-line unicorn/no-null — null explicitly sets SQL column to NULL
+        maxInputTokens: input.maxInputTokens ?? null,
         isDefault: input.isDefault,
+        // oxlint-disable-next-line unicorn/no-null — null explicitly sets SQL column to NULL
+        capabilities: input.capabilities ?? null,
         updatedAt: new Date(),
       })
       .where(

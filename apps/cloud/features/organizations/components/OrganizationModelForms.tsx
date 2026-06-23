@@ -1,13 +1,27 @@
 import { useForm } from "@tanstack/react-form";
 import { useRouter } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import * as z from "zod";
 
+import type { ProviderModel } from "@/features/org-admin/providers/actions/fetchProviderModels";
 import type { CreateOrganizationResult } from "@/features/organizations/actions/types";
-import type { OrganizationModel } from "@/features/organizations/types";
+import type { OrganizationModel, OrganizationProvider } from "@/features/organizations/types";
 
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { fetchProviderModelsAction } from "@/features/org-admin/providers/actions/fetchProviderModels";
+import {
+  getOrgProviderAction,
+  listOrgProvidersAction,
+} from "@/features/org-admin/providers/actions/manageProviders";
 import {
   createOrganizationModelAction,
   deleteOrganizationModelAction,
@@ -18,26 +32,20 @@ import { organizationModelSchema } from "@/features/organizations/validation/org
 
 const emptyResult: CreateOrganizationResult = { status: "success", message: "" };
 
-type ModelFormValues = {
-  label: string;
-  upstreamModelId: string;
-  providerId: string;
-  providerBaseUrl: string;
-  contextWindow: number;
-  maxOutputTokens: number;
-  isDefault: boolean;
-  apiKey: string | undefined;
-};
+type ModelFormValues = z.infer<typeof organizationModelSchema>;
 
+// Blank form state — providerBaseUrl and apiKey are NOT stored on the model;
+// they are resolved from the provider row at query time (reference-based resolution).
 const blankModel: ModelFormValues = {
   label: "",
   upstreamModelId: "",
   providerId: "",
-  providerBaseUrl: "",
+  providerConfigId: "" as const,
   contextWindow: 0,
   maxOutputTokens: 0,
+  maxInputTokens: undefined,
   isDefault: false,
-  apiKey: undefined,
+  capabilities: undefined,
 };
 
 function fieldErrors(errors: Array<{ message: string } | undefined>) {
@@ -90,6 +98,105 @@ type ModelFormProperties = {
 function ModelForm({ organizationId, model, onDone }: ModelFormProperties) {
   const router = useRouter();
   const [result, setResult] = useState<CreateOrganizationResult>(emptyResult);
+
+  // Provider-linked flow state
+  const [providers, setProviders] = useState<Array<Omit<OrganizationProvider, "apiKey">>>([]);
+  const [selectedProvider, setSelectedProvider] = useState<OrganizationProvider>();
+  const [fetchedModels, setFetchedModels] = useState<ProviderModel[]>([]);
+  const [selectedModelId, setSelectedModelId] = useState<string>("");
+  const [isFetchingModels, setIsFetchingModels] = useState(false);
+  const [providersLoaded, setProvidersLoaded] = useState(false);
+
+  // Load providers on mount
+  useEffect(() => {
+    (async () => {
+      const fetchResult = await listOrgProvidersAction({ data: { organizationId } });
+      if (fetchResult.status === "success") {
+        setProviders(fetchResult.providers);
+
+        // If editing, restore the selected provider
+        if (model !== undefined && model.providerConfigId !== undefined) {
+          const match = fetchResult.providers.find((p) => p.id === model.providerConfigId);
+          if (match !== undefined) {
+            // Fetch full provider data (with apiKey) for the edit session
+            const full = await getOrgProviderAction({
+              data: { organizationId, id: match.id },
+            });
+            if (full.status === "success") {
+              setSelectedProvider(full.provider);
+            }
+          }
+        }
+      }
+      setProvidersLoaded(true);
+    })();
+  }, [organizationId, model]);
+
+  // When the user picks a provider, fetch full provider data (with apiKey)
+  // so the model-discovery action can authenticate.
+  const handleProviderSelect = async (providerId: string) => {
+    const publicProvider = providers.find((p) => p.id === providerId);
+    if (publicProvider === undefined) return;
+
+    setSelectedModelId("");
+
+    // Fetch full provider data including apiKey (never shipped in the list)
+    const full = await getOrgProviderAction({
+      data: { organizationId, id: publicProvider.id },
+    });
+    if (full.status === "success") {
+      setSelectedProvider(full.provider);
+    } else {
+      // Fall back to public data (apiKey will be undefined — fetch may fail)
+      setSelectedProvider({
+        ...publicProvider,
+        apiKey: undefined,
+      });
+    }
+  };
+
+  // Fetch models when the selected provider (with apiKey resolved) is set
+  useEffect(() => {
+    if (selectedProvider === undefined) {
+      return;
+    }
+
+    let cancelled = false;
+    setIsFetchingModels(true);
+    setFetchedModels([]);
+    setSelectedModelId("");
+
+    (async () => {
+      const provider = selectedProvider;
+      const fetchResult = await fetchProviderModelsAction({
+        data: {
+          organizationId,
+          providerBaseUrl: provider.providerBaseUrl,
+          apiKey: provider.apiKey ?? "",
+          modelsEndpoint: provider.modelsEndpoint ?? "",
+        },
+      });
+      if (!cancelled) {
+        if (fetchResult.status === "success") {
+          setFetchedModels(fetchResult.models);
+
+          // Pre-select model when editing a provider-linked model
+          if (model !== undefined && model.providerConfigId !== undefined) {
+            const match = fetchResult.models.find((m) => m.id === model.upstreamModelId);
+            if (match !== undefined) {
+              setSelectedModelId(match.id);
+            }
+          }
+        }
+        setIsFetchingModels(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [organizationId, selectedProvider, model]);
+
   const defaultValues: ModelFormValues =
     model === undefined
       ? blankModel
@@ -97,11 +204,12 @@ function ModelForm({ organizationId, model, onDone }: ModelFormProperties) {
           label: model.label,
           upstreamModelId: model.upstreamModelId,
           providerId: model.providerId,
-          providerBaseUrl: model.providerBaseUrl,
+          providerConfigId: model.providerConfigId,
           contextWindow: model.contextWindow,
           maxOutputTokens: model.maxOutputTokens,
+          maxInputTokens: model.maxInputTokens,
           isDefault: model.isDefault,
-          apiKey: model.apiKey,
+          capabilities: model.capabilities,
         };
 
   const form = useForm({
@@ -131,6 +239,99 @@ function ModelForm({ organizationId, model, onDone }: ModelFormProperties) {
   });
   const hasMessage = result.message.length > 0;
 
+  function handleModelSelect(modelId: string | null) {
+    if (modelId === null) return;
+    if (selectedProvider === undefined) return;
+    setSelectedModelId(modelId);
+    const fetchedModel = fetchedModels.find((m) => m.id === modelId);
+    if (fetchedModel === undefined) {
+      return;
+    }
+    form.setFieldValue("upstreamModelId", fetchedModel.id);
+    form.setFieldValue("label", fetchedModel.name);
+    form.setFieldValue("contextWindow", fetchedModel.context_length ?? 0);
+    form.setFieldValue("maxOutputTokens", fetchedModel.max_output_tokens ?? 0);
+    form.setFieldValue("capabilities", fetchedModel.capabilities);
+    form.setFieldValue("providerConfigId", selectedProvider.id);
+    form.setFieldValue("providerId", selectedProvider.providerId);
+  }
+
+  // Build provider picker content without nested ternaries
+  let providerPickerContent: React.ReactNode;
+  if (!providersLoaded) {
+    providerPickerContent = <p className="text-sm text-muted-foreground">Loading providers...</p>;
+  } else if (providers.length === 0) {
+    providerPickerContent = (
+      <p className="text-sm text-muted-foreground">
+        No providers registered. Add a provider first.
+      </p>
+    );
+  } else {
+    providerPickerContent = (
+      <Field>
+        <FieldLabel htmlFor="provider-select">Provider</FieldLabel>
+        <Select
+          value={selectedProvider !== undefined ? selectedProvider.id : ""}
+          onValueChange={(value: string | null) => {
+            if (value === null) return;
+            handleProviderSelect(value);
+          }}
+        >
+          <SelectTrigger id="provider-select">
+            <SelectValue placeholder="Select a provider...">
+              {(value: string | null) => {
+                if (value === null || value === "") return "Select a provider...";
+                const p = providers.find((prov) => prov.id === value);
+                return p !== undefined ? `${p.label} (${p.providerId})` : value;
+              }}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {providers.map((p) => (
+              <SelectItem key={p.id} value={p.id}>
+                {p.label} ({p.providerId})
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
+    );
+  }
+
+  // Build model picker content without nested ternaries
+  let modelPickerContent: React.ReactNode;
+  if (selectedProvider === undefined) {
+    modelPickerContent = undefined;
+  } else if (isFetchingModels) {
+    modelPickerContent = <p className="text-sm text-muted-foreground">Loading models...</p>;
+  } else if (fetchedModels.length === 0) {
+    modelPickerContent = <p className="text-sm text-muted-foreground">No models available.</p>;
+  } else {
+    modelPickerContent = (
+      <Field>
+        <FieldLabel htmlFor="model-select">Model</FieldLabel>
+        <Select value={selectedModelId} onValueChange={handleModelSelect}>
+          <SelectTrigger id="model-select">
+            <SelectValue placeholder="Select a model...">
+              {(value: string | null) => {
+                if (value === null || value === "") return "Select a model...";
+                const m = fetchedModels.find((fetched) => fetched.id === value);
+                return m !== undefined ? `${m.name} (${m.id})` : value;
+              }}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {fetchedModels.map((m) => (
+              <SelectItem key={m.id} value={m.id}>
+                {m.name} ({m.id})
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
+    );
+  }
+
   return (
     <form
       className="space-y-4"
@@ -140,6 +341,13 @@ function ModelForm({ organizationId, model, onDone }: ModelFormProperties) {
         form.handleSubmit();
       }}
     >
+      {/* Step 1: Pick a provider */}
+      <div>{providerPickerContent}</div>
+
+      {/* Step 2: Pick a model */}
+      {modelPickerContent !== undefined ? <div>{modelPickerContent}</div> : undefined}
+
+      {/* Step 3: Editable override fields */}
       <div className="grid gap-3 md:grid-cols-2">
         <form.Field name="label">
           {(field) => (
@@ -152,49 +360,6 @@ function ModelForm({ organizationId, model, onDone }: ModelFormProperties) {
               onBlur={field.handleBlur}
               onChange={field.handleChange}
               placeholder="Fast coding model"
-            />
-          )}
-        </form.Field>
-        <form.Field name="upstreamModelId">
-          {(field) => (
-            <LabeledInput
-              name={field.name}
-              label="Model ID"
-              value={field.state.value}
-              invalid={field.state.meta.isTouched && !field.state.meta.isValid}
-              errors={field.state.meta.errors}
-              onBlur={field.handleBlur}
-              onChange={field.handleChange}
-              placeholder="gh/gpt-5.5"
-            />
-          )}
-        </form.Field>
-        <form.Field name="providerId">
-          {(field) => (
-            <LabeledInput
-              name={field.name}
-              label="Provider ID"
-              value={field.state.value}
-              invalid={field.state.meta.isTouched && !field.state.meta.isValid}
-              errors={field.state.meta.errors}
-              onBlur={field.handleBlur}
-              onChange={field.handleChange}
-              placeholder="github-copilot"
-            />
-          )}
-        </form.Field>
-        <form.Field name="providerBaseUrl">
-          {(field) => (
-            <LabeledInput
-              name={field.name}
-              label="Provider base URL"
-              type="url"
-              value={field.state.value}
-              invalid={field.state.meta.isTouched && !field.state.meta.isValid}
-              errors={field.state.meta.errors}
-              onBlur={field.handleBlur}
-              onChange={field.handleChange}
-              placeholder="https://api.example.com/v1"
             />
           )}
         </form.Field>
@@ -227,21 +392,6 @@ function ModelForm({ organizationId, model, onDone }: ModelFormProperties) {
               onBlur={field.handleBlur}
               onChange={(value) => field.handleChange(value === "" ? Number.NaN : Number(value))}
               placeholder="64000"
-            />
-          )}
-        </form.Field>
-        <form.Field name="apiKey">
-          {(field) => (
-            <LabeledInput
-              name={field.name}
-              label="API key"
-              type="password"
-              value={field.state.value ?? ""}
-              invalid={field.state.meta.isTouched && !field.state.meta.isValid}
-              errors={field.state.meta.errors}
-              onBlur={field.handleBlur}
-              onChange={field.handleChange}
-              placeholder="Optional router auth key"
             />
           )}
         </form.Field>
@@ -350,6 +500,7 @@ function ModelActions({ model }: ModelActionsProperties) {
                 ? "text-sm text-destructive"
                 : "text-sm text-muted-foreground"
             }
+            aria-live="polite"
           >
             {result.message}
           </span>
