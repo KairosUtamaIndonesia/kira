@@ -6,6 +6,14 @@ side-by-side with your app, and team management is coming through the cloud cons
 
 This is just the start. More surface, more capability, more agentic.
 
+## [3.0.2](https://github.com/KairosUtamaIndonesia/kira/compare/v3.0.1...v3.0.2) (2026-06-23)
+
+
+### Bug Fixes
+
+* **ci:** add KIRA_CLOUD_URL env to lint-check and test-rust jobs ([216f6e1](https://github.com/KairosUtamaIndonesia/kira/commit/216f6e18856144010154af3d6a28f0bcf0e9beb9))
+* **updater:** register updater and process plugins in Tauri builder ([13b8e0c](https://github.com/KairosUtamaIndonesia/kira/commit/13b8e0c9578ae07cb8023284a3801f8edf7e72ad))
+
 ## [3.0.1](https://github.com/KairosUtamaIndonesia/kira/compare/v3.0.0...v3.0.1) (2026-06-23)
 
 
