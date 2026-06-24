@@ -39,15 +39,22 @@ export const Route = createFileRoute("/api/desktop/models")({
         }
 
         const verification = await auth.api
-          .verifyApiKey({ body: { key: apiKeyHeader } })
+          .verifyApiKey({
+            body: {
+              configId: "organization-desktop-access",
+              key: apiKeyHeader,
+              permissions: { desktopAccess: ["read"] },
+            },
+          })
           .catch((error: unknown) => {
-            logger.error("Failed to verify API key", { error: String(error) });
-            // oxlint-disable-next-line unicorn/no-null — null explicitly sets SQL column to NULL
-            return { valid: false, key: null };
+            logger.error("desktop.models.verify_api_key_failed", {
+              error: String(error),
+            });
+            throw error;
           });
 
         if (!verification.valid || verification.key === null) {
-          return Response.json({ error: "Invalid API key", models: [] }, { status: 401 });
+          return Response.json({ error: "Invalid API key" }, { status: 401 });
         }
 
         const userId = verification.key.referenceId;
