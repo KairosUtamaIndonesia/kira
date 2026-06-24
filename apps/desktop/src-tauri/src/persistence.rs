@@ -76,7 +76,12 @@ pub async fn initialize<R: Runtime>(
         .path()
         .app_data_dir()
         .map_err(|_| PersistenceError::AppDataDir)?;
-    let store_path = app_data_dir.join("kira.sqlite3");
+
+    // Use a separate database for dev builds so development
+    // migration changes never conflict with an installed release's
+    // recorded migration checksums.
+    let db_name = if tauri::is_dev() { "kira-dev.sqlite3" } else { "kira.sqlite3" };
+    let store_path = app_data_dir.join(db_name);
     let store_directory = app_data_dir.clone();
 
     std::fs::create_dir_all(&store_directory).map_err(|error| {
