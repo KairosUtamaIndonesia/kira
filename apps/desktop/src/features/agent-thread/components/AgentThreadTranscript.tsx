@@ -12,6 +12,7 @@ import { AgentThreadCompactionCard } from "./AgentThreadCompactionCard";
 import { AgentThreadMarkdown } from "./AgentThreadMarkdown";
 import { AgentThreadUserSkillBlock } from "./AgentThreadUserSkillBlock";
 import { toolComponentForName } from "./tools";
+import { ToolExpandable, ToolInlineRow } from "./tools/ToolPrimitives";
 
 type AgentThreadTranscriptProps = {
   transcript: PiTranscriptState;
@@ -187,15 +188,17 @@ function blockKey(block: AgentThreadActivityBlock) {
 
 function ThinkingBlock({ thinking }: { thinking: string }) {
   return (
-    <details className="rounded-lg border border-border bg-card/60 p-3">
-      <summary className="flex cursor-pointer items-center gap-2 text-xs font-medium text-muted-foreground">
-        <Brain aria-hidden="true" className="size-3.5" />
-        Thinking
-      </summary>
-      <div className="mt-2 text-sm leading-6 whitespace-pre-wrap text-muted-foreground">
-        {thinking}
-      </div>
-    </details>
+    <ToolExpandable
+      summary="Show thinking"
+      trigger={
+        <ToolInlineRow
+          icon={<Brain aria-hidden="true" className="size-3" />}
+          label={<span className="truncate">Thinking</span>}
+        />
+      }
+    >
+      <div className="text-sm leading-6 whitespace-pre-wrap text-muted-foreground">{thinking}</div>
+    </ToolExpandable>
   );
 }
 
