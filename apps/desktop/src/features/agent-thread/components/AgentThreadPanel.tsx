@@ -3,9 +3,11 @@ import { useCallback, useEffect, useRef, useState, type DragEvent } from "react"
 import { StickToBottom } from "use-stick-to-bottom";
 
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/sonner";
 import { explorerDragDataKey } from "@/features/explorer";
 import { playAgentNotificationSound, useAppearanceTheme } from "@/features/settings";
 
+import type { AgentThreadRuntimeState } from "../hooks/useAgentThreadConnection";
 import type {
   AgentThreadPanelParams,
   PiTranscriptState,
@@ -53,10 +55,10 @@ function AgentThreadPanel({ api, params, onRename, isActive }: AgentThreadPanelP
     },
     [api, onRename, params.panelId],
   );
-
   const {
     compactionSummary,
     contextUsageState,
+    currentLeafId,
     isCompacting,
     runSlashCommandAction,
     transcript,
@@ -78,28 +80,47 @@ function AgentThreadPanel({ api, params, onRename, isActive }: AgentThreadPanelP
   );
 
   const handleResend = useCallback(
-    (id: string, text: string) => {
-      // Find tree entry for this user message and navigate to its parent.
-      const findEntryId = (nodes: SessionTreeNodeJson[]): string | undefined => {
+    async (id: string, text: string): Promise<boolean> => {
+      if (runtimeState.status !== "ready" && runtimeState.status !== "error") {
+        return false;
+      }
+      // Find tree entry for this user message and navigate to its parent so the
+      // resend becomes a sibling branch (the original sits off the active path
+      // and is hidden by filterActivePathMessages), preventing a duplicate.
+      const findNode = (nodes: SessionTreeNodeJson[]): SessionTreeNodeJson | undefined => {
         for (const node of nodes) {
           if (node.entry.messageId === id) {
-            return node.id;
+            return node;
           }
           if (node.children.length > 0) {
-            const found = findEntryId(node.children);
+            const found = findNode(node.children);
             if (found !== undefined) return found;
           }
         }
         return undefined;
       };
-      const entryId = findEntryId(treeNodes);
-      if (entryId !== undefined) {
-        void navigateTree(entryId);
+      const node = findNode(treeNodes);
+      if (node !== undefined) {
+        // Can't create a sibling branch from the root message — no parent to
+        // branch from. The original root stays on the active path and the new
+        // message creates a permanent duplicate.
+        if (node.parentId === null) {
+          return false;
+        }
+        if (node.parentId !== currentLeafId) {
+          await navigateTree(node.parentId);
+        }
       }
+      // When the message has no tree node (historical, local, or tree not yet
+      // loaded), skip navigation and send from the current position.
       setEditingMessageId(undefined);
-      sendPrompt(text);
+      const ok = await sendPrompt(text);
+      if (!ok) {
+        toast.error("Failed to resend message");
+      }
+      return ok;
     },
-    [treeNodes, navigateTree, sendPrompt],
+    [treeNodes, navigateTree, sendPrompt, currentLeafId, runtimeState],
   );
 
   const handleCancelEdit = useCallback(() => {
@@ -218,6 +239,7 @@ function AgentThreadPanel({ api, params, onRename, isActive }: AgentThreadPanelP
           agentThreadShowRawEventStream={agentThreadShowRawEventStream}
           onResend={handleResend}
           onEdit={handleEdit}
+          runtimeState={runtimeState}
         />
       </div>
       <footer className="relative shrink-0 bg-editor-surface p-2 before:pointer-events-none before:absolute before:-top-8 before:right-0 before:left-0 before:h-8 before:bg-gradient-to-t before:from-editor-surface before:to-transparent before:content-['']">
@@ -245,7 +267,6 @@ function AgentThreadPanel({ api, params, onRename, isActive }: AgentThreadPanelP
     </section>
   );
 }
-
 type TranscriptAreaProps = {
   transcript: PiTranscriptState;
   compactionSummary: { tokensBefore: number; summary: string } | undefined;
@@ -253,8 +274,9 @@ type TranscriptAreaProps = {
   editingMessageId: string | undefined;
   respondToRequest: RespondToHumanRequest;
   agentThreadShowRawEventStream: boolean;
-  onResend: (id: string, text: string) => void;
+  onResend: (id: string, text: string) => Promise<boolean>;
   onEdit: (id: string, text: string) => void;
+  runtimeState: AgentThreadRuntimeState;
 };
 
 function TranscriptArea({
@@ -266,6 +288,7 @@ function TranscriptArea({
   agentThreadShowRawEventStream,
   onResend,
   onEdit,
+  runtimeState,
 }: TranscriptAreaProps) {
   return (
     <StickToBottom className="relative min-h-0 flex-1" initial="instant" resize="smooth">
@@ -282,6 +305,7 @@ function TranscriptArea({
               respond={respondToRequest}
               onResend={onResend}
               onEdit={onEdit}
+              runtimeState={runtimeState}
             />
             {agentThreadShowRawEventStream ? (
               <AgentThreadRawEventStream transcript={transcript} />

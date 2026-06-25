@@ -5,6 +5,7 @@ import { ButtonGroup } from "@/components/ui/button-group";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 import type { AgentThreadActivityBlock } from "../agentThreadDisplay";
+import type { AgentThreadRuntimeState } from "../hooks/useAgentThreadConnection";
 import type { PiTranscriptState, RespondToHumanRequest } from "../types";
 
 import { buildAgentThreadTranscript, stringifyUnknown } from "../agentThreadDisplay";
@@ -13,14 +14,14 @@ import { AgentThreadMarkdown } from "./AgentThreadMarkdown";
 import { AgentThreadUserSkillBlock } from "./AgentThreadUserSkillBlock";
 import { toolComponentForName } from "./tools";
 import { ToolExpandable, ToolInlineRow } from "./tools/ToolPrimitives";
-
 type AgentThreadTranscriptProps = {
   transcript: PiTranscriptState;
   compactionSummary?: { tokensBefore: number; summary: string } | undefined;
   editingMessageId?: string | undefined;
   respond: RespondToHumanRequest;
-  onResend: (id: string, text: string) => void;
+  onResend: (id: string, text: string) => Promise<boolean>;
   onEdit: (id: string, text: string) => void;
+  runtimeState: AgentThreadRuntimeState;
 };
 function AgentThreadTranscript({
   transcript,
@@ -29,8 +30,14 @@ function AgentThreadTranscript({
   respond,
   onResend,
   onEdit,
+  runtimeState,
 }: AgentThreadTranscriptProps) {
   const items = buildAgentThreadTranscript(transcript);
+  const rootNode =
+    transcript.treeNodes === undefined
+      ? undefined
+      : transcript.treeNodes.find((n) => n.parentId === null);
+  const rootMessageId = rootNode === undefined ? undefined : rootNode.entry.messageId;
   if (items.length === 0) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -67,8 +74,12 @@ function AgentThreadTranscript({
                           <Button
                             type="button"
                             variant="ghost"
-                            size="icon-sm"
-                            onClick={() => onResend(item.id, item.text)}
+                            disabled={
+                              (runtimeState.status !== "ready" &&
+                                runtimeState.status !== "error") ||
+                              rootMessageId === item.id
+                            }
+                            onClick={() => void onResend(item.id, item.text)}
                           />
                         }
                       >
