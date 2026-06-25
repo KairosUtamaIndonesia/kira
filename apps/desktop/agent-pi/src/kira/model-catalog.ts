@@ -1,3 +1,5 @@
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
+
 type ModelConfig = {
   label: string;
   upstreamModelId: string;
@@ -6,6 +8,7 @@ type ModelConfig = {
   contextWindow: number;
   maxOutputTokens: number;
   maxInputTokens?: number;
+  thinkingLevel: ThinkingLevel;
   capabilities?: {
     reasoning?: boolean;
     thinking?: boolean;
@@ -21,6 +24,12 @@ type ModelCatalog = {
 };
 
 let cachedCatalog: ModelCatalog | undefined;
+
+const thinkingLevels = new Set<ThinkingLevel>(["off", "minimal", "low", "medium", "high", "xhigh"]);
+
+function isThinkingLevel(value: unknown): value is ThinkingLevel {
+  return typeof value === "string" && thinkingLevels.has(value as ThinkingLevel);
+}
 
 function readBackendUrl(): string {
   const url = process.env.KIRA_AGENT_BACKEND_URL;
@@ -42,6 +51,11 @@ async function fetchAndCacheCatalog(): Promise<void> {
 
   if (!Array.isArray(catalog.models)) {
     throw new Error("Model catalog has an invalid structure");
+  }
+  for (const model of catalog.models) {
+    if (!isThinkingLevel(model.thinkingLevel)) {
+      throw new Error(`Model catalog has an invalid thinking level for ${model.label}`);
+    }
   }
 
   cachedCatalog = catalog;

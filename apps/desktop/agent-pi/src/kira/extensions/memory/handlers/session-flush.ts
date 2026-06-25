@@ -2,7 +2,7 @@
  * Session flush — gives the agent one turn to save memories before context is lost.
  */
 
-import type { Model } from "@earendil-works/pi-ai";
+import type { Api, Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import type { MemoryConfig } from "../types.js";
@@ -11,7 +11,7 @@ import { FLUSH_PROMPT } from "../constants.js";
 import { runMemoryPrompt } from "../run-memory-prompt.js";
 import { MemoryStore } from "../store/memory-store.js";
 import { collectMessageParts } from "./message-parts.js";
-export type KiraModel = Model<"openai-responses">;
+export type KiraModel = Model<Api>;
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 
 export function setupSessionFlush(

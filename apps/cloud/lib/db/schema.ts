@@ -79,6 +79,7 @@ const organizationModels = pgTable(
     contextWindow: integer("context_window").notNull(),
     maxOutputTokens: integer("max_output_tokens").notNull(),
     maxInputTokens: integer("max_input_tokens"),
+    thinkingLevel: text("thinking_level").notNull().default("medium"),
     apiKey: text("api_key"),
     capabilities: jsonb("capabilities"),
     isDefault: boolean("is_default").notNull().default(false),

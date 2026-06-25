@@ -109,6 +109,7 @@ export const Route = createFileRoute("/api/desktop/models")({
             contextWindow: model.contextWindow,
             maxOutputTokens: model.maxOutputTokens,
             maxInputTokens: model.maxInputTokens,
+            thinkingLevel: model.thinkingLevel,
             capabilities: model.capabilities,
             isDefault: model.isDefault,
             // Resolve apiKey from the provider row; fall back to the model column

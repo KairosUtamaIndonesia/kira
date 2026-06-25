@@ -8,7 +8,7 @@
  * - Negative patterns: suppress even if a positive pattern matched
  */
 
-import type { Model } from "@earendil-works/pi-ai";
+import type { Api, Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import type { MemoryConfig } from "../types.js";
@@ -26,7 +26,7 @@ import { DatabaseManager } from "../store/db.js";
 import { MemoryStore } from "../store/memory-store.js";
 import { formatFailureMemoryContent, syncMemoryEntry } from "../store/sqlite-memory-store.js";
 import { getMessageText } from "../types.js";
-export type KiraModel = Model<"openai-responses">;
+export type KiraModel = Model<Api>;
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 
 /**

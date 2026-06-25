@@ -115,6 +115,7 @@ async function buildAgentSession(context: AgentThreadContext): Promise<AgentSess
   const { session } = await createAgentSession({
     cwd: context.projectPath,
     model,
+    thinkingLevel: modelConfig.thinkingLevel,
     authStorage,
     modelRegistry: ModelRegistry.inMemory(authStorage),
     sessionManager: SessionManager.open(sessionFile, sessionDir, context.projectPath),

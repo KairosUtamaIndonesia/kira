@@ -8,7 +8,7 @@ import type { CreateOrganizationResult } from "@/features/organizations/actions/
 import type { OrganizationModel, OrganizationProvider } from "@/features/organizations/types";
 
 import { Button } from "@/components/ui/button";
-import { Field, FieldError, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -34,6 +34,15 @@ const emptyResult: CreateOrganizationResult = { status: "success", message: "" }
 
 type ModelFormValues = z.infer<typeof organizationModelSchema>;
 
+const thinkingLevelOptions: Array<{ value: ModelFormValues["thinkingLevel"]; label: string }> = [
+  { value: "off", label: "Off" },
+  { value: "minimal", label: "Minimal" },
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "xhigh", label: "X-high" },
+];
+
 // Blank form state — providerBaseUrl and apiKey are NOT stored on the model;
 // they are resolved from the provider row at query time (reference-based resolution).
 const blankModel: ModelFormValues = {
@@ -44,6 +53,7 @@ const blankModel: ModelFormValues = {
   contextWindow: 0,
   maxOutputTokens: 0,
   maxInputTokens: undefined,
+  thinkingLevel: "medium",
   isDefault: false,
   capabilities: undefined,
 };
@@ -208,6 +218,7 @@ function ModelForm({ organizationId, model, onDone }: ModelFormProperties) {
           contextWindow: model.contextWindow,
           maxOutputTokens: model.maxOutputTokens,
           maxInputTokens: model.maxInputTokens,
+          thinkingLevel: model.thinkingLevel,
           isDefault: model.isDefault,
           capabilities: model.capabilities,
         };
@@ -393,6 +404,42 @@ function ModelForm({ organizationId, model, onDone }: ModelFormProperties) {
               onChange={(value) => field.handleChange(value === "" ? Number.NaN : Number(value))}
               placeholder="64000"
             />
+          )}
+        </form.Field>
+        <form.Field name="thinkingLevel">
+          {(field) => (
+            <Field data-invalid={field.state.meta.isTouched && !field.state.meta.isValid}>
+              <FieldLabel htmlFor={field.name}>Thinking level</FieldLabel>
+              <Select
+                value={field.state.value}
+                onValueChange={(value: ModelFormValues["thinkingLevel"] | null) => {
+                  if (value === null) return;
+                  field.handleChange(value);
+                }}
+              >
+                <SelectTrigger id={field.name} className="w-full">
+                  <SelectValue>
+                    {(value: ModelFormValues["thinkingLevel"] | null) => {
+                      const option = thinkingLevelOptions.find((item) => item.value === value);
+                      return option !== undefined ? option.label : "Select a thinking level";
+                    }}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {thinkingLevelOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FieldDescription>
+                Default effort for Agent Threads that use this model.
+              </FieldDescription>
+              {field.state.meta.isTouched && !field.state.meta.isValid ? (
+                <FieldError errors={fieldErrors(field.state.meta.errors)} />
+              ) : undefined}
+            </Field>
           )}
         </form.Field>
       </div>

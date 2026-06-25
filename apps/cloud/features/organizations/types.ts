@@ -56,6 +56,7 @@ type OrganizationModel = {
   maxInputTokens: number | undefined;
   contextWindow: number;
   maxOutputTokens: number;
+  thinkingLevel: ThinkingLevel;
   isDefault: boolean;
   /** Resolved from organization_providers at query time, not stored on the model. */
   apiKey: string | undefined;
@@ -69,6 +70,8 @@ type OrganizationModel = {
     | undefined;
   createdAt: string;
 };
+
+type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
 type OrganizationProvider = {
   id: string;
@@ -92,4 +95,5 @@ export type {
   OrganizationProvider,
   PublicOrganizationProvider,
   OrganizationStatus,
+  ThinkingLevel,
 };

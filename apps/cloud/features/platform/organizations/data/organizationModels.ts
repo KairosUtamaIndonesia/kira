@@ -22,6 +22,7 @@ function toOrganizationModel(row: typeof organizationModels.$inferSelect): Organ
     maxInputTokens: row.maxInputTokens ?? undefined,
     contextWindow: row.contextWindow,
     maxOutputTokens: row.maxOutputTokens,
+    thinkingLevel: row.thinkingLevel as OrganizationModel["thinkingLevel"],
     isDefault: row.isDefault,
     apiKey: row.apiKey ?? undefined,
     capabilities: row.capabilities ?? undefined,
@@ -60,6 +61,7 @@ async function createOrganizationModel(
         providerConfigId: input.providerConfigId,
         contextWindow: input.contextWindow,
         maxOutputTokens: input.maxOutputTokens,
+        thinkingLevel: input.thinkingLevel,
         // oxlint-disable-next-line unicorn/no-null — null explicitly sets SQL column to NULL
         maxInputTokens: input.maxInputTokens ?? null,
         isDefault: input.isDefault,
@@ -96,6 +98,7 @@ async function updateOrganizationModel(
         providerConfigId: input.providerConfigId,
         contextWindow: input.contextWindow,
         maxOutputTokens: input.maxOutputTokens,
+        thinkingLevel: input.thinkingLevel,
         // oxlint-disable-next-line unicorn/no-null — null explicitly sets SQL column to NULL
         maxInputTokens: input.maxInputTokens ?? null,
         isDefault: input.isDefault,

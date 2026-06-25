@@ -352,12 +352,13 @@ async function handleCommand(
         if (modelConfig === undefined) {
           throw new Error(`Unknown model: ${command.modelLabel}`);
         }
-        const model: Model<"openai-responses"> = piModelFromConfig(modelConfig);
+        const model: Model<"openai-completions"> = piModelFromConfig(modelConfig);
         // Ensure the new model's API key is in the auth storage before switching
         if (modelConfig.apiKey !== undefined) {
           session.modelRegistry.authStorage.setRuntimeApiKey(model.provider, modelConfig.apiKey);
         }
         await session.setModel(model);
+        session.setThinkingLevel(modelConfig.thinkingLevel);
         respond(ws, command.id, "switch_model", true);
         return;
       }

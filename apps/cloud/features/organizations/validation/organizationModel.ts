@@ -7,6 +7,8 @@ const capabilitySchema = z.object({
   vision: z.boolean().optional(),
 });
 
+const thinkingLevelSchema = z.enum(["off", "minimal", "low", "medium", "high", "xhigh"]);
+
 const organizationModelSchema = z.object({
   label: z.string().trim().min(1, "Label is required."),
   upstreamModelId: z.string().trim().min(1, "Model ID is required."),
@@ -15,6 +17,7 @@ const organizationModelSchema = z.object({
   contextWindow: z.number().int().positive("Context window must be a positive integer."),
   maxOutputTokens: z.number().int().positive("Max output tokens must be a positive integer."),
   maxInputTokens: z.union([z.number().int().positive(), z.undefined()]),
+  thinkingLevel: thinkingLevelSchema,
   isDefault: z.boolean(),
   capabilities: z.union([capabilitySchema, z.undefined()]),
 });
@@ -51,6 +54,7 @@ export {
   deleteOrganizationModelSchema,
   organizationModelSchema,
   setDefaultOrganizationModelSchema,
+  thinkingLevelSchema,
   updateOrganizationModelSchema,
 };
 export type {

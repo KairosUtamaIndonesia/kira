@@ -19,6 +19,7 @@ pub struct ModelConfig {
     pub provider_base_url: String,
     pub context_window: i32,
     pub max_output_tokens: i32,
+    pub thinking_level: String,
     pub is_default: bool,
     pub max_input_tokens: Option<i32>,
     pub capabilities: Option<ModelCapabilities>,

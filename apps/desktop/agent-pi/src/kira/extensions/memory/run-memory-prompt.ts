@@ -1,5 +1,5 @@
 import type { AgentTool, ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { Model } from "@earendil-works/pi-ai";
+import type { Api, Model } from "@earendil-works/pi-ai";
 
 import { Agent } from "@earendil-works/pi-agent-core";
 
@@ -8,7 +8,7 @@ export async function runMemoryPrompt(
   prompt: string,
   tools: AgentTool[],
   options: {
-    model: Model<"openai-responses">;
+    model: Model<Api>;
     apiKey: string;
     systemPrompt?: string;
     thinkingLevel?: ThinkingLevel;
