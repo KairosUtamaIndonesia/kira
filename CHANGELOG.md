@@ -6,6 +6,20 @@ side-by-side with your app, and team management is coming through the cloud cons
 
 This is just the start. More surface, more capability, more agentic.
 
+## [3.2.0](https://github.com/KairosUtamaIndonesia/kira/compare/v3.1.0...v3.2.0) (2026-06-25)
+
+
+### Features
+
+* **agent:** updated thinking block ([20d454a](https://github.com/KairosUtamaIndonesia/kira/commit/20d454a23ee071e8af9f9612d75b4b2017e429a0))
+* expose model thinking level ([cf8873d](https://github.com/KairosUtamaIndonesia/kira/commit/cf8873d080cdaca746aebc9d8a9011a1dfccd9b2))
+
+
+### Bug Fixes
+
+* **desktop:** repair agent-thread resend — race, duplicate, and edge ([e29322d](https://github.com/KairosUtamaIndonesia/kira/commit/e29322d37d1ab3e0c29a7435cc9f457ca999c149))
+* restore configId and permissions in desktop models verifyApiKey call ([#105](https://github.com/KairosUtamaIndonesia/kira/issues/105)) ([1c86554](https://github.com/KairosUtamaIndonesia/kira/commit/1c86554109b4437f5117977d7f4413123c21e68f))
+
 ## [3.1.0](https://github.com/KairosUtamaIndonesia/kira/compare/v3.0.2...v3.1.0) (2026-06-23)
 
 
