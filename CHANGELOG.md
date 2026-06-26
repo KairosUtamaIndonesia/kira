@@ -6,6 +6,13 @@ side-by-side with your app, and team management is coming through the cloud cons
 
 This is just the start. More surface, more capability, more agentic.
 
+## [3.3.1](https://github.com/KairosUtamaIndonesia/kira/compare/v3.3.0...v3.3.1) (2026-06-26)
+
+
+### Bug Fixes
+
+* **desktop:** auto-start agent runtime before preparing agent thread ([876c496](https://github.com/KairosUtamaIndonesia/kira/commit/876c496d65c98cb1014335e6c636c80b2b8a8ce2))
+
 ## [3.3.0](https://github.com/KairosUtamaIndonesia/kira/compare/v3.2.0...v3.3.0) (2026-06-26)
 
 
