@@ -142,10 +142,50 @@ async fn clear_identity(pool: &SqlitePool) -> Result<(), SigninError> {
 }
 
 async fn respond(stream: &mut tokio::net::TcpStream, message: &str) {
+    // Successful sign-in gets a green checkmark icon; other messages (waiting
+    // or error states) render a neutral look without it.
+    let icon_svg = if message.starts_with("Signed in") {
+        r#"<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>"#
+    } else {
+        ""
+    };
+
+    let hint = if message.starts_with("Signed in") {
+        r#"<p class="hint">You can close this tab and return to Kira.</p>"#
+    } else {
+        ""
+    };
+
     let body = format!(
-        "<!doctype html><html><head><meta charset=\"utf-8\"><title>Kira</title></head>\
-         <body style=\"font-family:sans-serif;text-align:center;padding-top:4rem\">\
-         <h1>{message}</h1></body></html>"
+        r#"<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kira Desktop</title>
+<style>
+*{{margin:0;padding:0;box-sizing:border-box}}
+:root{{--bg:#fff;--fg:#09090b;--card:#fff;--border:#e4e4e7;--muted:#71717a;--success:#16a34a}}
+@media(prefers-color-scheme:dark){{:root{{--bg:#09090b;--fg:#fafafa;--card:#18181b;--border:#27272a;--muted:#a1a1aa;--success:#22c55e}}}}
+@font-face{{font-family:Geist;src:local(Geist Variable),local(Geist),local(Inter),local(system-ui);font-display:swap}}
+body{{font-family:Geist,system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--fg);display:flex;align-items:center;justify-content:center;min-height:100dvh;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}}
+.card{{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:40px 32px;width:100%;max-width:380px;margin:16px;text-align:center;box-shadow:0 1px 2px rgba(0,0,0,.04);animation:fadeIn .35s ease-out}}
+@keyframes fadeIn{{from{{opacity:0;transform:translateY(6px)}}to{{opacity:1;transform:translateY(0)}}}}
+@media(prefers-reduced-motion:reduce){{.card{{animation:none}}}}
+.icon{{display:flex;align-items:center;justify-content:center;width:48px;height:48px;margin:0 auto 20px;border-radius:999px;background:color-mix(in srgb,var(--success) 12%,transparent);color:var(--success)}}
+h1{{font-size:18px;font-weight:600;letter-spacing:-.01em;line-height:1.45;margin-bottom:6px}}
+p{{font-size:14px;color:var(--muted);line-height:1.55}}
+.hint{{margin-top:28px;padding-top:18px;border-top:1px solid var(--border);font-size:13px}}
+</style>
+</head>
+<body>
+<div class="card">
+{icon_svg}
+<h1>{message}</h1>
+{hint}
+</div>
+</body>
+</html>"#
     );
     let response = format!(
         "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
