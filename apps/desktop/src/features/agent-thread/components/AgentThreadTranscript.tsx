@@ -225,23 +225,15 @@ function ThinkingBlock({ thinking, isStreaming }: { thinking: string; isStreamin
         }`}
       >
         <div className="min-h-0 overflow-hidden">
-          {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
           <div className="flex pt-1">
-            <div
+            <button
+              type="button"
               className="w-2 shrink-0 cursor-pointer"
               onClick={() => setIsOpen(false)}
-              role="button"
-              tabIndex={0}
               aria-label="Collapse thinking"
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  setIsOpen(false);
-                }
-              }}
             >
               <div className="ml-0.5 h-full w-0.5 rounded-full bg-border/30 transition-colors hover:bg-border" />
-            </div>
+            </button>
             <div className="min-w-0 flex-1 pl-3">
               <AgentThreadMarkdown
                 markdown={thinking}
