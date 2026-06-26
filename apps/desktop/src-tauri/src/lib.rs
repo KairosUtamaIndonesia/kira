@@ -59,6 +59,23 @@ pub fn run() -> tauri::Result<()> {
             let persistence_store =
                 tauri::async_runtime::block_on(persistence::initialize(app.handle()))?;
             app.manage(persistence_store);
+
+            // Kill the agent runtime when the main window closes.
+            // On macOS, closing the last window doesn't quit the app, so the
+            // RunEvent::ExitRequested handler below would never fire.
+            let handle = app.handle().clone();
+            if let Some(window) = handle.get_webview_window("main") {
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { .. } = event {
+                        if let Some(registry) =
+                            handle.try_state::<agent_runtime::AgentRuntimeRegistry>()
+                        {
+                            agent_runtime::shutdown(registry.inner());
+                        }
+                    }
+                });
+            }
+
             Ok(())
         })
         .manage(terminal::TerminalRegistry::default())
@@ -155,7 +172,11 @@ pub fn run() -> tauri::Result<()> {
         ])
         .build(tauri::generate_context!())?
         .run(|app_handle, event| {
-            if let tauri::RunEvent::Exit = event {
+            // Shut down on exit request (fires before the event loop stops).
+            // We use ExitRequested (not Exit) because Exit fires after the
+            // event loop stops, making tokio::runtime::Handle unavailable and
+            // tauri::async_runtime::block_on unreliable.
+            if let tauri::RunEvent::ExitRequested { .. } = event {
                 if let Some(registry) =
                     app_handle.try_state::<agent_runtime::AgentRuntimeRegistry>()
                 {

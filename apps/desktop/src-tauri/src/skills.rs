@@ -218,7 +218,7 @@ async fn fetch_bundled_skill_body(
     registry: &tauri::State<'_, AgentRuntimeRegistry>,
 ) -> Option<BundledSkillBody> {
     let connection = {
-        let runtime_guard = registry.runtime.lock().await;
+        let runtime_guard = registry.lock_runtime();
         match &*runtime_guard {
             AgentRuntimeState::Running(runtime) => runtime.connection.clone(),
             AgentRuntimeState::Failed { .. } | AgentRuntimeState::NotStarted => return None,

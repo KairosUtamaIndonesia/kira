@@ -3,11 +3,12 @@ use std::{env, fs, net::TcpListener, path::Path, path::PathBuf, time::Duration};
 use axum::{routing::get, Json, Router};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
+use std::sync::Mutex;
 use thiserror::Error;
 use tokio::net::TcpListener as TokioTcpListener;
+
 use tokio::{
     process::{Child as TokioChild, Command},
-    sync::Mutex,
     time::{sleep, timeout},
 };
 
@@ -27,6 +28,15 @@ const AGENT_RUNTIME_HOST: &str = "127.0.0.1";
 #[derive(Default)]
 pub struct AgentRuntimeRegistry {
     pub(crate) runtime: Mutex<AgentRuntimeState>,
+}
+
+impl AgentRuntimeRegistry {
+    pub(crate) fn lock_runtime(&self) -> std::sync::MutexGuard<'_, AgentRuntimeState> {
+        match self.runtime.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
 }
 
 #[derive(Default)]
@@ -60,11 +70,15 @@ pub(crate) struct RuntimeConnection {
 /// child's `kill_on_drop` guard never fires. Without this, the agent runtime
 /// keeps running.
 pub(crate) fn shutdown(registry: &AgentRuntimeRegistry) {
-    let mut state = tauri::async_runtime::block_on(registry.runtime.lock());
+    let mut state = registry.lock_runtime();
     if let AgentRuntimeState::Running(runtime) = &mut *state {
         if let Some(handle) = runtime.process.take() {
             let (ProcessHandle::Dev(mut child) | ProcessHandle::Bun(mut child)) = handle;
-            let _ = child.start_kill();
+            // Send the kill signal synchronously. We don't wait for the process
+            // to actually exit — the app is shutting down and the OS will reap it.
+            if let Err(error) = child.start_kill() {
+                eprintln!("agent runtime shutdown: failed to kill child: {error}");
+            }
         }
     }
     *state = AgentRuntimeState::NotStarted;
@@ -302,23 +316,29 @@ pub async fn start_agent_runtime(
     registry: tauri::State<'_, AgentRuntimeRegistry>,
     store: tauri::State<'_, PersistenceStore>,
 ) -> Result<(), AgentRuntimeError> {
-    let mut runtime_guard = registry.runtime.lock().await;
-    match &*runtime_guard {
-        AgentRuntimeState::Running(_) => Ok(()),
-        AgentRuntimeState::Failed { reason: _ } | AgentRuntimeState::NotStarted => {
-            match start_app_runtime(store.inner().clone(), app).await {
-                Ok(runtime) => {
-                    *runtime_guard = AgentRuntimeState::Running(Box::new(runtime));
-                    Ok(())
-                }
-                Err(error) => {
-                    let reason = error.to_string();
-                    *runtime_guard = AgentRuntimeState::Failed {
-                        reason: reason.clone(),
-                    };
-                    Err(AgentRuntimeError::RuntimeStartFailed { reason })
-                }
-            }
+    // Check current state under the lock, then drop the guard before any .await.
+    // std::sync::MutexGuard is not Send, so it cannot be held across an await.
+    {
+        let runtime_guard = registry.lock_runtime();
+        match &*runtime_guard {
+            AgentRuntimeState::Running(_) => return Ok(()),
+            AgentRuntimeState::Failed { .. } | AgentRuntimeState::NotStarted => {}
+        }
+    }
+
+    match start_app_runtime(store.inner().clone(), app).await {
+        Ok(runtime) => {
+            let mut runtime_guard = registry.lock_runtime();
+            *runtime_guard = AgentRuntimeState::Running(Box::new(runtime));
+            Ok(())
+        }
+        Err(error) => {
+            let reason = error.to_string();
+            let mut runtime_guard = registry.lock_runtime();
+            *runtime_guard = AgentRuntimeState::Failed {
+                reason: reason.clone(),
+            };
+            Err(AgentRuntimeError::RuntimeStartFailed { reason })
         }
     }
 }
@@ -346,7 +366,7 @@ pub async fn prepare_agent_thread(
     .await?;
     validate_project_path(&context.project_path)?;
 
-    let connection = runtime_connection(&registry).await?;
+    let connection = runtime_connection(&registry)?;
     register_agent_thread(&connection, &input.thread_id, &context).await?;
 
     Ok(AgentRuntimeConnection {
@@ -382,7 +402,7 @@ pub async fn generate_agent_thread_title(
     .await?;
     validate_project_path(&context.project_path)?;
 
-    let connection = runtime_connection(&registry).await?;
+    let connection = runtime_connection(&registry)?;
     request_agent_thread_title(&connection, &input, &context.project_path).await
 }
 
@@ -419,7 +439,7 @@ pub async fn generate_commit_message(
         reason: e.to_string(),
     })?;
 
-    let connection = runtime_connection(&registry).await?;
+    let connection = runtime_connection(&registry)?;
 
     let http_response = reqwest::Client::new()
         .post(format!(
@@ -516,10 +536,10 @@ async fn load_agent_thread_project_context(
     })
 }
 
-async fn runtime_connection(
+fn runtime_connection(
     registry: &tauri::State<'_, AgentRuntimeRegistry>,
 ) -> Result<RuntimeConnection, AgentRuntimeError> {
-    let runtime_guard = registry.runtime.lock().await;
+    let runtime_guard = registry.lock_runtime();
     match &*runtime_guard {
         AgentRuntimeState::Running(runtime) => Ok(runtime.connection.clone()),
         AgentRuntimeState::Failed { reason } => Err(AgentRuntimeError::RuntimeStartFailed {
@@ -621,7 +641,7 @@ pub async fn fetch_bundled_skills(
     registry: &tauri::State<'_, AgentRuntimeRegistry>,
 ) -> Result<Vec<BundledSkill>, String> {
     let connection = {
-        let runtime_guard = registry.runtime.lock().await;
+        let runtime_guard = registry.lock_runtime();
         match &*runtime_guard {
             AgentRuntimeState::Running(runtime) => runtime.connection.clone(),
             AgentRuntimeState::Failed { reason } => return Err(reason.clone()),

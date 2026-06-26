@@ -19,7 +19,7 @@ function AppStatusBar({ activeWorkspace }: AppStatusBarProps) {
         <span>{statusLabel(activeWorkspace)}</span>
         <AgentThreadStatusIndicator state={agentThreadRuntimeState} />
       </div>
-      <span>Kira v3</span>
+      <span>{APP_VERSION}</span>
     </footer>
   );
 }

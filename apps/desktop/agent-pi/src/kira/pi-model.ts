@@ -16,9 +16,9 @@ type OpenAICompletionsThinkingLevelMap = NonNullable<
  */
 export function piModelFromConfig(config: ModelConfig): Model<"openai-completions"> {
   const caps = config.capabilities;
-  const reasoning = caps != null ? (caps.reasoning ?? false) : false;
+  const reasoning = caps ? (caps.reasoning ?? false) : false;
 
-  const supportsVision = caps != null ? caps.vision === true : false;
+  const supportsVision = caps ? caps.vision === true : false;
 
   return {
     id: config.upstreamModelId,
