@@ -24,11 +24,6 @@
         { "type": "json", "path": "package.json", "jsonpath": "$.version" },
         { "type": "json", "path": "apps/cloud/package.json", "jsonpath": "$.version" },
         { "type": "json", "path": "apps/desktop/package.json", "jsonpath": "$.version" },
-        {
-          "type": "json",
-          "path": "apps/desktop/src-tauri/tauri.conf.json",
-          "jsonpath": "$.version"
-        },
         "apps/desktop/src-tauri/Cargo.toml"
       ]
     }
