@@ -9,6 +9,7 @@ use tokio::net::TcpListener as TokioTcpListener;
 
 use tokio::{
     process::{Child as TokioChild, Command},
+    sync::watch,
     time::{sleep, timeout},
 };
 
@@ -38,11 +39,18 @@ impl AgentRuntimeRegistry {
         }
     }
 }
-
+/// Tracks the lifecycle of the external agent runtime process.
+///
+/// Transitions: `NotStarted` → `Starting` → `Running` or `Failed`.
+/// The `Starting` variant holds a `watch::Receiver` so concurrent callers can
+/// wait for the startup outcome without racing to spawn a duplicate process.
 #[derive(Default)]
 pub(crate) enum AgentRuntimeState {
     #[default]
     NotStarted,
+    /// A startup is in progress; the `Receiver` allows waiters to block until
+    /// the state settles into `Running` or `Failed`.
+    Starting(watch::Receiver<()>),
     Running(Box<AppAgentRuntime>),
     Failed {
         reason: String,
@@ -316,31 +324,7 @@ pub async fn start_agent_runtime(
     registry: tauri::State<'_, AgentRuntimeRegistry>,
     store: tauri::State<'_, PersistenceStore>,
 ) -> Result<(), AgentRuntimeError> {
-    // Check current state under the lock, then drop the guard before any .await.
-    // std::sync::MutexGuard is not Send, so it cannot be held across an await.
-    {
-        let runtime_guard = registry.lock_runtime();
-        match &*runtime_guard {
-            AgentRuntimeState::Running(_) => return Ok(()),
-            AgentRuntimeState::Failed { .. } | AgentRuntimeState::NotStarted => {}
-        }
-    }
-
-    match start_app_runtime(store.inner().clone(), app).await {
-        Ok(runtime) => {
-            let mut runtime_guard = registry.lock_runtime();
-            *runtime_guard = AgentRuntimeState::Running(Box::new(runtime));
-            Ok(())
-        }
-        Err(error) => {
-            let reason = error.to_string();
-            let mut runtime_guard = registry.lock_runtime();
-            *runtime_guard = AgentRuntimeState::Failed {
-                reason: reason.clone(),
-            };
-            Err(AgentRuntimeError::RuntimeStartFailed { reason })
-        }
-    }
+    ensure_runtime_started(&registry, store.inner().clone(), app).await
 }
 
 #[tauri::command]
@@ -350,9 +334,12 @@ pub async fn start_agent_runtime(
 )]
 pub async fn prepare_agent_thread(
     input: PrepareAgentThreadInput,
+    app: tauri::AppHandle,
     registry: tauri::State<'_, AgentRuntimeRegistry>,
     store: tauri::State<'_, PersistenceStore>,
 ) -> Result<AgentRuntimeConnection, AgentRuntimeError> {
+    ensure_runtime_started(&registry, store.inner().clone(), app).await?;
+
     validate_required_project_id(&input.project_id)?;
     validate_required_session_id(&input.session_id)?;
     validate_required_thread_id(&input.thread_id)?;
@@ -384,9 +371,12 @@ pub async fn prepare_agent_thread(
 )]
 pub async fn generate_agent_thread_title(
     input: GenerateAgentThreadTitleInput,
+    app: tauri::AppHandle,
     registry: tauri::State<'_, AgentRuntimeRegistry>,
     store: tauri::State<'_, PersistenceStore>,
 ) -> Result<String, AgentRuntimeError> {
+    ensure_runtime_started(&registry, store.inner().clone(), app).await?;
+
     validate_required_project_id(&input.project_id)?;
     validate_required_session_id(&input.session_id)?;
     validate_required_thread_id(&input.thread_id)?;
@@ -413,8 +403,12 @@ pub async fn generate_agent_thread_title(
 )]
 pub async fn generate_commit_message(
     input: GenerateCommitMessageInput,
+    app: tauri::AppHandle,
     registry: tauri::State<'_, AgentRuntimeRegistry>,
+    store: tauri::State<'_, PersistenceStore>,
 ) -> Result<String, AgentRuntimeError> {
+    ensure_runtime_started(&registry, store.inner().clone(), app).await?;
+
     let folder_path = source_control::validate_project_folder(&input.folder_path).map_err(|e| {
         AgentRuntimeError::GenerateCommitMessage {
             reason: e.to_string(),
@@ -545,8 +539,93 @@ fn runtime_connection(
         AgentRuntimeState::Failed { reason } => Err(AgentRuntimeError::RuntimeStartFailed {
             reason: reason.clone(),
         }),
-        AgentRuntimeState::NotStarted => Err(AgentRuntimeError::NotRunning),
+        AgentRuntimeState::Starting(_) | AgentRuntimeState::NotStarted => {
+            Err(AgentRuntimeError::NotRunning)
+        }
     }
+}
+
+/// Checks whether the agent runtime is running; starts it if not.
+///
+/// Uses a single-flight pattern: the first caller transitions `NotStarted` →
+/// `Starting` (holding a `watch::Sender`), then spawns the process. Concurrent
+/// callers see `Starting`, clone the `watch::Receiver`, drop the lock, and
+/// await a notification instead of racing to spawn a duplicate process.
+/// On completion the starter transitions to `Running` or `Failed` and notifies
+/// all waiters via `tx.send(())`.
+async fn ensure_runtime_started(
+    registry: &tauri::State<'_, AgentRuntimeRegistry>,
+    store: PersistenceStore,
+    app: tauri::AppHandle,
+) -> Result<(), AgentRuntimeError> {
+    // Atomically check state and (if not running) set Starting under the lock.
+    // This ensures only one caller ever transitions to Starting, closing the
+    // double-spawn race that check-then-act outside the lock would leave open.
+    let action = {
+        let mut runtime_guard = registry.lock_runtime();
+        match &*runtime_guard {
+            AgentRuntimeState::Running(_) => return Ok(()),
+            AgentRuntimeState::Starting(rx) => EnsureRuntimeAction::Wait(rx.clone()),
+            // Failed is treated like NotStarted: a transient failure (port
+            // conflict, missing Bun) should be retried rather than permanently
+            // bricking the runtime until the app restarts.
+            AgentRuntimeState::Failed { .. } | AgentRuntimeState::NotStarted => {
+                let (tx, rx) = watch::channel(());
+                *runtime_guard = AgentRuntimeState::Starting(rx);
+                EnsureRuntimeAction::Start(tx)
+            }
+        }
+    };
+
+    match action {
+        EnsureRuntimeAction::Wait(mut rx) => {
+            let _ = rx.changed().await;
+            // Re-check the settled state. The starter set Running or Failed
+            // before notifying, so whichever we find is the final outcome.
+            let runtime_guard = registry.lock_runtime();
+            match &*runtime_guard {
+                AgentRuntimeState::Running(_) => Ok(()),
+                AgentRuntimeState::Failed { reason } => {
+                    Err(AgentRuntimeError::RuntimeStartFailed {
+                        reason: reason.clone(),
+                    })
+                }
+                _ => Err(AgentRuntimeError::RuntimeStartFailed {
+                    reason: "Agent runtime entered unexpected state during startup".to_string(),
+                }),
+            }
+        }
+        EnsureRuntimeAction::Start(tx) => {
+            let start_result = match start_app_runtime(store, app).await {
+                Ok(runtime) => {
+                    let mut runtime_guard = registry.lock_runtime();
+                    *runtime_guard = AgentRuntimeState::Running(Box::new(runtime));
+                    Ok(())
+                }
+                Err(error) => {
+                    let reason = error.to_string();
+                    let mut runtime_guard = registry.lock_runtime();
+                    *runtime_guard = AgentRuntimeState::Failed {
+                        reason: reason.clone(),
+                    };
+                    Err(AgentRuntimeError::RuntimeStartFailed { reason })
+                }
+            };
+            // Notify waiters regardless of outcome. A dropped receiver means
+            // nobody was waiting (harmless).
+            let _ = tx.send(());
+            start_result
+        }
+    }
+}
+
+/// Decides what to do after inspecting the runtime state, before any async
+/// work. Holds no borrows, so the `MutexGuard` is always dropped before .await.
+enum EnsureRuntimeAction {
+    /// Another startup is in progress; wait on this receiver for the outcome.
+    Wait(watch::Receiver<()>),
+    /// This caller owns the startup; send the outcome when done.
+    Start(watch::Sender<()>),
 }
 
 async fn register_agent_thread(
@@ -645,7 +724,7 @@ pub async fn fetch_bundled_skills(
         match &*runtime_guard {
             AgentRuntimeState::Running(runtime) => runtime.connection.clone(),
             AgentRuntimeState::Failed { reason } => return Err(reason.clone()),
-            AgentRuntimeState::NotStarted => {
+            AgentRuntimeState::Starting(_) | AgentRuntimeState::NotStarted => {
                 return Err("Agent runtime is not running.".to_string())
             }
         }

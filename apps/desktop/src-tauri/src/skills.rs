@@ -221,7 +221,9 @@ async fn fetch_bundled_skill_body(
         let runtime_guard = registry.lock_runtime();
         match &*runtime_guard {
             AgentRuntimeState::Running(runtime) => runtime.connection.clone(),
-            AgentRuntimeState::Failed { .. } | AgentRuntimeState::NotStarted => return None,
+            AgentRuntimeState::Starting(_)
+            | AgentRuntimeState::Failed { .. }
+            | AgentRuntimeState::NotStarted => return None,
         }
     };
 
