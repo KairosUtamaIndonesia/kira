@@ -6,6 +6,20 @@ side-by-side with your app, and team management is coming through the cloud cons
 
 This is just the start. More surface, more capability, more agentic.
 
+## [3.3.0](https://github.com/KairosUtamaIndonesia/kira/compare/v3.2.0...v3.3.0) (2026-06-26)
+
+
+### Features
+
+* **desktop:** show app version in status bar and improve agent runtime ([0eb07c3](https://github.com/KairosUtamaIndonesia/kira/commit/0eb07c3e1ee65986880ccc9111e2381a334d162e))
+
+
+### Bug Fixes
+
+* **desktop:** correct reasoning capability handling in pi-model ([b2806f1](https://github.com/KairosUtamaIndonesia/kira/commit/b2806f12d0ecab854fdd3acadce8090fca9202ee))
+* prevent release-please formatting drift in tauri.conf.json ([5eca7ee](https://github.com/KairosUtamaIndonesia/kira/commit/5eca7ee04bf866d8b1f2648df09f1ebfa28af96c))
+* remove package-name from release-please config to fix post-merge component mismatch ([99a76b1](https://github.com/KairosUtamaIndonesia/kira/commit/99a76b13942783151d4d1e78c57b099a3c6b3623))
+
 ## [3.2.0](https://github.com/KairosUtamaIndonesia/kira/compare/v3.1.0...v3.2.0) (2026-06-25)
 
 
