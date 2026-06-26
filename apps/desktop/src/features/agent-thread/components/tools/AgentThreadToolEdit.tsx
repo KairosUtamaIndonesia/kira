@@ -4,7 +4,6 @@ import type { AgentThreadToolCallDisplay } from "../../agentThreadDisplay";
 
 import { AgentThreadToolDiff } from "./AgentThreadToolDiff";
 import {
-  ToolCodeBlock,
   ToolDuration,
   ToolErrorMessage,
   ToolExpandable,
@@ -18,10 +17,9 @@ type Props = {
 
 function AgentThreadToolEdit({ tool }: Props) {
   const filePath = filePathFromTool(tool);
-  const diffOutput = diffOutputFromTool(tool);
   const oldText = oldTextFromTool(tool);
   const newText = newTextFromTool(tool);
-  const hasContent = diffOutput !== undefined || (oldText !== undefined && newText !== undefined);
+  const hasContent = oldText !== undefined && newText !== undefined;
 
   const triggerRow = (
     <ToolInlineRow
@@ -43,29 +41,16 @@ function AgentThreadToolEdit({ tool }: Props) {
       </div>
     );
   }
-  let diffContent: React.ReactNode;
-  if (diffOutput !== undefined) {
-    diffContent = <ToolCodeBlock content={diffOutput} />;
-  } else if (oldText !== undefined && newText !== undefined) {
-    diffContent = (
-      <AgentThreadToolDiff
-        filePath={filePath}
-        modelKey={`${tool.id}:${filePath ?? "unknown"}`}
-        originalContent={oldText}
-        modifiedContent={newText}
-      />
-    );
-  } else {
-    diffContent = undefined;
-  }
 
   return (
     <div>
-      <ToolExpandable
-        summary={diffOutput !== undefined ? "Show diff" : "Show changes"}
-        trigger={triggerRow}
-      >
-        {diffContent}
+      <ToolExpandable defaultOpen summary="Show changes" trigger={triggerRow}>
+        <AgentThreadToolDiff
+          filePath={filePath}
+          modelKey={`${tool.id}:${filePath ?? "unknown"}`}
+          originalContent={oldText}
+          modifiedContent={newText}
+        />
       </ToolExpandable>
       {tool.errorMessage === undefined ? undefined : (
         <ToolErrorMessage message={tool.errorMessage} />
@@ -84,28 +69,6 @@ function filePathFromTool(tool: AgentThreadToolCallDisplay) {
 
   return;
 }
-
-/**
- * Extract the pre-computed diff string from the edit tool's output.
- * The Pi SDK edit tool returns `details.diff` (a display-oriented unified diff
- * with line numbers and context), which is more useful than reconstructing
- * from input snippets.
- */
-function diffOutputFromTool(tool: AgentThreadToolCallDisplay) {
-  if (tool.output !== undefined && typeof tool.output === "object" && tool.output !== null) {
-    const output = tool.output as Record<string, unknown>;
-    const details = output.details;
-    if (typeof details === "object" && details !== null) {
-      const diff = (details as Record<string, unknown>).diff;
-      if (typeof diff === "string" && diff.length > 0) {
-        return diff;
-      }
-    }
-  }
-
-  return;
-}
-
 /**
  * Extract oldText from the tool input, handling both the current Pi SDK format
  * (`edits: [{ oldText, newText }]`) and the legacy format (`oldText` at top level).

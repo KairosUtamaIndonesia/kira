@@ -49,14 +49,16 @@ function ToolStatusBadge({ status }: { status: ToolCallStatus }) {
 
 function ToolExpandable({
   children,
+  defaultOpen = false,
   summary,
   trigger,
 }: {
   children: ReactNode;
+  defaultOpen?: boolean;
   summary: string;
   trigger: ReactNode;
 }) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
     <div>
@@ -80,7 +82,9 @@ function ToolExpandable({
         }`}
       >
         <div className="min-h-0 overflow-hidden">
-          <div className="mt-1 rounded-md border border-border bg-card/60 p-2">{children}</div>
+          {isOpen && (
+            <div className="mt-1 rounded-md border border-border bg-card/60 p-2">{children}</div>
+          )}
         </div>
       </div>
     </div>
