@@ -1,4 +1,5 @@
-import { Brain, CornerUpLeft, Pencil } from "lucide-react";
+import { Brain, ChevronRight, CornerUpLeft, Pencil } from "lucide-react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
@@ -13,7 +14,6 @@ import { AgentThreadCompactionCard } from "./AgentThreadCompactionCard";
 import { AgentThreadMarkdown } from "./AgentThreadMarkdown";
 import { AgentThreadUserSkillBlock } from "./AgentThreadUserSkillBlock";
 import { toolComponentForName } from "./tools";
-import { ToolExpandable, ToolInlineRow } from "./tools/ToolPrimitives";
 type AgentThreadTranscriptProps = {
   transcript: PiTranscriptState;
   compactionSummary?: { tokensBefore: number; summary: string } | undefined;
@@ -48,7 +48,7 @@ function AgentThreadTranscript({
     );
   }
   return (
-    <ol className="space-y-5">
+    <ol className="space-y-8">
       {items.map((item) => {
         if (item.type === "user-message") {
           const isEditing = editingMessageId === item.id;
@@ -124,7 +124,7 @@ function AgentThreadTranscript({
               className="flex justify-start"
               data-message-ids={item.id.split(":").join(" ")}
             >
-              <article className="w-full space-y-3 rounded-xl p-3 text-foreground">
+              <article className="w-full space-y-4 rounded-xl p-3 text-foreground">
                 <MessageHeader label="Kira" createdAt={item.createdAt} />
                 {item.blocks.length === 0 && item.isStreaming ? (
                   <p className="text-sm text-muted-foreground">Working…</p>
@@ -166,7 +166,7 @@ function ActivityBlock({
   respond: RespondToHumanRequest;
 }) {
   if (block.type === "thinking") {
-    return <ThinkingBlock thinking={block.thinking} />;
+    return <ThinkingBlock thinking={block.thinking} isStreaming={isStreaming} />;
   }
 
   if (block.type === "markdown") {
@@ -197,20 +197,68 @@ function blockKey(block: AgentThreadActivityBlock) {
   return block.id;
 }
 
-function ThinkingBlock({ thinking }: { thinking: string }) {
+function ThinkingBlock({ thinking, isStreaming }: { thinking: string; isStreaming: boolean }) {
+  const [isOpen, setIsOpen] = useState(true);
+
   return (
-    <ToolExpandable
-      summary="Show thinking"
-      trigger={
-        <ToolInlineRow
-          icon={<Brain aria-hidden="true" className="size-3" />}
-          label={<span className="truncate">Thinking</span>}
+    <div>
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className="flex w-full max-w-full min-w-0 cursor-pointer items-center gap-2 text-left"
+      >
+        <Brain aria-hidden="true" className="size-3 shrink-0 text-muted-foreground" />
+        <span className="min-w-0 truncate text-xs text-muted-foreground">
+          {isOpen ? "Thinking" : preview(thinking)}
+        </span>
+        <ChevronRight
+          aria-hidden="true"
+          className={`ml-auto size-3 shrink-0 text-muted-foreground transition-transform duration-150 ease-out ${
+            isOpen ? "rotate-90" : ""
+          }`}
         />
-      }
-    >
-      <div className="text-sm leading-6 whitespace-pre-wrap text-muted-foreground">{thinking}</div>
-    </ToolExpandable>
+      </button>
+
+      <div
+        className={`grid overflow-hidden transition-[grid-template-rows,opacity] duration-150 ease-out ${
+          isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+        }`}
+      >
+        <div className="min-h-0 overflow-hidden">
+          {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
+          <div className="flex pt-1">
+            <div
+              className="w-2 shrink-0 cursor-pointer"
+              onClick={() => setIsOpen(false)}
+              role="button"
+              tabIndex={0}
+              aria-label="Collapse thinking"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setIsOpen(false);
+                }
+              }}
+            >
+              <div className="ml-0.5 h-full w-0.5 rounded-full bg-border/30 transition-colors hover:bg-border" />
+            </div>
+            <div className="min-w-0 flex-1 pl-3">
+              <AgentThreadMarkdown
+                markdown={thinking}
+                isStreaming={isStreaming}
+                className="text-muted-foreground/70"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
+}
+
+function preview(text: string, max = 120): string {
+  if (text.length <= max) return text;
+  return text.slice(0, max).trimEnd() + "…";
 }
 
 function ErrorBlock({ details, message }: { details: unknown; message: string }) {

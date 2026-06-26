@@ -195,7 +195,7 @@ function AgentThreadPanel({ api, params, onRename, isActive }: AgentThreadPanelP
   })();
   return (
     <section
-      className="flex h-full min-h-0 flex-col bg-editor-surface text-foreground"
+      className="flex h-full min-h-0 flex-col gap-6 bg-editor-surface text-foreground"
       onDragEnter={(event: DragEvent<HTMLElement>) => {
         if (!event.dataTransfer.types.includes(explorerDragDataKey)) {
           return;

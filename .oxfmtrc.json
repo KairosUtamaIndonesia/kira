@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxfmt/configuration_schema.json",
-  "ignorePatterns": ["apps", "node_modules", "bun.lock"],
+  "ignorePatterns": ["apps", "node_modules", "bun.lock", ".agents"],
   "sortImports": {
     "groups": [
       "type-import",

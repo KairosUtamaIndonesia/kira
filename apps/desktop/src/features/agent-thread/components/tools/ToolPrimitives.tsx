@@ -18,9 +18,9 @@ function ToolInlineRow({
 }) {
   return (
     <div className="flex items-center gap-2 py-0.5 text-xs">
-      <span className="shrink-0 text-muted-foreground">{icon}</span>
+      <span className="shrink-0 text-foreground">{icon}</span>
       <span
-        className={`min-w-0 font-mono text-muted-foreground ${
+        className={`min-w-0 font-mono text-foreground ${
           labelWrap ? "break-words whitespace-normal" : "truncate"
         }`}
       >
