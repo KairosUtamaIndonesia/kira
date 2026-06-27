@@ -1,5 +1,6 @@
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { Brain, ChevronRight, CornerUpLeft, Pencil } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
@@ -22,6 +23,14 @@ type AgentThreadTranscriptProps = {
   onResend: (id: string, text: string) => Promise<boolean>;
   onEdit: (id: string, text: string) => void;
   runtimeState: AgentThreadRuntimeState;
+  parentRef: RefObject<HTMLDivElement | null>;
+  onHeightChange?: () => void;
+  onVirtualizerReady?: (api: {
+    scrollToIndex: (
+      index: number,
+      options?: { align?: "start" | "center" | "end" | "auto"; behavior?: ScrollBehavior },
+    ) => void;
+  }) => void;
 };
 function AgentThreadTranscript({
   transcript,
@@ -31,6 +40,9 @@ function AgentThreadTranscript({
   onResend,
   onEdit,
   runtimeState,
+  parentRef,
+  onHeightChange,
+  onVirtualizerReady,
 }: AgentThreadTranscriptProps) {
   const items = buildAgentThreadTranscript(transcript);
   const rootNode =
@@ -38,7 +50,49 @@ function AgentThreadTranscript({
       ? undefined
       : transcript.treeNodes.find((n) => n.parentId === null);
   const rootMessageId = rootNode === undefined ? undefined : rootNode.entry.messageId;
-  if (items.length === 0) {
+
+  // Include compaction summary as a virtual item so it scrolls with the list
+  const allItems = useMemo(() => {
+    if (compactionSummary === undefined) return items;
+    return [
+      ...items,
+      {
+        type: "compaction-summary" as const,
+        id: "compaction-summary",
+        tokensBefore: compactionSummary.tokensBefore,
+        summary: compactionSummary.summary,
+      },
+    ];
+  }, [items, compactionSummary]);
+
+  const virtualizer = useVirtualizer({
+    count: allItems.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 100,
+    overscan: 5,
+  });
+
+  // Expose scroll API to parent for scroll-to-bottom control
+  useEffect(() => {
+    if (onVirtualizerReady !== undefined) {
+      onVirtualizerReady({
+        scrollToIndex: (index, options) => virtualizer.scrollToIndex(index, options),
+      });
+    }
+  });
+
+  // Notify parent when item count changes so it can update scroll tracking
+  const prevCountRef = useRef(allItems.length);
+  useEffect(() => {
+    if (prevCountRef.current !== allItems.length) {
+      prevCountRef.current = allItems.length;
+      if (onHeightChange !== undefined) {
+        onHeightChange();
+      }
+    }
+  }, [allItems.length, onHeightChange]);
+
+  if (allItems.length === 0) {
     return (
       <div className="flex h-full items-center justify-center">
         <div className="max-w-md rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
@@ -47,112 +101,143 @@ function AgentThreadTranscript({
       </div>
     );
   }
+
+  const lastIndex = allItems.length - 1;
+
+  const visibleItems = virtualizer
+    .getVirtualItems()
+    .map((row) => ({ virtualRow: row, item: allItems[row.index] }))
+    .filter(
+      (
+        entry,
+      ): entry is {
+        virtualRow: (typeof entry)["virtualRow"];
+        item: NonNullable<(typeof entry)["item"]>;
+      } => entry.item !== undefined,
+    );
+
   return (
-    <ol className="space-y-8">
-      {items.map((item) => {
-        if (item.type === "user-message") {
-          const isEditing = editingMessageId === item.id;
-          return (
-            <li
-              key={item.id}
-              className="flex justify-end"
-              data-message-ids={item.id.split(":").join(" ")}
-            >
-              <article
-                className={
-                  "group relative max-w-[min(42rem,85%)] space-y-2 rounded-xl border p-3 text-card-foreground " +
-                  (isEditing
-                    ? "border-primary bg-primary/5 ring-2 ring-primary/30"
-                    : "border-border bg-card")
-                }
-              >
-                <TooltipProvider>
-                  <ButtonGroup className="absolute right-2 -bottom-3 rounded-lg border border-border bg-card opacity-0 shadow-xs transition-opacity group-hover:opacity-100">
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            disabled={
-                              (runtimeState.status !== "ready" &&
-                                runtimeState.status !== "error") ||
-                              rootMessageId === item.id
-                            }
-                            onClick={() => void onResend(item.id, item.text)}
-                          />
-                        }
-                      >
-                        <CornerUpLeft />
-                      </TooltipTrigger>
-                      <TooltipContent>Resend</TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-sm"
-                            onClick={() => onEdit(item.id, item.text)}
-                          />
-                        }
-                      >
-                        <Pencil />
-                      </TooltipTrigger>
-                      <TooltipContent>Edit</TooltipContent>
-                    </Tooltip>
-                  </ButtonGroup>
-                </TooltipProvider>
-                <MessageHeader label="You" createdAt={item.createdAt} />
-                {item.blocks.length === 0 ? (
-                  <p className="text-sm leading-6 whitespace-pre-wrap">{item.text}</p>
-                ) : (
-                  item.blocks.map((block) => (
-                    <UserMessageBlock key={userMessageBlockKey(item.id, block)} block={block} />
-                  ))
-                )}
-              </article>
-            </li>
-          );
+    <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
+      {visibleItems.map(({ virtualRow, item }) => {
+        const isLast = virtualRow.index === lastIndex;
+
+        let content: ReactNode;
+        switch (item.type) {
+          case "user-message": {
+            const isEditing = editingMessageId === item.id;
+            content = (
+              <div className="flex justify-end">
+                <article
+                  className={
+                    "group relative max-w-[min(42rem,85%)] space-y-2 rounded-xl border p-3 text-card-foreground " +
+                    (isEditing
+                      ? "border-primary bg-primary/5 ring-2 ring-primary/30"
+                      : "border-border bg-card")
+                  }
+                  data-message-ids={item.id.split(":").join(" ")}
+                >
+                  <TooltipProvider>
+                    <ButtonGroup className="absolute right-2 -bottom-3 rounded-lg border border-border bg-card opacity-0 shadow-xs transition-opacity group-hover:opacity-100">
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              disabled={
+                                (runtimeState.status !== "ready" &&
+                                  runtimeState.status !== "error") ||
+                                rootMessageId === item.id
+                              }
+                              onClick={() => void onResend(item.id, item.text)}
+                            />
+                          }
+                        >
+                          <CornerUpLeft />
+                        </TooltipTrigger>
+                        <TooltipContent>Resend</TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              onClick={() => onEdit(item.id, item.text)}
+                            />
+                          }
+                        >
+                          <Pencil />
+                        </TooltipTrigger>
+                        <TooltipContent>Edit</TooltipContent>
+                      </Tooltip>
+                    </ButtonGroup>
+                  </TooltipProvider>
+                  <MessageHeader label="You" createdAt={item.createdAt} />
+                  {item.blocks.length === 0 ? (
+                    <p className="text-sm leading-6 whitespace-pre-wrap">{item.text}</p>
+                  ) : (
+                    item.blocks.map((block) => (
+                      <UserMessageBlock key={userMessageBlockKey(item.id, block)} block={block} />
+                    ))
+                  )}
+                </article>
+              </div>
+            );
+            break;
+          }
+          case "assistant-activity": {
+            content = (
+              <div className="flex justify-start">
+                <article className="w-full space-y-4 rounded-xl p-3 text-foreground">
+                  <MessageHeader label="Kira" createdAt={item.createdAt} />
+                  {item.blocks.length === 0 && item.isStreaming ? (
+                    <p className="text-sm text-muted-foreground">Working…</p>
+                  ) : undefined}
+                  {item.blocks.map((block, index) => (
+                    <ActivityBlock
+                      key={blockKey(block)}
+                      block={block}
+                      isStreaming={item.isStreaming && index === item.blocks.length - 1}
+                      respond={respond}
+                      onHeightChange={onHeightChange}
+                    />
+                  ))}
+                </article>
+              </div>
+            );
+            break;
+          }
+          case "compaction-summary": {
+            content = (
+              <div className="flex justify-start">
+                <AgentThreadCompactionCard
+                  tokensBefore={item.tokensBefore}
+                  summary={item.summary}
+                />
+              </div>
+            );
+            break;
+          }
         }
 
-        if (item.type === "assistant-activity") {
-          return (
-            <li
-              key={item.id}
-              className="flex justify-start"
-              data-message-ids={item.id.split(":").join(" ")}
-            >
-              <article className="w-full space-y-4 rounded-xl p-3 text-foreground">
-                <MessageHeader label="Kira" createdAt={item.createdAt} />
-                {item.blocks.length === 0 && item.isStreaming ? (
-                  <p className="text-sm text-muted-foreground">Working…</p>
-                ) : undefined}
-                {item.blocks.map((block, index) => (
-                  <ActivityBlock
-                    key={blockKey(block)}
-                    block={block}
-                    isStreaming={item.isStreaming && index === item.blocks.length - 1}
-                    respond={respond}
-                  />
-                ))}
-              </article>
-            </li>
-          );
-        }
-
-        return exhaustiveTranscriptItem(item);
+        return (
+          <div
+            key={virtualRow.key}
+            data-index={virtualRow.index}
+            ref={virtualizer.measureElement}
+            className="absolute top-0 left-0 w-full"
+            style={{
+              transform: `translateY(${virtualRow.start}px)`,
+            }}
+          >
+            <div className="mx-auto max-w-5xl px-2">{content}</div>
+            {!isLast && <div className="h-6" />}
+          </div>
+        );
       })}
-      {compactionSummary !== undefined ? (
-        <li className="flex justify-start">
-          <AgentThreadCompactionCard
-            tokensBefore={compactionSummary.tokensBefore}
-            summary={compactionSummary.summary}
-          />
-        </li>
-      ) : undefined}
-    </ol>
+    </div>
   );
 }
 
@@ -160,13 +245,21 @@ function ActivityBlock({
   block,
   isStreaming,
   respond,
+  onHeightChange,
 }: {
   block: AgentThreadActivityBlock;
   isStreaming: boolean;
   respond: RespondToHumanRequest;
+  onHeightChange: (() => void) | undefined;
 }) {
   if (block.type === "thinking") {
-    return <ThinkingBlock thinking={block.thinking} isStreaming={isStreaming} />;
+    return (
+      <ThinkingBlock
+        thinking={block.thinking}
+        isStreaming={isStreaming}
+        onHeightChange={onHeightChange}
+      />
+    );
   }
 
   if (block.type === "markdown") {
@@ -197,14 +290,30 @@ function blockKey(block: AgentThreadActivityBlock) {
   return block.id;
 }
 
-function ThinkingBlock({ thinking, isStreaming }: { thinking: string; isStreaming: boolean }) {
+function ThinkingBlock({
+  thinking,
+  isStreaming,
+  onHeightChange,
+}: {
+  thinking: string;
+  isStreaming: boolean;
+  onHeightChange: (() => void) | undefined;
+}) {
   const [isOpen, setIsOpen] = useState(true);
+
+  const handleToggle = () => {
+    setIsOpen((prev) => !prev);
+    // Notify virtualizer after CSS transition completes (duration-150 = 150ms)
+    setTimeout(() => {
+      if (onHeightChange !== undefined) onHeightChange();
+    }, 200);
+  };
 
   return (
     <div>
       <button
         type="button"
-        onClick={() => setIsOpen((prev) => !prev)}
+        onClick={handleToggle}
         className="flex w-full max-w-full min-w-0 cursor-pointer items-center gap-2 text-left"
       >
         <Brain aria-hidden="true" className="size-3 shrink-0 text-muted-foreground" />
@@ -280,10 +389,6 @@ function formatTimestamp(value: string) {
     second: "2-digit",
     hour12: true,
   }).format(new Date(value));
-}
-
-function exhaustiveTranscriptItem(value: never): never {
-  throw new Error(`Unknown Agent Thread transcript item: ${String(value)}`);
 }
 
 function exhaustiveActivityBlock(value: never): never {

@@ -1,6 +1,5 @@
 import { ArrowDown } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
-import { StickToBottom } from "use-stick-to-bottom";
 
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/sonner";
@@ -290,46 +289,98 @@ function TranscriptArea({
   onEdit,
   runtimeState,
 }: TranscriptAreaProps) {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const scrollApiRef = useRef<{
+    scrollToIndex: (
+      index: number,
+      options?: { align?: "start" | "center" | "end" | "auto"; behavior?: ScrollBehavior },
+    ) => void;
+  } | null>(null);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+  const isAtBottomRef = useRef(true);
+
+  // Track scroll position to determine if user is at bottom
+  const handleScroll = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (el === null) return;
+    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 100;
+    isAtBottomRef.current = atBottom;
+    setIsAtBottom(atBottom);
+  }, []);
+  // Auto-scroll when content grows (e.g., streaming response) and user is at bottom.
+  // ResizeObserver on the virtual list container detects height changes from
+  // growing content within existing items (not just new items being added).
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (container === null) return;
+    const target = container.firstElementChild;
+    if (target === null) return;
+    const observer = new ResizeObserver(() => {
+      if (isAtBottomRef.current) {
+        container.scrollTop = container.scrollHeight;
+      }
+    });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [isEmpty]);
+
+  // Auto-scroll to bottom when new items arrive and user was already at bottom
+  const handleHeightChange = useCallback(() => {
+    if (isAtBottomRef.current && scrollApiRef.current !== null) {
+      const api = scrollApiRef.current;
+      // Use setTimeout to let the virtualizer update its measurements first
+      setTimeout(() => {
+        api.scrollToIndex(Infinity, { align: "end" });
+      }, 0);
+    }
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    if (scrollApiRef.current !== null) {
+      scrollApiRef.current.scrollToIndex(Infinity, { align: "end", behavior: "smooth" });
+    }
+  }, []);
+
   return (
-    <StickToBottom className="relative min-h-0 flex-1" initial="instant" resize="smooth">
-      {({ isAtBottom, scrollToBottom }) => (
-        <>
-          <StickToBottom.Content
-            className={isEmpty ? "mx-auto h-full w-full max-w-5xl" : "mx-auto w-full max-w-5xl"}
-            scrollClassName={isEmpty ? "p-2 h-full" : "p-2"}
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <div
+        ref={scrollContainerRef}
+        className={`min-h-0 flex-1 overflow-y-auto ${isEmpty ? "flex items-center justify-center p-2" : "p-2"}`}
+        onScroll={handleScroll}
+      >
+        <AgentThreadTranscript
+          transcript={transcript}
+          compactionSummary={compactionSummary}
+          editingMessageId={editingMessageId}
+          respond={respondToRequest}
+          onResend={onResend}
+          onEdit={onEdit}
+          runtimeState={runtimeState}
+          parentRef={scrollContainerRef}
+          onHeightChange={handleHeightChange}
+          onVirtualizerReady={(api) => {
+            scrollApiRef.current = api;
+          }}
+        />
+        {agentThreadShowRawEventStream ? (
+          <AgentThreadRawEventStream transcript={transcript} />
+        ) : undefined}
+      </div>
+      {isAtBottom ? undefined : (
+        <div className="pointer-events-none absolute right-4 bottom-4 left-4 mx-auto flex max-w-5xl justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            aria-label="Scroll to bottom"
+            className="pointer-events-auto shadow-xs"
+            onClick={scrollToBottom}
           >
-            <AgentThreadTranscript
-              transcript={transcript}
-              compactionSummary={compactionSummary}
-              editingMessageId={editingMessageId}
-              respond={respondToRequest}
-              onResend={onResend}
-              onEdit={onEdit}
-              runtimeState={runtimeState}
-            />
-            {agentThreadShowRawEventStream ? (
-              <AgentThreadRawEventStream transcript={transcript} />
-            ) : undefined}
-          </StickToBottom.Content>
-          {isAtBottom ? undefined : (
-            <div className="pointer-events-none absolute right-4 bottom-4 left-4 mx-auto flex max-w-5xl justify-end">
-              <Button
-                type="button"
-                variant="outline"
-                size="icon-sm"
-                aria-label="Scroll to bottom"
-                className="pointer-events-auto shadow-xs"
-                onClick={() => {
-                  void scrollToBottom({ animation: "smooth" });
-                }}
-              >
-                <ArrowDown />
-              </Button>
-            </div>
-          )}
-        </>
+            <ArrowDown />
+          </Button>
+        </div>
       )}
-    </StickToBottom>
+    </div>
   );
 }
 
