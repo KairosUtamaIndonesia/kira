@@ -152,6 +152,7 @@ type SessionTreeNodeJson = {
     timestamp?: string;
     label?: string;
     messageId?: string;
+    forkable?: boolean;
   };
   children: SessionTreeNodeJson[];
 };
@@ -181,6 +182,7 @@ function serializeSessionTreeNode(raw: unknown): SessionTreeNodeJson {
   let text: string | undefined;
   let toolName: string | undefined;
   let messageId: string | undefined;
+  let forkable = false;
 
   if (entry.type === "message") {
     const msg = entry.message as Record<string, unknown> | undefined;
@@ -188,6 +190,7 @@ function serializeSessionTreeNode(raw: unknown): SessionTreeNodeJson {
       const msgRole = msg.role;
       if (msgRole === "user" || msgRole === "assistant") {
         role = msgRole;
+        forkable = role === "user";
       }
       if (typeof msg.id === "string") {
         messageId = msg.id;
@@ -234,6 +237,7 @@ function serializeSessionTreeNode(raw: unknown): SessionTreeNodeJson {
   if (toolName !== undefined) entryOut.toolName = toolName;
   if (typeof entry.timestamp === "string") entryOut.timestamp = entry.timestamp;
   if (typeof node.label === "string") entryOut.label = node.label;
+  if (forkable) entryOut.forkable = true;
 
   const children = Array.isArray(node.children) ? node.children : [];
 

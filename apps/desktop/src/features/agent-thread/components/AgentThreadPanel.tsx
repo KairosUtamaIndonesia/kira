@@ -30,6 +30,7 @@ import { AgentThreadRawEventStream } from "./AgentThreadRawEventStream";
 import { AgentThreadTranscript } from "./AgentThreadTranscript";
 import { Composer } from "./Composer";
 import { SessionTree } from "./SessionTree";
+import { SteerQueue } from "./SteerQueue";
 
 type AgentThreadPanelProps = {
   api: { setTitle(title: string): void };
@@ -65,6 +66,10 @@ function AgentThreadPanel({ api, params, onRename, isActive }: AgentThreadPanelP
     respondToRequest,
     runtimeState,
     sendPrompt,
+    steerPrompt,
+    pendingSteers,
+    clearQueuedSteers,
+    removeSteer,
     abortPrompt,
     navigateTree,
     switchModel,
@@ -77,6 +82,17 @@ function AgentThreadPanel({ api, params, onRename, isActive }: AgentThreadPanelP
     },
     [sendPrompt],
   );
+
+  const handleRemoveSteer = useCallback((index: number) => removeSteer(index), [removeSteer]);
+
+  const handleClearSteers = useCallback(() => {
+    void clearQueuedSteers();
+  }, [clearQueuedSteers]);
+
+  const handleAbort = useCallback(() => {
+    void clearQueuedSteers();
+    abortPrompt();
+  }, [abortPrompt, clearQueuedSteers]);
 
   const handleResend = useCallback(
     async (id: string, text: string): Promise<boolean> => {
@@ -244,6 +260,11 @@ function AgentThreadPanel({ api, params, onRename, isActive }: AgentThreadPanelP
       <footer className="relative shrink-0 bg-editor-surface p-2 before:pointer-events-none before:absolute before:-top-8 before:right-0 before:left-0 before:h-8 before:bg-gradient-to-t before:from-editor-surface before:to-transparent before:content-['']">
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-1.5">
           {treeContent}
+          <SteerQueue
+            messages={pendingSteers}
+            onRemove={handleRemoveSteer}
+            onClear={handleClearSteers}
+          />
           <AgentActionIndicator runtimeState={runtimeState} isCompacting={isCompacting} />
           <Composer
             threadId={params.threadId}
@@ -252,11 +273,12 @@ function AgentThreadPanel({ api, params, onRename, isActive }: AgentThreadPanelP
             contextUsageState={contextUsageState}
             isCompacting={isCompacting}
             sendPrompt={handleSendPrompt}
+            steerPrompt={steerPrompt}
             runSlashCommandAction={runSlashCommandAction}
             switchModel={switchModel}
             isDropTargetActive={isDraggingFile}
             editingMessageId={editingMessageId}
-            abortPrompt={abortPrompt}
+            abortPrompt={handleAbort}
             onCancelEdit={handleCancelEdit}
             isTreeOpen={isTreeOpen}
             onToggleTree={() => setIsTreeOpen((open) => !open)}

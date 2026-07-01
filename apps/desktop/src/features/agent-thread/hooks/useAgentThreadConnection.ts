@@ -111,6 +111,7 @@ function useAgentThreadConnection(
   const [transcript, setTranscript] = useState(emptyPiTranscriptState);
   const [isCompacting, setIsCompacting] = useState(false);
   const [compactionSummary, setCompactionSummary] = useState<CompactionSummary>();
+  const [pendingSteers, setPendingSteers] = useState<string[]>([]);
   const [treeNodes, setTreeNodes] = useState<SessionTreeNodeJson[]>([]);
   const [currentLeafId, setCurrentLeafId] = useState<string>();
   const treeDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(void 0);
@@ -144,8 +145,8 @@ function useAgentThreadConnection(
           }
         }
       }
-      if (event.type === "message_end" || event.type === "turn_end" || event.type === "settled") {
-        scheduleTreeRefresh();
+      if (event.type === "queue_update" && Array.isArray(event.steering)) {
+        setPendingSteers(event.steering as string[]);
       }
     }
   };
@@ -363,6 +364,34 @@ function useAgentThreadConnection(
     }
     setRuntimeState({ status: "ready", baseUrl: state.baseUrl });
   }
+  async function steerPrompt(message: string) {
+    const socket = socketRef.current;
+    if (socket === undefined) {
+      return false;
+    }
+    setPendingSteers((prev) => [...prev, message]);
+    try {
+      await socket.steer(message);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function clearQueuedSteers() {
+    const socket = socketRef.current;
+    if (socket === undefined) return;
+    try {
+      await socket.clearQueue();
+    } catch {
+      // best effort
+    }
+  }
+
+  function removeSteer(index: number) {
+    setPendingSteers((prev) => prev.filter((_, i) => i !== index));
+  }
+
   async function switchModel(modelLabel: string) {
     const socket = socketRef.current;
     if (socket === undefined) {
@@ -474,6 +503,10 @@ function useAgentThreadConnection(
     abortPrompt,
     runtimeState,
     sendPrompt,
+    steerPrompt,
+    pendingSteers,
+    clearQueuedSteers,
+    removeSteer,
     navigateTree,
     switchModel,
     titleGenerationState,
@@ -539,6 +572,20 @@ class PiAgentSocket {
       activePrompt.reject(new AbortError("Agent response interrupted by user."));
     }
   }
+  async steer(message: string) {
+    const id = crypto.randomUUID();
+    await this.sendCommand({ id, type: "steer", message });
+  }
+
+  async followUp(message: string) {
+    const id = crypto.randomUUID();
+    await this.sendCommand({ id, type: "follow_up", message });
+  }
+  async clearQueue() {
+    const id = crypto.randomUUID();
+    await this.sendCommand({ id, type: "clear_queue" });
+  }
+
   respondToToolUi(requestId: string, response: unknown) {
     return this.sendCommand({ id: requestId, type: "tool_ui_response", response });
   }

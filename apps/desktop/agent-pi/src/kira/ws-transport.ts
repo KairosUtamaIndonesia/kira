@@ -30,7 +30,11 @@ type ParsedCommand = {
   modelLabel?: string;
   images?: ImageContent[];
   streamingBehavior?: "steer" | "followUp";
+  mode?: string;
+  summarize?: boolean;
+  text?: string;
   targetId?: string;
+  entryId?: string;
   response?: unknown;
   customInstructions?: string;
   options?: {
@@ -283,6 +287,12 @@ async function handleCommand(
         return;
       }
       case "steer": {
+        if (!session.isStreaming) {
+          respond(ws, command.id, "steer", false, {
+            error: "Agent is not streaming. Use prompt instead.",
+          });
+          return;
+        }
         const message = expandSkillCommandsInText(requireMessage(command), session);
         await session.steer(message);
         respond(ws, command.id, "steer", true);
@@ -292,6 +302,32 @@ async function handleCommand(
         const message = expandSkillCommandsInText(requireMessage(command), session);
         await session.followUp(message);
         respond(ws, command.id, "follow_up", true);
+        return;
+      }
+      case "get_queue": {
+        respond(ws, command.id, "get_queue", true, {
+          data: {
+            steering: session.getSteeringMessages(),
+            followUp: session.getFollowUpMessages(),
+            pendingCount: session.pendingMessageCount,
+          },
+        });
+        return;
+      }
+      case "clear_queue": {
+        const cleared = session.clearQueue();
+        respond(ws, command.id, "clear_queue", true, { data: cleared });
+        return;
+      }
+      case "set_steering_mode": {
+        if (command.mode !== "all" && command.mode !== "one-at-a-time") {
+          respond(ws, command.id, "set_steering_mode", false, {
+            error: "mode must be 'all' or 'one-at-a-time'",
+          });
+          return;
+        }
+        session.setSteeringMode(command.mode);
+        respond(ws, command.id, "set_steering_mode", true);
         return;
       }
       case "tool_ui_response": {
@@ -314,6 +350,117 @@ async function handleCommand(
       case "abort": {
         await session.abort();
         respond(ws, command.id, "abort", true);
+        return;
+      }
+      case "resend": {
+        if (typeof command.entryId !== "string" || command.entryId.length === 0) {
+          respond(ws, command.id, "resend", false, {
+            error: "resend requires a non-empty 'entryId'.",
+          });
+          return;
+        }
+        if (session.isStreaming) {
+          respond(ws, command.id, "resend", false, {
+            error: "Cannot resend while agent is streaming. Abort first.",
+          });
+          return;
+        }
+        const resendOptions = command.options;
+        const resendCustomInstructions =
+          resendOptions !== undefined && "customInstructions" in resendOptions
+            ? resendOptions.customInstructions
+            : undefined;
+        const resendReplaceInstructions =
+          resendOptions !== undefined && "replaceInstructions" in resendOptions
+            ? resendOptions.replaceInstructions
+            : undefined;
+        const resendLabel =
+          resendOptions !== undefined && "label" in resendOptions ? resendOptions.label : undefined;
+        const resendResult = await session.navigateTree(command.entryId, {
+          ...(command.summarize === undefined ? {} : { summarize: command.summarize }),
+          ...(resendCustomInstructions === undefined
+            ? {}
+            : { customInstructions: resendCustomInstructions }),
+          ...(resendReplaceInstructions === undefined
+            ? {}
+            : { replaceInstructions: resendReplaceInstructions }),
+          ...(resendLabel === undefined ? {} : { label: resendLabel }),
+        });
+        if (resendResult.cancelled) {
+          respond(ws, command.id, "resend", false, { error: "Navigation cancelled by extension" });
+          return;
+        }
+        if (!resendResult.editorText) {
+          respond(ws, command.id, "resend", false, { error: "Entry has no editable text" });
+          return;
+        }
+        const resendMessage = expandSkillCommandsInText(resendResult.editorText, session);
+        void (async () => {
+          try {
+            await session.prompt(resendMessage);
+          } catch (err) {
+            send(ws, { type: "error", error: errorMessage(err), message: errorMessage(err) });
+          }
+        })();
+        respond(ws, command.id, "resend", true, { data: { editorText: resendResult.editorText } });
+        return;
+      }
+      case "edit_and_resend": {
+        if (typeof command.entryId !== "string" || command.entryId.length === 0) {
+          respond(ws, command.id, "edit_and_resend", false, {
+            error: "edit_and_resend requires a non-empty 'entryId'.",
+          });
+          return;
+        }
+        if (session.isStreaming) {
+          respond(ws, command.id, "edit_and_resend", false, {
+            error: "Cannot resend while agent is streaming. Abort first.",
+          });
+          return;
+        }
+        const editOptions = command.options;
+        const editCustomInstructions =
+          editOptions !== undefined && "customInstructions" in editOptions
+            ? editOptions.customInstructions
+            : undefined;
+        const editReplaceInstructions =
+          editOptions !== undefined && "replaceInstructions" in editOptions
+            ? editOptions.replaceInstructions
+            : undefined;
+        const editLabel =
+          editOptions !== undefined && "label" in editOptions ? editOptions.label : undefined;
+        const editResult = await session.navigateTree(command.entryId, {
+          ...(command.summarize === undefined ? {} : { summarize: command.summarize }),
+          ...(editCustomInstructions === undefined
+            ? {}
+            : { customInstructions: editCustomInstructions }),
+          ...(editReplaceInstructions === undefined
+            ? {}
+            : { replaceInstructions: editReplaceInstructions }),
+          ...(editLabel === undefined ? {} : { label: editLabel }),
+        });
+        if (editResult.cancelled) {
+          respond(ws, command.id, "edit_and_resend", false, {
+            error: "Navigation cancelled by extension",
+          });
+          return;
+        }
+        const text = command.text ?? editResult.editorText ?? "";
+        if (!text) {
+          respond(ws, command.id, "edit_and_resend", false, { error: "No text to send" });
+          return;
+        }
+        const editMessage = expandSkillCommandsInText(text, session);
+        void (async () => {
+          try {
+            await session.prompt(editMessage);
+          } catch (err) {
+            send(ws, { type: "error", error: errorMessage(err), message: errorMessage(err) });
+          }
+        })();
+        respond(ws, command.id, "edit_and_resend", true, {
+          data: { editorText: editResult.editorText },
+        });
         return;
       }
       case "navigate_tree": {

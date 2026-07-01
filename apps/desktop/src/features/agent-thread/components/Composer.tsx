@@ -51,6 +51,7 @@ type ComposerProps = {
   placeholder?: string;
   sendPrompt: (prompt: string) => Promise<boolean>;
   abortPrompt?: () => void;
+  steerPrompt?: (message: string) => Promise<boolean>;
   runSlashCommandAction?: (
     action: ComposerSlashCommandAction,
     args: string,
@@ -102,6 +103,7 @@ function Composer({
   placeholder = "Send a prompt to this Agent Thread…",
   sendPrompt,
   abortPrompt,
+  steerPrompt,
   runSlashCommandAction,
   switchModel,
   editingMessageId,
@@ -127,8 +129,8 @@ function Composer({
     runtimeState === undefined ||
     runtimeState.status === "ready" ||
     runtimeState.status === "sending";
-  const isSending = runtimeState !== undefined && runtimeState.status === "sending";
   const isDisabled = !canSend || isCompacting;
+  const isSending = runtimeState !== undefined && runtimeState.status === "sending";
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
@@ -229,10 +231,16 @@ function Composer({
     setPrompt("");
     setPickerState({ status: "closed" });
     setSlashPickerState({ status: "closed" });
-    const sent = await sendPrompt(trimmed);
-    if (!sent) {
-      // Send failed — restore the prompt so the user can retry.
-      setPrompt(trimmed);
+    if (isSending && steerPrompt !== undefined) {
+      const steered = await steerPrompt(trimmed);
+      if (!steered) {
+        setPrompt(trimmed);
+      }
+    } else {
+      const sent = await sendPrompt(trimmed);
+      if (!sent) {
+        setPrompt(trimmed);
+      }
     }
   }
 
@@ -454,8 +462,8 @@ function Composer({
           rows={1}
           aria-label="Prompt"
           aria-autocomplete="list"
-          placeholder={placeholder}
-          disabled={isDisabled || isSending}
+          placeholder={isSending && prompt.length === 0 ? "Steer the agent…" : placeholder}
+          disabled={isDisabled}
           className="block min-h-9 w-full resize-none bg-transparent px-2.5 py-2 text-sm leading-5 outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
           onChange={(event) => {
             setErrorMessage(undefined);
@@ -488,25 +496,37 @@ function Composer({
               </Button>
             ) : undefined}
             {isSending ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                aria-label="Stop agent response"
-                onClick={() => {
-                  if (abortPrompt !== undefined) abortPrompt();
-                }}
-                className="bg-transparent text-destructive hover:bg-muted hover:text-destructive"
-              >
-                <Square aria-hidden="true" className="size-3" />
-              </Button>
+              <>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label="Stop agent response"
+                  onClick={() => {
+                    if (abortPrompt !== undefined) abortPrompt();
+                  }}
+                  className="bg-transparent text-destructive hover:bg-muted hover:text-destructive"
+                >
+                  <Square aria-hidden="true" className="size-3" />
+                </Button>
+                <Button
+                  type="submit"
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label="Queue steer"
+                  disabled={prompt.trim().length === 0}
+                  className="bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  <CornerDownLeft aria-hidden="true" />
+                </Button>
+              </>
             ) : (
               <Button
                 type="submit"
                 variant="ghost"
                 size="icon-xs"
                 aria-label={sendButtonLabel(runtimeState, isCompacting)}
-                disabled={!canSend || isSending || isCompacting || prompt.trim().length === 0}
+                disabled={!canSend || isCompacting || prompt.trim().length === 0}
                 className="bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
               >
                 <CornerDownLeft aria-hidden="true" />
