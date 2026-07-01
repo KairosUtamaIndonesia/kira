@@ -6,6 +6,23 @@ side-by-side with your app, and team management is coming through the cloud cons
 
 This is just the start. More surface, more capability, more agentic.
 
+## [3.4.0](https://github.com/KairosUtamaIndonesia/kira/compare/v3.3.1...v3.4.0) (2026-07-01)
+
+
+### Features
+
+* add steer queue, resend/edit commands, and forkable tree nodes ([ddd5448](https://github.com/KairosUtamaIndonesia/kira/commit/ddd5448e13f18dab8bc91f89545a9c48ebe472f0))
+* **agent-thread:** virtualize transcript with @tanstack/react-virtual ([968f2ef](https://github.com/KairosUtamaIndonesia/kira/commit/968f2ef7132a885b5b976ea2dc152f3d3b7bb83b))
+* **agent:** added brd/fsd/tsd skill ([ef17397](https://github.com/KairosUtamaIndonesia/kira/commit/ef17397244e3f8541fb676a51135d629fefb7bd9))
+* **agent:** refine agent thinking block presentation in transcript ([ec0932b](https://github.com/KairosUtamaIndonesia/kira/commit/ec0932b0d00b6e7ad27bc56509353de2ab8a8bb3))
+* **login:** improved styling on login callback page ([ea7ea26](https://github.com/KairosUtamaIndonesia/kira/commit/ea7ea26b876022e3b28f256d1e261c24c900b702))
+
+
+### Bug Fixes
+
+* replace div role=button with native button in ThinkingBlock ([439e516](https://github.com/KairosUtamaIndonesia/kira/commit/439e516f6f7f80f6031f49cac5fee122745e7174))
+* revert to Monaco DiffEditor for agent thread tool diffs ([de323e5](https://github.com/KairosUtamaIndonesia/kira/commit/de323e5942bf04bd07cddc4998c7d5655102a622))
+
 ## [3.3.1](https://github.com/KairosUtamaIndonesia/kira/compare/v3.3.0...v3.3.1) (2026-06-26)
 
 
