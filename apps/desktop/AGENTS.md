@@ -214,7 +214,7 @@ The browser panel uses Tauri's `unstable` API. Key constraints:
 
 ## Agent Pi integration
 
-The embedded agent runtime (`apps/desktop/agent-pi/`) runs as a subprocess managed by the `agent_runtime` Rust module. It communicates via HTTP (Hono server in the agent-pi).
+The embedded agent runtime (`apps/desktop/agent-pi/`) runs as a subprocess managed by the `agent_runtime` Rust module.
 
 The `agent_runtime` module handles:
 
@@ -222,7 +222,19 @@ The `agent_runtime` module handles:
 - `prepare_agent_thread` — Prepare context for a new thread
 - `generate_commit_message` — AI commit message generation
 - `generate_agent_thread_title` — AI thread title generation
-- `agent_thread_context_usage_get` — Context window usage stats
+
+Agent Thread traffic itself does NOT go through Rust: the frontend talks to the
+agent Pi directly over a WebSocket (`/agents/:threadId/ws`), using the typed
+wire protocol shared via `@kira/agent-pi/protocol` (a type-only workspace
+devDependency plus the pure `messageDisplayId` helper). Frontend pieces:
+
+- `features/agent-thread/agentThreadClient.ts` — typed socket client (commands + frames)
+- `features/agent-thread/piTranscriptState.ts` — pure reducer over protocol frames
+- `features/agent-thread/hooks/useAgentThreadConnection.ts` — connection lifecycle + state
+- `features/agent-thread/hooks/useAutoTitle.ts` — first-prompt auto-titling
+
+Protocol changes belong in `apps/desktop/agent-pi/src/protocol/index.ts` so both
+ends break at compile time together.
 
 Tauri commands in this module should keep the agent Pi lifecycle logic isolated — do not leak agent Pi internals into other modules.
 

@@ -179,15 +179,13 @@ pub async fn explorer_file_reference_suggestions(
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        guard
-            .get(&root_path)
-            .and_then(|(timestamp, entries)| {
-                if timestamp.elapsed() < CACHE_TTL {
-                    Some(entries.clone())
-                } else {
-                    None
-                }
-            })
+        guard.get(&root_path).and_then(|(timestamp, entries)| {
+            if timestamp.elapsed() < CACHE_TTL {
+                Some(entries.clone())
+            } else {
+                None
+            }
+        })
     };
 
     let entries = match cached_entries {

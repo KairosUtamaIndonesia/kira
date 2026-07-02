@@ -27,8 +27,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import * as path from "node:path";
 
 import { getCurrentProjectId } from "../../agent-thread-context.js";
-import { getDefaultModel } from "../../model-catalog.js";
-import { piModelFromConfig } from "../../pi-model.js";
+import { authStorage, modelRegistry } from "../../model-registry.js";
 import { loadConfig } from "./config.js";
 import { triggerConsolidation, registerConsolidateCommand } from "./handlers/auto-consolidate.js";
 import { setupBackgroundReview } from "./handlers/background-review.js";
@@ -85,7 +84,7 @@ export function registerProjectSkillDiscoveryHandler(
     );
   });
 }
-export default function memoryExtension(pi: ExtensionAPI) {
+export default async function memoryExtension(pi: ExtensionAPI) {
   const config = loadConfig();
 
   const globalDir = config.memoryDir ?? path.join(AGENT_ROOT, "data");
@@ -124,13 +123,17 @@ export default function memoryExtension(pi: ExtensionAPI) {
     : undefined;
 
   // Resolve LLM model, API key, and prepare memory tools for in-process prompt runners
-  const defaultModelConfig = getDefaultModel();
+  const available = await modelRegistry.getAvailable();
+  const defaultModel = available[0];
+  if (!defaultModel) {
+    throw new Error("No models available for memory extension.");
+  }
   const memoryModel = config.llmModelOverride
-    ? piModelFromConfig({ ...defaultModelConfig, upstreamModelId: config.llmModelOverride })
-    : piModelFromConfig(defaultModelConfig);
-  const memoryApiKey = defaultModelConfig.apiKey;
-  if (memoryApiKey === undefined) {
-    throw new Error("No API key configured for the default model. Add one in the model config.");
+    ? modelRegistry.find(defaultModel.provider, config.llmModelOverride) ?? defaultModel
+    : defaultModel;
+  const memoryApiKey = (await authStorage.getApiKey(memoryModel.provider)) ?? "";
+  if (!memoryApiKey) {
+    throw new Error(`No API key for ${memoryModel.provider}. Add one in the model config.`);
   }
   const memoryToolDef = createMemoryToolDef(store, projectStore, dbManager, projectId);
   const memoryTools = [toolDefToAgentTool(memoryToolDef)];

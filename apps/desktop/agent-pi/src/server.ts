@@ -1,62 +1,98 @@
-import type { IncomingMessage } from "node:http";
-import type { Duplex } from "node:stream";
+/**
+ * agent-pi entry: single global WebSocket server on fixed port 19876.
+ *
+ * All frontend connections share one WS. Commands carry threadId for routing.
+ * The SessionHost manages project-scoped infrastructure and per-thread sessions.
+ */
 
-import { serve } from "@hono/node-server";
 import { WebSocketServer } from "ws";
+import type { ClientCommand } from "./protocol";
+import { registerProviderExtensions } from "./kira/model-registry";
+import { SessionHost } from "./kira/session-host";
 
-import app from "./app";
-import { getOrCreateAgentSession } from "./kira/agent-session-host";
-import { requireAgentThreadContext } from "./kira/agent-thread-context";
-import { readRuntimeToken } from "./kira/env";
-import { attachAgentSocket } from "./kira/ws-transport";
+const envPort = Number.parseInt(process.env.PORT ?? "", 10);
+const PORT = Number.isNaN(envPort) ? 19876 : envPort;
 
-const AGENT_SOCKET_PATH = /^\/agents\/([^/]+)\/ws$/;
+async function main() {
+  console.error("[agent-pi] starting...");
 
-const host = process.env.HOST ?? "127.0.0.1";
-const port = Number.parseInt(process.env.PORT ?? "0", 10);
+  const envCloudUrl = process.env.KIRA_CLOUD_API_URL || process.env.KIRA_CLOUD_URL;
+  const envApiKey = process.env.KIRA_API_KEY;
 
-const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {
-  process.stdout.write(`@kira/agent-pi listening on http://${host}:${info.port}\n`);
-});
-
-const wss = new WebSocketServer({ noServer: true });
-
-server.on("upgrade", (request: IncomingMessage, socket: Duplex, head: Buffer) => {
-  const url = new URL(request.url ?? "", `http://${host}`);
-  const match = AGENT_SOCKET_PATH.exec(url.pathname);
-  if (match === null) {
-    socket.destroy();
-    return;
-  }
-
-  if (url.searchParams.get("token") !== readRuntimeToken()) {
-    socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
-    socket.destroy();
-    return;
-  }
-
-  const threadId = decodeURIComponent(match[1] ?? "");
-  let context;
-  try {
-    context = requireAgentThreadContext(threadId);
-  } catch {
-    socket.write("HTTP/1.1 404 Not Found\r\n\r\n");
-    socket.destroy();
-    return;
-  }
-
-  void (async () => {
-    try {
-      const sessionHost = await getOrCreateAgentSession(context);
-      wss.handleUpgrade(request, socket, head, (ws) =>
-        attachAgentSocket(ws, sessionHost.session, sessionHost.toolUiBroker),
-      );
-    } catch (error) {
-      process.stderr.write(
-        `agent session build failed: ${error instanceof Error ? error.stack : String(error)}\n`,
-      );
-      socket.write("HTTP/1.1 500 Internal Server Error\r\n\r\n");
-      socket.destroy();
+  // Shared across all connections: providers are registered exactly once.
+  let providersRegistration: Promise<void> | null = null;
+  function ensureProviders(): Promise<void> {
+    if (!providersRegistration) {
+      providersRegistration = registerProviderExtensions().catch((err) => {
+        providersRegistration = null; // allow retry on next register_project
+        throw err;
+      });
     }
-  })();
+    return providersRegistration;
+  }
+
+  // If cloud config is already in the environment, register now.
+  if (envCloudUrl && envApiKey) {
+    console.error(`[agent-pi] registering providers from ${envCloudUrl}`);
+    await ensureProviders();
+  }
+
+  const host = new SessionHost();
+  const wss = new WebSocketServer({ port: PORT });
+  await new Promise<void>((resolve) => wss.once("listening", resolve));
+
+  console.error(`[agent-pi] listening on ws://127.0.0.1:${PORT}`);
+
+  wss.on("connection", (ws) => {
+    console.error("[agent-pi] client connected");
+
+    // Serialize command processing per connection: open_thread must not run
+    // before register_project finishes. Long-running commands (prompt/compact)
+    // are dispatched fire-and-forget inside SessionHost so abort still works.
+    let queue: Promise<void> = Promise.resolve();
+
+    ws.on("message", (raw) => {
+      let cmd: ClientCommand;
+      try {
+        cmd = JSON.parse(raw.toString()) as ClientCommand;
+      } catch {
+        ws.send(JSON.stringify({ type: "error", message: "Bad JSON" }));
+        return;
+      }
+      const threadId = "threadId" in cmd ? cmd.threadId : undefined;
+      console.error(`[agent-pi] cmd: ${cmd.type}${threadId ? ` thread=${threadId.slice(0, 8)}` : ""}`);
+
+      queue = queue.then(async () => {
+        try {
+          // register_project carries the cloud config for provider registration
+          if (cmd.type === "register_project") {
+            if (!cmd.cloudApiUrl || !cmd.cloudApiKey) {
+              ws.send(JSON.stringify({ type: "error", message: "Cloud config required" }));
+              return;
+            }
+            process.env.KIRA_CLOUD_API_URL = cmd.cloudApiUrl;
+            process.env.KIRA_API_KEY = cmd.cloudApiKey;
+            try {
+              await ensureProviders();
+            } catch (err) {
+              ws.send(JSON.stringify({ type: "error", message: `Provider registration failed: ${(err as Error).message}` }));
+              return;
+            }
+          }
+
+          await host.handleCommand(ws, cmd);
+        } catch (e) {
+          ws.send(JSON.stringify({ type: "error", message: (e as Error).message }));
+        }
+      });
+    });
+  });
+
+  process.on("SIGTERM", () => { wss.close(); process.exit(0); });
+  process.on("SIGINT", () => { wss.close(); process.exit(0); });
+}
+
+main().catch((err) => {
+  console.error("[agent-pi] fatal:", err);
+  process.exit(1);
 });

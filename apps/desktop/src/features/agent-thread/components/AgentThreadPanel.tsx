@@ -2,27 +2,14 @@ import { ArrowDown } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 
 import { Button } from "@/components/ui/button";
-import { toast } from "@/components/ui/sonner";
 import { explorerDragDataKey } from "@/features/explorer";
-import { playAgentNotificationSound, useAppearanceTheme } from "@/features/settings";
+import { useAppearanceTheme } from "@/features/settings";
 
 import type { AgentThreadRuntimeState } from "../hooks/useAgentThreadConnection";
-import type {
-  AgentThreadPanelParams,
-  PiTranscriptState,
-  RespondToHumanRequest,
-  SessionTreeNodeJson,
-} from "../types";
+import type { AgentThreadPanelParams, PiTranscriptState } from "../types";
 
 import { buildAgentThreadTranscript } from "../agentThreadDisplay";
-import { clearAgentThreadDraft, setAgentThreadDraft } from "../agentThreadDraftStore";
-import {
-  clearPanelUnread,
-  markPanelUnread,
-  registerOpenAgentThread,
-  setAgentThreadRuntimeState,
-  unregisterOpenAgentThread,
-} from "../agentThreadStatusStore";
+import { setAgentThreadDraft } from "../agentThreadDraftStore";
 import { explorerDropPaths, fileReferenceText } from "../explorerDropUtils";
 import { useAgentThreadConnection } from "../hooks/useAgentThreadConnection";
 import { AgentActionIndicator } from "./AgentActionIndicator";
@@ -30,7 +17,6 @@ import { AgentThreadRawEventStream } from "./AgentThreadRawEventStream";
 import { AgentThreadTranscript } from "./AgentThreadTranscript";
 import { Composer } from "./Composer";
 import { SessionTree } from "./SessionTree";
-import { SteerQueue } from "./SteerQueue";
 
 type AgentThreadPanelProps = {
   api: { setTitle(title: string): void };
@@ -40,155 +26,43 @@ type AgentThreadPanelProps = {
   isActive?: boolean;
 };
 
-function AgentThreadPanel({ api, params, onRename, isActive }: AgentThreadPanelProps) {
+function AgentThreadPanel({ params }: AgentThreadPanelProps) {
   const { agentThreadShowRawEventStream } = useAppearanceTheme();
   const dragCounterRef = useRef(0);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [isTreeOpen, setIsTreeOpen] = useState(false);
-  const [editingMessageId, setEditingMessageId] = useState<string>();
-  const handleAutoTitled = useCallback(
-    async (title: string) => {
-      api.setTitle(title);
-      if (onRename !== undefined) {
-        await onRename(params.panelId, title);
-      }
-    },
-    [api, onRename, params.panelId],
-  );
+
   const {
-    compactionSummary,
-    contextUsageState,
+    messages,
+    isStreaming,
+    model,
     currentLeafId,
     isCompacting,
-    runSlashCommandAction,
-    transcript,
     treeNodes,
-    respondToRequest,
     runtimeState,
+    toolOutputs,
     sendPrompt,
-    steerPrompt,
-    pendingSteers,
-    clearQueuedSteers,
-    removeSteer,
     abortPrompt,
     navigateTree,
-    switchModel,
-  } = useAgentThreadConnection(params, { onAutoTitled: handleAutoTitled });
+  } = useAgentThreadConnection(params);
+
+  const transcript: PiTranscriptState = { messages, isStreaming, model };
+  const items = buildAgentThreadTranscript(transcript, toolOutputs);
+  const isEmpty = items.length === 0;
 
   const handleSendPrompt = useCallback(
-    async (text: string): Promise<boolean> => {
-      setEditingMessageId(undefined);
-      return sendPrompt(text);
-    },
+    async (text: string): Promise<boolean> => sendPrompt(text),
     [sendPrompt],
   );
 
-  const handleRemoveSteer = useCallback((index: number) => removeSteer(index), [removeSteer]);
-
-  const handleClearSteers = useCallback(() => {
-    void clearQueuedSteers();
-  }, [clearQueuedSteers]);
-
-  const handleAbort = useCallback(() => {
-    void clearQueuedSteers();
-    abortPrompt();
-  }, [abortPrompt, clearQueuedSteers]);
-
-  const handleResend = useCallback(
-    async (id: string, text: string): Promise<boolean> => {
-      if (runtimeState.status !== "ready" && runtimeState.status !== "error") {
-        return false;
-      }
-      // Find tree entry for this user message and navigate to its parent so the
-      // resend becomes a sibling branch (the original sits off the active path
-      // and is hidden by filterActivePathMessages), preventing a duplicate.
-      const findNode = (nodes: SessionTreeNodeJson[]): SessionTreeNodeJson | undefined => {
-        for (const node of nodes) {
-          if (node.entry.messageId === id) {
-            return node;
-          }
-          if (node.children.length > 0) {
-            const found = findNode(node.children);
-            if (found !== undefined) return found;
-          }
-        }
-        return undefined;
-      };
-      const node = findNode(treeNodes);
-      if (node !== undefined) {
-        // Can't create a sibling branch from the root message — no parent to
-        // branch from. The original root stays on the active path and the new
-        // message creates a permanent duplicate.
-        if (node.parentId === null) {
-          return false;
-        }
-        if (node.parentId !== currentLeafId) {
-          await navigateTree(node.parentId);
-        }
-      }
-      // When the message has no tree node (historical, local, or tree not yet
-      // loaded), skip navigation and send from the current position.
-      setEditingMessageId(undefined);
-      const ok = await sendPrompt(text);
-      if (!ok) {
-        toast.error("Failed to resend message");
-      }
-      return ok;
-    },
-    [treeNodes, navigateTree, sendPrompt, currentLeafId, runtimeState],
-  );
-
-  const handleCancelEdit = useCallback(() => {
-    setEditingMessageId(undefined);
-    clearAgentThreadDraft(params.threadId);
-  }, [params.threadId]);
-
-  const handleEdit = useCallback(
-    (id: string, text: string) => {
-      setEditingMessageId(id);
-      setAgentThreadDraft(params.threadId, text, "inline");
-    },
-    [params.threadId],
-  );
-  const isEmpty = buildAgentThreadTranscript(transcript).length === 0;
-  const prevRuntimeStateRef = useRef(runtimeState);
-  useEffect(() => {
-    const prevState = prevRuntimeStateRef.current;
-    prevRuntimeStateRef.current = runtimeState;
-    if (prevState.status !== "ready" && runtimeState.status === "ready") {
-      registerOpenAgentThread({ threadId: params.threadId, panelId: params.panelId, title: "" });
-    } else if (prevState.status !== "error" && runtimeState.status === "error") {
-      unregisterOpenAgentThread(params.threadId);
-    }
-    if (prevState.status === "sending" && runtimeState.status === "ready" && isActive !== true) {
-      void playAgentNotificationSound();
-      markPanelUnread(params.panelId);
-    }
-  }, [runtimeState, params.threadId, params.panelId, isActive]);
-
-  useEffect(() => {
-    if (isActive === true) {
-      clearPanelUnread(params.panelId);
-    }
-  }, [isActive, params.panelId]);
-
-  useEffect(() => {
-    setAgentThreadRuntimeState(params.threadId, runtimeState);
-  }, [params.threadId, runtimeState]);
-
-  useEffect(() => {
-    setAgentThreadRuntimeState(
-      params.panelId,
-      runtimeState.status === "ready" ? { status: "stopped" } : runtimeState,
-    );
-  }, [params.panelId, runtimeState]);
+  const handleAbort = useCallback(() => abortPrompt(), [abortPrompt]);
 
   const treeContent = (() => {
     if (!isTreeOpen) return;
     if (treeNodes.length === 0) {
       return (
         <p className="rounded-lg border border-border p-3 text-xs text-muted-foreground">
-          No session tree data available. Start a conversation to build the tree.
+          No session tree data available.
         </p>
       );
     }
@@ -197,8 +71,8 @@ function AgentThreadPanel({ api, params, onRename, isActive }: AgentThreadPanelP
         <div className="max-h-[60vh] overflow-y-auto">
           <SessionTree
             nodes={treeNodes}
-            activePath={transcript.activePath}
-            activeLeafId={transcript.activeLeafId}
+            activePath={[]}
+            activeLeafId={currentLeafId}
             onSelectNode={(entryId: string) => {
               void navigateTree(entryId);
               setIsTreeOpen(false);
@@ -208,78 +82,51 @@ function AgentThreadPanel({ api, params, onRename, isActive }: AgentThreadPanelP
       </div>
     );
   })();
+
   return (
     <section
       className="flex h-full min-h-0 flex-col gap-6 bg-editor-surface text-foreground"
       onDragEnter={(event: DragEvent<HTMLElement>) => {
-        if (!event.dataTransfer.types.includes(explorerDragDataKey)) {
-          return;
-        }
+        if (!event.dataTransfer.types.includes(explorerDragDataKey)) return;
         event.preventDefault();
         dragCounterRef.current += 1;
         setIsDraggingFile(true);
       }}
       onDragLeave={(event: DragEvent<HTMLElement>) => {
-        if (!event.dataTransfer.types.includes(explorerDragDataKey)) {
-          return;
-        }
+        if (!event.dataTransfer.types.includes(explorerDragDataKey)) return;
         dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
-        if (dragCounterRef.current === 0) {
-          setIsDraggingFile(false);
-        }
+        if (dragCounterRef.current === 0) setIsDraggingFile(false);
       }}
       onDragOver={handleExplorerDragOver}
       onDrop={(event: DragEvent<HTMLElement>) => {
         dragCounterRef.current = 0;
         setIsDraggingFile(false);
-        if (event.defaultPrevented) {
-          return;
-        }
+        if (event.defaultPrevented) return;
         const paths = explorerDropPaths(event.dataTransfer);
-        if (paths.length === 0) {
-          return;
-        }
+        if (paths.length === 0) return;
         event.preventDefault();
-        setAgentThreadDraft(params.threadId, paths.map(fileReferenceText).join(""), "inline");
+        setAgentThreadDraft(params.threadId, paths.map(fileReferenceText).join(" "), "inline");
       }}
     >
-      {/* Main content area — always full-width transcript */}
       <div className="relative flex min-h-0 flex-1 flex-col">
         <TranscriptArea
           transcript={transcript}
-          compactionSummary={compactionSummary}
           isEmpty={isEmpty}
-          editingMessageId={editingMessageId}
-          respondToRequest={respondToRequest}
           agentThreadShowRawEventStream={agentThreadShowRawEventStream}
-          onResend={handleResend}
-          onEdit={handleEdit}
           runtimeState={runtimeState}
         />
       </div>
       <footer className="relative shrink-0 bg-editor-surface p-2 before:pointer-events-none before:absolute before:-top-8 before:right-0 before:left-0 before:h-8 before:bg-gradient-to-t before:from-editor-surface before:to-transparent before:content-['']">
-        <div className="mx-auto flex w-full max-w-5xl flex-col gap-1.5">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-1.5">
           {treeContent}
-          <SteerQueue
-            messages={pendingSteers}
-            onRemove={handleRemoveSteer}
-            onClear={handleClearSteers}
-          />
           <AgentActionIndicator runtimeState={runtimeState} isCompacting={isCompacting} />
           <Composer
             threadId={params.threadId}
             folderPath={params.folderPath}
             runtimeState={runtimeState}
-            contextUsageState={contextUsageState}
-            isCompacting={isCompacting}
             sendPrompt={handleSendPrompt}
-            steerPrompt={steerPrompt}
-            runSlashCommandAction={runSlashCommandAction}
-            switchModel={switchModel}
-            isDropTargetActive={isDraggingFile}
-            editingMessageId={editingMessageId}
             abortPrompt={handleAbort}
-            onCancelEdit={handleCancelEdit}
+            isDropTargetActive={isDraggingFile}
             isTreeOpen={isTreeOpen}
             onToggleTree={() => setIsTreeOpen((open) => !open)}
           />
@@ -288,40 +135,24 @@ function AgentThreadPanel({ api, params, onRename, isActive }: AgentThreadPanelP
     </section>
   );
 }
+
 type TranscriptAreaProps = {
   transcript: PiTranscriptState;
-  compactionSummary: { tokensBefore: number; summary: string } | undefined;
   isEmpty: boolean;
-  editingMessageId: string | undefined;
-  respondToRequest: RespondToHumanRequest;
   agentThreadShowRawEventStream: boolean;
-  onResend: (id: string, text: string) => Promise<boolean>;
-  onEdit: (id: string, text: string) => void;
   runtimeState: AgentThreadRuntimeState;
 };
 
 function TranscriptArea({
   transcript,
-  compactionSummary,
   isEmpty,
-  editingMessageId,
-  respondToRequest,
   agentThreadShowRawEventStream,
-  onResend,
-  onEdit,
   runtimeState,
 }: TranscriptAreaProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const scrollApiRef = useRef<{
-    scrollToIndex: (
-      index: number,
-      options?: { align?: "start" | "center" | "end" | "auto"; behavior?: ScrollBehavior },
-    ) => void;
-  } | null>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const isAtBottomRef = useRef(true);
 
-  // Track scroll position to determine if user is at bottom
   const handleScroll = useCallback(() => {
     const el = scrollContainerRef.current;
     if (el === null) return;
@@ -329,39 +160,16 @@ function TranscriptArea({
     isAtBottomRef.current = atBottom;
     setIsAtBottom(atBottom);
   }, []);
-  // Auto-scroll when content grows (e.g., streaming response) and user is at bottom.
-  // ResizeObserver on the virtual list container detects height changes from
-  // growing content within existing items (not just new items being added).
-  useEffect(() => {
-    const container = scrollContainerRef.current;
-    if (container === null) return;
-    const target = container.firstElementChild;
-    if (target === null) return;
-    const observer = new ResizeObserver(() => {
-      if (isAtBottomRef.current) {
-        container.scrollTop = container.scrollHeight;
-      }
-    });
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, [isEmpty]);
-
-  // Auto-scroll to bottom when new items arrive and user was already at bottom
-  const handleHeightChange = useCallback(() => {
-    if (isAtBottomRef.current && scrollApiRef.current !== null) {
-      const api = scrollApiRef.current;
-      // Use setTimeout to let the virtualizer update its measurements first
-      setTimeout(() => {
-        api.scrollToIndex(Infinity, { align: "end" });
-      }, 0);
-    }
-  }, []);
 
   const scrollToBottom = useCallback(() => {
-    if (scrollApiRef.current !== null) {
-      scrollApiRef.current.scrollToIndex(Infinity, { align: "end", behavior: "smooth" });
-    }
+    scrollContainerRef.current?.scrollTo({ top: scrollContainerRef.current.scrollHeight, behavior: "smooth" });
   }, []);
+
+  useEffect(() => {
+    if (isAtBottomRef.current) {
+      scrollContainerRef.current?.scrollTo({ top: scrollContainerRef.current.scrollHeight });
+    }
+  }, [transcript.messages.length, transcript.isStreaming]);
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
@@ -372,24 +180,15 @@ function TranscriptArea({
       >
         <AgentThreadTranscript
           transcript={transcript}
-          compactionSummary={compactionSummary}
-          editingMessageId={editingMessageId}
-          respond={respondToRequest}
-          onResend={onResend}
-          onEdit={onEdit}
           runtimeState={runtimeState}
           parentRef={scrollContainerRef}
-          onHeightChange={handleHeightChange}
-          onVirtualizerReady={(api) => {
-            scrollApiRef.current = api;
-          }}
         />
         {agentThreadShowRawEventStream ? (
           <AgentThreadRawEventStream transcript={transcript} />
         ) : undefined}
       </div>
       {isAtBottom ? undefined : (
-        <div className="pointer-events-none absolute right-4 bottom-4 left-4 mx-auto flex max-w-5xl justify-end">
+        <div className="pointer-events-none absolute right-4 bottom-4 left-4 mx-auto flex max-w-6xl justify-end">
           <Button
             type="button"
             variant="outline"
@@ -407,9 +206,7 @@ function TranscriptArea({
 }
 
 function handleExplorerDragOver(event: DragEvent<HTMLElement>) {
-  if (!event.dataTransfer.types.includes(explorerDragDataKey)) {
-    return;
-  }
+  if (!event.dataTransfer.types.includes(explorerDragDataKey)) return;
   event.preventDefault();
   event.dataTransfer.dropEffect = "copy";
 }

@@ -19,6 +19,7 @@ export default defineConfig(async () => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@kira/agent-pi/protocol": path.resolve(__dirname, "./agent-pi/src/protocol/index.ts"),
     },
     dedupe: ["react", "react-dom"],
   },
