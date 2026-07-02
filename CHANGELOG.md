@@ -6,6 +6,14 @@ side-by-side with your app, and team management is coming through the cloud cons
 
 This is just the start. More surface, more capability, more agentic.
 
+## [3.4.1](https://github.com/KairosUtamaIndonesia/kira/compare/v3.4.0...v3.4.1) (2026-07-02)
+
+
+### Bug Fixes
+
+* add TTL cache to explorer file reference suggestions ([60602f7](https://github.com/KairosUtamaIndonesia/kira/commit/60602f71d8552d90f5b7de91496ae8f82ce7490c))
+* keep agent thread tree state in sync after socket events and abort ([7d2b939](https://github.com/KairosUtamaIndonesia/kira/commit/7d2b939081e5df1b352fd1bb100fdec02b7dab5a))
+
 ## [3.4.0](https://github.com/KairosUtamaIndonesia/kira/compare/v3.3.1...v3.4.0) (2026-07-01)
 
 

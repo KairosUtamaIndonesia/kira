@@ -1,6 +1,6 @@
 {
   "name": "kira-v3",
-  "version": "3.4.0",
+  "version": "3.4.1",
   "private": true,
   "workspaces": [
     "apps/*",
