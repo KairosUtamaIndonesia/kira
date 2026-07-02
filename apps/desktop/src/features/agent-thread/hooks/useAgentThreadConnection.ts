@@ -148,6 +148,14 @@ function useAgentThreadConnection(
       if (event.type === "queue_update" && Array.isArray(event.steering)) {
         setPendingSteers(event.steering as string[]);
       }
+      if (event.type === "tree_updated") {
+        if (Array.isArray(event.nodes)) {
+          setTreeNodes(event.nodes as SessionTreeNodeJson[]);
+        }
+        if (typeof event.currentLeafId === "string") {
+          setCurrentLeafId(event.currentLeafId);
+        }
+      }
     }
   };
 
@@ -518,7 +526,6 @@ class PiAgentSocket {
   private readonly socket: WebSocket;
   private readonly listeners = new Set<PiEventListener>();
   private readonly pendingCommands = new Map<string, PendingCommand>();
-  private aborted = false;
   private activePrompt: ActivePrompt | undefined;
 
   private constructor(socket: WebSocket, ready: Promise<void>) {
@@ -563,7 +570,6 @@ class PiAgentSocket {
   }
 
   async abort() {
-    this.aborted = true;
     const id = crypto.randomUUID();
     await this.sendCommand({ id, type: "abort" });
     const activePrompt = this.activePrompt;
@@ -656,9 +662,6 @@ class PiAgentSocket {
     }
     if (isPiCommandResponse(payload)) {
       this.handleResponse(payload);
-      return;
-    }
-    if (this.aborted) {
       return;
     }
     if (isPromptError(payload)) {
