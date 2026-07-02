@@ -1,13 +1,14 @@
 use std::cmp::Ordering;
-use std::collections::HashMap;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
-use std::sync::Mutex;
 
 use ignore::Walk;
 use nucleo_matcher::pattern::{Atom, AtomKind, CaseMatching, Normalization};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use tauri::State;
 use thiserror::Error;
 #[derive(Debug, Deserialize)]
@@ -75,8 +76,9 @@ pub enum ExplorerEntryKind {
     File,
 }
 
-#[derive(Debug, Default)]
-pub struct FileReferenceCache(pub(crate) Mutex<HashMap<PathBuf, Vec<CachedEntry>>>);
+/// Cache of file tree entries with a TTL to avoid re-scanning on rapid keystrokes.
+#[derive(Default)]
+pub struct FileReferenceCache(Mutex<HashMap<PathBuf, (Instant, Vec<CachedEntry>)>>);
 
 #[derive(Debug, Clone)]
 pub(crate) struct CachedEntry {
@@ -154,6 +156,8 @@ pub async fn explorer_directory_children(
     })?
 }
 
+const CACHE_TTL: Duration = Duration::from_secs(2);
+
 #[tauri::command]
 pub async fn explorer_file_reference_suggestions(
     input: ExplorerFileReferenceSuggestionsInput,
@@ -169,26 +173,35 @@ pub async fn explorer_file_reference_suggestions(
     let scoped_query = resolve_file_reference_query(&root_path, &raw_query)?;
     let scope_prefix = compute_scope_prefix(&root_path, &scoped_query.folder_path);
 
-    // Cache lookup (sync, fast)
-    let cached = {
+    // Quick cache check (fast, under lock)
+    let cached_entries = {
         let guard = cache
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        guard.get(&root_path).cloned()
+        guard
+            .get(&root_path)
+            .and_then(|(timestamp, entries)| {
+                if timestamp.elapsed() < CACHE_TTL {
+                    Some(entries.clone())
+                } else {
+                    None
+                }
+            })
     };
 
-    let entries = if let Some(entries) = cached {
-        entries
-    } else {
-        let walked = walk_project_tree(&root_path)?;
-        let mut guard = cache
-            .0
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let walked_clone = walked.clone();
-        guard.insert(root_path.clone(), walked_clone);
-        walked
+    let entries = match cached_entries {
+        Some(entries) => entries,
+        None => {
+            // Cache miss or stale — walk outside the lock.
+            let walked = walk_project_tree(&root_path)?;
+            let mut guard = cache
+                .0
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            guard.insert(root_path.clone(), (Instant::now(), walked.clone()));
+            walked
+        }
     };
 
     let filter = scoped_query.filter;
