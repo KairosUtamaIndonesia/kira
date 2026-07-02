@@ -2,7 +2,8 @@
   "extends": "@kira/tsconfig/react.json",
   "compilerOptions": {
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@kira/agent-pi/protocol": ["./agent-pi/src/protocol/index.ts"]
     }
   },
   "include": ["src"],

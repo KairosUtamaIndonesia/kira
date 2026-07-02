@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 import { Button } from "@/components/ui/button";
+import { useAppSocket } from "@/features/agent-thread/AppSocketProvider";
 import { signOut } from "@/features/desktop-auth/api/desktopAuthApi";
 import { useSigninStatus } from "@/features/desktop-auth/hooks/useSigninStatus";
 import { useOnboardingStore } from "@/features/onboarding";
@@ -10,6 +11,37 @@ function GeneralSettings() {
   const restartOnboarding = useOnboardingStore((state) => state.restart);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
+  const [refreshState, setRefreshState] = useState<"idle" | "refreshing" | "done" | "error">(
+    "idle",
+  );
+
+  const socket = useAppSocket();
+
+  // Listen for model catalog refresh result
+  useEffect(() => {
+    const unsub = socket.onEvent((event: unknown) => {
+      const e = event as { type: string; success?: boolean; error?: string };
+      if (e.type === "model_catalog_refreshed") {
+        setRefreshState(e.success ? "done" : "error");
+        if (!e.success) setErrorMessage(e.error ?? "Refresh failed");
+      }
+    });
+    return unsub;
+  }, [socket]);
+
+  const refreshLabel = (() => {
+    if (refreshState === "refreshing") return "Refreshing…";
+    if (refreshState === "done") return "Refreshed";
+    return "Refresh model catalog";
+  })();
+
+  const handleRefresh = useCallback(() => {
+    setRefreshState("refreshing");
+    setErrorMessage(undefined);
+    socket.send({ type: "refresh_model_catalog" });
+    // Reset to idle after a few seconds
+    setTimeout(() => setRefreshState((s) => (s === "done" ? "idle" : s)), 3000);
+  }, [socket]);
 
   async function handleSignOut() {
     setErrorMessage(undefined);
@@ -75,6 +107,29 @@ function GeneralSettings() {
           <Button variant="outline" className="mt-3" onClick={restartOnboarding}>
             Replay quick start
           </Button>
+        </div>
+
+        <div className="border-t border-border pt-4">
+          <h3 className="text-sm font-medium">Model catalog</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Refresh the model list from the cloud. New or updated models will be available
+            immediately.
+          </p>
+          <div className="mt-3 flex items-center gap-3">
+            <Button
+              variant="outline"
+              disabled={refreshState === "refreshing"}
+              onClick={handleRefresh}
+            >
+              {refreshLabel}
+            </Button>
+            {refreshState === "done" ? (
+              <span className="text-sm text-muted-foreground">Models updated</span>
+            ) : undefined}
+            {refreshState === "error" ? (
+              <span className="text-sm text-destructive">Refresh failed — check connection</span>
+            ) : undefined}
+          </div>
         </div>
       </div>
     </section>
