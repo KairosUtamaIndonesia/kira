@@ -6,7 +6,7 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 
 import { Agent } from "@earendil-works/pi-agent-core";
 
-import { authStorage, modelRegistry } from "./model-registry";
+import { authStorage, getDefaultModel, modelRegistry } from "./model-registry";
 
 const SYSTEM_PROMPT = [
   "You generate git commit messages in conventional commits format.",
@@ -24,8 +24,9 @@ async function generateCommitMessage(
   input: GenerateCommitMessageInput,
 ): Promise<GenerateCommitMessageResult> {
   try {
-    const available = await modelRegistry.getAvailable();
-    const model = available[0];
+    const defaultRef = getDefaultModel();
+    const resolved = defaultRef !== undefined ? modelRegistry.find(defaultRef.provider, defaultRef.id) : undefined;
+    const model = resolved !== undefined ? resolved : (await modelRegistry.getAvailable())[0];
     if (!model) return { error: "No models available" };
 
     const agent = new Agent({

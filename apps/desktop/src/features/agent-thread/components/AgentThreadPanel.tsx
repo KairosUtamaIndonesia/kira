@@ -26,11 +26,19 @@ type AgentThreadPanelProps = {
   isActive?: boolean;
 };
 
-function AgentThreadPanel({ params }: AgentThreadPanelProps) {
+function AgentThreadPanel({ api, params, onRename }: AgentThreadPanelProps) {
   const { agentThreadShowRawEventStream } = useAppearanceTheme();
   const dragCounterRef = useRef(0);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [isTreeOpen, setIsTreeOpen] = useState(false);
+
+  const handleAutoTitled = useCallback(
+    async (title: string) => {
+      api.setTitle(title);
+      if (onRename !== undefined) await onRename(params.panelId, title);
+    },
+    [api, onRename, params.panelId],
+  );
 
   const {
     messages,
@@ -44,7 +52,7 @@ function AgentThreadPanel({ params }: AgentThreadPanelProps) {
     sendPrompt,
     abortPrompt,
     navigateTree,
-  } = useAgentThreadConnection(params);
+  } = useAgentThreadConnection(params, { onAutoTitled: handleAutoTitled });
 
   const transcript: PiTranscriptState = { messages, isStreaming, model };
   const items = buildAgentThreadTranscript(transcript, toolOutputs);

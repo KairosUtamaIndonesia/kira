@@ -12,6 +12,9 @@ import { treeStateFrom } from "../agentThreadDisplay";
 import { useAppSocket } from "../AppSocketProvider";
 import { getCloudConfig } from "../cloudConfig";
 import { type TranscriptMessage } from "../piTranscriptState";
+import { requestOverSocket } from "../socketRequest";
+import { setAgentThreadTitleGenerationState } from "../agentThreadStatusStore";
+
 
 export type AgentThreadRuntimeState =
   | { status: "starting" }
@@ -39,6 +42,13 @@ export interface UseAgentConnectionResult {
   abortPrompt: () => Promise<void>;
   navigateTree: (entryId: string) => Promise<void>;
 }
+
+const maxImmediateTitleLength = 50;
+
+function isUntitledThreadTitle(title: string) {
+  return title === "New Thread" || title === "Agent Thread";
+}
+
 
 // ── processEvent — directly mutates the messages array ────
 
@@ -163,7 +173,10 @@ function upsertStreaming(
 
 // ── Hook ─────────────────────────────────────────────────────────────
 
-export function useAgentThreadConnection(params: AgentThreadPanelParams): UseAgentConnectionResult {
+export function useAgentThreadConnection(
+  params: AgentThreadPanelParams,
+  options?: { onAutoTitled?: (title: string) => void | Promise<void> },
+): UseAgentConnectionResult {
   const [runtimeState, setRuntimeState] = useState<AgentThreadRuntimeState>({ status: "starting" });
   const [messages, setMessages] = useState<TranscriptMessage[]>([]);
   const [isStreaming, setStreaming] = useState(false);
@@ -172,6 +185,15 @@ export function useAgentThreadConnection(params: AgentThreadPanelParams): UseAge
   const [isCompacting, setIsCompacting] = useState(false);
   const [toolOutputs, setToolOutputs] = useState<Record<string, string>>({});
   const closedRef = useRef(false);
+
+  const hasAutoTitledRef = useRef(false);
+  // eslint-disable-next-line unicorn/no-useless-undefined -- required: no overload for useRef<T>()
+  const pendingPromptRef = useRef<string | undefined>(undefined);
+  const onAutoTitled = options === undefined ? undefined : options.onAutoTitled;
+  const onAutoTitledRef = useRef(onAutoTitled);
+  onAutoTitledRef.current = onAutoTitled;
+  const messagesRef = useRef<TranscriptMessage[]>([]);
+  messagesRef.current = messages;
 
   const socket = useAppSocket();
 
@@ -258,6 +280,7 @@ export function useAgentThreadConnection(params: AgentThreadPanelParams): UseAge
         case "agent_end":
           setRuntimeState({ status: "ready" });
           processEvent(e, setMessages, setStreaming, setToolOutputs);
+          settleAutoTitleRef.current();
           break;
 
         default:
@@ -272,6 +295,7 @@ export function useAgentThreadConnection(params: AgentThreadPanelParams): UseAge
     async (message: string): Promise<boolean> => {
       setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "user", text: message }]);
       socket.send({ type: "prompt", threadId: params.threadId, message });
+      armAutoTitleRef.current(message);
       return true;
     },
     [socket, params.threadId],
@@ -287,6 +311,87 @@ export function useAgentThreadConnection(params: AgentThreadPanelParams): UseAge
     },
     [socket, params.threadId],
   );
+
+  function armAutoTitle(message: string) {
+    if (hasAutoTitledRef.current || !isUntitledThreadTitle(params.title)) {
+      return;
+    }
+    const trimmed = message.trim();
+    if (trimmed.length <= maxImmediateTitleLength) {
+      hasAutoTitledRef.current = true;
+      void applyTitle(trimmed);
+    } else if (pendingPromptRef.current === undefined) {
+      pendingPromptRef.current = trimmed;
+    }
+  }
+
+  function settleAutoTitle() {
+    const prompt = pendingPromptRef.current;
+    if (prompt === undefined) {
+      return;
+    }
+    pendingPromptRef.current = undefined;
+    const msgs = messagesRef.current;
+    let assistantText = "";
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const candidate = msgs[i];
+      if (candidate !== undefined && candidate.role === "assistant") {
+        assistantText = candidate.text;
+        break;
+      }
+    }
+    if (assistantText.length === 0) {
+      return;
+    }
+    void generateTitleFromModel(prompt, assistantText);
+  }
+
+  async function generateTitleFromModel(prompt: string, assistantText: string) {
+    if (hasAutoTitledRef.current || assistantText.length === 0) {
+      return;
+    }
+
+    setAgentThreadTitleGenerationState(params.threadId, { status: "generating" });
+
+    const requestId = crypto.randomUUID();
+    let title = "";
+    try {
+      title = await requestOverSocket<string>(
+        socket.send,
+        socket.onEvent,
+        { type: "generate_title", requestId, prompt, assistantText },
+        (event: ServerEvent) => {
+          if (event.type === "title_generated" && event.requestId === requestId) {
+            return event.title;
+          }
+          if (event.type === "title_generation_failed" && event.requestId === requestId) {
+            throw new Error(event.error);
+          }
+          return;
+        },
+      );
+    } catch {
+      // Title generation is cosmetic; silently fail.
+    }
+
+    if (title.length > 0 && !hasAutoTitledRef.current) {
+      hasAutoTitledRef.current = true;
+      await applyTitle(title);
+    }
+    setAgentThreadTitleGenerationState(params.threadId, { status: "done" });
+  }
+
+  async function applyTitle(title: string) {
+    const cb = onAutoTitledRef.current;
+    if (cb !== undefined) {
+      await cb(title);
+    }
+  }
+
+  const armAutoTitleRef = useRef(armAutoTitle);
+  armAutoTitleRef.current = armAutoTitle;
+  const settleAutoTitleRef = useRef(settleAutoTitle);
+  settleAutoTitleRef.current = settleAutoTitle;
 
   return {
     messages,

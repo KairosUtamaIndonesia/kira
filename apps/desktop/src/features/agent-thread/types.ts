@@ -13,13 +13,6 @@ type AgentThreadPanelParams = {
   title: string;
 };
 
-type GenerateAgentThreadTitleInput = {
-  projectId: string;
-  sessionId: string;
-  threadId: string;
-  prompt: string;
-  assistantText: string;
-};
 
 /** One transcript entry. Assistant messages carry raw content blocks (pi TUI style).
  *  During streaming, tool/thinking roles are used for in-flight display;
@@ -44,7 +37,6 @@ type PiTranscriptState = {
 
 export type {
   AgentThreadPanelParams,
-  GenerateAgentThreadTitleInput,
   PiTranscriptState,
   PrepareAgentThreadInput,
   TranscriptMessage,

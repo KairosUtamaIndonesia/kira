@@ -99,8 +99,6 @@ pub fn run() -> tauri::Result<()> {
             desktop_signin::desktop_signin_status,
             desktop_signin::desktop_signin_begin,
             desktop_signin::desktop_sign_out,
-            agent_runtime::generate_commit_message,
-            agent_runtime::generate_agent_thread_title,
             agent_runtime::prepare_agent_thread,
             agent_runtime::get_cloud_config,
             agent_runtime::start_agent_runtime,

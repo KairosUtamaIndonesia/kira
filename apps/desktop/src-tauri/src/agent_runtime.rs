@@ -8,7 +8,6 @@ use crate::persistence::PersistenceStore;
 // ── Error ────────────────────────────────────────────────────────────
 
 #[derive(Debug, Error, Serialize)]
-#[allow(dead_code)]
 pub enum AgentRuntimeError {
     #[error("{0} is not configured")]
     ConfigMissing(String),
@@ -18,29 +17,8 @@ pub enum AgentRuntimeError {
     MissingSessionId,
     #[error("Agent Thread id is required")]
     MissingThreadId,
-    #[error("Agent Thread title prompt is required")]
-    MissingTitlePrompt,
-    #[error("Agent Thread assistant text is required")]
-    MissingAssistantText,
-    #[error("Project {project_id} with Session {session_id} was not found")]
-    ProjectSessionNotFound {
-        project_id: String,
-        session_id: String,
-    },
-    #[error("Project folder does not exist: {path}")]
-    ProjectDirectoryNotFound { path: String },
-    #[error("Project folder is not a directory: {path}")]
-    ProjectDirectoryNotDirectory { path: String },
-    #[error("failed to query Project context for Agent Thread: {_0}")]
-    QueryProject(String),
-    #[error("failed to reserve an agent runtime port: {0}")]
-    ReservePort(String),
-    #[error("failed to generate title for Agent Thread {thread_id}: {reason}")]
-    GenerateTitle { thread_id: String, reason: String },
     #[error("Agent runtime startup failed: {reason}")]
     RuntimeStartFailed { reason: String },
-    #[error("failed to generate commit message: {0}")]
-    GenerateCommitMessage(String),
 }
 
 // ── State ────────────────────────────────────────────────────────────
@@ -143,46 +121,7 @@ pub async fn prepare_agent_thread(
     })
 }
 
-// ── Title generation ────────────────────────────────────────────────
 
-#[derive(Deserialize)]
-#[allow(clippy::struct_field_names)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct GenerateAgentThreadTitleInput {
-    pub(crate) project_id: String,
-    pub(crate) session_id: String,
-    pub(crate) thread_id: String,
-    pub(crate) prompt: String,
-    pub(crate) assistant_text: String,
-}
-
-#[tauri::command]
-pub async fn generate_agent_thread_title(
-    input: GenerateAgentThreadTitleInput,
-    _app: tauri::AppHandle,
-    _registry: tauri::State<'_, AgentRuntimeRegistry>,
-    _store: tauri::State<'_, PersistenceStore>,
-) -> Result<String, AgentRuntimeError> {
-    validate_required_field(&input.project_id, "project_id")?;
-    validate_required_field(&input.session_id, "session_id")?;
-    validate_required_field(&input.thread_id, "thread_id")?;
-    validate_required_field(&input.prompt, "prompt")?;
-    validate_required_field(&input.assistant_text, "assistant_text")?;
-
-    // TODO: generate title using Pi's Agent (same as old title-generation.ts)
-    // For now, return a placeholder
-    Ok("Agent Thread".to_string())
-}
-
-// ── Commit message generation ────────────────────────────────────────
-
-#[derive(Deserialize)]
-#[allow(dead_code)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct GenerateCommitMessageInput {
-    pub(crate) staged_diff: String,
-    pub(crate) recent_log: String,
-}
 
 // ── Cloud config ─────────────────────────────────────────────────────
 
@@ -225,14 +164,6 @@ pub async fn get_cloud_config() -> Result<CloudConfig, AgentRuntimeError> {
     Ok(CloudConfig { url, api_key })
 }
 
-#[tauri::command]
-pub async fn generate_commit_message(
-    _input: GenerateCommitMessageInput,
-) -> Result<String, AgentRuntimeError> {
-    // TODO: generate using Pi's Agent (same as old commit-message-generation.ts)
-    // For now, return a placeholder
-    Ok("chore: update".to_string())
-}
 
 // ── Shutdown ─────────────────────────────────────────────────────────
 
@@ -264,8 +195,6 @@ fn validate_required_field(value: &str, name: &str) -> Result<(), AgentRuntimeEr
             "project_id" => AgentRuntimeError::MissingProjectId,
             "session_id" => AgentRuntimeError::MissingSessionId,
             "thread_id" => AgentRuntimeError::MissingThreadId,
-            "prompt" => AgentRuntimeError::MissingTitlePrompt,
-            "assistant_text" => AgentRuntimeError::MissingAssistantText,
             _ => AgentRuntimeError::RuntimeStartFailed {
                 reason: format!("missing required field: {name}"),
             },

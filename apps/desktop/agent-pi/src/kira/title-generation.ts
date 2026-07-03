@@ -6,7 +6,7 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 
 import { Agent } from "@earendil-works/pi-agent-core";
 
-import { authStorage, modelRegistry } from "./model-registry";
+import { authStorage, getDefaultModel, modelRegistry } from "./model-registry";
 
 const TITLE_SYSTEM_PROMPT = [
   "You generate concise titles for Kira Agent Threads.",
@@ -15,7 +15,6 @@ const TITLE_SYSTEM_PROMPT = [
 ].join("\n");
 
 type GenerateAgentThreadTitleInput = {
-  projectPath: string;
   prompt: string;
   assistantText: string;
 };
@@ -25,8 +24,9 @@ type GenerateAgentThreadTitleOutput = { title: string };
 async function generateAgentThreadTitle(
   input: GenerateAgentThreadTitleInput,
 ): Promise<GenerateAgentThreadTitleOutput> {
-  const available = await modelRegistry.getAvailable();
-  const model = available[0];
+  const defaultRef = getDefaultModel();
+  const resolved = defaultRef !== undefined ? modelRegistry.find(defaultRef.provider, defaultRef.id) : undefined;
+  const model = resolved !== undefined ? resolved : (await modelRegistry.getAvailable())[0];
   if (!model) throw new Error("No models available for title generation");
 
   const agent = new Agent({

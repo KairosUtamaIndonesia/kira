@@ -29,7 +29,14 @@ export type ClientCommand =
   | { type: "navigate_tree"; threadId: string; entryId: string; summarize?: boolean }
   | { type: "tool_ui_response"; id: string; value?: unknown; cancelled?: boolean }
   // Global (no thread context)
-  | { type: "refresh_model_catalog" };
+  | { type: "refresh_model_catalog" }
+  | { type: "generate_title"; requestId: string; prompt: string; assistantText: string }
+  | {
+      type: "generate_commit_message";
+      requestId: string;
+      stagedDiff: string;
+      recentLog: string;
+    };
 
 export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
@@ -74,7 +81,11 @@ export type ServerEvent =
   // Global events (no thread context)
   | { type: "error"; message: string }
   | { type: "model_catalog_refreshed"; success: true }
-  | { type: "model_catalog_refreshed"; success: false; error: string };
+  | { type: "model_catalog_refreshed"; success: false; error: string }
+  | { type: "title_generated"; requestId: string; title: string }
+  | { type: "title_generation_failed"; requestId: string; error: string }
+  | { type: "commit_message_generated"; requestId: string; commitMessage: string }
+  | { type: "commit_message_generation_failed"; requestId: string; error: string };
 
 // ── Shared types ────────────────────────────────────────────────────
 

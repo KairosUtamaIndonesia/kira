@@ -26,6 +26,8 @@ import {
 import { extractText, serializeMessages } from "./serialize";
 import { attachSession, pushState } from "./session-thread";
 import { askUserTool } from "./tools/ask-user-tool";
+import { generateAgentThreadTitle } from "./title-generation";
+import { generateCommitMessage } from "./commit-message-generation";
 
 const AGENT_DIR =
   process.env.KIRA_AGENT_DIR ??
@@ -285,6 +287,24 @@ export class SessionHost {
                 error: (e as Error).message,
               }),
             );
+          }
+          break;
+        case "generate_title":
+          try {
+            const { title } = await generateAgentThreadTitle({ prompt: cmd.prompt, assistantText: cmd.assistantText });
+            ws.send(JSON.stringify({ type: "title_generated", requestId: cmd.requestId, title }));
+          } catch (e) {
+            ws.send(JSON.stringify({ type: "title_generation_failed", requestId: cmd.requestId, error: (e as Error).message }));
+          }
+          break;
+        case "generate_commit_message":
+          {
+            const result = await generateCommitMessage({ stagedDiff: cmd.stagedDiff, recentLog: cmd.recentLog });
+            if ("commitMessage" in result) {
+              ws.send(JSON.stringify({ type: "commit_message_generated", requestId: cmd.requestId, commitMessage: result.commitMessage }));
+            } else {
+              ws.send(JSON.stringify({ type: "commit_message_generation_failed", requestId: cmd.requestId, error: result.error }));
+            }
           }
           break;
       }
