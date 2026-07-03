@@ -207,14 +207,8 @@ struct BundledSkillBody {
     body: String,
 }
 
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-struct BundledSkillBodyResponse {
-    name: String,
-    body: String,
-}
 
-#[allow(dead_code, clippy::unused_async)]
+#[allow(clippy::unused_async)]
 async fn fetch_bundled_skill_body(
     _name: &str,
     _registry: &tauri::State<'_, AgentRuntimeRegistry>,
@@ -224,22 +218,6 @@ async fn fetch_bundled_skill_body(
     None
 }
 
-#[allow(dead_code)]
-fn urlencode(value: &str) -> String {
-    use std::fmt::Write as _;
-    let mut encoded = String::with_capacity(value.len());
-    for byte in value.as_bytes() {
-        match *byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                encoded.push(*byte as char);
-            }
-            _ => {
-                let _ = write!(encoded, "%{byte:02X}");
-            }
-        }
-    }
-    encoded
-}
 
 fn expand_disk_skill(
     root: &Path,
