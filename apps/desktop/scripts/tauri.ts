@@ -92,7 +92,6 @@ async function runTauriDev(args: readonly string[]) {
     KIRA_CLOUD_API_URL: cloudUrl ?? "",
     KIRA_API_KEY: process.env.KIRA_API_KEY ?? "",
     KIRA_AGENT_DIR: agentDir,
-    KIRA_AGENT_PI_DATA_DIR: path.resolve(agentDir, ".."),
     KIRA_VITE_PORT: String(devPort),
     KIRA_VITE_HMR_PORT: String(hmrPort),
   };
