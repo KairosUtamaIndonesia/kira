@@ -28,13 +28,15 @@ import { attachSession, pushState } from "./session-thread";
 import { askUserTool } from "./tools/ask-user-tool";
 import { generateAgentThreadTitle } from "./title-generation";
 import { generateCommitMessage } from "./commit-message-generation";
+import guardrailsExtension from "./extensions/guardrails/index";
+import memoryExtension from "./extensions/memory/index";
 
 const AGENT_DIR =
   process.env.KIRA_AGENT_DIR ??
   (process.platform === "win32"
     ? `${process.env.APPDATA}/Kira/agent`
     : `${process.env.HOME}/.config/kira/agent`);
-const EXTENSIONS: [] = [];
+const EXTENSIONS = [guardrailsExtension, memoryExtension];
 
 // ── Types ───────────────────────────────────────────────────────────
 
