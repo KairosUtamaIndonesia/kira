@@ -16,6 +16,7 @@ const envPort = Number.parseInt(process.env.PORT ?? "", 10);
 const PORT = Number.isNaN(envPort) ? 19876 : envPort;
 
 async function main() {
+  console.error("[agent-pi] starting...");
   const envCloudUrl = process.env.KIRA_CLOUD_API_URL || process.env.KIRA_CLOUD_URL;
   const envApiKey = process.env.KIRA_API_KEY;
 
@@ -44,6 +45,7 @@ async function main() {
   await new Promise<void>((resolve) => wss.once("listening", resolve));
 
   wss.on("connection", (ws) => {
+    console.error("[agent-pi] client connected");
     // Serialize command processing per connection: open_thread must not run
     // before register_project finishes. Long-running commands (prompt/compact)
     // are dispatched fire-and-forget inside SessionHost so abort still works.
@@ -57,8 +59,9 @@ async function main() {
         ws.send(JSON.stringify({ type: "error", message: "Bad JSON" }));
         return;
       }
-
       const prev = queue;
+      const threadId = "threadId" in cmd ? cmd.threadId : undefined;
+      console.error(`[agent-pi] cmd: ${cmd.type}${threadId !== undefined ? ` thread=${threadId.slice(0, 8)}` : ""}`);
       queue = (async () => {
         try {
           await prev;
@@ -90,8 +93,8 @@ async function main() {
       })();
     });
   });
+  console.error(`[agent-pi] listening on ws://127.0.0.1:${PORT}`);
 
-  console.log(`sidecar ready on port ${PORT}`);
   process.on("SIGTERM", () => {
     wss.close();
     process.exit(0);
@@ -105,7 +108,8 @@ async function main() {
 (async () => {
   try {
     await main();
-  } catch {
+  } catch (err) {
+    console.error(err);
     process.exit(1);
   }
 })();
