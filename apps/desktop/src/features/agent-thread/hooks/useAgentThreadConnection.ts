@@ -28,6 +28,15 @@ export type AgentThreadContextUsageState =
   | { status: "empty" }
   | { status: "ready"; usage: { usedTokens: number; contextWindow: number; modelId: string } };
 
+export type ExtensionUiRequest = {
+  id: string;
+  method: "select" | "confirm" | "input";
+  title: string;
+  options?: string[];
+  message?: string;
+  placeholder?: string;
+};
+
 export interface UseAgentConnectionResult {
   messages: TranscriptMessage[];
   isStreaming: boolean;
@@ -38,6 +47,10 @@ export interface UseAgentConnectionResult {
   isCompacting: boolean;
   /** In-flight tool output (toolCallId -> text), updated by tool_execution_update. */
   toolOutputs: Record<string, string>;
+  /** Pending extension UI requests awaiting user response. */
+  extensionUiRequests: ExtensionUiRequest[];
+  /** Respond to an extension UI request. */
+  respondToExtensionUi: (id: string, response: { value?: string; confirmed?: boolean; cancelled?: boolean }) => void;
   sendPrompt: (message: string) => Promise<boolean>;
   abortPrompt: () => Promise<void>;
   navigateTree: (entryId: string) => Promise<void>;
@@ -184,6 +197,7 @@ export function useAgentThreadConnection(
   const [treeEntries, setTreeEntries] = useState<TreeEntry[]>([]);
   const [isCompacting, setIsCompacting] = useState(false);
   const [toolOutputs, setToolOutputs] = useState<Record<string, string>>({});
+  const [extensionUiRequests, setExtensionUiRequests] = useState<ExtensionUiRequest[]>([]);
   const closedRef = useRef(false);
 
   const hasAutoTitledRef = useRef(false);
@@ -283,6 +297,25 @@ export function useAgentThreadConnection(
           settleAutoTitleRef.current();
           break;
 
+        case "extension_ui_request":
+          console.debug("[ext-ui] received extension_ui_request:", e.method, e.id, e.title);
+          if (e.method === "notify") {
+            // Fire-and-forget notifications — could show a toast in the future
+            break;
+          }
+          setExtensionUiRequests((prev) => [
+            ...prev,
+            {
+              id: e.id,
+              method: e.method,
+              title: e.title,
+              ...(e.method === "select" && { options: e.options }),
+              ...(e.method === "confirm" && { message: e.message }),
+              ...(e.method === "input" && { placeholder: e.placeholder }),
+            },
+          ]);
+          break;
+
         default:
           processEvent(e, setMessages, setStreaming, setToolOutputs);
           break;
@@ -290,6 +323,14 @@ export function useAgentThreadConnection(
     });
     return unsub;
   }, [socket, params.threadId]);
+
+  const respondToExtensionUi = useCallback(
+    (id: string, response: { value?: string; confirmed?: boolean; cancelled?: boolean }) => {
+      setExtensionUiRequests((prev) => prev.filter((r) => r.id !== id));
+      socket.send({ type: "extension_ui_response", id, ...response });
+    },
+    [socket],
+  );
 
   const sendPrompt = useCallback(
     async (message: string): Promise<boolean> => {
@@ -402,6 +443,8 @@ export function useAgentThreadConnection(
     currentLeafId,
     isCompacting,
     toolOutputs,
+    extensionUiRequests,
+    respondToExtensionUi,
     sendPrompt,
     abortPrompt,
     navigateTree,

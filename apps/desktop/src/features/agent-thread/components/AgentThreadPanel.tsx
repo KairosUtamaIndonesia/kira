@@ -17,6 +17,7 @@ import { AgentThreadRawEventStream } from "./AgentThreadRawEventStream";
 import { AgentThreadTranscript } from "./AgentThreadTranscript";
 import { Composer } from "./Composer";
 import { SessionTree } from "./SessionTree";
+import { ExtensionUiInline } from "./ExtensionUiModal";
 
 type AgentThreadPanelProps = {
   api: { setTitle(title: string): void };
@@ -39,7 +40,6 @@ function AgentThreadPanel({ api, params, onRename }: AgentThreadPanelProps) {
     },
     [api, onRename, params.panelId],
   );
-
   const {
     messages,
     isStreaming,
@@ -49,6 +49,8 @@ function AgentThreadPanel({ api, params, onRename }: AgentThreadPanelProps) {
     treeNodes,
     runtimeState,
     toolOutputs,
+    extensionUiRequests,
+    respondToExtensionUi,
     sendPrompt,
     abortPrompt,
     navigateTree,
@@ -124,6 +126,7 @@ function AgentThreadPanel({ api, params, onRename }: AgentThreadPanelProps) {
           runtimeState={runtimeState}
         />
       </div>
+      <ExtensionUiInline requests={extensionUiRequests} onRespond={respondToExtensionUi} />
       <footer className="relative shrink-0 bg-editor-surface p-2 before:pointer-events-none before:absolute before:-top-8 before:right-0 before:left-0 before:h-8 before:bg-gradient-to-t before:from-editor-surface before:to-transparent before:content-['']">
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-1.5">
           {treeContent}
