@@ -18,6 +18,7 @@ export type ClientCommand =
       cloudApiKey: string;
     }
   // Thread management
+  | { type: "register_project"; projectPath: string; projectId: string; sessionId: string; cloudApiUrl: string; cloudApiKey: string }
   | { type: "open_thread"; threadId: string; projectPath: string; sessionId: string }
   | { type: "close_thread"; threadId: string }
   // Thread actions
@@ -27,7 +28,7 @@ export type ClientCommand =
   | { type: "compact"; threadId: string; customInstructions?: string }
   | { type: "get_tree"; threadId: string }
   | { type: "navigate_tree"; threadId: string; entryId: string; summarize?: boolean }
-  | { type: "tool_ui_response"; id: string; value?: unknown; cancelled?: boolean }
+  | { type: "extension_ui_response"; id: string; value?: string; confirmed?: boolean; cancelled?: boolean }
   // Global (no thread context)
   | { type: "refresh_model_catalog" }
   | { type: "generate_title"; requestId: string; prompt: string; assistantText: string }
@@ -66,14 +67,38 @@ export type ThreadServerEvent =
   // Tree
   | { type: "tree_data"; entries: TreeEntry[] }
   | { type: "tree_navigated"; cancelled: boolean }
-  // Extension UI — tool needs user input
+  // Extension UI — extension/tool needs user input
   | {
-      type: "tool_ui_request";
+      type: "extension_ui_request";
       id: string;
-      toolCallId: string;
-      toolName: string;
-      input: Record<string, unknown>;
-    };
+      method: "select";
+      title: string;
+      options: string[];
+      timeout?: number;
+    }
+  | {
+      type: "extension_ui_request";
+      id: string;
+      method: "confirm";
+      title: string;
+      message: string;
+      timeout?: number;
+    }
+  | {
+      type: "extension_ui_request";
+      id: string;
+      method: "input";
+      title: string;
+      placeholder?: string;
+      timeout?: number;
+    }
+  | {
+      type: "extension_ui_request";
+      id: string;
+      method: "notify";
+      message: string;
+      notifyType?: "info" | "warning" | "error";
+    }
 
 /** Top-level event — wraps thread events with their threadId. */
 export type ServerEvent =

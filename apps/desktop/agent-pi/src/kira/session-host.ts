@@ -25,6 +25,7 @@ import {
 } from "./model-registry";
 import { extractText, serializeMessages } from "./serialize";
 import { attachSession, pushState } from "./session-thread";
+import { ExtensionUIBridge } from "./extension-ui-bridge";
 import { askUserTool } from "./tools/ask-user-tool";
 import { generateAgentThreadTitle } from "./title-generation";
 import { generateCommitMessage } from "./commit-message-generation";
@@ -77,6 +78,7 @@ interface ProjectState {
 
 export class SessionHost {
   private projects = new Map<string, ProjectState>();
+  private bridge = new ExtensionUIBridge();
   /** Quick lookup: threadId → projectPath, for command routing. */
   private threadToProject = new Map<string, string>();
 
@@ -104,9 +106,7 @@ export class SessionHost {
     });
   }
 
-  // ── Thread management ────────────────────────────────────────────
-
-  async openThread(input: {
+  async openThread(ws: WebSocket, input: {
     threadId: string;
     projectPath: string;
     sessionId: string;
@@ -144,6 +144,11 @@ export class SessionHost {
           ...(model !== undefined && { model }),
           customTools: [askUserTool],
         });
+        // Wire extension UI bridge so ctx.ui.select() works for tools and extensions
+        await host.session.bindExtensions({
+          uiContext: this.bridge.createContext(ws, input.threadId),
+          mode: "rpc",
+        });
         const thread: ThreadSession = {
           session: host,
           sessionReady,
@@ -162,6 +167,7 @@ export class SessionHost {
   }
 
   async closeThread(threadId: string): Promise<void> {
+    this.bridge.rejectAll();
     const projectPath = this.threadToProject.get(threadId);
     if (!projectPath) return;
     this.threadToProject.delete(threadId);
@@ -187,12 +193,11 @@ export class SessionHost {
       switch (cmd.type) {
         // ── Project ──
         case "register_project":
-          await this.registerProject(cmd);
+          await this.registerProject({ projectPath: cmd.projectPath, projectId: cmd.projectId });
           break;
 
-        // ── Thread management ──
         case "open_thread":
-          await this.openThread(cmd);
+          await this.openThread(ws, cmd);
           this.threadToProject.set(cmd.threadId, cmd.projectPath);
           await this.sendSessionSnapshot(ws, cmd.threadId);
           // Wire event forwarding so streaming events reach the WS
@@ -272,8 +277,8 @@ export class SessionHost {
           });
           break;
 
-        case "tool_ui_response":
-          // Not yet wired — extension UI adapter handles this via ctx.ui
+        case "extension_ui_response":
+          this.bridge.resolve(cmd.id, cmd);
           break;
 
         // ── Global ──
