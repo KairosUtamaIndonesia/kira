@@ -28,7 +28,7 @@ import {
   MEMORY_FILE,
   USER_FILE,
 } from "../constants.js";
-import { AGENT_ROOT } from "../paths.js";
+import { getAgentRoot } from "../paths.js";
 import { scanContent } from "./content-scanner.js";
 import { normalizeMemoryLookupText } from "./memory-lookup.js";
 
@@ -62,7 +62,7 @@ export class MemoryStore {
   // ─── Path helpers ───
 
   private get memoryDir(): string {
-    return this.config.memoryDir ?? path.join(AGENT_ROOT, "data");
+    return this.config.memoryDir ?? path.join(getAgentRoot(), "data");
   }
 
   private pathFor(target: "memory" | "user" | "failure"): string {

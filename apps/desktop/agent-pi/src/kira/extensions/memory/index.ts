@@ -41,7 +41,7 @@ import { setupSessionFlush } from "./handlers/session-flush.js";
 import { registerSkillsCommand } from "./handlers/skills-command.js";
 import { registerSwitchProjectCommand } from "./handlers/switch-project.js";
 import { registerSyncMarkdownMemoriesCommand } from "./handlers/sync-markdown-memories.js";
-import { AGENT_ROOT } from "./paths.js";
+import { getAgentRoot } from "./paths.js";
 import { detectProject, detectProjectSkills } from "./project.js";
 import { buildPromptContext, buildSessionContext } from "./prompt-context.js";
 import { DatabaseManager } from "./store/db.js";
@@ -87,7 +87,7 @@ export function registerProjectSkillDiscoveryHandler(
 export default async function memoryExtension(pi: ExtensionAPI) {
   const config = loadConfig();
 
-  const globalDir = config.memoryDir ?? path.join(AGENT_ROOT, "data");
+  const globalDir = config.memoryDir ?? path.join(getAgentRoot(), "data");
   const store = new MemoryStore({ ...config, memoryDir: globalDir });
   const projectId = getCurrentProjectId();
   const project = detectProject(config.projectsMemoryDir, undefined, projectId);

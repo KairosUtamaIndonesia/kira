@@ -10,7 +10,7 @@ import * as path from "node:path";
 
 import type { SkillDocument, SkillIndex, SkillResult, SkillScope } from "../types.js";
 
-import { AGENT_ROOT } from "../paths.js";
+import { getAgentRoot } from "../paths.js";
 import { scanContent } from "./content-scanner.js";
 import {
   buildSkillId,
@@ -45,7 +45,7 @@ export class SkillStore {
   private projectName: string | undefined;
 
   constructor(options: SkillStoreOptions = {}) {
-    this.globalSkillsDir = options.globalSkillsDir ?? path.join(AGENT_ROOT, "skills");
+    this.globalSkillsDir = options.globalSkillsDir ?? path.join(getAgentRoot(), "skills");
     this.projectSkillsDir = options.projectSkillsDir ?? undefined;
     this.projectName = options.projectName ?? undefined;
   }

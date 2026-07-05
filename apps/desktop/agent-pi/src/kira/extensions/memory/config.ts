@@ -22,7 +22,7 @@ import {
   DEFAULT_FAILURE_INJECTION_MAX_AGE_DAYS,
   DEFAULT_FAILURE_INJECTION_MAX_ENTRIES,
 } from "./constants.js";
-import { AGENT_ROOT, normalizeConfiguredMemoryDir, normalizeProjectsMemoryDir } from "./paths.js";
+import { getAgentRoot, normalizeConfiguredMemoryDir, normalizeProjectsMemoryDir } from "./paths.js";
 
 const MEMORY_OVERFLOW_STRATEGIES: ReadonlySet<MemoryOverflowStrategy> =
   new Set<MemoryOverflowStrategy>(["auto-consolidate", "reject", "fifo-evict"]);
@@ -78,14 +78,14 @@ const DEFAULT_CONFIG: MemoryConfig = {
   sessionSearch: { variant: "legacy" },
 };
 
-export const DEFAULT_CONFIG_PATH = path.join(AGENT_ROOT, "config.json");
+export function getDefaultConfigPath(): string { return path.join(getAgentRoot(), "config.json"); }
 
 const isNonNegativeNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value) && value >= 0;
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((item) => typeof item === "string");
 
-export function loadConfig(configPath = DEFAULT_CONFIG_PATH): MemoryConfig {
+export function loadConfig(configPath = getDefaultConfigPath()): MemoryConfig {
   try {
     if (fs.existsSync(configPath)) {
       const raw = fs.readFileSync(configPath, "utf-8");
