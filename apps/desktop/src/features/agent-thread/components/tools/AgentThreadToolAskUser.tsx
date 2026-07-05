@@ -1,7 +1,7 @@
 /**
  * AgentThreadToolAskUser — display-only component for the ask_user tool call.
  *
- * The actual interaction (selecting options) goes through the ExtensionUiModal,
+ * The actual interaction (selecting options) goes through the ExtensionUiInline,
  * which handles extension_ui_request/extension_ui_response events. This component
  * shows the questions (input) and answers (output) in the transcript.
  */
@@ -28,6 +28,8 @@ type AskUserQuestion = {
   options: AskUserOption[];
   multiSelect: boolean;
 };
+
+
 
 function AgentThreadToolAskUser({ tool }: Props) {
   const questions = questionsFromTool(tool);
@@ -88,45 +90,89 @@ function AnsweredAnswer({ output }: { output: unknown }) {
   );
 }
 
+/**
+ * Extract display text from the tool result.
+ *
+ * The tool result arrives as either:
+ * 1. A string (the envelope text, extracted by extractResultText in the hook)
+ * 2. An object with a "content" array of text blocks
+ * 3. An object with "details" containing structured answers
+ */
 function answerTextFromOutput(output: unknown): string {
   if (typeof output === "string") return output;
   if (!output || typeof output !== "object") return "";
-  const content = (output as Record<string, unknown>).content;
-  if (Array.isArray(content)) {
-    return content
-      .map((block: unknown) => {
-        if (block && typeof block === "object" && (block as Record<string, unknown>).type === "text") {
-          return (block as Record<string, unknown>).text as string;
-        }
-        return "";
-      })
-      .filter(Boolean)
-      .join("\n");
+
+  // Check for { content: [{ type: "text", text }] }
+  if ("content" in output && Array.isArray(output.content)) {
+    const parts: string[] = [];
+    for (const block of output.content) {
+      if (
+        block &&
+        typeof block === "object" &&
+        "type" in block &&
+        block.type === "text" &&
+        "text" in block &&
+        typeof block.text === "string"
+      ) {
+        parts.push(block.text);
+      }
+    }
+    return parts.join("\n");
   }
-  const details = (output as Record<string, unknown>).details;
-  if (details && typeof details === "object") {
-    return answerTextFromDetails(details as Record<string, unknown>);
+
+  // Fallback: check for { details: { answers } }
+  if ("details" in output && output.details && typeof output.details === "object") {
+    return answerTextFromDetails(output.details);
   }
+
   return "";
 }
 
-function answerTextFromDetails(details: Record<string, unknown>): string {
-  const answers = details.answers;
-  if (!Array.isArray(answers)) return "";
-  return answers
-    .map((a: unknown) => {
-      if (!a || typeof a !== "object") return "";
-      const ans = a as Record<string, unknown>;
-      if (ans.cancelled) return `${ans.question as string}: skipped`;
-      return `${ans.question as string}: ${ans.answer as string}`;
-    })
-    .join("\n");
+function answerTextFromDetails(details: object): string {
+  if (!("answers" in details) || !Array.isArray(details.answers)) return "";
+
+  const lines: string[] = [];
+  for (const a of details.answers) {
+    if (!a || typeof a !== "object") continue;
+
+    const question =
+      "question" in a && typeof a.question === "string" ? a.question : "";
+
+    if ("kind" in a && a.kind === "multi") {
+      // Multi-select: show selected labels
+      const selected =
+        "selected" in a && Array.isArray(a.selected)
+          ? a.selected.filter((s: unknown): s is string => typeof s === "string")
+          : [];
+      const answerText = selected.length > 0 ? selected.join(", ") : "(no input)";
+      lines.push(question + ": " + answerText);
+    } else if ("kind" in a && a.kind === "custom") {
+      // Custom/free-text: show the typed answer
+      const answer =
+        "answer" in a && typeof a.answer === "string" ? a.answer : "(no input)";
+      lines.push(question + ": " + answer);
+    } else if ("kind" in a && a.kind === "option") {
+      // Option selection: show the label
+      const answer =
+        "answer" in a && typeof a.answer === "string" ? a.answer : "(no input)";
+      lines.push(question + ": " + answer);
+    } else if ("cancelled" in a && a.cancelled) {
+      lines.push(question + ": skipped");
+    } else {
+      // Legacy fallback: try answer field
+      const answer =
+        "answer" in a && typeof a.answer === "string" ? a.answer : "(no input)";
+      lines.push(question + ": " + answer);
+    }
+  }
+
+  return lines.join("\n");
 }
 
 function questionsFromTool(tool: AgentThreadToolCallDisplay): AskUserQuestion[] {
   try {
     const parsed = JSON.parse(tool.input);
-    const raw = parsed.questions ?? parsed;
+    const raw: unknown = parsed.questions ?? parsed;
     if (Array.isArray(raw)) return raw.map(questionFromUnknown);
     return [];
   } catch {
@@ -138,13 +184,17 @@ function questionFromUnknown(value: unknown): AskUserQuestion {
   if (!value || typeof value !== "object") {
     return { question: String(value), header: "", options: [], multiSelect: false };
   }
-  const obj = value as Record<string, unknown>;
-  return {
-    question: String(obj.question ?? ""),
-    header: String(obj.header ?? "").slice(0, 16),
-    options: optionsFromUnknown(obj.options),
-    multiSelect: Boolean(obj.multiSelect),
-  };
+  const question =
+    "question" in value && typeof value.question === "string" ? value.question : "";
+  const header =
+    "header" in value && typeof value.header === "string"
+      ? value.header.slice(0, 16)
+      : "";
+  const multiSelect = "multiSelect" in value && Boolean(value.multiSelect);
+  const options =
+    "options" in value ? optionsFromUnknown(value.options) : [];
+
+  return { question, header, options, multiSelect };
 }
 
 function optionsFromUnknown(value: unknown): AskUserOption[] {
@@ -153,12 +203,19 @@ function optionsFromUnknown(value: unknown): AskUserOption[] {
     if (!item || typeof item !== "object") {
       return { label: String(item), description: "", preview: undefined };
     }
-    const obj = item as Record<string, unknown>;
-    return {
-      label: String(obj.label ?? "").slice(0, 60),
-      description: String(obj.description ?? ""),
-      preview: obj.preview !== undefined ? String(obj.preview) : undefined,
-    };
+    const label =
+      "label" in item && typeof item.label === "string"
+        ? item.label.slice(0, 60)
+        : "";
+    const description =
+      "description" in item && typeof item.description === "string"
+        ? item.description
+        : "";
+    const preview =
+      "preview" in item && typeof item.preview === "string"
+        ? item.preview
+        : undefined;
+    return { label, description, preview };
   });
 }
 
