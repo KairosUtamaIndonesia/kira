@@ -91,6 +91,7 @@ async function main() {
     });
   });
 
+  console.log(`sidecar ready on port ${PORT}`);
   process.on("SIGTERM", () => {
     wss.close();
     process.exit(0);
