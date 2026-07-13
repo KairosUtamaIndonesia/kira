@@ -6,6 +6,13 @@ side-by-side with your app, and team management is coming through the cloud cons
 
 This is just the start. More surface, more capability, more agentic.
 
+## [3.5.1](https://github.com/KairosUtamaIndonesia/kira/compare/v3.5.0...v3.5.1) (2026-07-13)
+
+
+### Bug Fixes
+
+* stream tool output and interleave thinking/text blocks live ([0d5d208](https://github.com/KairosUtamaIndonesia/kira/commit/0d5d2080b0c7108b4951af96727a276965227bce))
+
 ## [3.5.0](https://github.com/KairosUtamaIndonesia/kira/compare/v3.4.0...v3.5.0) (2026-07-13)
 
 
