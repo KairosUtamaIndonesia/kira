@@ -5,7 +5,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::agent_runtime::{fetch_bundled_skills, AgentRuntimeRegistry};
+use crate::agent_runtime::{fetch_bundled_skills, AgentRuntimeRegistry, AgentRuntimeState};
 /// Provenance of an installed Skill.
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -208,23 +208,47 @@ struct BundledSkillBody {
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 struct BundledSkillBodyResponse {
     name: String,
     body: String,
 }
 
-#[allow(clippy::unused_async)]
 async fn fetch_bundled_skill_body(
-    _name: &str,
-    _registry: &tauri::State<'_, AgentRuntimeRegistry>,
+    name: &str,
+    registry: &tauri::State<'_, AgentRuntimeRegistry>,
 ) -> Option<BundledSkillBody> {
-    // Skills are loaded by the agent-pi sidecar. Stub until the sidecar exposes
-    // a skill query endpoint over WebSocket.
-    None
+    let connection = {
+        let runtime_guard = registry.lock_runtime();
+        match &*runtime_guard {
+            AgentRuntimeState::Running(runtime) => runtime.connection.clone(),
+            AgentRuntimeState::Starting(_)
+            | AgentRuntimeState::Failed { .. }
+            | AgentRuntimeState::NotStarted => return None,
+        }
+    };
+
+    let response = reqwest::Client::new()
+        .get(format!(
+            "{}/app/skills/{}/body",
+            connection.base_url,
+            urlencode(name)
+        ))
+        .bearer_auth(&connection.token)
+        .send()
+        .await
+        .ok()?;
+
+    if !response.status().is_success() {
+        return None;
+    }
+
+    let parsed = response.json::<BundledSkillBodyResponse>().await.ok()?;
+    Some(BundledSkillBody {
+        name: parsed.name,
+        body: parsed.body,
+    })
 }
 
-#[allow(dead_code)]
 fn urlencode(value: &str) -> String {
     use std::fmt::Write as _;
     let mut encoded = String::with_capacity(value.len());

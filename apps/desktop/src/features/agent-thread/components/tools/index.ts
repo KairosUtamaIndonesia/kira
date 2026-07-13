@@ -20,7 +20,7 @@ import { AgentThreadToolWrite } from "./AgentThreadToolWrite";
 
 type ToolComponentProps = {
   tool: AgentThreadToolCallDisplay;
-  respond?: RespondToHumanRequest;
+  respond: RespondToHumanRequest;
 };
 type ToolComponent = ComponentType<ToolComponentProps>;
 

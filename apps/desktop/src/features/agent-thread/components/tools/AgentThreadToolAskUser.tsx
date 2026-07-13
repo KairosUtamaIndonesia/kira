@@ -10,7 +10,7 @@ import { ToolErrorMessage, ToolInlineRow } from "./ToolPrimitives";
 
 type Props = {
   tool: AgentThreadToolCallDisplay;
-  respond?: RespondToHumanRequest;
+  respond: RespondToHumanRequest;
 };
 
 type AskUserOption = {
@@ -53,9 +53,6 @@ function AgentThreadToolAskUser({ tool, respond }: Props) {
         labelWrap
       />
       <AskUserBody tool={tool} questions={questions} respond={respond} />
-      {respond === undefined ? (
-        <p className="px-1 text-xs text-muted-foreground">Respond function not available.</p>
-      ) : undefined}
     </div>
   );
 }
@@ -67,7 +64,7 @@ function AskUserBody({
 }: {
   tool: AgentThreadToolCallDisplay;
   questions: AskUserQuestion[];
-  respond: RespondToHumanRequest | undefined;
+  respond: RespondToHumanRequest;
 }) {
   if (tool.output !== undefined || tool.status === "succeeded") {
     return <AnsweredAnswer output={tool.output} />;
@@ -85,7 +82,7 @@ function AskUserForm({
 }: {
   requestId: string | undefined;
   questions: AskUserQuestion[];
-  respond: RespondToHumanRequest | undefined;
+  respond: RespondToHumanRequest;
 }) {
   const [answers, setAnswers] = useState<AskUserAnswer[]>(() => initialAnswers(questions));
   const [customAnswers, setCustomAnswers] = useState<string[]>(() => questions.map(() => ""));
@@ -100,11 +97,6 @@ function AskUserForm({
     const answersToSubmit = applyCustomAnswers(answers, customAnswers);
     if (answersToSubmit.length !== questions.length || answersToSubmit.some(isIncompleteAnswer)) {
       setError("Choose an answer for each question before sending.");
-      return;
-    }
-
-    if (respond === undefined) {
-      setError("Cannot respond: no response handler.");
       return;
     }
 

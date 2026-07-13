@@ -1,12 +1,9 @@
-/**
- * title-generation — generates thread titles using Pi's Agent.
- */
-
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 
 import { Agent } from "@earendil-works/pi-agent-core";
 
-import { authStorage, modelRegistry } from "./model-registry";
+import { fetchAndCacheCatalog, getDefaultModel } from "./model-catalog";
+import { piModelFromConfig } from "./pi-model";
 
 const TITLE_SYSTEM_PROMPT = [
   "You generate concise titles for Kira Agent Threads.",
@@ -20,28 +17,39 @@ type GenerateAgentThreadTitleInput = {
   assistantText: string;
 };
 
-type GenerateAgentThreadTitleOutput = { title: string };
+type GenerateAgentThreadTitleOutput = {
+  title: string;
+};
 
 async function generateAgentThreadTitle(
   input: GenerateAgentThreadTitleInput,
 ): Promise<GenerateAgentThreadTitleOutput> {
-  const available = await modelRegistry.getAvailable();
-  const model = available[0];
-  if (!model) throw new Error("No models available for title generation");
+  await fetchAndCacheCatalog();
+
+  const modelConfig = getDefaultModel();
+  const apiKey = modelConfig.apiKey;
+  if (apiKey === undefined) {
+    throw new Error("No API key configured for the model. Add one in the model config.");
+  }
 
   const agent = new Agent({
-    initialState: { systemPrompt: TITLE_SYSTEM_PROMPT, model },
-    getApiKey: () => authStorage.getApiKey(model.provider) ?? "",
+    initialState: {
+      systemPrompt: TITLE_SYSTEM_PROMPT,
+      model: piModelFromConfig(modelConfig),
+    },
+    getApiKey: () => apiKey,
   });
 
   await agent.prompt(titlePrompt(input));
-  const messages = agent.state.messages;
+  const { messages } = agent.state;
   const response = messages[messages.length - 1];
-  if (!response || response.role !== "assistant") {
-    throw new Error("Title generator returned no assistant message.");
+  if (response === undefined || response.role !== "assistant") {
+    throw new Error("The title generator returned no assistant message.");
   }
   const title = normalizeTitle(assistantText(response));
-  if (!title) throw new Error("Title generator returned an empty title.");
+  if (title.length === 0) {
+    throw new Error("The title generator returned an empty title.");
+  }
   return { title };
 }
 
@@ -57,11 +65,14 @@ function titlePrompt(input: GenerateAgentThreadTitleInput) {
   ].join("\n");
 }
 
-function assistantText(message: AssistantMessage): string {
-  return message.content
-    .filter((c) => c.type === "text")
-    .map((c) => c.text)
-    .join("");
+function assistantText(message: AssistantMessage) {
+  const parts: string[] = [];
+  for (const content of message.content) {
+    if (content.type === "text") {
+      parts.push(content.text);
+    }
+  }
+  return parts.join("");
 }
 
 function normalizeTitle(value: string) {

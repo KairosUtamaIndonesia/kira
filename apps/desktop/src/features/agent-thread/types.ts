@@ -4,6 +4,13 @@ type PrepareAgentThreadInput = {
   threadId: string;
 };
 
+type AgentRuntimeConnection = {
+  projectId: string;
+  sessionId: string;
+  baseUrl: string;
+  token: string;
+};
+
 type AgentThreadPanelParams = {
   projectId: string;
   folderPath: string;
@@ -11,6 +18,10 @@ type AgentThreadPanelParams = {
   threadId: string;
   panelId: string;
   title: string;
+};
+
+type GetAgentThreadContextUsageInput = {
+  threadId: string;
 };
 
 type GenerateAgentThreadTitleInput = {
@@ -21,38 +32,106 @@ type GenerateAgentThreadTitleInput = {
   assistantText: string;
 };
 
-import type { ClientMessage, ContentBlock, ServerEvent, TreeEntry } from "@kira/agent-pi/protocol";
+type AgentThreadContextUsage = {
+  usedTokens: number;
+  contextWindow: number;
+  maxOutputTokens: number;
+  modelId: string;
+  usage: {
+    inputTokens: number;
+    outputTokens: number;
+    reasoningTokens: number;
+    cachedInputTokens: number;
+    cacheWriteTokens: number;
+  };
+  cost: {
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheWrite: number;
+    total: number;
+  };
+  updatedAt: string;
+};
 
-/** One transcript entry. Assistant messages carry raw content blocks (pi TUI style).
- *  During streaming, tool/thinking roles are used for in-flight display;
- *  the final state comes from the `messages` snapshot with content blocks. */
-type TranscriptMessage = {
+type PiMessage = Record<string, unknown>;
+type PiEvent = Record<string, unknown>;
+
+type PiToolExecutionState = {
+  toolCallId: string;
+  toolName: string | undefined;
+  status: "queued" | "running" | "succeeded" | "failed" | "canceled";
+  input: unknown;
+  output: unknown;
+  error: string | undefined;
+  durationMs: number | undefined;
+  event: PiEvent;
+  toolUiRequestId: string | undefined;
+};
+
+type PiToolUiRequestState = {
   id: string;
-  role: "user" | "assistant" | "toolResult" | "tool" | "thinking";
-  text: string;
-  toolName?: string;
-  isError?: boolean;
-  /** Links a toolResult back to the toolCall that produced it. */
-  toolCallId?: string;
-  /** Raw content blocks from the SDK (assistant messages only). */
-  content?: ContentBlock[];
+  toolCallId: string;
+  toolName: string;
+  input: unknown;
+  event: PiEvent;
+};
+
+type PiActiveAssistantTurn = {
+  id: string;
+  createdAt: string;
+  textParts: string[];
+  thinkingParts: string[];
 };
 
 type PiTranscriptState = {
-  messages: TranscriptMessage[];
-  isStreaming: boolean;
-  model: string | undefined;
+  persistedMessages: PiMessage[];
+  activeAssistantTurn: PiActiveAssistantTurn | undefined;
+  activeToolExecutions: Record<string, PiToolExecutionState>;
+  activeToolUiRequests: Record<string, PiToolUiRequestState>;
+  liveEvents: PiEvent[];
+  treeNodes: SessionTreeNodeJson[] | undefined;
+  activePath: string[];
+  activeLeafId: string | undefined;
+  branchParentId: string | undefined;
 };
-
-export type {
-  AgentThreadPanelParams,
-  GenerateAgentThreadTitleInput,
-  PiTranscriptState,
-  PrepareAgentThreadInput,
-  TranscriptMessage,
-};
-
-export type { ClientMessage, ServerEvent, TreeEntry };
 
 type RespondToHumanRequest = (requestId: string, response: unknown) => Promise<boolean>;
-export type { RespondToHumanRequest };
+
+export type {
+  AgentRuntimeConnection,
+  AgentThreadContextUsage,
+  AgentThreadPanelParams,
+  GenerateAgentThreadTitleInput,
+  GetAgentThreadContextUsageInput,
+  PiActiveAssistantTurn,
+  PiEvent,
+  PiMessage,
+  PiToolExecutionState,
+  PiToolUiRequestState,
+  PiTranscriptState,
+  PrepareAgentThreadInput,
+  RespondToHumanRequest,
+};
+
+type SessionTreeNodeJson = {
+  id: string;
+  parentId: string | null;
+  entry: {
+    type: string;
+    role?: string;
+    text?: string;
+    toolName?: string;
+    timestamp?: string;
+    label?: string;
+    messageId?: string;
+  };
+  children: SessionTreeNodeJson[];
+};
+
+type AgentThreadTree = {
+  nodes: SessionTreeNodeJson[];
+  currentLeafId: string | undefined;
+};
+
+export type { SessionTreeNodeJson, AgentThreadTree };

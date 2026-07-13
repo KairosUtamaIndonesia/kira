@@ -1,272 +1,544 @@
-/**
- * agentThreadDisplay — simple message → display item transform.
- * Matches toolCalls to toolResults by toolCallId (pi TUI style).
- */
+import type {
+  PiMessage,
+  PiToolExecutionState,
+  PiTranscriptState,
+  SessionTreeNodeJson,
+} from "./types";
 
-import type { ContentBlock, TreeEntry } from "@kira/agent-pi/protocol";
+import { parseUserMessageBlocks, type UserMessageBlock } from "./userMessageBlocks";
 
-import type { PiTranscriptState, TranscriptMessage } from "./types";
-
-// ── Display items ────────────────────────────────────────────────────
-
-export type AgentThreadTranscriptItem =
-  | { type: "user-message"; id: string; text: string; createdAt?: string }
+type AgentThreadTranscriptItem =
+  | {
+      type: "user-message";
+      id: string;
+      createdAt: string;
+      text: string;
+      blocks: UserMessageBlock[];
+    }
   | {
       type: "assistant-activity";
       id: string;
+      createdAt: string;
       blocks: AgentThreadActivityBlock[];
       isStreaming: boolean;
-      createdAt?: string;
-    }
-  | { type: "error"; message: string };
+    };
 
-export type AgentThreadActivityBlock =
-  | { type: "markdown"; id: string; markdown: string }
+type AgentThreadActivityBlock =
   | { type: "thinking"; id: string; thinking: string }
-  | { type: "tool-call"; tool: AgentThreadToolCallDisplay };
+  | { type: "markdown"; id: string; markdown: string }
+  | { type: "tool-call"; tool: AgentThreadToolCallDisplay }
+  | { type: "error"; error: AgentThreadErrorDisplay };
 
-export type ToolCallStatus = "running" | "succeeded" | "failed";
-
-export interface AgentThreadToolCallDisplay {
+type AgentThreadToolCallDisplay = {
   id: string;
   toolName: string;
-  status: ToolCallStatus;
-  input: string;
-  output: string;
-  /** Optional rich fields for tool-specific rendering (populated from input/output) */
-  title?: string;
-  command?: string;
-  cwd?: string;
-  duration?: number;
-  exitCode?: number;
-  toolUiRequestId?: string;
-  errorMessage?: string;
-}
+  toolUiRequestId: string | undefined;
+  title: string;
+  status: ToolCallStatus | undefined;
+  command: string | undefined;
+  cwd: string | undefined;
+  exitCode: number | undefined;
+  duration: string | undefined;
+  changedFiles: string[];
+  errorMessage: string | undefined;
+  input: unknown;
+  output: unknown;
+  details: unknown;
+};
 
-// ── Transform ────────────────────────────────────────────────────────
+type AgentThreadErrorDisplay = {
+  id: string;
+  message: string;
+  details: unknown;
+};
 
-export function buildAgentThreadTranscript(
-  state: PiTranscriptState,
-  toolOutputs: Record<string, string> = {},
-): AgentThreadTranscriptItem[] {
-  const items: AgentThreadTranscriptItem[] = [];
-  let blockId = 0;
-  const nextId = () => `b${blockId++}`;
+type ToolCallStatus = "queued" | "running" | "succeeded" | "failed" | "canceled";
 
-  // ── First pass: collect toolResults keyed by toolCallId ──────────
-  const resultsByCallId = new Map<string, TranscriptMessage>();
-  for (const msg of state.messages) {
-    if (msg.role === "toolResult" && msg.toolCallId) {
-      resultsByCallId.set(msg.toolCallId, msg);
+type ObjectRecord = Record<string, unknown>;
+
+type TranscriptBuildContext = {
+  toolResultsByCallId: Map<string, PiMessage>;
+  activeToolsByCallId: Readonly<Record<string, PiToolExecutionState>>;
+  anchoredToolCallIds: Set<string>;
+};
+
+function buildAgentThreadTranscript(transcript: PiTranscriptState): AgentThreadTranscriptItem[] {
+  const messages =
+    transcript.treeNodes !== undefined
+      ? filterActivePathMessages(
+          transcript.persistedMessages,
+          transcript.activePath,
+          collectTreeMessageIds(transcript.treeNodes),
+        )
+      : transcript.persistedMessages;
+
+  const context: TranscriptBuildContext = {
+    toolResultsByCallId: toolResultsByCallId(messages),
+    activeToolsByCallId: transcript.activeToolExecutions,
+    anchoredToolCallIds: new Set<string>(),
+  };
+  let items: AgentThreadTranscriptItem[] = [];
+
+  for (const message of messages) {
+    const item = transcriptItemFromPiMessage(message, context);
+    if (item !== undefined) {
+      items = appendTranscriptItem(items, item);
     }
   }
 
-  // ── Second pass: build display items ─────────────────────────────
-  for (let i = 0; i < state.messages.length; i++) {
-    const msg = state.messages[i];
-    if (!msg) continue;
-    const streaming = state.isStreaming && i === state.messages.length - 1;
-
-    if (msg.role === "user") {
-      items.push({ type: "user-message", id: msg.id, text: msg.text });
-      continue;
-    }
-
-    // Skip standalone toolResults — they're merged into their toolCall below
-    if (msg.role === "toolResult") continue;
-
-    const blocks: AgentThreadActivityBlock[] = [];
-
-    if (msg.role === "assistant") {
-      if (msg.content && msg.content.length > 0) {
-        // Native content blocks from the SDK (pi TUI style)
-        for (const block of msg.content) {
-          if (block.type === "text") {
-            if (block.text) blocks.push({ type: "markdown", id: nextId(), markdown: block.text });
-          } else if (block.type === "thinking") {
-            if (block.thinking)
-              blocks.push({ type: "thinking", id: nextId(), thinking: block.thinking });
-          } else if (block.type === "toolCall") {
-            // Match toolCall to its toolResult by toolCallId (pi TUI style)
-            const result = resultsByCallId.get(block.id);
-            const output = result ? extractTextFromResult(result) : (toolOutputs[block.id] ?? "");
-            let status: ToolCallStatus;
-            if (result) {
-              status = result.isError ? "failed" : "succeeded";
-            } else if (toolOutputs[block.id] !== undefined) {
-              status = "running";
-            } else {
-              status = "succeeded";
-            }
-
-            const tool = blockToToolDisplay(block, msg.id, output, status);
-            blocks.push({ type: "tool-call", tool });
-          }
-        }
-      } else if (msg.text) {
-        // Fallback for in-flight or legacy messages
-        blocks.push({ type: "markdown", id: nextId(), markdown: msg.text });
-      }
-    } else if (msg.role === "thinking") {
-      // In-flight thinking (before messages snapshot lands)
-      if (msg.text) blocks.push({ type: "thinking", id: nextId(), thinking: msg.text });
-    } else if (msg.role === "tool") {
-      // In-flight tool from tool_execution_start — use toolOutputs for output
-      const toolStatus: ToolCallStatus = (() => {
-        if (msg.isError) return "failed";
-        if (state.isStreaming) return "running";
-        return "succeeded";
-      })();
-      const tool: AgentThreadToolCallDisplay = {
-        id: msg.id,
-        toolName: msg.toolName ?? "",
-        status: toolStatus,
-        input: msg.text,
-        output: toolOutputs[msg.id] ?? "",
-      };
-      extractRichFields(tool);
-      blocks.push({ type: "tool-call", tool });
-    }
-
-    if (blocks.length > 0 || streaming) {
-      items.push({ type: "assistant-activity", id: msg.id, blocks, isStreaming: streaming });
-    }
-  }
-
-  // ── Orphaned toolResults (no matching toolCall in current messages) ──
-  for (const msg of state.messages) {
-    if (msg.role !== "toolResult" || !msg.toolCallId) continue;
-    // Already merged into a toolCall block above? Check if any item references this toolCallId
-    const alreadyMerged = items.some(
-      (it) =>
-        it.type === "assistant-activity" &&
-        it.blocks.some((b) => b.type === "tool-call" && b.tool.id === msg.toolCallId),
-    );
-    if (!alreadyMerged) {
-      const tool: AgentThreadToolCallDisplay = {
-        id: msg.id,
-        toolName: msg.toolName ?? "",
-        status: msg.isError ? "failed" : "succeeded",
-        input: "",
-        output: extractTextFromResult(msg),
-      };
-      extractRichFields(tool);
-      items.push({
-        type: "assistant-activity",
-        id: msg.id,
-        blocks: [{ type: "tool-call", tool }],
-        isStreaming: false,
-      });
-    }
+  const liveBlocks = liveActivityBlocks(transcript, context.anchoredToolCallIds);
+  if (liveBlocks.length > 0) {
+    const activeTurn = transcript.activeAssistantTurn;
+    items = appendTranscriptItem(items, {
+      type: "assistant-activity",
+      id: activeTurn === undefined ? "active-assistant-turn" : activeTurn.id,
+      createdAt: activeTurn === undefined ? new Date().toISOString() : activeTurn.createdAt,
+      blocks: liveBlocks,
+      isStreaming: activeTurn !== undefined,
+    });
   }
 
   return items;
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────
+function filterActivePathMessages(
+  messages: PiMessage[],
+  activePath: string[],
+  treeMessageIds: Set<string>,
+): PiMessage[] {
+  if (activePath.length === 0) {
+    return messages;
+  }
+  const pathIds = new Set(activePath);
+  return messages.filter((message) => {
+    const id =
+      stringField(message, "id") ??
+      stringField(message, "responseId") ??
+      messageIdFromTimestamp(message);
+    if (id === undefined) {
+      return true;
+    }
+    // Messages the tree has no node for (historical/persisted-only, or
+    // locally-appended) carry no branch information, so keep them. Only hide a
+    // message when the tree knows it AND it sits off the active branch.
+    if (!treeMessageIds.has(id)) {
+      return true;
+    }
+    return pathIds.has(id);
+  });
+}
 
-function blockToToolDisplay(
-  block: ContentBlock & { type: "toolCall" },
-  msgId: string,
-  output: string,
-  status: ToolCallStatus,
-): AgentThreadToolCallDisplay {
-  const args = block.arguments ?? {};
-  const tool: AgentThreadToolCallDisplay = {
-    id: block.id || msgId,
-    toolName: block.name,
-    status,
-    input: JSON.stringify(args, undefined, 2),
-    output,
+function collectTreeMessageIds(nodes: SessionTreeNodeJson[]): Set<string> {
+  const ids = new Set<string>();
+  const visit = (node: SessionTreeNodeJson) => {
+    ids.add(node.entry.messageId ?? node.id);
+    for (const child of node.children) {
+      visit(child);
+    }
   };
-  extractRichFields(tool);
-  return tool;
+  for (const node of nodes) {
+    visit(node);
+  }
+  return ids;
 }
 
-function extractRichFields(tool: AgentThreadToolCallDisplay): void {
-  if (!tool.input) return;
-  try {
-    const parsed = JSON.parse(tool.input);
-    if (typeof parsed.command === "string") tool.command = parsed.command;
-    if (typeof parsed.path === "string") tool.title = parsed.path;
-    if (typeof parsed.pattern === "string") tool.title = parsed.pattern;
-  } catch {
-    /* plain text */
-  }
+function stringField(record: Record<string, unknown>, key: string): string | undefined {
+  const value = record[key];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-function extractTextFromResult(msg: TranscriptMessage): string {
-  if (msg.content && Array.isArray(msg.content)) {
-    return msg.content
-      .filter((b): b is ContentBlock & { type: "text" } => b.type === "text")
-      .map((b) => b.text)
-      .join("\n");
+function appendTranscriptItem(
+  items: AgentThreadTranscriptItem[],
+  item: AgentThreadTranscriptItem,
+): AgentThreadTranscriptItem[] {
+  const previous = items[items.length - 1];
+  if (
+    previous === undefined ||
+    previous.type !== "assistant-activity" ||
+    item.type !== "assistant-activity"
+  ) {
+    return [...items, item];
   }
-  return msg.text ?? "";
+
+  return [
+    ...items.slice(0, -1),
+    {
+      ...previous,
+      id: `${previous.id}:${item.id}`,
+      blocks: [...previous.blocks, ...item.blocks],
+      isStreaming: previous.isStreaming || item.isStreaming,
+    },
+  ];
+}
+function transcriptItemFromPiMessage(
+  message: PiMessage,
+  context: TranscriptBuildContext,
+): AgentThreadTranscriptItem | undefined {
+  const role = firstString(message, ["role"]);
+  const id = firstString(message, ["id", "responseId"]) ?? messageIdFromTimestamp(message);
+  const createdAt = timestampFromMessage(message);
+
+  if (role === "user") {
+    const text = textFromPiMessage(message);
+    return {
+      type: "user-message",
+      id,
+      createdAt,
+      text,
+      blocks: parseUserMessageBlocks(text),
+    };
+  }
+
+  if (role === "assistant") {
+    const blocks = assistantBlocksFromPiMessage(id, message, context);
+    return blocks.length === 0
+      ? undefined
+      : {
+          type: "assistant-activity",
+          id,
+          createdAt,
+          blocks,
+          isStreaming: false,
+        };
+  }
+
+  return undefined;
 }
 
-// ── Tree helpers ─────────────────────────────────────────────────────
-
-export function treeEntriesToJson(entries: TreeEntry[]): SessionTreeNodeJson[] {
-  const map = new Map<string, SessionTreeNodeJson>();
-  for (const e of entries) {
-    map.set(e.id, {
-      id: e.id,
-      parentId: e.parentId,
-      entry: {
-        type: e.type,
-        text: e.preview,
-        ...(e.label !== undefined ? { label: e.label } : {}),
-        ...(e.timestamp !== undefined ? { timestamp: e.timestamp } : {}),
-      },
-      children: [],
-    });
-  }
-  const roots: SessionTreeNodeJson[] = [];
-  for (const e of entries) {
-    const node = map.get(e.id);
-    if (!node) continue;
-
-    if (e.parentId) {
-      const parentNode = map.get(e.parentId);
-      if (parentNode) {
-        parentNode.children.push(node);
-      } else {
-        roots.push(node);
-      }
-    } else {
-      roots.push(node);
+function liveActivityBlocks(
+  transcript: PiTranscriptState,
+  anchoredToolCallIds: ReadonlySet<string>,
+): AgentThreadActivityBlock[] {
+  const blocks: AgentThreadActivityBlock[] = [];
+  const activeTurn = transcript.activeAssistantTurn;
+  if (activeTurn !== undefined) {
+    const thinking = activeTurn.thinkingParts.join("");
+    if (thinking.length > 0) {
+      blocks.push({ type: "thinking", id: `${activeTurn.id}:thinking`, thinking });
+    }
+    const markdown = activeTurn.textParts.join("");
+    if (markdown.length > 0) {
+      blocks.push({ type: "markdown", id: `${activeTurn.id}:markdown`, markdown });
     }
   }
-  return roots;
-}
 
-export interface SessionTreeNodeJson {
-  id: string;
-  parentId: string | null;
-  entry: { type: string; text?: string; label?: string; timestamp?: string; role?: string };
-  children: SessionTreeNodeJson[];
-}
-
-export function treeStateFrom(entries: TreeEntry[], currentLeafId?: string) {
-  const nodes = treeEntriesToJson(entries);
-  const activePath = currentLeafId ? computeActivePath(nodes, currentLeafId) : [];
-  return { nodes, activePath, activeLeafId: activePath[activePath.length - 1] ?? currentLeafId };
-}
-
-function computeActivePath(nodes: SessionTreeNodeJson[], leafId: string): string[] {
-  for (const node of nodes) {
-    if (node.id === leafId) return [node.id];
-    const childPath = computeActivePath(node.children, leafId);
-    if (childPath.length > 0) return [node.id, ...childPath];
+  for (const tool of Object.values(transcript.activeToolExecutions)) {
+    if (!anchoredToolCallIds.has(tool.toolCallId)) {
+      blocks.push({ type: "tool-call", tool: toolDisplayFromPiTool(tool) });
+    }
   }
-  return [];
+
+  for (const event of transcript.liveEvents) {
+    const error = errorFromRecord(eventId(event), event);
+    if (error !== undefined) {
+      blocks.push({ type: "error", error });
+    }
+  }
+
+  return blocks;
 }
 
-export function stringifyUnknown(v: unknown): string {
+function assistantBlocksFromPiMessage(
+  id: string,
+  message: PiMessage,
+  context: TranscriptBuildContext,
+): AgentThreadActivityBlock[] {
+  const content = message.content;
+  if (!Array.isArray(content)) {
+    return [];
+  }
+
+  const blocks: AgentThreadActivityBlock[] = [];
+  for (const part of content) {
+    if (!isObjectRecord(part)) {
+      continue;
+    }
+    if (part.type === "thinking" && typeof part.thinking === "string" && part.thinking.length > 0) {
+      blocks.push({
+        type: "thinking",
+        id: `${id}:thinking:${blocks.length}`,
+        thinking: part.thinking,
+      });
+    }
+    if (part.type === "text" && typeof part.text === "string" && part.text.length > 0) {
+      blocks.push({ type: "markdown", id: `${id}:text:${blocks.length}`, markdown: part.text });
+    }
+    if (part.type === "toolCall") {
+      const tool = toolDisplayFromToolCall(part, context);
+      if (tool !== undefined) {
+        context.anchoredToolCallIds.add(tool.id);
+        blocks.push({ type: "tool-call", tool });
+      }
+    }
+  }
+  return blocks;
+}
+
+function toolDisplayFromToolCall(
+  part: ObjectRecord,
+  context: TranscriptBuildContext,
+): AgentThreadToolCallDisplay | undefined {
+  const toolCallId = firstString(part, ["id"]);
+  const toolName = firstString(part, ["name"]);
+  if (toolCallId === undefined || toolName === undefined) {
+    return undefined;
+  }
+
+  const args = isObjectRecord(part.arguments) ? part.arguments : part.arguments;
+  const activeTool = context.activeToolsByCallId[toolCallId];
+  if (activeTool !== undefined) {
+    return toolDisplayFromPiTool(activeTool, args);
+  }
+
+  const resultMessage = context.toolResultsByCallId.get(toolCallId);
+  return toolDisplayFromPersistedTool(toolCallId, toolName, args, resultMessage);
+}
+
+function toolDisplayFromPersistedTool(
+  toolCallId: string,
+  toolName: string,
+  args: unknown,
+  resultMessage: PiMessage | undefined,
+): AgentThreadToolCallDisplay {
+  const output = resultMessage;
+  const status = persistedToolStatus(resultMessage);
+  const toolUiRequestId =
+    resultMessage === undefined ? undefined : firstString(resultMessage, ["toolUiRequestId"]);
+  return {
+    id: toolCallId,
+    toolUiRequestId,
+    toolName,
+    title: humanizeToolName(toolName) ?? "Tool call",
+    status,
+    command: commandFromUnknown(args) ?? commandFromUnknown(output),
+    cwd: cwdFromUnknown(args) ?? cwdFromUnknown(output),
+    exitCode: exitCodeFromUnknown(output),
+    duration: undefined,
+    changedFiles: changedFilesFromUnknown(output) ?? [],
+    errorMessage: errorMessageFromUnknown(output),
+    input: args,
+    output,
+    details: { args, result: resultMessage },
+  };
+}
+
+function persistedToolStatus(resultMessage: PiMessage | undefined): ToolCallStatus {
+  if (resultMessage === undefined) {
+    return "queued";
+  }
+
+  return resultMessage.isError === true ? "failed" : "succeeded";
+}
+
+function toolDisplayFromPiTool(
+  tool: PiToolExecutionState,
+  fallbackInput?: unknown,
+): AgentThreadToolCallDisplay {
+  const toolName = tool.toolName ?? "unknown";
+  const result = tool.output;
+  const args = tool.input === undefined ? fallbackInput : tool.input;
+  return {
+    id: tool.toolCallId,
+    toolUiRequestId: tool.toolUiRequestId,
+    toolName,
+    title: humanizeToolName(toolName) ?? "Tool call",
+    status: tool.status,
+    command: commandFromUnknown(args) ?? commandFromUnknown(result),
+    cwd: cwdFromUnknown(args) ?? cwdFromUnknown(result),
+    exitCode: exitCodeFromUnknown(result),
+    duration: tool.durationMs === undefined ? undefined : formatDuration(tool.durationMs),
+    changedFiles: changedFilesFromUnknown(result) ?? [],
+    errorMessage: errorMessageFromUnknown(result) ?? tool.error,
+    input: args,
+    output: result,
+    details: { event: tool.event, args, result },
+  };
+}
+
+function toolResultsByCallId(messages: PiMessage[]) {
+  const results = new Map<string, PiMessage>();
+  for (const message of messages) {
+    if (message.role !== "toolResult") {
+      continue;
+    }
+    const toolCallId = firstString(message, ["toolCallId"]);
+    if (toolCallId !== undefined) {
+      results.set(toolCallId, message);
+    }
+  }
+  return results;
+}
+
+function textFromPiMessage(message: PiMessage) {
+  const content = message.content;
+  if (typeof content === "string") {
+    return content;
+  }
+  if (!Array.isArray(content)) {
+    return "";
+  }
+
+  return content
+    .flatMap((part) => {
+      if (!isObjectRecord(part) || part.type !== "text" || typeof part.text !== "string") {
+        return [];
+      }
+      return [part.text];
+    })
+    .join("");
+}
+
+function timestampFromMessage(message: PiMessage) {
+  const timestamp = message.timestamp;
+  if (typeof timestamp === "string") {
+    return timestamp;
+  }
+  if (typeof timestamp === "number") {
+    return new Date(timestamp).toISOString();
+  }
+  return new Date().toISOString();
+}
+
+function messageIdFromTimestamp(message: PiMessage) {
+  const role = firstString(message, ["role"]);
+  const timestamp = message.timestamp;
+  if (role !== undefined && (typeof timestamp === "string" || typeof timestamp === "number")) {
+    return `message:${role}:${String(timestamp)}`;
+  }
+  return crypto.randomUUID();
+}
+
+function eventId(event: ObjectRecord) {
+  return firstString(event, ["id", "requestId", "toolCallId"]) ?? crypto.randomUUID();
+}
+
+function errorFromRecord(id: string, value: ObjectRecord): AgentThreadErrorDisplay | undefined {
+  const message = firstString(value, ["error", "errorMessage", "message"]);
+  if (message === undefined) {
+    return undefined;
+  }
+
+  return { id, message, details: value };
+}
+
+function stringifyUnknown(value: unknown) {
   try {
-    return JSON.stringify(v, undefined, 2);
+    return JSON.stringify(value, undefined, 2);
   } catch {
-    return String(v);
+    return String(value);
   }
 }
+
+function commandFromUnknown(value: unknown) {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (!isObjectRecord(value)) {
+    return;
+  }
+
+  return firstString(value, ["command", "cmd", "input", "action"]);
+}
+
+function cwdFromUnknown(value: unknown) {
+  if (!isObjectRecord(value)) {
+    return;
+  }
+
+  return firstString(value, ["cwd", "workingDirectory", "directory"]);
+}
+
+function exitCodeFromUnknown(value: unknown) {
+  if (!isObjectRecord(value)) {
+    return;
+  }
+
+  return firstNumber(value, ["exitCode", "code"]);
+}
+
+function errorMessageFromUnknown(value: unknown) {
+  if (!isObjectRecord(value)) {
+    return;
+  }
+
+  return firstString(value, ["error", "errorMessage", "message"]);
+}
+
+function changedFilesFromUnknown(value: unknown) {
+  if (!isObjectRecord(value)) {
+    return;
+  }
+
+  return stringArrayFromUnknown(firstPresent(value, ["changedFiles", "files", "modifiedFiles"]));
+}
+
+function firstString(record: ObjectRecord, keys: string[]) {
+  const value = firstPresent(record, keys);
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function firstNumber(record: ObjectRecord, keys: string[]) {
+  const value = firstPresent(record, keys);
+  return typeof value === "number" ? value : undefined;
+}
+
+function firstPresent(record: ObjectRecord, keys: string[]) {
+  for (const key of keys) {
+    if (key in record) {
+      return record[key];
+    }
+  }
+
+  return void 0;
+}
+
+function stringArrayFromUnknown(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((item): item is string => typeof item === "string");
+}
+
+function formatDuration(durationMs: number) {
+  if (durationMs < 1000) {
+    return `${durationMs} ms`;
+  }
+
+  return `${(durationMs / 1000).toFixed(1)} s`;
+}
+
+function isObjectRecord(value: unknown): value is ObjectRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function humanizeToolName(name: string) {
+  const labels: Record<string, string> = {
+    read: "Read file",
+    write: "Write file",
+    edit: "Edit file",
+    bash: "Run command",
+    grep: "Search files",
+    find: "Find files",
+    glob: "Find files",
+    ls: "List directory",
+    task: "Delegate task",
+    activate_skill: "Activate skill",
+    ask_user: "Ask user",
+    memory: "Memory",
+    memory_search: "Memory search",
+    session_search: "Session search",
+    skill: "Skill",
+  };
+
+  return labels[name];
+}
+
+export { buildAgentThreadTranscript, stringifyUnknown };
+export type {
+  AgentThreadActivityBlock,
+  AgentThreadToolCallDisplay,
+  AgentThreadTranscriptItem,
+  ToolCallStatus,
+};

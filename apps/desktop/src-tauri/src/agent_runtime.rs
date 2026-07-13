@@ -1,17 +1,261 @@
-use std::sync::Mutex;
+use std::{env, fs, net::TcpListener, path::Path, path::PathBuf, time::Duration};
 
+use axum::{routing::get, Json, Router};
+use rand::RngCore;
 use serde::{Deserialize, Serialize};
+use std::sync::Mutex;
 use thiserror::Error;
+use tokio::net::TcpListener as TokioTcpListener;
+
+use tokio::{
+    process::{Child as TokioChild, Command},
+    sync::watch,
+    time::{sleep, timeout},
+};
+
+use tauri::Manager;
 
 use crate::persistence::PersistenceStore;
+use crate::source_control;
 
-// ── Error ────────────────────────────────────────────────────────────
+const AGENT_RUNTIME_HEALTH_TIMEOUT_MS: u64 = 30_000;
+const AGENT_RUNTIME_HEALTH_TIMEOUT: Duration =
+    Duration::from_millis(AGENT_RUNTIME_HEALTH_TIMEOUT_MS);
+const AGENT_RUNTIME_HEALTH_POLL_INTERVAL: Duration = Duration::from_millis(150);
+const AGENT_RUNTIME_PACKAGE_NAME: &str = "@kira/agent-pi";
+const AGENT_RUNTIME_KIND: &str = "pi";
+const AGENT_RUNTIME_HOST: &str = "127.0.0.1";
 
-#[derive(Debug, Error, Serialize)]
-#[allow(dead_code)]
+#[derive(Default)]
+pub struct AgentRuntimeRegistry {
+    pub(crate) runtime: Mutex<AgentRuntimeState>,
+}
+
+impl AgentRuntimeRegistry {
+    pub(crate) fn lock_runtime(&self) -> std::sync::MutexGuard<'_, AgentRuntimeState> {
+        match self.runtime.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
+}
+/// Tracks the lifecycle of the external agent runtime process.
+///
+/// Transitions: `NotStarted` → `Starting` → `Running` or `Failed`.
+/// The `Starting` variant holds a `watch::Receiver` so concurrent callers can
+/// wait for the startup outcome without racing to spawn a duplicate process.
+#[derive(Default)]
+pub(crate) enum AgentRuntimeState {
+    #[default]
+    NotStarted,
+    /// A startup is in progress; the `Receiver` allows waiters to block until
+    /// the state settles into `Running` or `Failed`.
+    Starting(watch::Receiver<()>),
+    Running(Box<AppAgentRuntime>),
+    Failed {
+        reason: String,
+    },
+}
+
+enum ProcessHandle {
+    Dev(Box<TokioChild>),
+    Bun(Box<TokioChild>),
+}
+
+pub(crate) struct AppAgentRuntime {
+    pub(crate) connection: RuntimeConnection,
+    process: Option<ProcessHandle>,
+}
+#[derive(Clone)]
+pub(crate) struct RuntimeConnection {
+    pub(crate) base_url: String,
+    pub(crate) token: String,
+}
+
+/// Terminates the agent runtime child process during application shutdown.
+///
+/// Tauri does not run `Drop` for managed state when the process exits, so the
+/// child's `kill_on_drop` guard never fires. Without this, the agent runtime
+/// keeps running.
+pub(crate) fn shutdown(registry: &AgentRuntimeRegistry) {
+    let mut state = registry.lock_runtime();
+    if let AgentRuntimeState::Running(runtime) = &mut *state {
+        if let Some(handle) = runtime.process.take() {
+            let (ProcessHandle::Dev(mut child) | ProcessHandle::Bun(mut child)) = handle;
+            // Send the kill signal synchronously. We don't wait for the process
+            // to actually exit — the app is shutting down and the OS will reap it.
+            if let Err(error) = child.start_kill() {
+                eprintln!("agent runtime shutdown: failed to kill child: {error}");
+            }
+        }
+    }
+    *state = AgentRuntimeState::NotStarted;
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(
+    clippy::struct_field_names,
+    reason = "Token usage fields intentionally mirror the frontend and Flue token vocabulary"
+)]
+struct AgentThreadContextTokenUsage {
+    input_tokens: i64,
+    output_tokens: i64,
+    reasoning_tokens: i64,
+    cached_input_tokens: i64,
+    cache_write_tokens: i64,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AgentThreadContextUsageCost {
+    input: f64,
+    output: f64,
+    cache_read: f64,
+    cache_write: f64,
+    total: f64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentThreadContextUsage {
+    used_tokens: i64,
+    context_window: i64,
+    max_output_tokens: i64,
+    model_id: String,
+    usage: AgentThreadContextTokenUsage,
+    cost: AgentThreadContextUsageCost,
+    updated_at: String,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+struct AgentThreadContextUsageRow {
+    used_tokens: i64,
+    context_window: i64,
+    max_output_tokens: i64,
+    model_id: String,
+    input_tokens: i64,
+    output_tokens: i64,
+    reasoning_tokens: i64,
+    cached_input_tokens: i64,
+    cache_write_tokens: i64,
+    input_cost: f64,
+    output_cost: f64,
+    cache_read_cost: f64,
+    cache_write_cost: f64,
+    total_cost: f64,
+    updated_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetAgentThreadContextUsageInput {
+    thread_id: String,
+}
+
+impl From<AgentThreadContextUsageRow> for AgentThreadContextUsage {
+    fn from(row: AgentThreadContextUsageRow) -> Self {
+        Self {
+            used_tokens: row.used_tokens,
+            context_window: row.context_window,
+            max_output_tokens: row.max_output_tokens,
+            model_id: row.model_id,
+            usage: AgentThreadContextTokenUsage {
+                input_tokens: row.input_tokens,
+                output_tokens: row.output_tokens,
+                reasoning_tokens: row.reasoning_tokens,
+                cached_input_tokens: row.cached_input_tokens,
+                cache_write_tokens: row.cache_write_tokens,
+            },
+            cost: AgentThreadContextUsageCost {
+                input: row.input_cost,
+                output: row.output_cost,
+                cache_read: row.cache_read_cost,
+                cache_write: row.cache_write_cost,
+                total: row.total_cost,
+            },
+            updated_at: row.updated_at,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(
+    clippy::struct_field_names,
+    reason = "Agent Thread preparation intentionally carries project, session, and thread ids"
+)]
+pub struct PrepareAgentThreadInput {
+    project_id: String,
+    session_id: String,
+    thread_id: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentRuntimeConnection {
+    project_id: String,
+    session_id: String,
+    base_url: String,
+    token: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenerateAgentThreadTitleInput {
+    project_id: String,
+    session_id: String,
+    thread_id: String,
+    prompt: String,
+    assistant_text: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GenerateAgentThreadTitleOutput {
+    title: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenerateCommitMessageInput {
+    pub folder_path: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GenerateCommitMessageOutput {
+    commit_message: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GenerateCommitMessageError {
+    error: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct HealthResponse {
+    status: String,
+    package_name: String,
+    runtime: String,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+struct AgentThreadProjectContext {
+    project_id: String,
+    session_id: String,
+    project_path: String,
+}
+
+enum AgentRuntimeLaunchMode {
+    Dev,
+    Bun,
+}
+
+#[derive(Debug, Error)]
 pub enum AgentRuntimeError {
-    #[error("{0} is not configured")]
-    ConfigMissing(String),
     #[error("Agent runtime project id is required")]
     MissingProjectId,
     #[error("Agent runtime session id is required")]
@@ -28,249 +272,996 @@ pub enum AgentRuntimeError {
         session_id: String,
     },
     #[error("Project folder does not exist: {path}")]
-    ProjectDirectoryNotFound { path: String },
+    ProjectPathMissing { path: String },
     #[error("Project folder is not a directory: {path}")]
-    ProjectDirectoryNotDirectory { path: String },
-    #[error("failed to query Project context for Agent Thread: {_0}")]
-    QueryProject(String),
+    ProjectPathNotDirectory { path: String },
+    #[error("failed to query Project context for Agent Thread: {0}")]
+    QueryProjectContext(String),
+    #[error("failed to query Agent Thread context usage: {0}")]
+    QueryContextUsage(String),
     #[error("failed to reserve an agent runtime port: {0}")]
     ReservePort(String),
-    #[error("failed to generate title for Agent Thread {thread_id}: {reason}")]
+    #[error("failed to start agent runtime: {reason}")]
+    StartFailed { reason: String },
+    #[error("Agent runtime did not become healthy on port {port} within {timeout_ms}ms")]
+    HealthTimeout { port: u16, timeout_ms: u64 },
+    #[error("Agent runtime returned invalid health response on port {port}: {reason}")]
+    InvalidHealthResponse { port: u16, reason: String },
+    #[error("Failed to register Agent Thread {thread_id} with agent runtime: {reason}")]
+    RegisterAgentThread { thread_id: String, reason: String },
+    #[error("Failed to generate title for Agent Thread {thread_id}: {reason}")]
     GenerateTitle { thread_id: String, reason: String },
+    #[error("Agent runtime is not running. Start the app-scoped agent runtime before preparing an Agent Thread.")]
+    NotRunning,
     #[error("Agent runtime startup failed: {reason}")]
     RuntimeStartFailed { reason: String },
-    #[error("failed to generate commit message: {0}")]
-    GenerateCommitMessage(String),
+    #[error("failed to generate commit message: {reason}")]
+    GenerateCommitMessage { reason: String },
+    #[error("failed to resolve bundled agent runtime resources: {reason}")]
+    ResourceDirMissing { reason: String },
+    #[error("Bun version {found} is too old. Required: {required}")]
+    BunVersionTooLow { found: String, required: String },
+    #[error("Bun runtime not found. Install Bun from https://bun.sh or configure a custom path in settings.")]
+    BunNotFound,
 }
 
-// ── State ────────────────────────────────────────────────────────────
-
-#[derive(Default)]
-pub struct AgentRuntimeRegistry {
-    runtime: Mutex<AgentRuntimeState>,
-}
-
-impl AgentRuntimeRegistry {
-    pub fn lock_runtime(&self) -> std::sync::MutexGuard<'_, AgentRuntimeState> {
-        self.runtime
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+impl serde::Serialize for AgentRuntimeError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::ser::Serializer,
+    {
+        serializer.serialize_str(self.to_string().as_ref())
     }
 }
 
-#[derive(Default)]
-pub enum AgentRuntimeState {
-    #[default]
-    NotStarted,
-    Running,
-    #[allow(dead_code)]
-    Failed {
-        reason: String,
-    },
-}
-
-// ── Connection info (returned to frontend) ─────────────────────────
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct AgentRuntimeConnection {
-    pub(crate) base_url: String,
-    pub(crate) token: String,
-}
-
-// ── Public commands ─────────────────────────────────────────────────
-
-/// Start the agent runtime. In dev, the sidecar is started by tauri.ts.
-/// In production, it's a compiled GUI binary.
-/// This command just verifies the sidecar is reachable.
 #[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
 pub async fn start_agent_runtime(
-    _app: tauri::AppHandle,
+    app: tauri::AppHandle,
     registry: tauri::State<'_, AgentRuntimeRegistry>,
+    store: tauri::State<'_, PersistenceStore>,
 ) -> Result<(), AgentRuntimeError> {
-    let mut guard = registry.lock_runtime();
-    match &*guard {
-        AgentRuntimeState::Running => Ok(()),
-        AgentRuntimeState::Failed { .. } => {
-            // Reset on retry
-            *guard = AgentRuntimeState::Running;
-            Ok(())
-        }
-        AgentRuntimeState::NotStarted => {
-            *guard = AgentRuntimeState::Running;
-            Ok(())
-        }
-    }
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[allow(clippy::struct_field_names)]
-pub(crate) struct PrepareAgentThreadInput {
-    pub(crate) project_id: String,
-    pub(crate) session_id: String,
-    pub(crate) thread_id: String,
+    ensure_runtime_started(&registry, store.inner().clone(), app).await
 }
 
 #[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
 pub async fn prepare_agent_thread(
     input: PrepareAgentThreadInput,
+    app: tauri::AppHandle,
     registry: tauri::State<'_, AgentRuntimeRegistry>,
-    _store: tauri::State<'_, PersistenceStore>,
+    store: tauri::State<'_, PersistenceStore>,
 ) -> Result<AgentRuntimeConnection, AgentRuntimeError> {
-    let guard = registry.lock_runtime();
-    match &*guard {
-        AgentRuntimeState::NotStarted => {
-            return Err(AgentRuntimeError::RuntimeStartFailed {
-                reason: "Agent runtime not started. Call start_agent_runtime first.".to_string(),
-            });
-        }
-        AgentRuntimeState::Failed { .. } => {
-            return Err(AgentRuntimeError::RuntimeStartFailed {
-                reason: "Agent runtime previously failed".to_string(),
-            });
-        }
-        AgentRuntimeState::Running => {} // OK
-    }
-    drop(guard);
+    ensure_runtime_started(&registry, store.inner().clone(), app).await?;
 
-    validate_required_field(&input.project_id, "project_id")?;
-    validate_required_field(&input.session_id, "session_id")?;
-    validate_required_field(&input.thread_id, "thread_id")?;
+    validate_required_project_id(&input.project_id)?;
+    validate_required_session_id(&input.session_id)?;
+    validate_required_thread_id(&input.thread_id)?;
 
-    // Fixed port 19876 — no negotiation, no token
+    let context = load_agent_thread_project_context(
+        &store,
+        &input.project_id,
+        &input.session_id,
+        &input.thread_id,
+    )
+    .await?;
+    validate_project_path(&context.project_path)?;
+
+    let connection = runtime_connection(&registry)?;
+    register_agent_thread(&connection, &input.thread_id, &context).await?;
+
     Ok(AgentRuntimeConnection {
-        base_url: "http://127.0.0.1:19876".to_string(),
-        token: String::new(),
+        project_id: context.project_id,
+        session_id: context.session_id,
+        base_url: connection.base_url,
+        token: connection.token,
     })
 }
 
-// ── Title generation ────────────────────────────────────────────────
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct GenerateAgentThreadTitleInput {
-    pub(crate) project_id: String,
-    pub(crate) session_id: String,
-    pub(crate) thread_id: String,
-    pub(crate) prompt: String,
-    pub(crate) assistant_text: String,
-}
-
 #[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
 pub async fn generate_agent_thread_title(
     input: GenerateAgentThreadTitleInput,
-    _app: tauri::AppHandle,
-    _registry: tauri::State<'_, AgentRuntimeRegistry>,
-    _store: tauri::State<'_, PersistenceStore>,
+    app: tauri::AppHandle,
+    registry: tauri::State<'_, AgentRuntimeRegistry>,
+    store: tauri::State<'_, PersistenceStore>,
 ) -> Result<String, AgentRuntimeError> {
-    validate_required_field(&input.project_id, "project_id")?;
-    validate_required_field(&input.session_id, "session_id")?;
-    validate_required_field(&input.thread_id, "thread_id")?;
-    validate_required_field(&input.prompt, "prompt")?;
-    validate_required_field(&input.assistant_text, "assistant_text")?;
+    ensure_runtime_started(&registry, store.inner().clone(), app).await?;
 
-    // TODO: generate title using Pi's Agent (same as old title-generation.ts)
-    // For now, return a placeholder
-    Ok("Agent Thread".to_string())
-}
+    validate_required_project_id(&input.project_id)?;
+    validate_required_session_id(&input.session_id)?;
+    validate_required_thread_id(&input.thread_id)?;
+    validate_required_prompt(&input.prompt)?;
+    validate_required_assistant_text(&input.assistant_text)?;
 
-// ── Commit message generation ────────────────────────────────────────
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
-pub(crate) struct GenerateCommitMessageInput {
-    pub(crate) staged_diff: String,
-    pub(crate) recent_log: String,
-}
-
-// ── Cloud config ─────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, Serialize)]
-pub(crate) struct CloudConfig {
-    pub(crate) url: String,
-    pub(crate) api_key: String,
-}
-
-/// Returns the cloud API URL and the stored API key from the OS keychain.
-/// Also validates that the cloud API is reachable by fetching the model catalog.
-#[tauri::command]
-pub async fn get_cloud_config() -> Result<CloudConfig, AgentRuntimeError> {
-    let url = std::env::var("KIRA_CLOUD_URL")
-        .or_else(|_| std::env::var("KIRA_CLOUD_API_URL"))
-        .map_err(|_| AgentRuntimeError::ConfigMissing("KIRA_CLOUD_URL".into()))?;
-    let api_key = crate::desktop_signin::stored_credential()
-        .ok_or_else(|| AgentRuntimeError::ConfigMissing("API key (not signed in)".into()))?;
-
-    // Validate reachability — fetch the model catalog with a short timeout
-    let client = reqwest::Client::new();
-    let response = tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        client
-            .get(format!("{url}/api/desktop/models"))
-            .header("x-api-key", &api_key)
-            .send(),
+    let context = load_agent_thread_project_context(
+        &store,
+        &input.project_id,
+        &input.session_id,
+        &input.thread_id,
     )
-    .await
-    .map_err(|_| AgentRuntimeError::ConfigMissing("Cloud API timed out".into()))?
-    .map_err(|e| AgentRuntimeError::ConfigMissing(format!("Cloud API unreachable: {e}")))?;
+    .await?;
+    validate_project_path(&context.project_path)?;
 
-    if !response.status().is_success() {
-        return Err(AgentRuntimeError::ConfigMissing(format!(
-            "Cloud API returned {}",
-            response.status()
-        )));
+    let connection = runtime_connection(&registry)?;
+    request_agent_thread_title(&connection, &input, &context.project_path).await
+}
+
+#[tauri::command]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
+pub async fn generate_commit_message(
+    input: GenerateCommitMessageInput,
+    app: tauri::AppHandle,
+    registry: tauri::State<'_, AgentRuntimeRegistry>,
+    store: tauri::State<'_, PersistenceStore>,
+) -> Result<String, AgentRuntimeError> {
+    ensure_runtime_started(&registry, store.inner().clone(), app).await?;
+
+    let folder_path = source_control::validate_project_folder(&input.folder_path).map_err(|e| {
+        AgentRuntimeError::GenerateCommitMessage {
+            reason: e.to_string(),
+        }
+    })?;
+
+    let staged_diff = source_control::run_git(
+        &folder_path,
+        "staged diff",
+        &["diff", "--cached", "--no-color"],
+    )
+    .map_err(|e| AgentRuntimeError::GenerateCommitMessage {
+        reason: e.to_string(),
+    })?;
+
+    let recent_log = source_control::run_git(
+        &folder_path,
+        "recent log",
+        &["log", "--oneline", "-10", "--no-decorate"],
+    )
+    .map_err(|e| AgentRuntimeError::GenerateCommitMessage {
+        reason: e.to_string(),
+    })?;
+
+    let connection = runtime_connection(&registry)?;
+
+    let http_response = reqwest::Client::new()
+        .post(format!(
+            "{}/app/generate-commit-message",
+            connection.base_url
+        ))
+        .bearer_auth(&connection.token)
+        .json(&serde_json::json!({
+            "stagedDiff": staged_diff,
+            "recentLog": recent_log,
+        }))
+        .send()
+        .await
+        .map_err(|error| AgentRuntimeError::GenerateCommitMessage {
+            reason: error.to_string(),
+        })?;
+
+    let status = http_response.status();
+
+    if !status.is_success() {
+        let error_body = http_response
+            .json::<GenerateCommitMessageError>()
+            .await
+            .unwrap_or(GenerateCommitMessageError {
+                error: format!("HTTP {status}"),
+            });
+        return Err(AgentRuntimeError::GenerateCommitMessage {
+            reason: error_body.error,
+        });
     }
 
-    Ok(CloudConfig { url, api_key })
+    let output = http_response
+        .json::<GenerateCommitMessageOutput>()
+        .await
+        .map_err(|error| AgentRuntimeError::GenerateCommitMessage {
+            reason: format!("failed to parse runtime response: {error}"),
+        })?;
+
+    Ok(output.commit_message)
 }
 
 #[tauri::command]
-pub async fn generate_commit_message(
-    _input: GenerateCommitMessageInput,
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "Tauri commands require State by value"
+)]
+pub async fn agent_thread_context_usage_get(
+    input: GetAgentThreadContextUsageInput,
+    store: tauri::State<'_, PersistenceStore>,
+) -> Result<Option<AgentThreadContextUsage>, AgentRuntimeError> {
+    validate_required_thread_id(&input.thread_id)?;
+
+    let row = sqlx::query_as::<_, AgentThreadContextUsageRow>(
+        r"
+        SELECT used_tokens, context_window, max_output_tokens, model_id,
+               input_tokens, output_tokens, reasoning_tokens, cached_input_tokens, cache_write_tokens,
+               input_cost, output_cost, cache_read_cost, cache_write_cost, total_cost, updated_at
+        FROM agent_thread_context_usage
+        WHERE agent_thread_id = ?
+        ",
+    )
+    .bind(input.thread_id)
+    .fetch_optional(store.pool())
+    .await
+    .map_err(|error| AgentRuntimeError::QueryContextUsage(error.to_string()))?;
+
+    Ok(row.map(AgentThreadContextUsage::from))
+}
+
+async fn load_agent_thread_project_context(
+    store: &PersistenceStore,
+    project_id: &str,
+    session_id: &str,
+    thread_id: &str,
+) -> Result<AgentThreadProjectContext, AgentRuntimeError> {
+    sqlx::query_as::<_, AgentThreadProjectContext>(
+        r"
+        SELECT projects.id AS project_id, sessions.id AS session_id, projects.folder_path AS project_path
+        FROM projects
+        INNER JOIN sessions ON sessions.project_id = projects.id
+        INNER JOIN agent_threads ON agent_threads.session_id = sessions.id
+        WHERE projects.id = ? AND sessions.id = ? AND agent_threads.id = ?
+        ",
+    )
+    .bind(project_id)
+    .bind(session_id)
+    .bind(thread_id)
+    .fetch_optional(store.pool())
+    .await
+    .map_err(|error| AgentRuntimeError::QueryProjectContext(error.to_string()))?
+    .ok_or_else(|| AgentRuntimeError::ProjectSessionNotFound {
+        project_id: project_id.to_string(),
+        session_id: session_id.to_string(),
+    })
+}
+
+fn runtime_connection(
+    registry: &tauri::State<'_, AgentRuntimeRegistry>,
+) -> Result<RuntimeConnection, AgentRuntimeError> {
+    let runtime_guard = registry.lock_runtime();
+    match &*runtime_guard {
+        AgentRuntimeState::Running(runtime) => Ok(runtime.connection.clone()),
+        AgentRuntimeState::Failed { reason } => Err(AgentRuntimeError::RuntimeStartFailed {
+            reason: reason.clone(),
+        }),
+        AgentRuntimeState::Starting(_) | AgentRuntimeState::NotStarted => {
+            Err(AgentRuntimeError::NotRunning)
+        }
+    }
+}
+
+/// Checks whether the agent runtime is running; starts it if not.
+///
+/// Uses a single-flight pattern: the first caller transitions `NotStarted` →
+/// `Starting` (holding a `watch::Sender`), then spawns the process. Concurrent
+/// callers see `Starting`, clone the `watch::Receiver`, drop the lock, and
+/// await a notification instead of racing to spawn a duplicate process.
+/// On completion the starter transitions to `Running` or `Failed` and notifies
+/// all waiters via `tx.send(())`.
+async fn ensure_runtime_started(
+    registry: &tauri::State<'_, AgentRuntimeRegistry>,
+    store: PersistenceStore,
+    app: tauri::AppHandle,
+) -> Result<(), AgentRuntimeError> {
+    // Atomically check state and (if not running) set Starting under the lock.
+    // This ensures only one caller ever transitions to Starting, closing the
+    // double-spawn race that check-then-act outside the lock would leave open.
+    let action = {
+        let mut runtime_guard = registry.lock_runtime();
+        match &*runtime_guard {
+            AgentRuntimeState::Running(_) => return Ok(()),
+            AgentRuntimeState::Starting(rx) => EnsureRuntimeAction::Wait(rx.clone()),
+            // Failed is treated like NotStarted: a transient failure (port
+            // conflict, missing Bun) should be retried rather than permanently
+            // bricking the runtime until the app restarts.
+            AgentRuntimeState::Failed { .. } | AgentRuntimeState::NotStarted => {
+                let (tx, rx) = watch::channel(());
+                *runtime_guard = AgentRuntimeState::Starting(rx);
+                EnsureRuntimeAction::Start(tx)
+            }
+        }
+    };
+
+    match action {
+        EnsureRuntimeAction::Wait(mut rx) => {
+            let _ = rx.changed().await;
+            // Re-check the settled state. The starter set Running or Failed
+            // before notifying, so whichever we find is the final outcome.
+            let runtime_guard = registry.lock_runtime();
+            match &*runtime_guard {
+                AgentRuntimeState::Running(_) => Ok(()),
+                AgentRuntimeState::Failed { reason } => {
+                    Err(AgentRuntimeError::RuntimeStartFailed {
+                        reason: reason.clone(),
+                    })
+                }
+                _ => Err(AgentRuntimeError::RuntimeStartFailed {
+                    reason: "Agent runtime entered unexpected state during startup".to_string(),
+                }),
+            }
+        }
+        EnsureRuntimeAction::Start(tx) => {
+            let start_result = match start_app_runtime(store, app).await {
+                Ok(runtime) => {
+                    let mut runtime_guard = registry.lock_runtime();
+                    *runtime_guard = AgentRuntimeState::Running(Box::new(runtime));
+                    Ok(())
+                }
+                Err(error) => {
+                    let reason = error.to_string();
+                    let mut runtime_guard = registry.lock_runtime();
+                    *runtime_guard = AgentRuntimeState::Failed {
+                        reason: reason.clone(),
+                    };
+                    Err(AgentRuntimeError::RuntimeStartFailed { reason })
+                }
+            };
+            // Notify waiters regardless of outcome. A dropped receiver means
+            // nobody was waiting (harmless).
+            let _ = tx.send(());
+            start_result
+        }
+    }
+}
+
+/// Decides what to do after inspecting the runtime state, before any async
+/// work. Holds no borrows, so the `MutexGuard` is always dropped before .await.
+enum EnsureRuntimeAction {
+    /// Another startup is in progress; wait on this receiver for the outcome.
+    Wait(watch::Receiver<()>),
+    /// This caller owns the startup; send the outcome when done.
+    Start(watch::Sender<()>),
+}
+
+async fn register_agent_thread(
+    connection: &RuntimeConnection,
+    thread_id: &str,
+    context: &AgentThreadProjectContext,
+) -> Result<(), AgentRuntimeError> {
+    let response = reqwest::Client::new()
+        .post(format!("{}/app/agent-threads", connection.base_url))
+        .bearer_auth(&connection.token)
+        .json(&serde_json::json!({
+            "projectId": context.project_id,
+            "sessionId": context.session_id,
+            "threadId": thread_id,
+            "projectPath": context.project_path,
+        }))
+        .send()
+        .await
+        .map_err(|error| AgentRuntimeError::RegisterAgentThread {
+            thread_id: thread_id.to_string(),
+            reason: error.to_string(),
+        })?;
+
+    if !response.status().is_success() {
+        return Err(AgentRuntimeError::RegisterAgentThread {
+            thread_id: thread_id.to_string(),
+            reason: format!("runtime returned HTTP {}", response.status()),
+        });
+    }
+
+    Ok(())
+}
+
+async fn request_agent_thread_title(
+    connection: &RuntimeConnection,
+    input: &GenerateAgentThreadTitleInput,
+    project_path: &str,
 ) -> Result<String, AgentRuntimeError> {
-    // TODO: generate using Pi's Agent (same as old commit-message-generation.ts)
-    // For now, return a placeholder
-    Ok("chore: update".to_string())
+    let http_response = reqwest::Client::new()
+        .post(format!("{}/app/agent-thread-title", connection.base_url))
+        .bearer_auth(&connection.token)
+        .json(&serde_json::json!({
+            "projectPath": project_path,
+            "prompt": input.prompt,
+            "assistantText": input.assistant_text,
+        }))
+        .send()
+        .await
+        .map_err(|error| AgentRuntimeError::GenerateTitle {
+            thread_id: input.thread_id.clone(),
+            reason: error.to_string(),
+        })?;
+
+    if !http_response.status().is_success() {
+        return Err(AgentRuntimeError::GenerateTitle {
+            thread_id: input.thread_id.clone(),
+            reason: format!("runtime returned HTTP {}", http_response.status()),
+        });
+    }
+
+    let output = http_response
+        .json::<GenerateAgentThreadTitleOutput>()
+        .await
+        .map_err(|error| AgentRuntimeError::GenerateTitle {
+            thread_id: input.thread_id.clone(),
+            reason: error.to_string(),
+        })?;
+    Ok(output.title)
 }
 
-// ── Shutdown ─────────────────────────────────────────────────────────
-
-pub(crate) fn shutdown(_registry: &AgentRuntimeRegistry) {
-    // No-op — sidecar is managed externally
+/// Bundled Skill metadata reported by the agent runtime's `GET /app/skills` route.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BundledSkill {
+    pub name: String,
+    pub description: String,
 }
 
-// ── Skills (loaded by the sidecar, stub here) ─────────────────────
-
-#[derive(Serialize)]
-pub(crate) struct BundledSkill {
-    pub(crate) name: String,
-    pub(crate) description: String,
+#[derive(Debug, Deserialize)]
+struct BundledSkillsResponse {
+    skills: Vec<BundledSkill>,
 }
 
-/// Skills are loaded by the agent-pi sidecar via Pi's `DefaultResourceLoader`.
-/// This stub returns empty so the Rust backend doesn't need to reach into the sidecar.
+/// Fetches the Bundled Skills compiled into the agent runtime.
+///
+/// # Errors
+///
+/// Returns the failure reason when the runtime is not running, is in a failed
+/// state, or the `GET /app/skills` request fails. Callers surface this as a
+/// degraded Bundled section without failing the whole Skills listing.
 pub async fn fetch_bundled_skills(
-    _registry: &AgentRuntimeRegistry,
+    registry: &tauri::State<'_, AgentRuntimeRegistry>,
 ) -> Result<Vec<BundledSkill>, String> {
-    Ok(Vec::new()) // Skills managed by the sidecar
+    let connection = {
+        let runtime_guard = registry.lock_runtime();
+        match &*runtime_guard {
+            AgentRuntimeState::Running(runtime) => runtime.connection.clone(),
+            AgentRuntimeState::Failed { reason } => return Err(reason.clone()),
+            AgentRuntimeState::Starting(_) | AgentRuntimeState::NotStarted => {
+                return Err("Agent runtime is not running.".to_string())
+            }
+        }
+    };
+
+    let response = reqwest::Client::new()
+        .get(format!("{}/app/skills", connection.base_url))
+        .bearer_auth(&connection.token)
+        .send()
+        .await
+        .map_err(|error| error.to_string())?;
+
+    if !response.status().is_success() {
+        return Err(format!("runtime returned HTTP {}", response.status()));
+    }
+
+    let parsed = response
+        .json::<BundledSkillsResponse>()
+        .await
+        .map_err(|error| error.to_string())?;
+
+    Ok(parsed.skills)
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────
+async fn backend_models_handler(
+) -> Result<Json<crate::org_config::ModelCatalog>, crate::org_config::OrgConfigError> {
+    crate::org_config::fetch_model_catalog().await.map(Json)
+}
 
-fn validate_required_field(value: &str, name: &str) -> Result<(), AgentRuntimeError> {
-    if value.trim().is_empty() {
-        return Err(match name {
-            "project_id" => AgentRuntimeError::MissingProjectId,
-            "session_id" => AgentRuntimeError::MissingSessionId,
-            "thread_id" => AgentRuntimeError::MissingThreadId,
-            "prompt" => AgentRuntimeError::MissingTitlePrompt,
-            "assistant_text" => AgentRuntimeError::MissingAssistantText,
-            _ => AgentRuntimeError::RuntimeStartFailed {
-                reason: format!("missing required field: {name}"),
-            },
+fn runtime_base_url(port: u16) -> String {
+    format!("http://{AGENT_RUNTIME_HOST}:{port}")
+}
+#[allow(
+    clippy::too_many_lines,
+    reason = "Function covers the full launch orchestration: validate, bind backend, spawn agent, await health"
+)]
+async fn start_app_runtime(
+    store: PersistenceStore,
+    app_handle: tauri::AppHandle,
+) -> Result<AppAgentRuntime, AgentRuntimeError> {
+    let mode = resolve_launch_mode();
+    let port = reserve_port()?;
+    let token = generate_runtime_token();
+
+    // Validate cloud connectivity at startup — fail fast if unreachable
+    crate::org_config::fetch_model_catalog()
+        .await
+        .map_err(|error| AgentRuntimeError::StartFailed {
+            reason: format!("failed to fetch organization model catalog: {error}"),
+        })?;
+
+    // Start a lightweight Axum server so agent-pi can fetch the model
+    // catalog on demand (enables model switching without restarts).
+    let backend_port = reserve_port()?;
+    let backend_router = Router::new().route("/api/org/models", get(backend_models_handler));
+    let backend_listener = TokioTcpListener::bind((AGENT_RUNTIME_HOST, backend_port))
+        .await
+        .map_err(|error| AgentRuntimeError::StartFailed {
+            reason: format!("failed to bind backend server: {error}"),
+        })?;
+    let backend_actual_port = backend_listener
+        .local_addr()
+        .map_err(|error| AgentRuntimeError::StartFailed {
+            reason: format!("failed to get backend server port: {error}"),
+        })?
+        .port();
+    tokio::spawn(async move {
+        axum::serve(backend_listener, backend_router).await.ok();
+    });
+    let backend_url = format!("http://{AGENT_RUNTIME_HOST}:{backend_actual_port}");
+
+    let process = match mode {
+        AgentRuntimeLaunchMode::Dev => {
+            let runtime_dir = if let Ok(path) = env::var("KIRA_AGENT_RUNTIME_DIR") {
+                PathBuf::from(path)
+            } else {
+                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../agent-pi")
+            };
+            if !runtime_dir.is_dir() {
+                return Err(AgentRuntimeError::StartFailed {
+                    reason: format!(
+                        "agent runtime directory not found: {}",
+                        runtime_dir.display()
+                    ),
+                });
+            }
+            let mut cmd = Command::new("bun");
+            cmd.current_dir(&runtime_dir);
+            cmd.arg("run")
+                .arg("dev")
+                .arg("--")
+                .arg("--port")
+                .arg(port.to_string());
+            apply_runtime_env(&mut cmd, port, &token, store.app_data_dir(), &backend_url);
+            cmd.kill_on_drop(true);
+            if let Some(shell_path) = crate::settings::agent_shell_path(store.pool()).await {
+                cmd.env("KIRA_AGENT_SHELL_PATH", shell_path);
+            }
+            crate::process_ext::hide_console_window(cmd.as_std_mut());
+            ProcessHandle::Dev(Box::new(cmd.spawn().map_err(|error| {
+                AgentRuntimeError::StartFailed {
+                    reason: format!(
+                        "failed to spawn agent runtime from agent-pi directory: {error}",
+                    ),
+                }
+            })?))
+        }
+        AgentRuntimeLaunchMode::Bun => {
+            let resource_dir = app_handle.path().resource_dir().map_err(|e| {
+                AgentRuntimeError::ResourceDirMissing {
+                    reason: format!("failed to resolve resource dir: {e}"),
+                }
+            })?;
+            let staging_dir = app_handle
+                .path()
+                .app_cache_dir()
+                .map_err(|e| AgentRuntimeError::ResourceDirMissing {
+                    reason: format!("failed to resolve app cache dir: {e}"),
+                })?
+                .join("agent-runtime");
+            let app_version = app_handle.config().version.as_deref().unwrap_or("0.0.0");
+            let version_file = staging_dir.join(".version");
+            if staging_dir.join("server.mjs").exists()
+                && std::fs::read_to_string(&version_file).ok().as_deref() != Some(app_version)
+            {
+                let _ = std::fs::remove_dir_all(&staging_dir);
+            }
+            if !staging_dir.join("server.mjs").exists() {
+                let bundle_dir = resource_dir.join("agent-runtime");
+                copy_dir_recursive(&bundle_dir, &staging_dir)?;
+                let _ = std::fs::write(&version_file, app_version);
+            }
+            let bun_path = match resolve_bun_path(&store).await {
+                Ok(path) => path,
+                Err(error) => {
+                    show_bun_dialog(&app_handle, &error);
+                    return Err(error);
+                }
+            };
+
+            let script_path = staging_dir.join("server.mjs");
+            let skills_dir = staging_dir.join("skills");
+            let pi_package_dir = staging_dir.join("pi-sdk");
+
+            let mut cmd = Command::new(&bun_path);
+            cmd.arg("run")
+                .arg(&script_path)
+                .arg("--port")
+                .arg(port.to_string());
+            #[cfg(target_os = "windows")]
+            cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+            apply_runtime_env(&mut cmd, port, &token, store.app_data_dir(), &backend_url);
+            cmd.env(
+                "KIRA_AGENT_SKILLS_DIR",
+                skills_dir.to_string_lossy().as_ref(),
+            )
+            .env("PI_PACKAGE_DIR", pi_package_dir.to_string_lossy().as_ref())
+            .kill_on_drop(true);
+            if let Some(shell_path) = crate::settings::agent_shell_path(store.pool()).await {
+                cmd.env("KIRA_AGENT_SHELL_PATH", shell_path);
+            }
+            ProcessHandle::Bun(Box::new(cmd.spawn().map_err(|error| {
+                AgentRuntimeError::StartFailed {
+                    reason: format!("failed to spawn agent runtime: {error}"),
+                }
+            })?))
+        }
+    };
+    if let Err(error) = wait_for_health(port).await {
+        let (ProcessHandle::Dev(mut child) | ProcessHandle::Bun(mut child)) = process;
+        let _ = child.start_kill();
+        return Err(error);
+    }
+    Ok(AppAgentRuntime {
+        connection: RuntimeConnection {
+            base_url: runtime_base_url(port),
+            token,
+        },
+        process: Some(process),
+    })
+}
+
+async fn wait_for_health(port: u16) -> Result<(), AgentRuntimeError> {
+    let health_url = format!("http://{AGENT_RUNTIME_HOST}:{port}/healthz");
+    let client = reqwest::Client::new();
+
+    let check = async {
+        loop {
+            match client.get(&health_url).send().await {
+                Ok(response) if response.status().is_success() => {
+                    let health = response.json::<HealthResponse>().await.map_err(|error| {
+                        AgentRuntimeError::InvalidHealthResponse {
+                            port,
+                            reason: error.to_string(),
+                        }
+                    })?;
+                    validate_health_response(port, &health)?;
+                    return Ok(());
+                }
+                Ok(_response) => {}
+                Err(_error) => {}
+            }
+            sleep(AGENT_RUNTIME_HEALTH_POLL_INTERVAL).await;
+        }
+    };
+
+    timeout(AGENT_RUNTIME_HEALTH_TIMEOUT, check)
+        .await
+        .map_err(|_| AgentRuntimeError::HealthTimeout {
+            port,
+            timeout_ms: AGENT_RUNTIME_HEALTH_TIMEOUT_MS,
+        })?
+}
+
+fn validate_health_response(port: u16, health: &HealthResponse) -> Result<(), AgentRuntimeError> {
+    if health.status != "ready" {
+        return Err(AgentRuntimeError::InvalidHealthResponse {
+            port,
+            reason: format!("expected status `ready`, got `{}`", health.status),
+        });
+    }
+    if health.package_name != AGENT_RUNTIME_PACKAGE_NAME {
+        return Err(AgentRuntimeError::InvalidHealthResponse {
+            port,
+            reason: format!(
+                "expected packageName `{AGENT_RUNTIME_PACKAGE_NAME}`, got `{}`",
+                health.package_name
+            ),
+        });
+    }
+    if health.runtime != AGENT_RUNTIME_KIND {
+        return Err(AgentRuntimeError::InvalidHealthResponse {
+            port,
+            reason: format!(
+                "expected runtime `{AGENT_RUNTIME_KIND}`, got `{}`",
+                health.runtime
+            ),
         });
     }
     Ok(())
+}
+
+fn resolve_launch_mode() -> AgentRuntimeLaunchMode {
+    match env::var("KIRA_AGENT_RUNTIME_MODE") {
+        Ok(value) if value == "bun" => AgentRuntimeLaunchMode::Bun,
+        Ok(value) if value == "dev" => AgentRuntimeLaunchMode::Dev,
+        _ if cfg!(debug_assertions) => AgentRuntimeLaunchMode::Dev,
+        _ => AgentRuntimeLaunchMode::Bun,
+    }
+}
+
+fn apply_runtime_env(
+    cmd: &mut Command,
+    port: u16,
+    token: &str,
+    app_data_dir: &Path,
+    backend_url: &str,
+) {
+    cmd.env("HOST", AGENT_RUNTIME_HOST)
+        .env("HOSTNAME", AGENT_RUNTIME_HOST)
+        .env("PORT", port.to_string())
+        .env("KIRA_AGENT_RUNTIME_TOKEN", token)
+        .env(
+            "KIRA_AGENT_PI_DATA_DIR",
+            app_data_dir.to_string_lossy().as_ref(),
+        )
+        .env("KIRA_AGENT_BACKEND_URL", backend_url);
+}
+
+/// Resolves the Bun binary path by probing known locations, then validates the
+/// version is >= 1.3.14.
+///
+/// Preference order:
+/// 1. `KIRA_AGENT_BUN_PATH` env var override (for testing/debugging)
+/// 2. `SQLite` setting `agentRuntime.bunPath` (user-configured)
+/// 3. Known install locations (`~/.bun/bin/bun`, Homebrew paths, `%LOCALAPPDATA%/bun/bin`)
+/// 4. `PATH` fallback
+async fn resolve_bun_path(store: &PersistenceStore) -> Result<String, AgentRuntimeError> {
+    let candidate = resolve_bun_candidate(store).await?;
+    let path = validate_bun_version(&candidate)?;
+    Ok(path)
+}
+
+/// Probes known locations for a Bun binary path without version validation.
+async fn resolve_bun_candidate(store: &PersistenceStore) -> Result<String, AgentRuntimeError> {
+    // Env var override (for testing/debugging)
+    if let Ok(path) = env::var("KIRA_AGENT_BUN_PATH") {
+        if Path::new(&path).is_file() {
+            return Ok(path);
+        }
+    }
+
+    // SQLite setting override (user-configured path in Settings)
+    if let Some(path) = crate::settings::bun_path_get(store.pool()).await {
+        if Path::new(&path).is_file() {
+            return Ok(path);
+        }
+    }
+    // Official Bun installer: ~/.bun/bin/bun (macOS/Linux) / bun.exe (Windows)
+    if let Some(home) = env::var("HOME")
+        .ok()
+        .or_else(|| env::var("USERPROFILE").ok())
+    {
+        let home_path = Path::new(&home);
+        let bun_path = home_path.join(".bun").join("bin").join("bun");
+        if bun_path.is_file() {
+            return Ok(bun_path.to_string_lossy().to_string());
+        }
+        let bun_exe_path = home_path.join(".bun").join("bin").join("bun.exe");
+        if bun_exe_path.is_file() {
+            return Ok(bun_exe_path.to_string_lossy().to_string());
+        }
+    }
+
+    // macOS Homebrew paths
+    let brew_paths = [
+        PathBuf::from("/opt/homebrew/bin/bun"),
+        PathBuf::from("/usr/local/bin/bun"),
+    ];
+    for path in &brew_paths {
+        if path.is_file() {
+            return Ok(path.to_string_lossy().to_string());
+        }
+    }
+
+    // Windows Local AppData
+    if let Ok(local_app_data) = env::var("LOCALAPPDATA") {
+        let bun_path = PathBuf::from(local_app_data)
+            .join("bun")
+            .join("bin")
+            .join("bun.exe");
+        if bun_path.is_file() {
+            return Ok(bun_path.to_string_lossy().to_string());
+        }
+    }
+
+    // PATH fallback (for terminal-launched / CI)
+    if let Some(path) = probe_path_for_bun() {
+        return Ok(path.to_string_lossy().to_string());
+    }
+
+    Err(AgentRuntimeError::BunNotFound)
+}
+
+/// Validates the Bun binary version is >= 1.3.14.
+fn validate_bun_version(path: &str) -> Result<String, AgentRuntimeError> {
+    let output = std::process::Command::new(path)
+        .arg("--version")
+        .output()
+        .map_err(|_| AgentRuntimeError::BunNotFound)?;
+
+    if !output.status.success() {
+        return Err(AgentRuntimeError::BunNotFound);
+    }
+
+    let version_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+    let parts: Vec<u32> = version_str
+        .split('.')
+        .filter_map(|s| s.parse().ok())
+        .collect();
+
+    if parts.len() >= 3 {
+        let major = parts[0];
+        let minor = parts[1];
+        let patch_num = parts[2];
+        if major > 1 || (major == 1 && minor > 3) || (major == 1 && minor == 3 && patch_num >= 14) {
+            return Ok(path.to_string());
+        }
+    }
+
+    Err(AgentRuntimeError::BunVersionTooLow {
+        found: version_str,
+        required: ">=1.3.14".to_string(),
+    })
+}
+
+/// Searches `PATH` for a `bun` or `bun.exe` executable.
+fn probe_path_for_bun() -> Option<PathBuf> {
+    env::var_os("PATH").and_then(|paths| {
+        env::split_paths(&paths).find_map(|dir| {
+            let bun = dir.join("bun");
+            if bun.is_file() {
+                return Some(bun);
+            }
+            let bun_exe = dir.join("bun.exe");
+            if bun_exe.is_file() {
+                return Some(bun_exe);
+            }
+            None
+        })
+    })
+}
+
+fn validate_required_prompt(prompt: &str) -> Result<(), AgentRuntimeError> {
+    if prompt.trim().is_empty() {
+        return Err(AgentRuntimeError::MissingTitlePrompt);
+    }
+    Ok(())
+}
+
+fn validate_required_assistant_text(assistant_text: &str) -> Result<(), AgentRuntimeError> {
+    if assistant_text.trim().is_empty() {
+        return Err(AgentRuntimeError::MissingAssistantText);
+    }
+    Ok(())
+}
+fn validate_project_path(project_path: &str) -> Result<(), AgentRuntimeError> {
+    let path = PathBuf::from(project_path);
+    if !path.exists() {
+        return Err(AgentRuntimeError::ProjectPathMissing {
+            path: path.display().to_string(),
+        });
+    }
+    if !path.is_dir() {
+        return Err(AgentRuntimeError::ProjectPathNotDirectory {
+            path: path.display().to_string(),
+        });
+    }
+    Ok(())
+}
+
+fn validate_required_project_id(project_id: &str) -> Result<(), AgentRuntimeError> {
+    if project_id.trim().is_empty() {
+        return Err(AgentRuntimeError::MissingProjectId);
+    }
+    Ok(())
+}
+
+fn validate_required_session_id(session_id: &str) -> Result<(), AgentRuntimeError> {
+    if session_id.trim().is_empty() {
+        return Err(AgentRuntimeError::MissingSessionId);
+    }
+    Ok(())
+}
+
+fn validate_required_thread_id(thread_id: &str) -> Result<(), AgentRuntimeError> {
+    if thread_id.trim().is_empty() {
+        return Err(AgentRuntimeError::MissingThreadId);
+    }
+    Ok(())
+}
+
+fn reserve_port() -> Result<u16, AgentRuntimeError> {
+    let listener = TcpListener::bind((AGENT_RUNTIME_HOST, 0))
+        .map_err(|error| AgentRuntimeError::ReservePort(error.to_string()))?;
+    let address = listener
+        .local_addr()
+        .map_err(|error| AgentRuntimeError::ReservePort(error.to_string()))?;
+    Ok(address.port())
+}
+
+fn generate_runtime_token() -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut bytes = [0_u8; 32];
+    rand::rng().fill_bytes(&mut bytes);
+    let mut token = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        token.push(char::from(HEX[usize::from(byte >> 4)]));
+        token.push(char::from(HEX[usize::from(byte & 0x0f)]));
+    }
+    token
+}
+
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), AgentRuntimeError> {
+    fs::create_dir_all(dst).map_err(|e| AgentRuntimeError::StartFailed {
+        reason: format!("failed to create dir \"{}\": {e}", dst.display()),
+    })?;
+
+    for entry in fs::read_dir(src).map_err(|e| AgentRuntimeError::StartFailed {
+        reason: format!("failed to read dir \"{}\": {e}", src.display()),
+    })? {
+        let entry = entry.map_err(|e| AgentRuntimeError::StartFailed {
+            reason: format!("failed to read entry: {e}"),
+        })?;
+        let file_type = entry
+            .file_type()
+            .map_err(|e| AgentRuntimeError::StartFailed {
+                reason: format!("failed to get file type: {e}"),
+            })?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+
+        if file_type.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            fs::copy(&src_path, &dst_path).map_err(|e| AgentRuntimeError::StartFailed {
+                reason: format!(
+                    "failed to copy \"{}\" to \"{}\": {e}",
+                    src_path.display(),
+                    dst_path.display(),
+                ),
+            })?;
+        }
+    }
+    Ok(())
+}
+
+/// Shows a native dialog when Bun is not found or too old, with a button
+/// that opens bun.sh in the browser so the user can install/upgrade.
+fn show_bun_dialog(app_handle: &tauri::AppHandle, error: &AgentRuntimeError) {
+    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+    use tauri_plugin_opener::OpenerExt;
+
+    let (title, message) = match error {
+        AgentRuntimeError::BunNotFound => (
+            "Bun Required".to_string(),
+            concat!(
+                "Kira needs Bun to run the agent runtime.\n\n",
+                "Bun was not found on your system. ",
+                "Install it from bun.sh or configure a custom path in Settings.",
+            )
+            .to_string(),
+        ),
+        AgentRuntimeError::BunVersionTooLow { found, required } => (
+            "Bun Version Too Old".to_string(),
+            format!(
+                "Kira requires Bun {required}, but found Bun {found}.\n\n\
+                 Please upgrade Bun from https://bun.sh.",
+            ),
+        ),
+        _ => return,
+    };
+
+    let handle = app_handle.clone();
+    app_handle
+        .dialog()
+        .message(message)
+        .title(title)
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            "Download Bun".to_string(),
+            "Close".to_string(),
+        ))
+        .kind(MessageDialogKind::Error)
+        .show(move |ok| {
+            if ok {
+                let _ = handle.opener().open_url("https://bun.sh", None::<&str>);
+            }
+        });
 }

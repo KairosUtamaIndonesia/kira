@@ -2,35 +2,77 @@ import type { PiTranscriptState } from "../types";
 
 import { stringifyUnknown } from "../agentThreadDisplay";
 
-const nothing = undefined;
+type AgentThreadRawEventStreamProps = {
+  transcript: PiTranscriptState;
+};
 
-type Props = { transcript: PiTranscriptState };
+function AgentThreadRawEventStream({ transcript }: AgentThreadRawEventStreamProps) {
+  const entries = [
+    ...transcript.persistedMessages.map((message, index) => ({
+      id: `message:${index}`,
+      kind: "message",
+      createdAt: timestampFromRecord(message),
+      value: message,
+    })),
+    ...transcript.liveEvents.map((event, index) => ({
+      id: `event:${index}`,
+      kind: "event",
+      createdAt: timestampFromRecord(event),
+      value: event,
+    })),
+  ];
 
-function AgentThreadRawEventStream({ transcript }: Props) {
-  if (transcript.messages.length === 0) return nothing;
+  if (entries.length === 0) {
+    return <></>;
+  }
 
   return (
     <section
       className="mt-4 space-y-3 border-t border-border pt-4"
       aria-labelledby="raw-events-title"
     >
-      <h2 id="raw-events-title" className="text-sm font-medium">
-        Raw messages
-      </h2>
+      <div>
+        <h2 id="raw-events-title" className="text-sm font-medium">
+          Raw Pi transcript
+        </h2>
+        <p className="text-xs text-muted-foreground">
+          Persisted Pi messages and live Pi events for this Agent Thread.
+        </p>
+      </div>
       <ol className="space-y-3">
-        {transcript.messages.map((msg, i) => (
-          <li key={msg.id ?? i} className="space-y-1">
+        {entries.map((entry) => (
+          <li key={entry.id} className="space-y-1">
             <div className="flex flex-wrap items-center gap-2 font-mono text-xs text-muted-foreground">
-              <span>{msg.role}</span>
+              <span>{formatTimestamp(entry.createdAt)}</span>
+              <span>{entry.kind}</span>
             </div>
             <pre className="max-h-80 overflow-auto rounded-md border border-border bg-card p-2 font-mono text-xs text-card-foreground">
-              {stringifyUnknown(msg)}
+              {stringifyUnknown(entry.value)}
             </pre>
           </li>
         ))}
       </ol>
     </section>
   );
+}
+
+function timestampFromRecord(record: Record<string, unknown>) {
+  const timestamp = record.timestamp;
+  if (typeof timestamp === "string") {
+    return timestamp;
+  }
+  if (typeof timestamp === "number") {
+    return new Date(timestamp).toISOString();
+  }
+  return new Date().toISOString();
+}
+
+function formatTimestamp(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(new Date(value));
 }
 
 export { AgentThreadRawEventStream };

@@ -18,7 +18,7 @@ import {
   type ReactNode,
 } from "react";
 
-import type { SessionTreeNodeJson } from "../agentThreadDisplay";
+import type { SessionTreeNodeJson } from "../types";
 
 type SessionTreeProps = {
   nodes: SessionTreeNodeJson[];

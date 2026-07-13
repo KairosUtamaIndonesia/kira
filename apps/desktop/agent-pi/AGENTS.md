@@ -39,10 +39,8 @@ The agent Pi provides:
 
 ```
 src/
-├── server.ts                     # Entry point — Hono HTTP server + WS upgrade
+├── server.ts                     # Entry point — starts Hono HTTP server
 ├── app.ts                        # App bootstrap and initialization
-├── protocol/
-│   └── index.ts                  # Desktop ↔ agent-pi wire protocol (shared via @kira/agent-pi/protocol)
 └── kira/
     ├── agent-session-host.ts     # Pi session host for agent threads
     ├── agent-thread-context.ts   # Thread context preparation
@@ -53,11 +51,10 @@ src/
     ├── env.ts                    # Environment configuration
     ├── model-catalog.ts          # AI model catalog from org config
     ├── pi-model.ts               # Pi model provider integration
-    ├── session-serialization.ts  # Session snapshot + tree serialization for the desktop
     ├── skill-expansion.ts        # Skill SKILL.md loading and expansion
     ├── title-generation.ts       # Agent thread title generation
     ├── tool-ui-broker.ts         # Tool UI state bridge (WebSocket)
-    ├── ws-transport.ts           # WebSocket transport: typed commands + event forwarding
+    ├── ws-transport.ts           # WebSocket transport for Pi runtime
     └── tools/
         └── ask-user-tool.ts      # Tool that asks the user questions
     └── extensions/
@@ -122,43 +119,24 @@ src/
 The Tauri backend's `agent_runtime` Rust module manages the agent Pi subprocess:
 
 1. **Startup**: `agent_runtime::start_agent_runtime` spawns the agent Pi server as a child process
-2. **HTTP API**: The Tauri backend calls agent Pi endpoints (commit messages, thread titles)
-3. **WebSocket**: `/agents/:threadId/ws` bridges each Agent Thread's Pi `AgentSession` to the desktop frontend
+2. **HTTP API**: The Tauri backend calls agent Pi endpoints (commit messages, thread titles, context usage)
+3. **WebSocket**: The agent Pi provides a WebSocket transport (`ws-transport.ts`) for real-time tool UI events to the desktop frontend
 4. **Auth**: Requests between the desktop and agent Pi use `auth.ts` for authentication (shared secret)
-
-### Wire protocol (`src/protocol/index.ts`)
-
-The desktop frontend consumes this module as `@kira/agent-pi/protocol` (workspace
-dependency, type-only plus the pure `messageDisplayId` helper). It defines every
-frame crossing the socket:
-
-- **Commands** (client → server): `AgentSocketCommand` — `prompt`, `steer`, `abort`,
-  `clear_queue`, `tool_ui_response`, `navigate_tree`, `switch_model`, `compact`.
-  Every command carries an `id`; the server acks with a `response` frame.
-- **Events** (server → client): Pi `AgentSessionEvent`s are forwarded verbatim.
-- **Server pushes**: `session_snapshot` on socket attach and after `navigate_tree`;
-  `context_usage` and `tree_updated` after every settled run and compaction;
-  `error` when an accepted run fails; `tool_ui_request` for interactive tools.
-
-Protocol changes MUST be made in `src/protocol/index.ts` so both ends stay in
-sync at compile time. `messageDisplayId` is the shared message-identity
-derivation — the session-tree serializer and the desktop transcript both rely
-on it; never fork that logic.
 
 ## HTTP routes
 
-Defined in `src/kira/app-routes.ts`, mounted under `/app`:
+Defined in `src/kira/app-routes.ts`:
 
-| Method | Route                          | Purpose                               |
-| ------ | ------------------------------ | ------------------------------------- |
-| GET    | `/healthz`                     | Health check (root, not under `/app`) |
-| GET    | `/app/skills`                  | List Bundled Skills                   |
-| GET    | `/app/skills/:name/body`       | Read one Bundled Skill body           |
-| POST   | `/app/agent-threads`           | Register an Agent Thread context      |
-| DELETE | `/app/agent-threads/:id`       | Release a cached Agent Thread session |
-| POST   | `/app/agent-thread-title`      | Generate thread title                 |
-| POST   | `/app/generate-commit-message` | Generate commit message from git diff |
-| WS     | `/agents/:threadId/ws`         | Agent Thread session socket           |
+| Method | Route             | Purpose                               |
+| ------ | ----------------- | ------------------------------------- |
+| GET    | `/health`         | Health check                          |
+| POST   | `/commit-message` | Generate commit message from git diff |
+| POST   | `/thread-title`   | Generate thread title from messages   |
+| POST   | `/thread-context` | Prepare thread context                |
+| GET    | `/context-usage`  | Get context window usage              |
+| POST   | `/session/start`  | Start an agent session                |
+| POST   | `/session/stop`   | Stop an agent session                 |
+| WS     | `/ws`             | WebSocket for tool UI events          |
 
 ## Common commands
 

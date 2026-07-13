@@ -179,26 +179,29 @@ pub async fn explorer_file_reference_suggestions(
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        guard.get(&root_path).and_then(|(timestamp, entries)| {
-            if timestamp.elapsed() < CACHE_TTL {
-                Some(entries.clone())
-            } else {
-                None
-            }
-        })
+        guard
+            .get(&root_path)
+            .and_then(|(timestamp, entries)| {
+                if timestamp.elapsed() < CACHE_TTL {
+                    Some(entries.clone())
+                } else {
+                    None
+                }
+            })
     };
 
-    let entries = if let Some(entries) = cached_entries {
-        entries
-    } else {
-        // Cache miss or stale — walk outside the lock.
-        let walked = walk_project_tree(&root_path)?;
-        let mut guard = cache
-            .0
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        guard.insert(root_path.clone(), (Instant::now(), walked.clone()));
-        walked
+    let entries = match cached_entries {
+        Some(entries) => entries,
+        None => {
+            // Cache miss or stale — walk outside the lock.
+            let walked = walk_project_tree(&root_path)?;
+            let mut guard = cache
+                .0
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            guard.insert(root_path.clone(), (Instant::now(), walked.clone()));
+            walked
+        }
     };
 
     let filter = scoped_query.filter;

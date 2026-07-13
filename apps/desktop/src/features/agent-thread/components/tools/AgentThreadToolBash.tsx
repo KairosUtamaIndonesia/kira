@@ -2,57 +2,79 @@ import { Terminal } from "lucide-react";
 
 import type { AgentThreadToolCallDisplay } from "../../agentThreadDisplay";
 
-import { ToolCodeBlock, ToolExpandable, ToolInlineRow, ToolStatusBadge } from "./ToolPrimitives";
+import {
+  ToolCodeBlock,
+  ToolDuration,
+  ToolErrorMessage,
+  ToolExpandable,
+  ToolInlineRow,
+  ToolStatusBadge,
+} from "./ToolPrimitives";
 
 type Props = {
   tool: AgentThreadToolCallDisplay;
 };
 
 function AgentThreadToolBash({ tool }: Props) {
-  // tool.input = JSON-stringified args like {"command":"ls -la"}
-  // tool.output = accumulated output from tool_execution_update (pi TUI style)
-  let command = "";
-
-  if (tool.input) {
-    try {
-      const parsed = JSON.parse(tool.input);
-      if (parsed && typeof parsed.command === "string") command = parsed.command;
-    } catch {
-      command = tool.input;
-    }
-  }
-
-  if (!command) command = tool.toolName;
-  const hasOutput = tool.output && tool.output.length > 0;
+  const outputText = outputTextFromTool(tool);
+  const exitCode = tool.exitCode;
 
   return (
     <div className="min-w-0">
-      {hasOutput ? (
+      {outputText === undefined || outputText.length === 0 ? (
+        <ToolInlineRow
+          icon={<Terminal aria-hidden="true" className="size-3" />}
+          label={<span>Ran {tool.command ?? tool.title}</span>}
+          labelWrap
+        >
+          {tool.status === undefined ? undefined : <ToolStatusBadge status={tool.status} />}
+          {exitCode !== undefined && exitCode !== 0 ? (
+            <span className="shrink-0 text-xs text-destructive">exit {exitCode}</span>
+          ) : undefined}
+          <ToolDuration duration={tool.duration} />
+        </ToolInlineRow>
+      ) : (
         <ToolExpandable
           summary="Show output"
           trigger={
             <ToolInlineRow
               icon={<Terminal aria-hidden="true" className="size-3" />}
-              label={<span>Ran {command}</span>}
+              label={<span>Ran {tool.command ?? tool.title}</span>}
               labelWrap
             >
-              <ToolStatusBadge status={tool.status} />
+              {tool.status === undefined ? undefined : <ToolStatusBadge status={tool.status} />}
+              {exitCode !== undefined && exitCode !== 0 ? (
+                <span className="shrink-0 text-xs text-destructive">exit {exitCode}</span>
+              ) : undefined}
+              <ToolDuration duration={tool.duration} />
             </ToolInlineRow>
           }
         >
-          <ToolCodeBlock content={tool.output} />
+          <ToolCodeBlock content={outputText} />
         </ToolExpandable>
-      ) : (
-        <ToolInlineRow
-          icon={<Terminal aria-hidden="true" className="size-3" />}
-          label={<span>Ran {command}</span>}
-          labelWrap
-        >
-          <ToolStatusBadge status={tool.status} />
-        </ToolInlineRow>
+      )}
+      {tool.errorMessage === undefined ? undefined : (
+        <ToolErrorMessage message={tool.errorMessage} />
       )}
     </div>
   );
+}
+
+function outputTextFromTool(tool: AgentThreadToolCallDisplay) {
+  if (tool.output !== undefined && typeof tool.output === "object" && tool.output !== null) {
+    const output = tool.output as Record<string, unknown>;
+    if (Array.isArray(output.content)) {
+      const textParts = output.content
+        .filter(
+          (c): c is { type: "text"; text: string } =>
+            typeof c === "object" && c !== null && c.type === "text" && typeof c.text === "string",
+        )
+        .map((c) => c.text);
+      return textParts.join("\n");
+    }
+  }
+
+  return;
 }
 
 export { AgentThreadToolBash };

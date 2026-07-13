@@ -1,10 +1,8 @@
 {
   "extends": "@kira/tsconfig/react.json",
   "compilerOptions": {
-    "lib": ["ES2020", "DOM", "DOM.Iterable", "ES2024"],
     "paths": {
-      "@/*": ["./src/*"],
-      "@kira/agent-pi/protocol": ["./agent-pi/src/protocol/index.ts"]
+      "@/*": ["./src/*"]
     }
   },
   "include": ["src"],
