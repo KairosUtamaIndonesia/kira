@@ -1,9 +1,19 @@
+use std::env;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use tauri::Manager;
 use thiserror::Error;
+use tokio::process::{Child, Command};
 
 use crate::persistence::PersistenceStore;
+
+const AGENT_RUNTIME_HOST: &str = "127.0.0.1";
+const AGENT_RUNTIME_PORT: u16 = 19876;
+const STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
+const STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(200);
 
 // ── Error ────────────────────────────────────────────────────────────
 
@@ -19,6 +29,12 @@ pub enum AgentRuntimeError {
     MissingThreadId,
     #[error("Agent runtime startup failed: {reason}")]
     RuntimeStartFailed { reason: String },
+    #[error(
+        "Bun runtime not found. Install Bun from https://bun.sh or configure a custom path in Settings."
+    )]
+    BunNotFound,
+    #[error("bundled agent runtime is missing: {path}")]
+    RuntimeBundleMissing { path: String },
 }
 
 // ── State ────────────────────────────────────────────────────────────
@@ -40,8 +56,15 @@ impl AgentRuntimeRegistry {
 pub enum AgentRuntimeState {
     #[default]
     NotStarted,
-    Running,
-    #[allow(dead_code)]
+    /// A launch is in flight; concurrent `start_agent_runtime` calls return
+    /// immediately instead of racing to spawn a duplicate process.
+    Starting,
+    /// The runtime is reachable. `process` is `Some` when this app instance
+    /// spawned and owns the sidecar (production); `None` when it is managed
+    /// externally (dev via `tauri.ts`, or an already-listening process).
+    Running {
+        process: Option<Box<Child>>,
+    },
     Failed {
         reason: String,
     },
@@ -56,27 +79,239 @@ pub(crate) struct AgentRuntimeConnection {
 
 // ── Public commands ─────────────────────────────────────────────────
 
-/// Start the agent runtime. In dev, the sidecar is started by tauri.ts.
-/// In production, it's a compiled GUI binary.
-/// This command just verifies the sidecar is reachable.
+/// Start the agent runtime.
+///
+/// In dev builds the sidecar is spawned by `scripts/tauri.ts`, so this only
+/// records the `Running` state. In production builds this resolves the Bun
+/// binary, spawns `bun run <resources>/agent-runtime/server.mjs`, and waits
+/// until the sidecar accepts connections on port 19876.
 #[tauri::command]
 pub async fn start_agent_runtime(
-    _app: tauri::AppHandle,
+    app: tauri::AppHandle,
     registry: tauri::State<'_, AgentRuntimeRegistry>,
+    store: tauri::State<'_, PersistenceStore>,
 ) -> Result<(), AgentRuntimeError> {
-    let mut guard = registry.lock_runtime();
-    match &*guard {
-        AgentRuntimeState::Running => Ok(()),
-        AgentRuntimeState::Failed { .. } => {
-            // Reset on retry
-            *guard = AgentRuntimeState::Running;
-            Ok(())
-        }
-        AgentRuntimeState::NotStarted => {
-            *guard = AgentRuntimeState::Running;
-            Ok(())
+    {
+        let mut guard = registry.lock_runtime();
+        match &*guard {
+            AgentRuntimeState::Running { .. } | AgentRuntimeState::Starting => return Ok(()),
+            AgentRuntimeState::NotStarted | AgentRuntimeState::Failed { .. } => {
+                *guard = AgentRuntimeState::Starting;
+            }
         }
     }
+
+    match launch_runtime(&app, &store).await {
+        Ok(process) => {
+            *registry.lock_runtime() = AgentRuntimeState::Running {
+                process: process.map(Box::new),
+            };
+            Ok(())
+        }
+        Err(error) => {
+            *registry.lock_runtime() = AgentRuntimeState::Failed {
+                reason: error.to_string(),
+            };
+            Err(error)
+        }
+    }
+}
+
+/// Launches the sidecar process for production builds.
+///
+/// Returns `Ok(None)` when no process needs to be owned by this app instance:
+/// dev builds (spawned by `tauri.ts`) or a sidecar already listening on the
+/// fixed port (e.g. another app window started it).
+async fn launch_runtime(
+    app: &tauri::AppHandle,
+    store: &PersistenceStore,
+) -> Result<Option<Child>, AgentRuntimeError> {
+    if cfg!(debug_assertions) {
+        return Ok(None);
+    }
+
+    if port_is_open().await {
+        return Ok(None);
+    }
+
+    let resource_dir =
+        app.path()
+            .resource_dir()
+            .map_err(|error| AgentRuntimeError::RuntimeBundleMissing {
+                path: format!("failed to resolve resource dir: {error}"),
+            })?;
+    let script_path = resource_dir.join("agent-runtime").join("server.mjs");
+    if !script_path.is_file() {
+        return Err(AgentRuntimeError::RuntimeBundleMissing {
+            path: script_path.display().to_string(),
+        });
+    }
+
+    let bun_path = resolve_bun_path(store).await?;
+
+    let mut cmd = Command::new(&bun_path);
+    cmd.arg("run").arg(&script_path);
+    // The resource dir can be read-only (Program Files, signed .app bundle);
+    // run from the writable app data dir instead.
+    cmd.current_dir(store.app_data_dir());
+    cmd.env(
+        "KIRA_AGENT_PI_DATA_DIR",
+        store.app_data_dir().to_string_lossy().as_ref(),
+    );
+    cmd.kill_on_drop(true);
+    crate::process_ext::hide_console_window(cmd.as_std_mut());
+
+    let mut child = cmd
+        .spawn()
+        .map_err(|error| AgentRuntimeError::RuntimeStartFailed {
+            reason: format!("failed to spawn agent runtime via `{bun_path}`: {error}"),
+        })?;
+
+    wait_for_port(&mut child).await?;
+    Ok(Some(child))
+}
+
+/// Returns true when something already accepts connections on the sidecar port.
+async fn port_is_open() -> bool {
+    tokio::net::TcpStream::connect((AGENT_RUNTIME_HOST, AGENT_RUNTIME_PORT))
+        .await
+        .is_ok()
+}
+
+/// Polls the sidecar port until it accepts a connection, the child exits
+/// early, or the startup timeout elapses.
+async fn wait_for_port(child: &mut Child) -> Result<(), AgentRuntimeError> {
+    let deadline = tokio::time::Instant::now() + STARTUP_TIMEOUT;
+    loop {
+        if let Some(status) =
+            child
+                .try_wait()
+                .map_err(|error| AgentRuntimeError::RuntimeStartFailed {
+                    reason: format!("failed to poll agent runtime process: {error}"),
+                })?
+        {
+            return Err(AgentRuntimeError::RuntimeStartFailed {
+                reason: format!("agent runtime exited during startup ({status})"),
+            });
+        }
+        if port_is_open().await {
+            return Ok(());
+        }
+        if tokio::time::Instant::now() >= deadline {
+            let _ = child.start_kill();
+            return Err(AgentRuntimeError::RuntimeStartFailed {
+                reason: format!(
+                    "timed out waiting for agent runtime to listen on port {AGENT_RUNTIME_PORT}"
+                ),
+            });
+        }
+        tokio::time::sleep(STARTUP_POLL_INTERVAL).await;
+    }
+}
+
+// ── Bun resolution ───────────────────────────────────────────────────
+
+/// Resolves the Bun binary by probing known locations, then verifies it runs.
+///
+/// Preference order:
+/// 1. `KIRA_AGENT_BUN_PATH` env var override (testing/debugging)
+/// 2. `SQLite` setting `agentRuntime.bunPath` (user-configured)
+/// 3. Official installer location (`~/.bun/bin`)
+/// 4. Homebrew paths (macOS) / `%LOCALAPPDATA%\bun\bin` (Windows)
+/// 5. `PATH` fallback
+async fn resolve_bun_path(store: &PersistenceStore) -> Result<String, AgentRuntimeError> {
+    let candidate = resolve_bun_candidate(store).await?;
+    validate_bun_executable(&candidate).await?;
+    Ok(candidate)
+}
+
+async fn resolve_bun_candidate(store: &PersistenceStore) -> Result<String, AgentRuntimeError> {
+    if let Ok(path) = env::var("KIRA_AGENT_BUN_PATH") {
+        if Path::new(&path).is_file() {
+            return Ok(path);
+        }
+    }
+
+    if let Some(path) = crate::settings::bun_path_get(store.pool()).await {
+        if Path::new(&path).is_file() {
+            return Ok(path);
+        }
+    }
+
+    // Official Bun installer: ~/.bun/bin/bun (macOS/Linux) / bun.exe (Windows)
+    if let Some(home) = env::var("HOME")
+        .ok()
+        .or_else(|| env::var("USERPROFILE").ok())
+    {
+        let bin_dir = Path::new(&home).join(".bun").join("bin");
+        for name in ["bun", "bun.exe"] {
+            let path = bin_dir.join(name);
+            if path.is_file() {
+                return Ok(path.to_string_lossy().to_string());
+            }
+        }
+    }
+
+    // macOS Homebrew paths
+    for path in [
+        PathBuf::from("/opt/homebrew/bin/bun"),
+        PathBuf::from("/usr/local/bin/bun"),
+    ] {
+        if path.is_file() {
+            return Ok(path.to_string_lossy().to_string());
+        }
+    }
+
+    // Windows Local AppData (scoop/manual installs)
+    if let Ok(local_app_data) = env::var("LOCALAPPDATA") {
+        let path = PathBuf::from(local_app_data)
+            .join("bun")
+            .join("bin")
+            .join("bun.exe");
+        if path.is_file() {
+            return Ok(path.to_string_lossy().to_string());
+        }
+    }
+
+    // PATH fallback (terminal-launched / CI)
+    if let Some(path) = probe_path_for_bun() {
+        return Ok(path.to_string_lossy().to_string());
+    }
+
+    Err(AgentRuntimeError::BunNotFound)
+}
+
+/// Verifies the candidate actually executes (`bun --version` succeeds).
+async fn validate_bun_executable(path: &str) -> Result<(), AgentRuntimeError> {
+    let mut cmd = Command::new(path);
+    cmd.arg("--version");
+    crate::process_ext::hide_console_window(cmd.as_std_mut());
+    let output = cmd
+        .output()
+        .await
+        .map_err(|_| AgentRuntimeError::BunNotFound)?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(AgentRuntimeError::BunNotFound)
+    }
+}
+
+/// Searches `PATH` for a `bun` or `bun.exe` executable.
+fn probe_path_for_bun() -> Option<PathBuf> {
+    env::var_os("PATH").and_then(|paths| {
+        env::split_paths(&paths).find_map(|dir| {
+            let bun = dir.join("bun");
+            if bun.is_file() {
+                return Some(bun);
+            }
+            let bun_exe = dir.join("bun.exe");
+            if bun_exe.is_file() {
+                return Some(bun_exe);
+            }
+            None
+        })
+    })
 }
 
 #[derive(Deserialize)]
@@ -101,12 +336,12 @@ pub async fn prepare_agent_thread(
                 reason: "Agent runtime not started. Call start_agent_runtime first.".to_string(),
             });
         }
-        AgentRuntimeState::Failed { .. } => {
+        AgentRuntimeState::Failed { reason } => {
             return Err(AgentRuntimeError::RuntimeStartFailed {
-                reason: "Agent runtime previously failed".to_string(),
+                reason: format!("Agent runtime previously failed: {reason}"),
             });
         }
-        AgentRuntimeState::Running => {} // OK
+        AgentRuntimeState::Running { .. } | AgentRuntimeState::Starting => {} // OK
     }
     drop(guard);
 
@@ -114,9 +349,9 @@ pub async fn prepare_agent_thread(
     validate_required_field(&input.session_id, "session_id")?;
     validate_required_field(&input.thread_id, "thread_id")?;
 
-    // Fixed port 19876 — no negotiation, no token
+    // Fixed port — no negotiation, no token
     Ok(AgentRuntimeConnection {
-        base_url: "http://127.0.0.1:19876".to_string(),
+        base_url: format!("http://{AGENT_RUNTIME_HOST}:{AGENT_RUNTIME_PORT}"),
         token: String::new(),
     })
 }
@@ -169,8 +404,15 @@ pub async fn get_cloud_config() -> Result<CloudConfig, AgentRuntimeError> {
 
 // ── Shutdown ─────────────────────────────────────────────────────────
 
-pub(crate) fn shutdown(_registry: &AgentRuntimeRegistry) {
-    // No-op — sidecar is managed externally
+pub(crate) fn shutdown(registry: &AgentRuntimeRegistry) {
+    let mut guard = registry.lock_runtime();
+    if let AgentRuntimeState::Running {
+        process: Some(child),
+    } = &mut *guard
+    {
+        let _ = child.start_kill();
+    }
+    *guard = AgentRuntimeState::NotStarted;
 }
 
 // ── Skills (loaded by the sidecar, stub here) ─────────────────────
