@@ -186,6 +186,19 @@ async function askSingleSelect(
   }
 
   // "Type something." sentinel -> free-text input
+  const sentinelText = String(q.options.length + 1) + ". " + OTHER_SENTINEL;
+  if (chosen !== sentinelText) {
+    // Direct custom answer (from sentinel inline input in the frontend)
+    return {
+      questionIndex,
+      question: q.question,
+      kind: "custom",
+      answer: chosen,
+      preview: undefined,
+    };
+  }
+
+  // Legacy two-step flow: sentinel button -> extension_ui_request for input
   const typed: string | undefined = await ctx.ui.input(
     header + q.question,
     CUSTOM_ANSWER_PROMPT,

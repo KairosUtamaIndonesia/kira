@@ -50,6 +50,49 @@ function ExtensionUiInline({ requests, onRespond }: Props) {
   );
 }
 
+interface ParsedOption {
+  index: number;
+  fullText: string;
+  label: string;
+  description: string;
+  hasPreview: boolean;
+  isSentinel: boolean;
+}
+
+function parseOptions(options: string[]): ParsedOption[] {
+  const result: ParsedOption[] = [];
+  for (const text of options) {
+    // Sentinel: "N. Type something."
+    const sentinelMatch = text.match(/^(\d+)\.\s+(Type something\.)$/);
+    if (sentinelMatch) {
+      result.push({
+        index: Number.parseInt(sentinelMatch[1] as string, 10) - 1,
+        fullText: text,
+        label: "Type something.",
+        description: "",
+        hasPreview: false,
+        isSentinel: true,
+      });
+      continue;
+    }
+
+    // Normal option: "N. Label - Description[ [Preview]]"
+    // Uses non-greedy label match to stop at the first " - " separator
+    const m = text.match(/^(\d+)\.\s+(.+?)\s+-\s+(.+)$/);
+    if (!m) continue;
+
+    const index = Number.parseInt(m[1] as string, 10) - 1;
+    const label = m[2] as string;
+    let description = m[3] as string;
+    const hasPreview = description.endsWith(" [Preview]");
+    if (hasPreview) {
+      description = description.slice(0, -" [Preview]".length);
+    }
+    result.push({ index, fullText: text, label, description, hasPreview, isSentinel: false });
+  }
+  return result;
+}
+
 function SelectInline({
   request,
   onRespond,
@@ -58,23 +101,53 @@ function SelectInline({
   onRespond: Props["onRespond"];
 }) {
   const [selected, setSelected] = useState<string | undefined>();
+  const [customValue, setCustomValue] = useState("");
+  const parsedOptions = parseOptions(request.options ?? []);
+
+  const hasSentinel = parsedOptions.some((o) => o.isSentinel);
+  const normalOptions = parsedOptions.filter((o) => !o.isSentinel);
 
   return (
     <div className="space-y-3">
       <p className="text-sm font-medium">{request.title}</p>
       <div className="flex flex-wrap gap-2">
-        {(request.options ?? []).map((option) => (
+        {normalOptions.map((opt) => (
           <Button
-            key={option}
+            key={opt.fullText}
             type="button"
             size="sm"
-            variant={selected === option ? "default" : "outline"}
-            onClick={() => setSelected(option)}
+            variant={selected === opt.fullText ? "default" : "outline"}
+            onClick={() => setSelected(opt.fullText)}
           >
-            {option}
+            {opt.label}
           </Button>
         ))}
       </div>
+      {hasSentinel ? (
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">Or type a custom answer:</p>
+          <div className="flex gap-2">
+            <Input
+              placeholder="Type your answer..."
+              value={customValue}
+              onChange={(e) => setCustomValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && customValue.length > 0) {
+                  onRespond(request.id, { value: customValue });
+                }
+              }}
+            />
+            <Button
+              type="button"
+              size="sm"
+              disabled={customValue.length === 0}
+              onClick={() => onRespond(request.id, { value: customValue })}
+            >
+              Submit
+            </Button>
+          </div>
+        </div>
+      ) : undefined}
       <div className="flex gap-2">
         <Button
           type="button"
