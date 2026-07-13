@@ -52,16 +52,17 @@ jobs:
         with:
           workspaces: apps/desktop/src-tauri
 
-      - name: Cache Bun dependencies
+      # Cache Bun's global download cache, NOT node_modules: the .bun store
+      # relies on symlinks/junctions that actions/cache (tar) does not
+      # round-trip reliably on Windows. bun install is fast with a warm
+      # global cache and rebuilds the link farm correctly on every OS.
+      - name: Cache Bun global cache
         uses: actions/cache@v4
-        id: bun-deps
         with:
-          path: |
-            node_modules
-            apps/*/node_modules
-            apps/*/*/node_modules
-            packages/*/node_modules
-          key: bun-release-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          path: ~/.bun/install/cache
+          key: bun-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-cache-${{ runner.os }}-
 
       - name: Install system dependencies (Linux)
         if: matrix.platform == 'ubuntu-latest'
@@ -80,7 +81,6 @@ jobs:
         if: matrix.platform == 'windows-latest'
         run: echo "CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER=lld-link" >> "$GITHUB_ENV"
       - name: Install dependencies
-        if: steps.bun-deps.outputs.cache-hit != 'true'
         run: bun install --frozen-lockfile
 
       - name: Build and release Tauri app
