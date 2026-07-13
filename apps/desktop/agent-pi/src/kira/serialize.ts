@@ -16,7 +16,7 @@ interface ContentBlockInput {
   args?: Record<string, unknown>;
 }
 
-interface MessageInput {
+export interface MessageInput {
   role: string;
   content?: string | ContentBlockInput[];
   toolName?: string;
@@ -85,8 +85,8 @@ export function serializeMessages(session: AgentSession): FlatMessage[] {
         id: `msg-${idx}`,
         role: "toolResult",
         text: extractText(msg),
-        toolName: msg.toolName,
-        toolCallId: msg.toolCallId,
+        ...(msg.toolName !== undefined && { toolName: msg.toolName }),
+        ...(msg.toolCallId !== undefined && { toolCallId: msg.toolCallId }),
         isError: msg.isError ?? false,
       });
     }

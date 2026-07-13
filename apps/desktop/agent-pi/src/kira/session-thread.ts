@@ -120,7 +120,7 @@ export function pushState(session: AgentSession, ws: WebSocket, threadId: string
 export function sessionState(session: AgentSession) {
   return {
     model: session.model ? `${session.model.provider}/${session.model.id}` : undefined,
-    thinkingLevel: session.thinkingLevel as unknown,
+    thinkingLevel: session.thinkingLevel,
     isStreaming: session.isStreaming,
     messageCount: session.messages.length,
     sessionId: session.sessionId,

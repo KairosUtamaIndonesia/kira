@@ -62,10 +62,10 @@ export const askUserTool = defineTool({
     }
 
     const text = answers
-      .map(
-        (a) =>
-          `${params.questions[a.questionIndex] ? params.questions[a.questionIndex].question : undefined}="${a.answer}"`,
-      )
+      .map((a) => {
+        const q = params.questions[a.questionIndex];
+        return `${q ? q.question : "unknown"}="${a.answer}"`;
+      })
       .join(". ");
     return {
       content: [{ type: "text", text: `User answered: ${text}` }],

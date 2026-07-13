@@ -24,7 +24,7 @@ import {
   getDefaultModel,
   registerProviderExtensions,
 } from "./model-registry";
-import { extractText, serializeMessages } from "./serialize";
+import { extractText, serializeMessages, type MessageInput } from "./serialize";
 import { attachSession, pushState } from "./session-thread";
 import { askUserTool } from "./tools/ask-user-tool";
 
@@ -42,7 +42,7 @@ interface ThreadSession {
   sessionReady: Promise<void>;
   resolveReady: () => void;
   /** Cleanup function returned by attachSession(). */
-  detach: (() => void) | null;
+  detach: (() => void) | undefined;
 }
 
 interface ProjectState {
@@ -131,7 +131,7 @@ export class SessionHost {
           session: host,
           sessionReady,
           resolveReady,
-          detach: undefined as (() => void) | undefined,
+          detach: undefined,
         };
         project.threads.set(input.threadId, thread);
         resolveReady();
@@ -364,7 +364,7 @@ export class SessionHost {
 
     function walk(
       nodes: {
-        entry: { id: string; parentId: string | null; type: string; timestamp: number };
+        entry: { id: string; parentId: string | null; type: string; timestamp: string };
         children: typeof nodes;
         label?: string;
       }[],
@@ -378,7 +378,7 @@ export class SessionHost {
           type: node.entry.type,
           depth,
           preview: previewText(node.entry),
-          label,
+          ...(label !== undefined && { label }),
           isLeaf: node.children.length === 0,
           isActive: activeIds.has(node.entry.id),
           isCurrent: node.entry.id === leafId,
@@ -408,7 +408,7 @@ function previewText(entry: {
   if (entry.type === "message") {
     const msg = entry.message;
     const role = msg && msg.role ? msg.role : "?";
-    const text = extractText(msg);
+    const text = extractText(msg as MessageInput);
     return `${role}: ${text.slice(0, 120)}`;
   }
   if (entry.type === "compaction") return `compaction: ${(entry.summary ?? "").slice(0, 120)}`;
