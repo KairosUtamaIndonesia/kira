@@ -59,6 +59,7 @@ jobs:
           path: |
             node_modules
             apps/*/node_modules
+            apps/*/*/node_modules
             packages/*/node_modules
           key: bun-release-${{ runner.os }}-${{ hashFiles('bun.lock') }}
 
