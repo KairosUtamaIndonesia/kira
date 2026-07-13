@@ -131,11 +131,16 @@ pub(crate) struct CloudConfig {
 
 /// Returns the cloud API URL and the stored API key from the OS keychain.
 /// Also validates that the cloud API is reachable by fetching the model catalog.
+///
+/// The cloud URL is resolved in this order:
+/// 1. `KIRA_CLOUD_URL` env var (dev override, set by `tauri.ts`)
+/// 2. `KIRA_CLOUD_API_URL` env var (legacy alias)
+/// 3. Compile-time baked value from `env!("KIRA_CLOUD_URL")` (production builds)
 #[tauri::command]
 pub async fn get_cloud_config() -> Result<CloudConfig, AgentRuntimeError> {
     let url = std::env::var("KIRA_CLOUD_URL")
         .or_else(|_| std::env::var("KIRA_CLOUD_API_URL"))
-        .map_err(|_| AgentRuntimeError::ConfigMissing("KIRA_CLOUD_URL".into()))?;
+        .unwrap_or_else(|_| crate::cloud_api::cloud_base_url().to_string());
     let api_key = crate::desktop_signin::stored_credential()
         .ok_or_else(|| AgentRuntimeError::ConfigMissing("API key (not signed in)".into()))?;
 

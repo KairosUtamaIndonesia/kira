@@ -13,6 +13,10 @@ pub fn cloud_base_url() -> &'static str {
 }
 
 /// The hostname of the cloud app, derived from [`cloud_base_url()`].
+///
+/// Only needed in debug builds where we pin `.localhost` DNS;
+/// release builds use standard DNS and TLS.
+#[cfg(debug_assertions)]
 #[allow(clippy::expect_used)]
 pub fn cloud_host() -> String {
     let url = reqwest::Url::parse(cloud_base_url()).expect("KIRA_CLOUD_URL must be a valid URL");
