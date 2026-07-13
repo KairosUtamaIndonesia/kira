@@ -106,7 +106,8 @@ export function buildAgentThreadTranscript(
         id: msg.id,
         toolName: msg.toolName ?? "",
         input: msg.text,
-        status: resolveToolStatus(msg.isError, state.isStreaming),
+        output: "",
+        status: resolveToolStatus(msg.isError ?? false, state.isStreaming),
       };
       extractRichFields(tool);
       blocks.push({ type: "tool-call", tool });
@@ -218,6 +219,7 @@ export function treeEntriesToJson(entries: TreeEntry[]): SessionTreeNodeJson[] {
         text: e.preview,
         ...(e.label !== undefined ? { label: e.label } : {}),
         ...(e.timestamp !== undefined ? { timestamp: e.timestamp } : {}),
+        ...(e.type === "message" ? { role: e.preview.startsWith("user:") ? "user" : "assistant" } : {}),
       },
       children: [],
     });
@@ -237,7 +239,7 @@ export function treeEntriesToJson(entries: TreeEntry[]): SessionTreeNodeJson[] {
 export interface SessionTreeNodeJson {
   id: string;
   parentId: string | null;
-  entry: { type: string; text?: string; label?: string; timestamp?: string };
+  entry: { type: string; text?: string; label?: string; timestamp?: string; role?: string };
   children: SessionTreeNodeJson[];
 }
 

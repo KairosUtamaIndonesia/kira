@@ -207,7 +207,6 @@ struct BundledSkillBody {
     body: String,
 }
 
-
 #[allow(clippy::unused_async)]
 async fn fetch_bundled_skill_body(
     _name: &str,
@@ -217,7 +216,6 @@ async fn fetch_bundled_skill_body(
     // a skill query endpoint over WebSocket.
     None
 }
-
 
 fn expand_disk_skill(
     root: &Path,

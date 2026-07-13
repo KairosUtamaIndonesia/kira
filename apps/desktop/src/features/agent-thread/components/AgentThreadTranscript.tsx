@@ -64,7 +64,7 @@ function AgentThreadTranscript({ transcript }: AgentThreadTranscriptProps) {
             break;
         }
 
-        return <div key={item.id}>{content}</div>;
+        return <div key={"id" in item ? item.id : item.message}>{content}</div>;
       })}
     </div>
   );

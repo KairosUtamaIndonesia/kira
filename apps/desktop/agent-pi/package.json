@@ -11,8 +11,13 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@aliou/sh": "^0.2.0",
+    "@earendil-works/pi-agent-core": "0.80.3",
+    "@earendil-works/pi-ai": "0.80.3",
     "@earendil-works/pi-coding-agent": "0.80.3",
+    "@earendil-works/pi-tui": "0.80.3",
     "better-sqlite3": "^12.10.0",
+    "typebox": "^1.1.24",
     "ws": "^8.20.0"
   },
   "devDependencies": {

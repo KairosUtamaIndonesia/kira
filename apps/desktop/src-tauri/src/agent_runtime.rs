@@ -121,8 +121,6 @@ pub async fn prepare_agent_thread(
     })
 }
 
-
-
 // ── Cloud config ─────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize)]
@@ -163,7 +161,6 @@ pub async fn get_cloud_config() -> Result<CloudConfig, AgentRuntimeError> {
 
     Ok(CloudConfig { url, api_key })
 }
-
 
 // ── Shutdown ─────────────────────────────────────────────────────────
 

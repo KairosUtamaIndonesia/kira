@@ -29,7 +29,7 @@ interface AppSocketContextValue {
 const AppSocketContext = createContext<AppSocketContextValue | undefined>(undefined);
 
 export function AppSocketProvider({ children }: { children: ReactNode }) {
-  const wsRef = useRef<WebSocket>();
+  const wsRef = useRef<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
   const [fatalError] = useState<string | undefined>();
   const handlersRef = useRef<Set<(event: ServerEvent) => void>>(new Set());
@@ -88,7 +88,7 @@ export function AppSocketProvider({ children }: { children: ReactNode }) {
 
       ws.addEventListener("close", () => {
         if (wsRef.current !== ws) return; // stale socket — a newer one took over
-        wsRef.current = undefined;
+        wsRef.current = null;
         setConnected(false);
         if (disposed || fatalRef.current) return;
         reconnectTimer = setTimeout(connect, 1500);
@@ -102,7 +102,7 @@ export function AppSocketProvider({ children }: { children: ReactNode }) {
       disposed = true;
       clearTimeout(reconnectTimer);
       const ws = wsRef.current;
-      wsRef.current = undefined;
+      wsRef.current = null;
       if (ws) ws.close();
     };
   }, []);

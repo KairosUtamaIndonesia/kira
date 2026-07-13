@@ -56,7 +56,7 @@ function AgentThreadPanel({ api, params, onRename }: AgentThreadPanelProps) {
     navigateTree,
   } = useAgentThreadConnection(params, { onAutoTitled: handleAutoTitled });
 
-  const transcript: PiTranscriptState = { messages, isStreaming, model };
+  const transcript: PiTranscriptState = { messages, isStreaming, model: model ?? null };
   const items = buildAgentThreadTranscript(transcript, toolOutputs);
   const isEmpty = items.length === 0;
 
@@ -158,7 +158,6 @@ function TranscriptArea({
   transcript,
   isEmpty,
   agentThreadShowRawEventStream,
-  runtimeState,
 }: TranscriptAreaProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
@@ -196,7 +195,6 @@ function TranscriptArea({
       >
         <AgentThreadTranscript
           transcript={transcript}
-          runtimeState={runtimeState}
           parentRef={scrollContainerRef}
         />
         {agentThreadShowRawEventStream ? (

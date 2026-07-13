@@ -140,13 +140,13 @@ export class ExtensionUIBridge {
     clearTimeout(pending.timer);
 
     if (response.cancelled) {
-      pending.resolve();
+      pending.resolve(undefined); // eslint-disable-line unicorn/no-useless-undefined
     } else if (response.confirmed !== undefined) {
       pending.resolve(response.confirmed);
     } else if (response.value !== undefined) {
       pending.resolve(response.value);
     } else {
-      pending.resolve();
+      pending.resolve(undefined); // eslint-disable-line unicorn/no-useless-undefined
     }
   }
 

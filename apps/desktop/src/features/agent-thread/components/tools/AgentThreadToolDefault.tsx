@@ -18,7 +18,7 @@ type Props = {
 function AgentThreadToolDefault({ tool }: Props) {
   return (
     <div>
-      {tool.command === undefined && tool.exitCode === undefined && tool.cwd === undefined ? (
+      {tool.command === undefined && tool.exitCode === undefined ? (
         <ToolInlineRow
           icon={<Wrench aria-hidden="true" className="size-3" />}
           label={<span className="truncate">Called {tool.title}</span>}

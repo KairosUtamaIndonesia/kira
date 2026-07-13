@@ -77,6 +77,7 @@ export async function registerProviderExtensions(): Promise<void> {
 
   for (const [providerId, models] of byProvider) {
     const first = models[0];
+    if (!first) continue;
 
     // Register provider with Pi's native registry
     modelRegistry.registerProvider(providerId, {

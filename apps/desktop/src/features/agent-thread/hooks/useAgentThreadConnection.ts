@@ -20,12 +20,14 @@ export type AgentThreadRuntimeState =
   | { status: "connecting" }
   | { status: "ready" }
   | { status: "sending" }
-  | { status: "error"; message: string };
+  | { status: "error"; message: string }
+  | { status: "stopped" };
 
 export type AgentThreadContextUsageState =
   | { status: "loading" }
   | { status: "empty" }
-  | { status: "ready"; usage: { usedTokens: number; contextWindow: number; modelId: string } };
+  | { status: "error"; message: string }
+  | { status: "ready"; usage: { usedTokens: number; contextWindow: number; modelId: string; usage?: { total: number }; cost?: { total: number } } };
 
 export type ExtensionUiRequest = {
   id: string;

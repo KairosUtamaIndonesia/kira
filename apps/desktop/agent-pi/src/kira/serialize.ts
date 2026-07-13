@@ -21,23 +21,24 @@ export interface FlatMessage {
 export function serializeMessages(session: AgentSession): FlatMessage[] {
   const result: FlatMessage[] = [];
 
-  session.messages.forEach((msg: Record<string, unknown>, idx: number) => {
+  session.messages.forEach((msg, idx) => {
+    const m = msg as unknown as Record<string, unknown>;
     let role: "user" | "assistant" | "toolResult";
-    if (msg.role === "toolResult") {
+    if (m.role === "toolResult") {
       role = "toolResult";
-    } else if (msg.role === "assistant") {
+    } else if (m.role === "assistant") {
       role = "assistant";
     } else {
       role = "user";
     }
     if (role === "user") {
-      result.push({ id: `msg-${idx}`, role, text: extractText(msg) });
+      result.push({ id: `msg-${idx}`, role, text: extractText(m) });
       return;
     }
 
     if (role === "assistant") {
-      const content: ContentBlock[] | undefined = Array.isArray(msg.content)
-        ? msg.content.map((b: Record<string, unknown>) => flattenBlock(b))
+      const content: ContentBlock[] | undefined = Array.isArray(m.content)
+        ? m.content.map((b: Record<string, unknown>) => flattenBlock(b))
         : undefined;
 
       let text: string;
@@ -46,8 +47,8 @@ export function serializeMessages(session: AgentSession): FlatMessage[] {
           .filter((b) => b.type === "text")
           .map((b) => b.text)
           .join("");
-      } else if (typeof msg.content === "string") {
-        text = msg.content;
+      } else if (typeof m.content === "string") {
+        text = m.content;
       } else {
         text = "";
       }
@@ -65,10 +66,10 @@ export function serializeMessages(session: AgentSession): FlatMessage[] {
       result.push({
         id: `msg-${idx}`,
         role: "toolResult",
-        text: extractText(msg),
-        toolName: msg.toolName as string | undefined,
-        toolCallId: msg.toolCallId as string | undefined,
-        isError: (msg.isError as boolean) ?? false,
+        text: extractText(m),
+        ...(m.toolName !== undefined ? { toolName: m.toolName as string } : {}),
+        ...(m.toolCallId !== undefined ? { toolCallId: m.toolCallId as string } : {}),
+        ...(m.isError !== undefined ? { isError: m.isError as boolean } : {}),
       });
     }
   });

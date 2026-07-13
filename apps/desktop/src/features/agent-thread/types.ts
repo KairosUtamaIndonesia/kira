@@ -1,3 +1,5 @@
+import type { ContentBlock } from "@kira/agent-pi/protocol";
+
 type PrepareAgentThreadInput = {
   projectId: string;
   sessionId: string;
@@ -40,8 +42,6 @@ export type {
   PrepareAgentThreadInput,
   TranscriptMessage,
 };
-
-export type { ClientMessage, ServerEvent, TreeEntry, ContentBlock } from "@kira/agent-pi/protocol";
 
 type RespondToHumanRequest = (requestId: string, response: unknown) => Promise<boolean>;
 export type { RespondToHumanRequest };

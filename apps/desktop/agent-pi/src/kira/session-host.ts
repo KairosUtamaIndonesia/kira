@@ -51,9 +51,9 @@ interface ThreadSession {
 /** Tree node entry from the session manager's tree. */
 interface TreeNodeEntry {
   id: string;
-  parentId: string | undefined;
+  parentId: string | null;
   type: string;
-  timestamp: number;
+  timestamp: string;
   message?: { role: string; content?: string };
   summary?: string;
   provider?: string;
@@ -419,21 +419,21 @@ export class SessionHost {
         }
         entries.push({
           id: node.entry.id,
-          // oxlint-disable-next-line unicorn/no-null
+          // eslint-disable-next-line unicorn/no-null
           parentId: node.entry.parentId ?? null,
           type: node.entry.type,
           depth,
           preview: previewText(node.entry),
-          label,
+          ...(label !== undefined ? { label } : {}),
           isLeaf: node.children.length === 0,
           isActive: activeIds.has(node.entry.id),
           isCurrent: node.entry.id === leafId,
           timestamp: node.entry.timestamp,
         });
-        walk(node.children, depth + 1);
+        walk(node.children as TreeNode[], depth + 1);
       }
     }
-    walk(tree, 0);
+    walk(tree as TreeNode[], 0);
     wrapSend(ws, threadId, { type: "tree_data", entries });
   }
 }
@@ -447,7 +447,7 @@ function wrapSend(ws: WebSocket, threadId: string, event: Record<string, unknown
 function previewText(entry: TreeNodeEntry): string {
   if (entry.type === "message") {
     const role = entry.message ? entry.message.role : "?";
-    const text = extractText(entry.message);
+    const text = entry.message ? extractText(entry.message) : "";
     return `${role}: ${text.slice(0, 120)}`;
   }
   if (entry.type === "compaction") return `compaction: ${(entry.summary ?? "").slice(0, 120)}`;
