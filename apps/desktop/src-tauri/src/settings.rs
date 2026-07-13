@@ -935,6 +935,7 @@ pub async fn terminal_shell_path(pool: &SqlitePool) -> Option<String> {
 }
 
 /// Returns the primary shell path configured for the agent (Pi).
+#[allow(dead_code)]
 pub async fn agent_shell_path(pool: &SqlitePool) -> Option<String> {
     app_setting_value(pool, TERMINAL_SHELL_PATH_KEY)
         .await

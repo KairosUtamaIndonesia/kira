@@ -20,9 +20,9 @@ import { fileURLToPath } from "node:url";
 
 const LOCAL_HOST = "127.0.0.1";
 const MAX_PORT = 65535;
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const BUN_EXECUTABLE = process.argv[0];
-const AGENT_PI_DIR = path.resolve(__dirname, "../agent-pi");
+const AGENT_PI_DIR = path.resolve(scriptDir, "../agent-pi");
 
 function parsePort(value: string) {
   const port = Number.parseInt(value, 10);
@@ -55,7 +55,9 @@ function spawnAndPipe(command: string, args: string[], cwd?: string, env?: Recor
     shell: true,
     stdio: "inherit",
   });
-  child.on("error", (error) => { throw error; });
+  child.on("error", (error) => {
+    throw error;
+  });
   return child;
 }
 
@@ -78,7 +80,7 @@ async function runTauriDev(args: readonly string[]) {
   // Read cloud config from .env file (KIRA_CLOUD_URL) so the sidecar can
   // fetch the model catalog from the admin panel. The API key comes from
   // the shell (set manually for dev; prod passes it from Rust).
-  const envPath = path.resolve(__dirname, "../src-tauri/.env");
+  const envPath = path.resolve(scriptDir, "../src-tauri/.env");
   let cloudUrl = process.env.KIRA_CLOUD_API_URL ?? process.env.KIRA_CLOUD_URL;
   if (!cloudUrl && fs.existsSync(envPath)) {
     const m = fs.readFileSync(envPath, "utf-8").match(/^KIRA_CLOUD_URL=(.+)$/m);
@@ -95,11 +97,11 @@ async function runTauriDev(args: readonly string[]) {
   };
 
   // 1. Start agent-pi sidecar
-  console.error("[tauri.ts] starting agent-pi on :19876...");
+  process.stderr.write("[tauri.ts] starting agent-pi on :19876...\n");
   const sidecar = spawnAndPipe(BUN_EXECUTABLE, ["run", "src/server.ts"], AGENT_PI_DIR, env);
 
   // 2. Start Vite dev server
-  console.error(`[tauri.ts] starting Vite on :${devPort}...`);
+  process.stderr.write(`[tauri.ts] starting Vite on :${devPort}...\n`);
   const vite = spawnAndPipe(
     BUN_EXECUTABLE,
     ["run", "dev", "--", "--host", LOCAL_HOST, "--port", String(devPort), "--strictPort"],
@@ -110,13 +112,15 @@ async function runTauriDev(args: readonly string[]) {
   // 3. Start Tauri dev
   const devUrl = `http://${LOCAL_HOST}:${devPort}`;
   const configOverride = JSON.stringify({ build: { beforeDevCommand: "", devUrl } });
-  console.error("[tauri.ts] starting Tauri...");
+  process.stderr.write("[tauri.ts] starting Tauri...\n");
   const tauri = spawn(BUN_EXECUTABLE, ["x", "tauri", "dev", "--config", configOverride, ...args], {
     env: { ...(env ?? process.env), PATH: process.env.PATH },
     shell: false,
     stdio: "inherit",
   });
-  tauri.on("error", (error) => { throw error; });
+  tauri.on("error", (error) => {
+    throw error;
+  });
 
   // When any process exits, kill the others
   const cleanup = () => {
@@ -125,9 +129,18 @@ async function runTauriDev(args: readonly string[]) {
     if (!tauri.killed) tauri.kill();
   };
 
-  sidecar.on("exit", (code, signal) => { cleanup(); exitProcess(code, signal); });
-  vite.on("exit", (code, signal) => { cleanup(); exitProcess(code, signal); });
-  tauri.on("exit", (code, signal) => { cleanup(); exitProcess(code, signal); });
+  sidecar.on("exit", (code, signal) => {
+    cleanup();
+    exitProcess(code, signal);
+  });
+  vite.on("exit", (code, signal) => {
+    cleanup();
+    exitProcess(code, signal);
+  });
+  tauri.on("exit", (code, signal) => {
+    cleanup();
+    exitProcess(code, signal);
+  });
 }
 
 function exitProcess(code: number | null, signal: string | null) {

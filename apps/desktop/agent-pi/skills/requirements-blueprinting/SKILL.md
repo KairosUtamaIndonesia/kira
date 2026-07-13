@@ -23,11 +23,11 @@ A skill for producing predictable, structured requirements documents — **BRD**
 
 One document per invocation. The user specifies which branch. Each loads its blueprint from a disclosed reference file:
 
-| Branch | Blueprint | Purpose |
-|--------|-----------|---------|
-| BRD | [BRD-TEMPLATE.md](BRD-TEMPLATE.md) | Captures business context, objectives, scope, risks, success metrics, use cases — the *what* and *why*. |
-| FSD | [FSD-TEMPLATE.md](FSD-TEMPLATE.md) | Describes functional behavior, user roles, business process flows, screen designs, business rules, non-functional requirements — the *how* from the user's view. |
-| TSD | [TSD-TEMPLATE.md](TSD-TEMPLATE.md) | Specifies system architecture, data model, API contracts, security, deployment, infrastructure — the *how* from the engineer's view. |
+| Branch | Blueprint                          | Purpose                                                                                                                                                          |
+| ------ | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| BRD    | [BRD-TEMPLATE.md](BRD-TEMPLATE.md) | Captures business context, objectives, scope, risks, success metrics, use cases — the _what_ and _why_.                                                          |
+| FSD    | [FSD-TEMPLATE.md](FSD-TEMPLATE.md) | Describes functional behavior, user roles, business process flows, screen designs, business rules, non-functional requirements — the _how_ from the user's view. |
+| TSD    | [TSD-TEMPLATE.md](TSD-TEMPLATE.md) | Specifies system architecture, data model, API contracts, security, deployment, infrastructure — the _how_ from the engineer's view.                             |
 
 Shared definitions (ID conventions, terms) are in [GLOSSARY.md](GLOSSARY.md).
 
@@ -96,13 +96,13 @@ Shared definitions (ID conventions, terms) are in [GLOSSARY.md](GLOSSARY.md).
 
 **Mermaid diagram conventions:**
 
-| Use case | Mermaid type | Notes |
-|----------|-------------|-------|
-| Process flows | `flowchart TD` or `flowchart LR` | Use `subgraph` for swimlanes |
-| System architecture | `graph TB` | Container-level; label relationships |
-| Data model / ERD | `erDiagram` | Entities, attributes, relationships |
-| API / interaction sequences | `sequenceDiagram` | Participant calls with request/response |
-| Use case context | markdown table | No Mermaid standard; use table |
+| Use case                    | Mermaid type                     | Notes                                   |
+| --------------------------- | -------------------------------- | --------------------------------------- |
+| Process flows               | `flowchart TD` or `flowchart LR` | Use `subgraph` for swimlanes            |
+| System architecture         | `graph TB`                       | Container-level; label relationships    |
+| Data model / ERD            | `erDiagram`                      | Entities, attributes, relationships     |
+| API / interaction sequences | `sequenceDiagram`                | Participant calls with request/response |
+| Use case context            | markdown table                   | No Mermaid standard; use table          |
 
 ### Phase 4: Craftsmanship
 
@@ -116,6 +116,7 @@ Shared definitions (ID conventions, terms) are in [GLOSSARY.md](GLOSSARY.md).
 2. **Coverage check** — every section from the blueprint has content; no section was left empty or contains only placeholder text.
 3. **Formatting pass** — tables properly rendered, Mermaid blocks syntactically valid, ID prefixes consistent, section numbering correct.
 4. **Language check** — the document uses the specified language consistently throughout. No stray-language paragraphs.
+
 ## Invocation
 
 This skill is **model-invoked** — the agent fires autonomously when the user mentions BRD, FSD, TSD, or requirements documentation. The user can also type `requirements-blueprinting` explicitly.

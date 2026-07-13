@@ -208,11 +208,13 @@ struct BundledSkillBody {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct BundledSkillBodyResponse {
     name: String,
     body: String,
 }
 
+#[allow(clippy::unused_async)]
 async fn fetch_bundled_skill_body(
     _name: &str,
     _registry: &tauri::State<'_, AgentRuntimeRegistry>,
@@ -222,6 +224,7 @@ async fn fetch_bundled_skill_body(
     None
 }
 
+#[allow(dead_code)]
 fn urlencode(value: &str) -> String {
     use std::fmt::Write as _;
     let mut encoded = String::with_capacity(value.len());

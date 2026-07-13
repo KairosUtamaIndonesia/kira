@@ -1,9 +1,9 @@
+import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { Loader2 } from "lucide-react";
-import { getCloudConfig } from "@/features/agent-thread/cloudConfig";
-import { AppSocketProvider } from "@/features/agent-thread/AppSocketProvider";
 import { startAgentRuntime } from "@/features/agent-thread/api/agentRuntimeApi";
+import { AppSocketProvider } from "@/features/agent-thread/AppSocketProvider";
+import { getCloudConfig } from "@/features/agent-thread/cloudConfig";
 import { SignInShell } from "@/features/desktop-auth/components/SignInShell";
 import { useZoom } from "@/hooks/useZoom";
 
@@ -69,13 +69,11 @@ function Shell() {
             Kira Desktop
           </p>
           <h1 className="text-2xl font-semibold tracking-tight">Cannot connect to Kira Cloud</h1>
-          <p className="text-sm text-muted-foreground">
-            {cloudAuth.message}
-          </p>
+          <p className="text-sm text-muted-foreground">{cloudAuth.message}</p>
         </header>
         <p className="text-xs text-muted-foreground">
-          Sign in to Kira Cloud to use the agent runtime. If you are signed in, check your
-          network connection and try again.
+          Sign in to Kira Cloud to use the agent runtime. If you are signed in, check your network
+          connection and try again.
         </p>
       </SignInShell>
     );

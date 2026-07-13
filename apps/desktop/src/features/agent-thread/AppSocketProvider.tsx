@@ -3,32 +3,43 @@
  * Wraps the sidecar WS in a React context so any component can send/receive.
  */
 
-import { createContext, useContext, useEffect, useRef, useState, useCallback, type ReactNode } from "react";
 import type { ClientCommand, ServerEvent } from "@kira/agent-pi/protocol";
+
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+  type ReactNode,
+} from "react";
 
 const WS_URL = "ws://127.0.0.1:19876";
 
 interface AppSocketContextValue {
   send: (cmd: ClientCommand) => void;
   connected: boolean;
-  fatalError: string | null;
+  fatalError: string | undefined;
   /** Subscribe to all events. Returns unsubscribe function. */
   onEvent: (cb: (event: ServerEvent) => void) => () => void;
 }
 
-const AppSocketContext = createContext<AppSocketContextValue | null>(null);
+const AppSocketContext = createContext<AppSocketContextValue | undefined>(undefined);
 
 export function AppSocketProvider({ children }: { children: ReactNode }) {
-  const wsRef = useRef<WebSocket | null>(null);
+  const wsRef = useRef<WebSocket | null | undefined>(null);
   const [connected, setConnected] = useState(false);
-  const [fatalError] = useState<string | null>(null);
+  const [fatalError] = useState<string | undefined>();
   const handlersRef = useRef<Set<(event: ServerEvent) => void>>(new Set());
   const queueRef = useRef<ClientCommand[]>([]);
   const fatalRef = useRef(false);
 
   const onEvent = useCallback((cb: (event: ServerEvent) => void) => {
     handlersRef.current.add(cb);
-    return () => { handlersRef.current.delete(cb); };
+    return () => {
+      handlersRef.current.delete(cb);
+    };
   }, []);
 
   const send = useCallback((cmd: ClientCommand) => {
@@ -50,7 +61,7 @@ export function AppSocketProvider({ children }: { children: ReactNode }) {
       const ws = new WebSocket(WS_URL);
       wsRef.current = ws;
 
-      ws.onopen = () => {
+      ws.addEventListener("open", () => {
         if (wsRef.current !== ws) return; // stale socket
         setConnected(true);
         // Drain queued commands
@@ -59,30 +70,30 @@ export function AppSocketProvider({ children }: { children: ReactNode }) {
         for (const cmd of queue) {
           ws.send(JSON.stringify(cmd));
         }
-      };
+      });
 
-      ws.onmessage = (event) => {
+      ws.addEventListener("message", (event) => {
         if (wsRef.current !== ws) return; // stale socket
         try {
           const msg = JSON.parse(event.data as string) as ServerEvent;
           if (msg.type === "error") {
-            console.error("[app-socket] server error:", msg.message);
+            // server error logged via handlers below
           }
           handlersRef.current.forEach((cb) => cb(msg));
-        } catch (e) {
-          console.error("Bad message:", e);
+        } catch {
+          // malformed message ignored
         }
-      };
+      });
 
-      ws.onclose = () => {
+      ws.addEventListener("close", () => {
         if (wsRef.current !== ws) return; // stale socket — a newer one took over
-        wsRef.current = null;
+        wsRef.current = undefined;
         setConnected(false);
         if (disposed || fatalRef.current) return;
         reconnectTimer = setTimeout(connect, 1500);
-      };
+      });
 
-      ws.onerror = () => ws.close();
+      ws.addEventListener("error", () => ws.close());
     }
 
     connect();
@@ -90,8 +101,8 @@ export function AppSocketProvider({ children }: { children: ReactNode }) {
       disposed = true;
       clearTimeout(reconnectTimer);
       const ws = wsRef.current;
-      wsRef.current = null;
-      ws?.close();
+      wsRef.current = undefined;
+      if (ws) ws.close();
     };
   }, []);
 

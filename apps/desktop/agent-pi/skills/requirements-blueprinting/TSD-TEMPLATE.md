@@ -63,24 +63,25 @@ graph TB
 
 **Technology Stack:**
 
-| Layer | Technology | Version |
-|---|---|---|
-| Frontend (Web) | Nuxt.js / Vue.js | [version] |
-| Frontend (Mobile) | Flutter / React Native | [version] |
-| Backend | .NET Core / Go / Node.js | [version] |
-| Database | SQL Server / PostgreSQL | [version] |
-| Cache | Redis | [version] |
-| Message Broker | SignalR / RabbitMQ | [version] |
-| Logging | Serilog / ELK | [version] |
-| Auth | Azure AD / SSO | — |
-| Deployment | Kubernetes / Docker | [version] |
-| Object Storage | MinIO / S3 | [version] |
+| Layer             | Technology               | Version   |
+| ----------------- | ------------------------ | --------- |
+| Frontend (Web)    | Nuxt.js / Vue.js         | [version] |
+| Frontend (Mobile) | Flutter / React Native   | [version] |
+| Backend           | .NET Core / Go / Node.js | [version] |
+| Database          | SQL Server / PostgreSQL  | [version] |
+| Cache             | Redis                    | [version] |
+| Message Broker    | SignalR / RabbitMQ       | [version] |
+| Logging           | Serilog / ELK            | [version] |
+| Auth              | Azure AD / SSO           | —         |
+| Deployment        | Kubernetes / Docker      | [version] |
+| Object Storage    | MinIO / S3               | [version] |
 
 ### 2.2 Architecture Diagram (if multiple views needed)
 
 Context diagram, container diagram, or deployment diagram — each as a Mermaid block.
 
 **Questions to Ask:**
+
 - What is the overall architecture style (monolith, microservices, serverless)?
 - What are the major subsystems and how do they communicate?
 - What is the tech stack per layer?
@@ -104,7 +105,7 @@ flowchart LR
     ADMIN((Admin))
     SYSTEM([System Boundary])
     EXT[External API]
-    
+
     USER -->|Requests| SYSTEM
     ADMIN -->|Manages| SYSTEM
     SYSTEM -->|Queries| EXT
@@ -158,15 +159,16 @@ erDiagram
 
 **What goes here:** Detailed table specifications. Each table gets a row in a master table list, with column details.
 
-| Table | Schema | Column | Data Type | Length | Mandatory | PK | FK |
-|---|---|---|---|---|---|---|---|
-| Users | dbo | UserId | uniqueidentifier | — | Yes | Yes | — |
-| Users | dbo | UserName | varchar | 250 | Yes | — | — |
-| Users | dbo | Email | varchar | 250 | Yes | — | — |
-| Orders | dbo | OrderId | uniqueidentifier | — | Yes | Yes | — |
-| Orders | dbo | UserId | uniqueidentifier | — | Yes | — | Yes → Users |
+| Table  | Schema | Column   | Data Type        | Length | Mandatory | PK  | FK          |
+| ------ | ------ | -------- | ---------------- | ------ | --------- | --- | ----------- |
+| Users  | dbo    | UserId   | uniqueidentifier | —      | Yes       | Yes | —           |
+| Users  | dbo    | UserName | varchar          | 250    | Yes       | —   | —           |
+| Users  | dbo    | Email    | varchar          | 250    | Yes       | —   | —           |
+| Orders | dbo    | OrderId  | uniqueidentifier | —      | Yes       | Yes | —           |
+| Orders | dbo    | UserId   | uniqueidentifier | —      | Yes       | —   | Yes → Users |
 
 **Questions to Ask:**
+
 - What are the core entities?
 - What are the relationships between them?
 - What are the key attributes per entity?
@@ -181,11 +183,11 @@ erDiagram
 
 **What goes here:** List of all API endpoints, grouped by domain. For each: method, path, description, request/response format.
 
-| No | Title | Endpoint | Method | Description |
-|---|---|---|---|---|
-| 1 | List.Campaigns | /campaigns/list | POST | List all campaigns with filtering |
-| 2 | Create.Campaign | /campaigns/create | POST | Create a new campaign |
-| 3 | Read.Campaign | /campaigns/read/{id} | GET | Get campaign details |
+| No  | Title           | Endpoint             | Method | Description                       |
+| --- | --------------- | -------------------- | ------ | --------------------------------- |
+| 1   | List.Campaigns  | /campaigns/list      | POST   | List all campaigns with filtering |
+| 2   | Create.Campaign | /campaigns/create    | POST   | Create a new campaign             |
+| 3   | Read.Campaign   | /campaigns/read/{id} | GET    | Get campaign details              |
 
 #### 3.3.2 Request/Response Format
 
@@ -220,6 +222,7 @@ Response:
 **What goes here:** The auth mechanism (JWT, OAuth, API keys), token format, how roles/permissions map to API access.
 
 **Questions to Ask:**
+
 - What are the API domains/modules?
 - Is the API RESTful, GraphQL, or RPC-style?
 - What is the request/response format (JSON, XML, protobuf)?
@@ -232,16 +235,16 @@ Response:
 
 **What goes here:** Programming languages, frameworks, libraries, and development tools used.
 
-| Category | Tool |
-|---|---|
-| Language (Mobile) | Flutter / Kotlin / Swift |
-| Language (Web) | TypeScript / JavaScript |
-| Language (Backend) | Go / C# / Python |
-| Framework (Web) | Vue.js / Nuxt / React |
-| Framework (Backend) | .NET Core / Gin / Express |
-| Dev Tools | Visual Studio Code, JetBrains, SonarQube |
-| CI/CD | GitHub Actions / Jenkins |
-| Repository | GitHub / GitLab / Azure DevOps |
+| Category            | Tool                                     |
+| ------------------- | ---------------------------------------- |
+| Language (Mobile)   | Flutter / Kotlin / Swift                 |
+| Language (Web)      | TypeScript / JavaScript                  |
+| Language (Backend)  | Go / C# / Python                         |
+| Framework (Web)     | Vue.js / Nuxt / React                    |
+| Framework (Backend) | .NET Core / Gin / Express                |
+| Dev Tools           | Visual Studio Code, JetBrains, SonarQube |
+| CI/CD               | GitHub Actions / Jenkins                 |
+| Repository          | GitHub / GitLab / Azure DevOps           |
 
 ### 3.5 Security Architecture
 
@@ -249,13 +252,13 @@ Response:
 
 **What goes here:** Security threats relevant to this system, with monitoring metrics and alert thresholds.
 
-| Metric | Threshold |
-|---|---|
-| CPU usage | > 80% |
-| Memory usage | > 85% |
-| Storage | > 90% |
-| API response time | > 2s |
-| Error rate | > 1% |
+| Metric            | Threshold |
+| ----------------- | --------- |
+| CPU usage         | > 80%     |
+| Memory usage      | > 85%     |
+| Storage           | > 90%     |
+| API response time | > 2s      |
+| Error rate        | > 1%      |
 
 #### 3.5.2 Security Mechanisms
 
@@ -275,6 +278,7 @@ Response:
 - API issue response
 
 **Questions to Ask:**
+
 - What are the key security threats?
 - What metrics should be monitored?
 - What are the alert thresholds?
@@ -309,20 +313,20 @@ Response:
 
 **If Kubernetes-specific:** Include deployment spec table.
 
-| Deployment | CPU Request | CPU Limit | Memory Request | Memory Limit | Min Replicas | Max Replicas | HPA Metric |
-|---|---|---|---|---|---|---|---|
-| webadmin-api | 250m | 500m | 512Mi | 1Gi | 1 | 5 | CPU > 80% |
-| mobile-api | 250m | 500m | 512Mi | 1Gi | 1 | 6 | CPU > 80% |
+| Deployment   | CPU Request | CPU Limit | Memory Request | Memory Limit | Min Replicas | Max Replicas | HPA Metric |
+| ------------ | ----------- | --------- | -------------- | ------------ | ------------ | ------------ | ---------- |
+| webadmin-api | 250m        | 500m      | 512Mi          | 1Gi          | 1            | 5            | CPU > 80%  |
+| mobile-api   | 250m        | 500m      | 512Mi          | 1Gi          | 1            | 6            | CPU > 80%  |
 
 ### 4.4 Capacity Planning
 
 **What goes here:** Projected user load, resource calculations, scaling estimates.
 
 | Users | Requests/min | Data Transfer | CPU (vCPU) | Memory (GB) | Instances |
-|---|---|---|---|---|---|
-| 100 | 1000 | 1MB | 0.23 | 1.4 | 1 |
-| 500 | 5000 | 5MB | 1.15 | 7 | 2 |
-| 1000 | 10000 | 10MB | 2.3 | 14 | 4 |
+| ----- | ------------ | ------------- | ---------- | ----------- | --------- |
+| 100   | 1000         | 1MB           | 0.23       | 1.4         | 1         |
+| 500   | 5000         | 5MB           | 1.15       | 7           | 2         |
+| 1000  | 10000        | 10MB          | 2.3        | 14          | 4         |
 
 ---
 
@@ -338,12 +342,12 @@ Response:
 
 ### 5.2 Support Contacts
 
-| Level | Team | Responsibility |
-|---|---|---|
-| L1 | Operations | Initial triage |
-| L2 | Platform Engineering | Infrastructure issues |
-| L3 | Development Team | Code/application issues |
-| L4 | System Architect | Escalation |
+| Level | Team                 | Responsibility          |
+| ----- | -------------------- | ----------------------- |
+| L1    | Operations           | Initial triage          |
+| L2    | Platform Engineering | Infrastructure issues   |
+| L3    | Development Team     | Code/application issues |
+| L4    | System Architect     | Escalation              |
 
 ---
 

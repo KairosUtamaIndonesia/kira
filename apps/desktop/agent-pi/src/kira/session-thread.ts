@@ -4,16 +4,16 @@
  */
 
 import type { WebSocket } from "ws";
+
 import { type AgentSession, type AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+
 import type { ThreadServerEvent } from "../protocol";
+
+import { logger } from "./log";
 import { serializeMessages } from "./serialize";
 
-export function attachSession(
-  ws: WebSocket,
-  session: AgentSession,
-  threadId: string,
-): () => void {
-  const threadLabel = `thread:${session.sessionId?.slice(0, 8) ?? threadId.slice(0, 8)}`;
+export function attachSession(ws: WebSocket, session: AgentSession, threadId: string): () => void {
+  const threadLabel = `thread:${session.sessionId ? session.sessionId.slice(0, 8) : threadId.slice(0, 8)}`;
 
   const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
     const msg = toServerEvent(event, session);
@@ -31,17 +31,20 @@ export function attachSession(
     }
   });
 
-  console.error(`[${threadLabel}] bridge attached`);
+  logger.error(`[${threadLabel}] bridge attached`);
 
   return () => {
     unsubscribe();
-    console.error(`[${threadLabel}] bridge detached`);
+    logger.error(`[${threadLabel}] bridge detached`);
   };
 }
 
 // ── Event mapping ───────────────────────────────────────────────────
 
-export function toServerEvent(event: AgentSessionEvent, session: AgentSession): ThreadServerEvent | null {
+export function toServerEvent(
+  event: AgentSessionEvent,
+  session: AgentSession,
+): ThreadServerEvent | undefined {
   switch (event.type) {
     case "agent_start":
       return { type: "agent_start" };
@@ -50,7 +53,10 @@ export function toServerEvent(event: AgentSessionEvent, session: AgentSession): 
     case "turn_start":
       return { type: "turn_start" };
     case "turn_end":
-      return { type: "turn_end", hasToolCalls: (event.toolResults?.length ?? 0) > 0 };
+      return {
+        type: "turn_end",
+        hasToolCalls: (event.toolResults ? event.toolResults.length : 0) > 0,
+      };
     case "compaction_start":
       return { type: "compaction_start" };
     case "compaction_end":
@@ -60,7 +66,7 @@ export function toServerEvent(event: AgentSessionEvent, session: AgentSession): 
       const e = event.assistantMessageEvent;
       if (e.type === "text_delta") return { type: "text_delta", delta: e.delta };
       if (e.type === "thinking_delta") return { type: "thinking_delta", delta: e.delta };
-      return null;
+      return undefined;
     }
 
     case "tool_execution_start":
@@ -75,7 +81,10 @@ export function toServerEvent(event: AgentSessionEvent, session: AgentSession): 
       return {
         type: "tool_execution_update",
         toolCallId: event.toolCallId,
-        partialResult: event.partialResult?.content?.[0]?.text ?? "",
+        partialResult:
+          event.partialResult && event.partialResult.content && event.partialResult.content[0]
+            ? (event.partialResult.content[0].text ?? "")
+            : "",
       };
 
     case "tool_execution_end":
@@ -90,7 +99,7 @@ export function toServerEvent(event: AgentSessionEvent, session: AgentSession): 
       return { type: "state_update", state: sessionState(session) };
 
     default:
-      return null;
+      return undefined;
   }
 }
 
@@ -110,8 +119,8 @@ export function pushState(session: AgentSession, ws: WebSocket, threadId: string
 
 export function sessionState(session: AgentSession) {
   return {
-    model: session.model ? `${session.model.provider}/${session.model.id}` : null,
-    thinkingLevel: session.thinkingLevel as any,
+    model: session.model ? `${session.model.provider}/${session.model.id}` : undefined,
+    thinkingLevel: session.thinkingLevel as unknown,
     isStreaming: session.isStreaming,
     messageCount: session.messages.length,
     sessionId: session.sessionId,

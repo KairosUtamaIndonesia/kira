@@ -116,12 +116,13 @@ function ToolJsonBlock({ label, value }: { label: string; value: unknown }) {
   );
 }
 
-function ToolDuration({ duration }: { duration: string | undefined }) {
+function ToolDuration({ duration }: { duration: number | undefined }) {
   if (duration === undefined) {
     return;
   }
 
-  return <span className="shrink-0 text-xs text-muted-foreground/60">{duration}</span>;
+  const display = duration < 1000 ? `${duration}ms` : `${(duration / 1000).toFixed(1)}s`;
+  return <span className="shrink-0 text-xs text-muted-foreground/60">{display}</span>;
 }
 
 function ToolErrorMessage({ message }: { message: string }) {

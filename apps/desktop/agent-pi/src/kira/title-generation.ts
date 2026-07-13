@@ -3,7 +3,9 @@
  */
 
 import type { AssistantMessage } from "@earendil-works/pi-ai";
+
 import { Agent } from "@earendil-works/pi-agent-core";
+
 import { authStorage, modelRegistry } from "./model-registry";
 
 const TITLE_SYSTEM_PROMPT = [
@@ -63,7 +65,12 @@ function assistantText(message: AssistantMessage): string {
 }
 
 function normalizeTitle(value: string) {
-  return value.trim().replace(/^["'“”‘’]+|["'“”‘’]+$/g, "").replace(/\s+/g, " ").slice(0, 80).trim();
+  return value
+    .trim()
+    .replace(/^["'“”‘’]+|["'“”‘’]+$/g, "")
+    .replace(/\s+/g, " ")
+    .slice(0, 80)
+    .trim();
 }
 
 export { generateAgentThreadTitle };

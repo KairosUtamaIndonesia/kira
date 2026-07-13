@@ -6,7 +6,10 @@
  */
 
 import { WebSocketServer } from "ws";
+
 import type { ClientCommand } from "./protocol";
+
+import { logger } from "./kira/log";
 import { registerProviderExtensions } from "./kira/model-registry";
 import { SessionHost } from "./kira/session-host";
 
@@ -14,17 +17,18 @@ const envPort = Number.parseInt(process.env.PORT ?? "", 10);
 const PORT = Number.isNaN(envPort) ? 19876 : envPort;
 
 async function main() {
-  console.error("[agent-pi] starting...");
+  logger.error("[agent-pi] starting...");
 
   const envCloudUrl = process.env.KIRA_CLOUD_API_URL || process.env.KIRA_CLOUD_URL;
   const envApiKey = process.env.KIRA_API_KEY;
 
   // Shared across all connections: providers are registered exactly once.
-  let providersRegistration: Promise<void> | null = null;
+  let providersRegistration: Promise<void> | undefined;
   function ensureProviders(): Promise<void> {
     if (!providersRegistration) {
-      providersRegistration = registerProviderExtensions().catch((err) => {
-        providersRegistration = null; // allow retry on next register_project
+      /* eslint-disable-next-line promise/prefer-await-to-then */
+      providersRegistration = registerProviderExtensions().catch((err: unknown) => {
+        providersRegistration = undefined; // allow retry on next register_project
         throw err;
       });
     }
@@ -33,7 +37,7 @@ async function main() {
 
   // If cloud config is already in the environment, register now.
   if (envCloudUrl && envApiKey) {
-    console.error(`[agent-pi] registering providers from ${envCloudUrl}`);
+    logger.error(`[agent-pi] registering providers from ${envCloudUrl}`);
     await ensureProviders();
   }
 
@@ -41,10 +45,10 @@ async function main() {
   const wss = new WebSocketServer({ port: PORT });
   await new Promise<void>((resolve) => wss.once("listening", resolve));
 
-  console.error(`[agent-pi] listening on ws://127.0.0.1:${PORT}`);
+  logger.error(`[agent-pi] listening on ws://127.0.0.1:${PORT}`);
 
   wss.on("connection", (ws) => {
-    console.error("[agent-pi] client connected");
+    logger.error("[agent-pi] client connected");
 
     // Serialize command processing per connection: open_thread must not run
     // before register_project finishes. Long-running commands (prompt/compact)
@@ -60,8 +64,12 @@ async function main() {
         return;
       }
       const threadId = "threadId" in cmd ? cmd.threadId : undefined;
-      console.error(`[agent-pi] cmd: ${cmd.type}${threadId ? ` thread=${threadId.slice(0, 8)}` : ""}`);
+      logger.error(
+        `[agent-pi] cmd: ${cmd.type}${threadId ? ` thread=${threadId.slice(0, 8)}` : ""}`,
+      );
 
+      // Serial queue: .then() is the correct pattern here, not await
+      // eslint-disable-next-line promise/prefer-await-to-then, promise/always-return
       queue = queue.then(async () => {
         try {
           // register_project carries the cloud config for provider registration
@@ -75,7 +83,12 @@ async function main() {
             try {
               await ensureProviders();
             } catch (err) {
-              ws.send(JSON.stringify({ type: "error", message: `Provider registration failed: ${(err as Error).message}` }));
+              ws.send(
+                JSON.stringify({
+                  type: "error",
+                  message: `Provider registration failed: ${(err as Error).message}`,
+                }),
+              );
               return;
             }
           }
@@ -88,11 +101,19 @@ async function main() {
     });
   });
 
-  process.on("SIGTERM", () => { wss.close(); process.exit(0); });
-  process.on("SIGINT", () => { wss.close(); process.exit(0); });
+  process.on("SIGTERM", () => {
+    wss.close();
+    process.exit(0);
+  });
+  process.on("SIGINT", () => {
+    wss.close();
+    process.exit(0);
+  });
 }
 
-main().catch((err) => {
-  console.error("[agent-pi] fatal:", err);
+// Top-level catch — Bun supports top-level await but this keeps the pattern simple
+// eslint-disable-next-line promise/prefer-await-to-then
+main().catch((err: unknown) => {
+  logger.error("[agent-pi] fatal:", err);
   process.exit(1);
 });

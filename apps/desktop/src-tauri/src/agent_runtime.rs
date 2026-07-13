@@ -1,16 +1,14 @@
-use std::{env, path::Path, time::Duration};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-
-use tauri::Manager;
 
 use crate::persistence::PersistenceStore;
 
 // ── Error ────────────────────────────────────────────────────────────
 
 #[derive(Debug, Error, Serialize)]
+#[allow(dead_code)]
 pub enum AgentRuntimeError {
     #[error("{0} is not configured")]
     ConfigMissing(String),
@@ -25,7 +23,10 @@ pub enum AgentRuntimeError {
     #[error("Agent Thread assistant text is required")]
     MissingAssistantText,
     #[error("Project {project_id} with Session {session_id} was not found")]
-    ProjectSessionNotFound { project_id: String, session_id: String },
+    ProjectSessionNotFound {
+        project_id: String,
+        session_id: String,
+    },
     #[error("Project folder does not exist: {path}")]
     ProjectDirectoryNotFound { path: String },
     #[error("Project folder is not a directory: {path}")]
@@ -51,18 +52,21 @@ pub struct AgentRuntimeRegistry {
 
 impl AgentRuntimeRegistry {
     pub fn lock_runtime(&self) -> std::sync::MutexGuard<'_, AgentRuntimeState> {
-        self.runtime.lock().unwrap()
+        self.runtime
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 }
 
+#[derive(Default)]
 pub enum AgentRuntimeState {
+    #[default]
     NotStarted,
     Running,
-    Failed { reason: String },
-}
-
-impl Default for AgentRuntimeState {
-    fn default() -> Self { Self::NotStarted }
+    #[allow(dead_code)]
+    Failed {
+        reason: String,
+    },
 }
 
 // ── Connection info (returned to frontend) ─────────────────────────
@@ -86,7 +90,7 @@ pub async fn start_agent_runtime(
 ) -> Result<(), AgentRuntimeError> {
     let mut guard = registry.lock_runtime();
     match &*guard {
-        AgentRuntimeState::Running => return Ok(()),
+        AgentRuntimeState::Running => Ok(()),
         AgentRuntimeState::Failed { .. } => {
             // Reset on retry
             *guard = AgentRuntimeState::Running;
@@ -101,6 +105,7 @@ pub async fn start_agent_runtime(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(clippy::struct_field_names)]
 pub(crate) struct PrepareAgentThreadInput {
     pub(crate) project_id: String,
     pub(crate) session_id: String,
@@ -111,7 +116,7 @@ pub(crate) struct PrepareAgentThreadInput {
 pub async fn prepare_agent_thread(
     input: PrepareAgentThreadInput,
     registry: tauri::State<'_, AgentRuntimeRegistry>,
-    store: tauri::State<'_, PersistenceStore>,
+    _store: tauri::State<'_, PersistenceStore>,
 ) -> Result<AgentRuntimeConnection, AgentRuntimeError> {
     let guard = registry.lock_runtime();
     match &*guard {
@@ -174,6 +179,7 @@ pub async fn generate_agent_thread_title(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub(crate) struct GenerateCommitMessageInput {
     pub(crate) staged_diff: String,
     pub(crate) recent_log: String,
@@ -202,7 +208,7 @@ pub async fn get_cloud_config() -> Result<CloudConfig, AgentRuntimeError> {
     let response = tokio::time::timeout(
         std::time::Duration::from_secs(5),
         client
-            .get(format!("{}/api/desktop/models", url))
+            .get(format!("{url}/api/desktop/models"))
             .header("x-api-key", &api_key)
             .send(),
     )
@@ -243,7 +249,7 @@ pub(crate) struct BundledSkill {
     pub(crate) description: String,
 }
 
-/// Skills are loaded by the agent-pi sidecar via Pi's DefaultResourceLoader.
+/// Skills are loaded by the agent-pi sidecar via Pi's `DefaultResourceLoader`.
 /// This stub returns empty so the Rust backend doesn't need to reach into the sidecar.
 pub async fn fetch_bundled_skills(
     _registry: &AgentRuntimeRegistry,

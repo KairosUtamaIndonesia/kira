@@ -188,18 +188,17 @@ pub async fn explorer_file_reference_suggestions(
         })
     };
 
-    let entries = match cached_entries {
-        Some(entries) => entries,
-        None => {
-            // Cache miss or stale — walk outside the lock.
-            let walked = walk_project_tree(&root_path)?;
-            let mut guard = cache
-                .0
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            guard.insert(root_path.clone(), (Instant::now(), walked.clone()));
-            walked
-        }
+    let entries = if let Some(entries) = cached_entries {
+        entries
+    } else {
+        // Cache miss or stale — walk outside the lock.
+        let walked = walk_project_tree(&root_path)?;
+        let mut guard = cache
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        guard.insert(root_path.clone(), (Instant::now(), walked.clone()));
+        walked
     };
 
     let filter = scoped_query.filter;

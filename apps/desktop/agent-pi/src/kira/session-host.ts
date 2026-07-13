@@ -14,17 +14,25 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { type WebSocket } from "ws";
+
 import type { ClientCommand, TreeEntry } from "../protocol";
-import { authStorage, modelRegistry, getDefaultModel, registerProviderExtensions } from "./model-registry";
-import { askUserTool } from "./tools/ask-user-tool";
+
+import { logger } from "./log";
+import {
+  authStorage,
+  modelRegistry,
+  getDefaultModel,
+  registerProviderExtensions,
+} from "./model-registry";
 import { extractText, serializeMessages } from "./serialize";
 import { attachSession, pushState } from "./session-thread";
+import { askUserTool } from "./tools/ask-user-tool";
 
-const AGENT_DIR = process.env.KIRA_AGENT_DIR ?? (
-  process.platform === "win32"
+const AGENT_DIR =
+  process.env.KIRA_AGENT_DIR ??
+  (process.platform === "win32"
     ? `${process.env.APPDATA}/Kira/agent`
-    : `${process.env.HOME}/.config/kira/agent`
-);
+    : `${process.env.HOME}/.config/kira/agent`);
 const EXTENSIONS: [] = [];
 
 // ── Types ───────────────────────────────────────────────────────────
@@ -53,17 +61,15 @@ export class SessionHost {
 
   // ── Project registration ─────────────────────────────────────────
 
-  async registerProject(input: {
-    projectPath: string;
-    projectId: string;
-  }): Promise<void> {
+  async registerProject(input: { projectPath: string; projectId: string }): Promise<void> {
     const pp = input.projectPath;
     if (this.projects.has(pp)) {
-      this.projects.get(pp)!.refCount++;
+      const existing = this.projects.get(pp);
+      if (existing) existing.refCount++;
       return;
     }
 
-    console.error(`[session-host] initializing project services for ${pp}...`);
+    logger.error(`[session-host] initializing project services for ${pp}...`);
 
     const loader = new DefaultResourceLoader({
       cwd: pp,
@@ -93,17 +99,15 @@ export class SessionHost {
     // Skip if already opened
     if (project.threads.has(input.threadId)) return;
 
-    console.error(`[session-host] building session for thread ${input.threadId}...`);
+    logger.error(`[session-host] building session for thread ${input.threadId}...`);
 
     let resolveReady!: () => void;
-    const sessionReady = new Promise<void>((r) => { resolveReady = r; });
+    const sessionReady = new Promise<void>((r) => {
+      resolveReady = r;
+    });
 
     const sessionDir = `${AGENT_DIR}/sessions/${input.threadId}`;
-    const sessionManager = SessionManager.open(
-      `${sessionDir}/session.jsonl`,
-      sessionDir,
-      pp,
-    );
+    const sessionManager = SessionManager.open(`${sessionDir}/session.jsonl`, sessionDir, pp);
 
     const defaultModel = getDefaultModel();
     const model = defaultModel
@@ -127,20 +131,19 @@ export class SessionHost {
           session: host,
           sessionReady,
           resolveReady,
-          detach: null,
+          detach: undefined as (() => void) | undefined,
         };
         project.threads.set(input.threadId, thread);
         resolveReady();
         const m = host.session.model;
-        console.error(`[session-host] session ready for thread ${input.threadId} (model: ${m ? m.id : "none"})`);
+        logger.error(
+          `[session-host] session ready for thread ${input.threadId} (model: ${m ? m.id : "none"})`,
+        );
       } catch (err) {
+        logger.error(`[session-host] session build failed for thread ${input.threadId}:`, err);
         resolveReady();
-        throw err;
       }
-    })().catch((err) => {
-      console.error(`[session-host] session build failed for thread ${input.threadId}:`, err);
-      resolveReady();
-    });
+    })();
 
     // Wait for the session to be ready before returning
     await sessionReady;
@@ -154,7 +157,7 @@ export class SessionHost {
     const project = this.projects.get(projectPath);
     if (!project) return;
     const thread = project.threads.get(threadId);
-    if (thread?.detach) {
+    if (thread && thread.detach) {
       thread.detach();
     }
     project.threads.delete(threadId);
@@ -162,7 +165,7 @@ export class SessionHost {
     project.refCount--;
     if (project.refCount <= 0) {
       this.projects.delete(projectPath);
-      console.error(`[session-host] disposed project services for ${projectPath}`);
+      logger.error(`[session-host] disposed project services for ${projectPath}`);
     }
   }
 
@@ -173,7 +176,8 @@ export class SessionHost {
       switch (cmd.type) {
         // ── Project ──
         case "register_project":
-          console.error(`[session-host] register_project: ${cmd.projectPath?.slice(0, 40)}`);
+          const ppShort = cmd.projectPath ? cmd.projectPath.slice(0, 40) : "";
+          logger.error(`[session-host] register_project: ${ppShort}`);
           await this.registerProject(cmd);
           break;
 
@@ -195,12 +199,16 @@ export class SessionHost {
           // Fire-and-forget: the turn can run for minutes; commands are
           // serialized per connection, so awaiting here would block abort.
           await this.withThread(cmd.threadId, (session) => {
-            console.error(`[${cmd.threadId.slice(0, 8)}] prompt: "${cmd.message.slice(0, 80).replace(/\n/g, "\\n")}"`);
+            logger.error(
+              `[${cmd.threadId.slice(0, 8)}] prompt: "${cmd.message.slice(0, 80).replace(/\n/g, "\\n")}"`,
+            );
             void (async () => {
               try {
                 await session.prompt(
                   cmd.message,
-                  cmd.streamingBehavior !== undefined ? { streamingBehavior: cmd.streamingBehavior } : {},
+                  cmd.streamingBehavior !== undefined
+                    ? { streamingBehavior: cmd.streamingBehavior }
+                    : {},
                 );
               } catch (e) {
                 wrapSend(ws, cmd.threadId, { type: "error", message: (e as Error).message });
@@ -213,21 +221,21 @@ export class SessionHost {
 
         case "abort":
           await this.withThread(cmd.threadId, async (session) => {
-            console.error(`[${cmd.threadId.slice(0, 8)}] abort`);
+            logger.error(`[${cmd.threadId.slice(0, 8)}] abort`);
             await session.abort();
           });
           break;
 
         case "set_thinking_level":
           await this.withThread(cmd.threadId, (session) => {
-            console.error(`[${cmd.threadId.slice(0, 8)}] thinking: ${cmd.level}`);
+            logger.error(`[${cmd.threadId.slice(0, 8)}] thinking: ${cmd.level}`);
             session.setThinkingLevel(cmd.level);
           });
           break;
 
         case "compact":
           await this.withThread(cmd.threadId, (session) => {
-            console.error(`[${cmd.threadId.slice(0, 8)}] compact`);
+            logger.error(`[${cmd.threadId.slice(0, 8)}] compact`);
             void (async () => {
               try {
                 await session.compact(cmd.customInstructions);
@@ -246,7 +254,7 @@ export class SessionHost {
 
         case "navigate_tree":
           await this.withThread(cmd.threadId, async (session) => {
-            console.error(`[${cmd.threadId.slice(0, 8)}] navigate_tree: ${cmd.entryId.slice(0, 8)}`);
+            logger.error(`[${cmd.threadId.slice(0, 8)}] navigate_tree: ${cmd.entryId.slice(0, 8)}`);
             const result = await session.navigateTree(cmd.entryId, {
               summarize: cmd.summarize ?? false,
             });
@@ -268,21 +276,23 @@ export class SessionHost {
 
         // ── Global ──
         case "refresh_model_catalog":
-          console.error(`[session-host] refresh_model_catalog`);
+          logger.error(`[session-host] refresh_model_catalog`);
           try {
             await registerProviderExtensions();
             ws.send(JSON.stringify({ type: "model_catalog_refreshed", success: true }));
           } catch (e) {
-            ws.send(JSON.stringify({
-              type: "model_catalog_refreshed",
-              success: false,
-              error: (e as Error).message,
-            }));
+            ws.send(
+              JSON.stringify({
+                type: "model_catalog_refreshed",
+                success: false,
+                error: (e as Error).message,
+              }),
+            );
           }
           break;
       }
     } catch (e) {
-      console.error(`[session-host] command error:`, e);
+      logger.error(`[session-host] command error:`, e);
       ws.send(JSON.stringify({ type: "error", message: (e as Error).message }));
     }
   }
@@ -337,20 +347,31 @@ export class SessionHost {
     });
     this.sendTree(ws, session, threadId);
     pushState(session, ws, threadId);
-    console.error(`[session-host] initial state pushed to thread ${threadId}`);
+    logger.error(`[session-host] initial state pushed to thread ${threadId}`);
   }
 
-  private sendTree(ws: WebSocket, session: any, threadId: string): void {
+  private sendTree(
+    ws: WebSocket,
+    session: { sessionManager: SessionManager },
+    threadId: string,
+  ): void {
     const sm = session.sessionManager;
     const tree = sm.getTree();
     const leafId = sm.getLeafId();
     const activePath = leafId ? sm.getBranch() : [];
-    const activeIds = new Set(activePath.map((e: any) => e.id));
+    const activeIds = new Set(activePath.map((e: { id: string }) => e.id));
     const entries: TreeEntry[] = [];
 
-    function walk(nodes: any[], depth: number) {
+    function walk(
+      nodes: {
+        entry: { id: string; parentId: string | null; type: string; timestamp: number };
+        children: typeof nodes;
+        label?: string;
+      }[],
+      depth: number,
+    ) {
       for (const node of nodes) {
-        const label = node.label ?? sm.getLabel?.(node.entry.id);
+        const label = node.label ?? (sm.getLabel ? sm.getLabel(node.entry.id) : undefined);
         entries.push({
           id: node.entry.id,
           parentId: node.entry.parentId,
@@ -373,14 +394,21 @@ export class SessionHost {
 
 // ── Low-level helpers ───────────────────────────────────────────────
 
-function wrapSend(ws: WebSocket, threadId: string, event: any): void {
+function wrapSend(ws: WebSocket, threadId: string, event: Record<string, unknown>): void {
   ws.send(JSON.stringify({ type: "thread_event", threadId, event }));
 }
 
-function previewText(entry: any): string {
+function previewText(entry: {
+  type: string;
+  message?: { role?: string };
+  summary?: string;
+  provider?: string;
+  modelId?: string;
+}): string {
   if (entry.type === "message") {
-    const role = entry.message?.role ?? "?";
-    const text = extractText(entry.message);
+    const msg = entry.message;
+    const role = msg && msg.role ? msg.role : "?";
+    const text = extractText(msg);
     return `${role}: ${text.slice(0, 120)}`;
   }
   if (entry.type === "compaction") return `compaction: ${(entry.summary ?? "").slice(0, 120)}`;

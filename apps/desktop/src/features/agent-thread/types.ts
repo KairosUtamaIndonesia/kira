@@ -1,5 +1,3 @@
-import type { ClientMessage, ServerEvent, TreeEntry } from "@kira/agent-pi/protocol";
-
 type PrepareAgentThreadInput = {
   projectId: string;
   sessionId: string;
@@ -23,7 +21,7 @@ type GenerateAgentThreadTitleInput = {
   assistantText: string;
 };
 
-import type { ContentBlock } from "@kira/agent-pi/protocol";
+import type { ClientMessage, ContentBlock, ServerEvent, TreeEntry } from "@kira/agent-pi/protocol";
 
 /** One transcript entry. Assistant messages carry raw content blocks (pi TUI style).
  *  During streaming, tool/thinking roles are used for in-flight display;
@@ -43,7 +41,7 @@ type TranscriptMessage = {
 type PiTranscriptState = {
   messages: TranscriptMessage[];
   isStreaming: boolean;
-  model: string | null;
+  model: string | undefined;
 };
 
 export type {
@@ -54,7 +52,7 @@ export type {
   TranscriptMessage,
 };
 
-export type { ClientMessage, ServerEvent, TreeEntry } from "@kira/agent-pi/protocol";
+export type { ClientMessage, ServerEvent, TreeEntry };
 
 type RespondToHumanRequest = (requestId: string, response: unknown) => Promise<boolean>;
 export type { RespondToHumanRequest };

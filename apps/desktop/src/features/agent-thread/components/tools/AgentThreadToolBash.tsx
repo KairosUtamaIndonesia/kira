@@ -2,12 +2,7 @@ import { Terminal } from "lucide-react";
 
 import type { AgentThreadToolCallDisplay } from "../../agentThreadDisplay";
 
-import {
-  ToolCodeBlock,
-  ToolExpandable,
-  ToolInlineRow,
-  ToolStatusBadge,
-} from "./ToolPrimitives";
+import { ToolCodeBlock, ToolExpandable, ToolInlineRow, ToolStatusBadge } from "./ToolPrimitives";
 
 type Props = {
   tool: AgentThreadToolCallDisplay;

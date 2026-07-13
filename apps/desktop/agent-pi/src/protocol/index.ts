@@ -9,7 +9,14 @@
 
 export type ClientCommand =
   // Project registration (sent once per project)
-  | { type: "register_project"; projectPath: string; projectId: string; sessionId: string; cloudApiUrl: string; cloudApiKey: string }
+  | {
+      type: "register_project";
+      projectPath: string;
+      projectId: string;
+      sessionId: string;
+      cloudApiUrl: string;
+      cloudApiKey: string;
+    }
   // Thread management
   | { type: "open_thread"; threadId: string; projectPath: string; sessionId: string }
   | { type: "close_thread"; threadId: string }
@@ -53,7 +60,13 @@ export type ThreadServerEvent =
   | { type: "tree_data"; entries: TreeEntry[] }
   | { type: "tree_navigated"; cancelled: boolean }
   // Extension UI — tool needs user input
-  | { type: "tool_ui_request"; id: string; toolCallId: string; toolName: string; input: Record<string, unknown> };
+  | {
+      type: "tool_ui_request";
+      id: string;
+      toolCallId: string;
+      toolName: string;
+      input: Record<string, unknown>;
+    };
 
 /** Top-level event — wraps thread events with their threadId. */
 export type ServerEvent =
@@ -84,7 +97,7 @@ export interface ClientMessage {
 }
 
 export interface SessionState {
-  model: string | null;
+  model: string | undefined;
   thinkingLevel: ThinkingLevel;
   isStreaming: boolean;
   messageCount: number;

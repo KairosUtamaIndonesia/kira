@@ -21,6 +21,7 @@ Same as BRD: Document Info table, Revision History, Approval page, Table of Cont
 **Format:** 2–4 prose paragraphs.
 
 **Questions to Ask:** (internal guides for Excavation)
+
 - What specific problem does this system solve, expressed in functional terms?
 - What is the scope of the system's responsibility? What does it NOT do?
 - Who are the primary beneficiaries of this system?
@@ -51,9 +52,9 @@ LI-1: Remediation of revoked access is not automated.
 
 **What goes here:** Table of related documents (BRD, TSD, architectural docs, API specs).
 
-| No | Document Name | Description |
-|---|---|---|
-| 1 | BRD — [Project Name] | Business requirements defining objectives, scope, and context |
+| No  | Document Name        | Description                                                   |
+| --- | -------------------- | ------------------------------------------------------------- |
+| 1   | BRD — [Project Name] | Business requirements defining objectives, scope, and context |
 
 ---
 
@@ -61,10 +62,10 @@ LI-1: Remediation of revoked access is not automated.
 
 **What goes here:** Terms and abbreviations specific to this project.
 
-| No | Abbreviation | Definition | Description |
-|---|---|---|---|
-| 1 | BO | Business Objectives | Defines objectives of business process |
-| 2 | FE | Features | List of features in scope |
+| No  | Abbreviation | Definition          | Description                            |
+| --- | ------------ | ------------------- | -------------------------------------- |
+| 1   | BO           | Business Objectives | Defines objectives of business process |
+| 2   | FE           | Features            | List of features in scope              |
 
 ---
 
@@ -74,13 +75,14 @@ LI-1: Remediation of revoked access is not automated.
 
 **What goes here:** Table of user classes, their system role mapping, and their responsibilities.
 
-| No | User Class | System Role | Responsibility |
-|---|---|---|---|
-| 1 | System Administrator | Super Admin | Manages all configurations and campaigns |
-| 2 | Asset Owner | User | Reviews assigned assets, confirms ownership, certifies access |
-| 3 | Auditor | User (Read-only) | Views dashboards, generates audit reports |
+| No  | User Class           | System Role      | Responsibility                                                |
+| --- | -------------------- | ---------------- | ------------------------------------------------------------- |
+| 1   | System Administrator | Super Admin      | Manages all configurations and campaigns                      |
+| 2   | Asset Owner          | User             | Reviews assigned assets, confirms ownership, certifies access |
+| 3   | Auditor              | User (Read-only) | Views dashboards, generates audit reports                     |
 
 **Questions to Ask:**
+
 - Who are the distinct user types?
 - What can each user type do in the system?
 - Are there permission levels within roles?
@@ -94,7 +96,7 @@ LI-1: Remediation of revoked access is not automated.
 
 **Structure per process:**
 
-```
+````
 #### 2.2.N [Process Name]
 
 **Description:** 2–4 sentences explaining the process goal, trigger, and outcome.
@@ -106,15 +108,16 @@ flowchart TD
     B --> C{Decision}
     C -->|Yes| D[Step 2]
     C -->|No| E[Step 3]
-```
+````
 
 **Detailed Process Steps:**
 
-| No | Process Name | Role | Detailed Process |
-|---|---|---|---|
-| 1 | Create Campaign | Admin | Admin accesses Campaign Management and creates a new campaign |
-| 2 | Configure Campaign | Admin | Admin defines details, applies scope filters, selects review stages |
-| 3 | Launch Campaign | Admin | System displays summary; Admin reviews and confirms |
+| No  | Process Name       | Role  | Detailed Process                                                    |
+| --- | ------------------ | ----- | ------------------------------------------------------------------- |
+| 1   | Create Campaign    | Admin | Admin accesses Campaign Management and creates a new campaign       |
+| 2   | Configure Campaign | Admin | Admin defines details, applies scope filters, selects review stages |
+| 3   | Launch Campaign    | Admin | System displays summary; Admin reviews and confirms                 |
+
 ```
 
 **Questions to Ask per process:**
@@ -140,9 +143,11 @@ Each module section contains:
 **What goes here:** Numbered list of rules, constraints, and logic that govern this feature. Rules are specific, testable, and unambiguous.
 
 ```
+
 1. User enters username/email and password, which are Azure AD credentials.
 2. The authentication process uses Azure Active Directory.
 3. Session timeout occurs after 15 minutes of inactivity.
+
 ```
 
 #### 3.N.2 Screen / UI Design
@@ -150,12 +155,15 @@ Each module section contains:
 **What goes here:** Description of each screen or UI element in this module. Include wireframe descriptions, field definitions, and user interaction patterns. Use Mermaid for simple UI layouts if helpful, otherwise prose + tables.
 
 ```
+
 **Login Page:**
+
 - Header: Logo, application name
 - Form fields: Email (text input), Password (password input), Remember me (checkbox)
 - Actions: Sign In button, Forgot Password link
 - Validation: Email format, non-empty password, captcha
 - Error states: Invalid credentials message, account locked message
+
 ```
 
 If screen mockups exist, reference them: `[Image: Login Page mockup — see design assets]`
@@ -165,13 +173,16 @@ If screen mockups exist, reference them: `[Image: Login Page mockup — see desi
 **What goes here:** For each feature, the data inputs, expected outputs, and process flow.
 
 ```
+
 **Input:** Username, password
 **Output:** Authentication token or error message
 **Flow:**
+
 1. User enters credentials
 2. System validates against identity provider
 3. On success, system issues token and redirects to dashboard
 4. On failure, system returns error message
+
 ```
 
 **Questions to Ask per module:**
@@ -234,3 +245,4 @@ If screen mockups exist, reference them: `[Image: Login Page mockup — see desi
 ## 6. Appendix
 
 Additional material: screen mockup references, detailed business rules, data dictionaries.
+```

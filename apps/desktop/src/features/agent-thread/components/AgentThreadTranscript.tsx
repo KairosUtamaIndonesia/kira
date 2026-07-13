@@ -1,11 +1,11 @@
 import { Brain, ChevronRight } from "lucide-react";
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import type { AgentThreadActivityBlock } from "../agentThreadDisplay";
 import type { AgentThreadRuntimeState } from "../hooks/useAgentThreadConnection";
 import type { PiTranscriptState } from "../types";
 
-import { buildAgentThreadTranscript, stringifyUnknown } from "../agentThreadDisplay";
+import { buildAgentThreadTranscript } from "../agentThreadDisplay";
 import { AgentThreadMarkdown } from "./AgentThreadMarkdown";
 import { toolComponentForName } from "./tools";
 
@@ -15,7 +15,10 @@ type AgentThreadTranscriptProps = {
   parentRef: React.RefObject<HTMLDivElement | null>;
 };
 
-function AgentThreadTranscript({ transcript, runtimeState }: AgentThreadTranscriptProps) {
+function AgentThreadTranscript({
+  transcript,
+  runtimeState: _runtimeState,
+}: AgentThreadTranscriptProps) {
   const items = useMemo(() => buildAgentThreadTranscript(transcript), [transcript]);
 
   if (items.length === 0) {
@@ -28,48 +31,51 @@ function AgentThreadTranscript({ transcript, runtimeState }: AgentThreadTranscri
     );
   }
 
-  return (
-    <div className="mx-auto w-full max-w-6xl space-y-6 px-2">
-      {items.map((item) => {
-        let content: ReactNode;
+  const renderedItems = items
+    .map((item) => {
+      let content: ReactNode;
 
-        switch (item.type) {
-          case "user-message":
-            content = (
-              <div className="flex justify-end">
-                <article className="group relative max-w-[min(42rem,85%)] space-y-2 rounded-xl border border-border bg-card p-3 text-card-foreground">
-                  <MessageHeader label="You" />
-                  <p className="text-sm leading-6 whitespace-pre-wrap">{item.text}</p>
-                </article>
-              </div>
-            );
-            break;
+      switch (item.type) {
+        case "user-message":
+          content = (
+            <div className="flex justify-end">
+              <article className="group relative max-w-[min(42rem,85%)] space-y-2 rounded-xl border border-border bg-card p-3 text-card-foreground">
+                <MessageHeader label="You" />
+                <p className="text-sm leading-6 whitespace-pre-wrap">{item.text}</p>
+              </article>
+            </div>
+          );
+          break;
 
-          case "assistant-activity":
-            content = (
-              <div className="flex justify-start">
-                <article className="w-full space-y-4 rounded-xl text-foreground">
-                  {/*<MessageHeader label="Kira" />*/}
-                  {item.blocks.length === 0 && item.isStreaming ? (
-                    <p className="text-sm text-muted-foreground">Working…</p>
-                  ) : undefined}
-                  {item.blocks.map((block, index) => (
-                    <ActivityBlock
-                      key={blockKey(block)}
-                      block={block}
-                      isStreaming={item.isStreaming && index === item.blocks.length - 1}
-                    />
-                  ))}
-                </article>
-              </div>
-            );
-            break;
-        }
+        case "assistant-activity":
+          content = (
+            <div className="flex justify-start">
+              <article className="w-full space-y-4 rounded-xl text-foreground">
+                {/*<MessageHeader label="Kira" />*/}
+                {item.blocks.length === 0 && item.isStreaming ? (
+                  <p className="text-sm text-muted-foreground">Working…</p>
+                ) : undefined}
+                {item.blocks.map((block, index) => (
+                  <ActivityBlock
+                    key={blockKey(block)}
+                    block={block}
+                    isStreaming={item.isStreaming && index === item.blocks.length - 1}
+                  />
+                ))}
+              </article>
+            </div>
+          );
+          break;
+      }
 
-        return <div key={item.id}>{content}</div>;
-      })}
-    </div>
-  );
+      return { item, content };
+    })
+    .filter((entry) => entry.content !== undefined)
+    .map(({ item, content }) => (
+      <div key={"id" in item ? (item as { id: string }).id : item.type}>{content}</div>
+    ));
+
+  return <div className="mx-auto w-full max-w-6xl space-y-6 px-2">{renderedItems}</div>;
 }
 
 function ActivityBlock({
@@ -89,7 +95,7 @@ function ActivityBlock({
     const Component = toolComponentForName(block.tool.toolName);
     return <Component tool={block.tool} />;
   }
-  return null;
+  return;
 }
 
 function blockKey(block: AgentThreadActivityBlock): string {

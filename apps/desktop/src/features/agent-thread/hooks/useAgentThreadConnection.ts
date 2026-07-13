@@ -7,9 +7,10 @@ import { type ServerEvent, type ThreadServerEvent, type TreeEntry } from "@kira/
 import { useEffect, useRef, useState, useCallback } from "react";
 
 import type { AgentThreadPanelParams } from "../types";
-import { getCloudConfig } from "../cloudConfig";
-import { useAppSocket } from "../AppSocketProvider";
+
 import { treeStateFrom } from "../agentThreadDisplay";
+import { useAppSocket } from "../AppSocketProvider";
+import { getCloudConfig } from "../cloudConfig";
 import { type TranscriptMessage } from "../piTranscriptState";
 
 export type AgentThreadRuntimeState =
@@ -17,17 +18,33 @@ export type AgentThreadRuntimeState =
   | { status: "connecting" }
   | { status: "ready" }
   | { status: "sending" }
-  | { status: "error"; message: string };
+  | { status: "error"; message: string }
+  | { status: "stopped" };
 
 export type AgentThreadContextUsageState =
   | { status: "loading" }
   | { status: "empty" }
-  | { status: "ready"; usage: { usedTokens: number; contextWindow: number; modelId: string } };
+  | {
+      status: "ready";
+      usage: {
+        usedTokens: number;
+        contextWindow: number;
+        modelId: string;
+        usage?: {
+          inputTokens?: number;
+          outputTokens?: number;
+          reasoningTokens?: number;
+          cachedInputTokens?: number;
+        };
+        cost?: { total: number };
+      };
+    }
+  | { status: "error"; message: string };
 
 export interface UseAgentConnectionResult {
   messages: TranscriptMessage[];
   isStreaming: boolean;
-  model: string | null;
+  model: string | undefined;
   runtimeState: AgentThreadRuntimeState;
   treeNodes: ReturnType<typeof treeStateFrom>["nodes"];
   currentLeafId: string | undefined;
@@ -50,15 +67,17 @@ function processEvent(
   switch (e.type) {
     case "messages":
       setMessages(
-        e.messages.map((m): TranscriptMessage => ({
-          id: m.id ?? crypto.randomUUID(),
-          role: m.role,
-          text: m.text,
-          ...(m.toolName !== undefined && { toolName: m.toolName }),
-          ...(m.isError !== undefined && { isError: m.isError }),
-          ...(m.toolCallId !== undefined && { toolCallId: m.toolCallId }),
-          ...(m.content !== undefined && { content: m.content }),
-        })),
+        e.messages.map(
+          (m): TranscriptMessage => ({
+            id: m.id ?? crypto.randomUUID(),
+            role: m.role,
+            text: m.text,
+            ...(m.toolName !== undefined && { toolName: m.toolName }),
+            ...(m.isError !== undefined && { isError: m.isError }),
+            ...(m.toolCallId !== undefined && { toolCallId: m.toolCallId }),
+            ...(m.content !== undefined && { content: m.content }),
+          }),
+        ),
       );
       setStreaming(false);
       break;
@@ -80,7 +99,7 @@ function processEvent(
         {
           id: e.toolCallId,
           role: "tool",
-          text: JSON.stringify(e.args ?? {}, null, 2),
+          text: JSON.stringify(e.args ?? {}, undefined, 2),
           toolName: e.toolName,
         },
       ]);
@@ -148,7 +167,9 @@ function upsertStreaming(
   const id = `__stream_${role}__`;
   const idx = messages.findIndex((m) => m.id === id);
   if (idx >= 0) {
-    const updated: TranscriptMessage = { ...messages[idx]!, text: messages[idx]!.text + delta };
+    const existing = messages[idx];
+    if (!existing) return messages;
+    const updated: TranscriptMessage = { ...existing, text: existing.text + delta };
     return [...messages.slice(0, idx), updated, ...messages.slice(idx + 1)];
   }
   const entry: TranscriptMessage = { id, role, text: delta };
@@ -161,7 +182,7 @@ export function useAgentThreadConnection(params: AgentThreadPanelParams): UseAge
   const [runtimeState, setRuntimeState] = useState<AgentThreadRuntimeState>({ status: "starting" });
   const [messages, setMessages] = useState<TranscriptMessage[]>([]);
   const [isStreaming, setStreaming] = useState(false);
-  const [model, setModel] = useState<string | null>(null);
+  const [model, setModel] = useState<string | undefined>();
   const [treeEntries, setTreeEntries] = useState<TreeEntry[]>([]);
   const [isCompacting, setIsCompacting] = useState(false);
   const [toolOutputs, setToolOutputs] = useState<Record<string, string>>({});
@@ -184,8 +205,9 @@ export function useAgentThreadConnection(params: AgentThreadPanelParams): UseAge
 
     setRuntimeState({ status: "connecting" });
 
-    getCloudConfig()
-      .then((config) => {
+    (async () => {
+      try {
+        const config = await getCloudConfig();
         if (closedRef.current) return;
         socket.send({
           type: "register_project",
@@ -202,11 +224,11 @@ export function useAgentThreadConnection(params: AgentThreadPanelParams): UseAge
           sessionId: params.sessionId,
         });
         setRuntimeState({ status: "ready" });
-      })
-      .catch(() => {
+      } catch {
         if (closedRef.current) return;
         setRuntimeState({ status: "error", message: "Cloud config unavailable" });
-      });
+      }
+    })();
 
     return () => {
       closedRef.current = true;
@@ -221,7 +243,6 @@ export function useAgentThreadConnection(params: AgentThreadPanelParams): UseAge
 
       switch (e.type) {
         case "error":
-          console.error(`[thread ${params.threadId}] server error:`, e.message);
           setRuntimeState({ status: "error", message: e.message });
           setStreaming(false);
           break;

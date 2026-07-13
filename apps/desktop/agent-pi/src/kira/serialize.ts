@@ -3,7 +3,26 @@
  */
 
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
+
 import type { ContentBlock } from "../protocol";
+
+interface ContentBlockInput {
+  type: string;
+  text?: string;
+  thinking?: string;
+  id?: string;
+  name?: string;
+  arguments?: Record<string, unknown>;
+  args?: Record<string, unknown>;
+}
+
+interface MessageInput {
+  role: string;
+  content?: string | ContentBlockInput[];
+  toolName?: string;
+  toolCallId?: string;
+  isError?: boolean;
+}
 
 /** Matches the protocol's ClientMessage shape. */
 export interface FlatMessage {
@@ -20,9 +39,15 @@ export interface FlatMessage {
 export function serializeMessages(session: AgentSession): FlatMessage[] {
   const result: FlatMessage[] = [];
 
-  session.messages.forEach((msg: any, idx: number) => {
-    const role =
-      msg.role === "toolResult" ? "toolResult" : msg.role === "assistant" ? "assistant" : "user";
+  session.messages.forEach((msg: MessageInput, idx: number) => {
+    let role: "user" | "assistant" | "toolResult";
+    if (msg.role === "toolResult") {
+      role = "toolResult";
+    } else if (msg.role === "assistant") {
+      role = "assistant";
+    } else {
+      role = "user";
+    }
 
     if (role === "user") {
       result.push({ id: `msg-${idx}`, role, text: extractText(msg) });
@@ -31,16 +56,27 @@ export function serializeMessages(session: AgentSession): FlatMessage[] {
 
     if (role === "assistant") {
       const content: ContentBlock[] | undefined = Array.isArray(msg.content)
-        ? msg.content.map((b: any) => flattenBlock(b))
+        ? msg.content.map((b: ContentBlockInput) => flattenBlock(b))
         : undefined;
 
-      const text = content
-        ? content.filter((b) => b.type === "text").map((b) => b.text).join("")
-        : typeof msg.content === "string"
-          ? msg.content
-          : "";
+      let text: string;
+      if (content) {
+        text = content
+          .filter((b) => b.type === "text")
+          .map((b) => b.text)
+          .join("");
+      } else if (typeof msg.content === "string") {
+        text = msg.content;
+      } else {
+        text = "";
+      }
 
-      result.push({ id: `msg-${idx}`, role: "assistant", text, ...(content !== undefined && { content }) });
+      result.push({
+        id: `msg-${idx}`,
+        role: "assistant",
+        text,
+        ...(content !== undefined && { content }),
+      });
       return;
     }
 
@@ -59,7 +95,7 @@ export function serializeMessages(session: AgentSession): FlatMessage[] {
   return result;
 }
 
-function flattenBlock(b: any): ContentBlock {
+function flattenBlock(b: ContentBlockInput): ContentBlock {
   if (b.type === "text") return { type: "text", text: b.text ?? "" };
   if (b.type === "thinking") return { type: "thinking", thinking: b.thinking ?? "" };
   if (b.type === "toolCall") {
@@ -74,11 +110,11 @@ function flattenBlock(b: any): ContentBlock {
   return { type: "text", text: JSON.stringify(b) };
 }
 
-export function extractText(msg: any): string {
+export function extractText(msg: MessageInput): string {
   if (typeof msg.content === "string") return msg.content;
   if (Array.isArray(msg.content)) {
     return msg.content
-      .map((c: any) => {
+      .map((c: ContentBlockInput) => {
         if (c.type === "text") return c.text;
         if (c.type === "toolCall") return `[tool: ${c.name ?? ""}]`;
         return "";

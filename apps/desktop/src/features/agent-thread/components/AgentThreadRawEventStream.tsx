@@ -1,13 +1,19 @@
-import { stringifyUnknown } from "../agentThreadDisplay";
 import type { PiTranscriptState } from "../types";
+
+import { stringifyUnknown } from "../agentThreadDisplay";
+
+const nothing = undefined;
 
 type Props = { transcript: PiTranscriptState };
 
 function AgentThreadRawEventStream({ transcript }: Props) {
-  if (transcript.messages.length === 0) return null;
+  if (transcript.messages.length === 0) return nothing;
 
   return (
-    <section className="mt-4 space-y-3 border-t border-border pt-4" aria-labelledby="raw-events-title">
+    <section
+      className="mt-4 space-y-3 border-t border-border pt-4"
+      aria-labelledby="raw-events-title"
+    >
       <h2 id="raw-events-title" className="text-sm font-medium">
         Raw messages
       </h2>

@@ -3,7 +3,9 @@
  */
 
 import type { AssistantMessage } from "@earendil-works/pi-ai";
+
 import { Agent } from "@earendil-works/pi-agent-core";
+
 import { authStorage, modelRegistry } from "./model-registry";
 
 const SYSTEM_PROMPT = [

@@ -6,8 +6,8 @@
  * maps ctx.ui methods to WebSocket tool_ui_request events).
  */
 
-import { Type } from "typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 
 const askUserSchema = Type.Object({
   questions: Type.Array(
@@ -27,7 +27,6 @@ const askUserSchema = Type.Object({
   ),
 });
 
-
 export const askUserTool = defineTool({
   name: "ask_user",
   label: "Ask User",
@@ -42,6 +41,7 @@ export const askUserTool = defineTool({
       const labels = q.options.map((o) => o.label);
 
       try {
+        // eslint-disable-next-line no-await-in-loop
         const selected = await ctx.ui.select(q.question, labels, {});
         if (selected === undefined) {
           answers.push({ questionIndex: i, cancelled: true });
@@ -62,7 +62,10 @@ export const askUserTool = defineTool({
     }
 
     const text = answers
-      .map((a) => `${params.questions[a.questionIndex]?.question}="${a.answer}"`)
+      .map(
+        (a) =>
+          `${params.questions[a.questionIndex] ? params.questions[a.questionIndex].question : undefined}="${a.answer}"`,
+      )
       .join(". ");
     return {
       content: [{ type: "text", text: `User answered: ${text}` }],

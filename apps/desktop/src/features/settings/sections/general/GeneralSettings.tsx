@@ -1,23 +1,25 @@
 import { useState, useEffect, useCallback } from "react";
 
 import { Button } from "@/components/ui/button";
+import { useAppSocket } from "@/features/agent-thread/AppSocketProvider";
 import { signOut } from "@/features/desktop-auth/api/desktopAuthApi";
 import { useSigninStatus } from "@/features/desktop-auth/hooks/useSigninStatus";
 import { useOnboardingStore } from "@/features/onboarding";
-import { useAppSocket } from "@/features/agent-thread/AppSocketProvider";
 
 function GeneralSettings() {
   const status = useSigninStatus();
   const restartOnboarding = useOnboardingStore((state) => state.restart);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
-  const [refreshState, setRefreshState] = useState<"idle" | "refreshing" | "done" | "error">("idle");
+  const [refreshState, setRefreshState] = useState<"idle" | "refreshing" | "done" | "error">(
+    "idle",
+  );
 
   const socket = useAppSocket();
 
   // Listen for model catalog refresh result
   useEffect(() => {
-    const unsub = socket.onEvent((event: any) => {
+    const unsub = socket.onEvent((event: { type: string; success?: boolean; error?: string }) => {
       if (event.type === "model_catalog_refreshed") {
         setRefreshState(event.success ? "done" : "error");
         if (!event.success) setErrorMessage(event.error ?? "Refresh failed");
@@ -103,7 +105,8 @@ function GeneralSettings() {
         <div className="border-t border-border pt-4">
           <h3 className="text-sm font-medium">Model catalog</h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Refresh the model list from the cloud. New or updated models will be available immediately.
+            Refresh the model list from the cloud. New or updated models will be available
+            immediately.
           </p>
           <div className="mt-3 flex items-center gap-3">
             <Button
@@ -111,18 +114,23 @@ function GeneralSettings() {
               disabled={refreshState === "refreshing"}
               onClick={handleRefresh}
             >
-              {refreshState === "refreshing"
-                ? "Refreshing…"
-                : refreshState === "done"
-                  ? "Refreshed"
-                  : "Refresh model catalog"}
+              {(() => {
+                switch (refreshState) {
+                  case "refreshing":
+                    return "Refreshing…";
+                  case "done":
+                    return "Refreshed";
+                  default:
+                    return "Refresh model catalog";
+                }
+              })()}
             </Button>
-            {refreshState === "done" ? (
+            {refreshState === "done" && (
               <span className="text-sm text-muted-foreground">Models updated</span>
-            ) : null}
-            {refreshState === "error" ? (
+            )}
+            {refreshState === "error" && (
               <span className="text-sm text-destructive">Refresh failed — check connection</span>
-            ) : null}
+            )}
           </div>
         </div>
       </div>

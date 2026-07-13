@@ -3,15 +3,21 @@
  * Matches toolCalls to toolResults by toolCallId (pi TUI style).
  */
 
-import type { ContentBlock } from "@kira/agent-pi/protocol";
+import type { ContentBlock, TreeEntry } from "@kira/agent-pi/protocol";
+
 import type { PiTranscriptState, TranscriptMessage } from "./types";
-import type { TreeEntry } from "@kira/agent-pi/protocol";
 
 // ── Display items ────────────────────────────────────────────────────
 
 export type AgentThreadTranscriptItem =
   | { type: "user-message"; id: string; text: string; createdAt?: string }
-  | { type: "assistant-activity"; id: string; blocks: AgentThreadActivityBlock[]; isStreaming: boolean; createdAt?: string }
+  | {
+      type: "assistant-activity";
+      id: string;
+      blocks: AgentThreadActivityBlock[];
+      isStreaming: boolean;
+      createdAt?: string;
+    }
   | { type: "error"; message: string };
 
 export type AgentThreadActivityBlock =
@@ -30,8 +36,10 @@ export interface AgentThreadToolCallDisplay {
   /** Optional rich fields for tool-specific rendering (populated from input/output) */
   title?: string;
   command?: string;
+  cwd?: string;
   duration?: number;
   exitCode?: number;
+  toolUiRequestId?: string;
   errorMessage?: string;
 }
 
@@ -55,7 +63,8 @@ export function buildAgentThreadTranscript(
 
   // ── Second pass: build display items ─────────────────────────────
   for (let i = 0; i < state.messages.length; i++) {
-    const msg = state.messages[i]!;
+    const msg = state.messages[i];
+    if (!msg) continue;
     const streaming = state.isStreaming && i === state.messages.length - 1;
 
     if (msg.role === "user") {
@@ -75,16 +84,20 @@ export function buildAgentThreadTranscript(
           if (block.type === "text") {
             if (block.text) blocks.push({ type: "markdown", id: nextId(), markdown: block.text });
           } else if (block.type === "thinking") {
-            if (block.thinking) blocks.push({ type: "thinking", id: nextId(), thinking: block.thinking });
+            if (block.thinking)
+              blocks.push({ type: "thinking", id: nextId(), thinking: block.thinking });
           } else if (block.type === "toolCall") {
             // Match toolCall to its toolResult by toolCallId (pi TUI style)
             const result = resultsByCallId.get(block.id);
-            const output = result
-              ? extractTextFromResult(result)
-              : toolOutputs[block.id] ?? "";
-            const status = result
-              ? (result.isError ? "failed" : "succeeded")
-              : (toolOutputs[block.id] !== undefined ? "running" : "succeeded");
+            const output = result ? extractTextFromResult(result) : (toolOutputs[block.id] ?? "");
+            let status: ToolCallStatus;
+            if (result) {
+              status = result.isError ? "failed" : "succeeded";
+            } else if (toolOutputs[block.id] !== undefined) {
+              status = "running";
+            } else {
+              status = "succeeded";
+            }
 
             const tool = blockToToolDisplay(block, msg.id, output, status);
             blocks.push({ type: "tool-call", tool });
@@ -99,10 +112,15 @@ export function buildAgentThreadTranscript(
       if (msg.text) blocks.push({ type: "thinking", id: nextId(), thinking: msg.text });
     } else if (msg.role === "tool") {
       // In-flight tool from tool_execution_start — use toolOutputs for output
+      const toolStatus: ToolCallStatus = (() => {
+        if (msg.isError) return "failed";
+        if (state.isStreaming) return "running";
+        return "succeeded";
+      })();
       const tool: AgentThreadToolCallDisplay = {
         id: msg.id,
         toolName: msg.toolName ?? "",
-        status: msg.isError ? "failed" : state.isStreaming ? "running" : "succeeded",
+        status: toolStatus,
         input: msg.text,
         output: toolOutputs[msg.id] ?? "",
       };
@@ -119,9 +137,10 @@ export function buildAgentThreadTranscript(
   for (const msg of state.messages) {
     if (msg.role !== "toolResult" || !msg.toolCallId) continue;
     // Already merged into a toolCall block above? Check if any item references this toolCallId
-    const alreadyMerged = items.some((it) =>
-      it.type === "assistant-activity"
-        && it.blocks.some((b) => b.type === "tool-call" && b.tool.id === msg.toolCallId),
+    const alreadyMerged = items.some(
+      (it) =>
+        it.type === "assistant-activity" &&
+        it.blocks.some((b) => b.type === "tool-call" && b.tool.id === msg.toolCallId),
     );
     if (!alreadyMerged) {
       const tool: AgentThreadToolCallDisplay = {
@@ -132,7 +151,12 @@ export function buildAgentThreadTranscript(
         output: extractTextFromResult(msg),
       };
       extractRichFields(tool);
-      items.push({ type: "assistant-activity", id: msg.id, blocks: [{ type: "tool-call", tool }], isStreaming: false });
+      items.push({
+        type: "assistant-activity",
+        id: msg.id,
+        blocks: [{ type: "tool-call", tool }],
+        isStreaming: false,
+      });
     }
   }
 
@@ -152,7 +176,7 @@ function blockToToolDisplay(
     id: block.id || msgId,
     toolName: block.name,
     status,
-    input: JSON.stringify(args, null, 2),
+    input: JSON.stringify(args, undefined, 2),
     output,
   };
   extractRichFields(tool);
@@ -166,7 +190,9 @@ function extractRichFields(tool: AgentThreadToolCallDisplay): void {
     if (typeof parsed.command === "string") tool.command = parsed.command;
     if (typeof parsed.path === "string") tool.title = parsed.path;
     if (typeof parsed.pattern === "string") tool.title = parsed.pattern;
-  } catch { /* plain text */ }
+  } catch {
+    /* plain text */
+  }
 }
 
 function extractTextFromResult(msg: TranscriptMessage): string {
@@ -198,9 +224,16 @@ export function treeEntriesToJson(entries: TreeEntry[]): SessionTreeNodeJson[] {
   }
   const roots: SessionTreeNodeJson[] = [];
   for (const e of entries) {
-    const node = map.get(e.id)!;
-    if (e.parentId && map.has(e.parentId)) {
-      map.get(e.parentId)!.children.push(node);
+    const node = map.get(e.id);
+    if (!node) continue;
+
+    if (e.parentId) {
+      const parentNode = map.get(e.parentId);
+      if (parentNode) {
+        parentNode.children.push(node);
+      } else {
+        roots.push(node);
+      }
     } else {
       roots.push(node);
     }
@@ -211,7 +244,7 @@ export function treeEntriesToJson(entries: TreeEntry[]): SessionTreeNodeJson[] {
 export interface SessionTreeNodeJson {
   id: string;
   parentId: string | null;
-  entry: { type: string; text?: string; label?: string; timestamp?: string };
+  entry: { type: string; text?: string; label?: string; timestamp?: string; role?: string };
   children: SessionTreeNodeJson[];
 }
 
@@ -231,5 +264,9 @@ function computeActivePath(nodes: SessionTreeNodeJson[], leafId: string): string
 }
 
 export function stringifyUnknown(v: unknown): string {
-  try { return JSON.stringify(v, null, 2); } catch { return String(v); }
+  try {
+    return JSON.stringify(v, undefined, 2);
+  } catch {
+    return String(v);
+  }
 }

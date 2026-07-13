@@ -129,7 +129,7 @@ export default async function memoryExtension(pi: ExtensionAPI) {
     throw new Error("No models available for memory extension.");
   }
   const memoryModel = config.llmModelOverride
-    ? modelRegistry.find(defaultModel.provider, config.llmModelOverride) ?? defaultModel
+    ? (modelRegistry.find(defaultModel.provider, config.llmModelOverride) ?? defaultModel)
     : defaultModel;
   const memoryApiKey = (await authStorage.getApiKey(memoryModel.provider)) ?? "";
   if (!memoryApiKey) {

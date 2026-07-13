@@ -162,12 +162,19 @@ function TranscriptArea({
   }, []);
 
   const scrollToBottom = useCallback(() => {
-    scrollContainerRef.current?.scrollTo({ top: scrollContainerRef.current.scrollHeight, behavior: "smooth" });
+    const container = scrollContainerRef.current;
+    if (container) {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: "smooth",
+      });
+    }
   }, []);
 
   useEffect(() => {
     if (isAtBottomRef.current) {
-      scrollContainerRef.current?.scrollTo({ top: scrollContainerRef.current.scrollHeight });
+      const container = scrollContainerRef.current;
+      if (container) container.scrollTo({ top: container.scrollHeight });
     }
   }, [transcript.messages.length, transcript.isStreaming]);
 
