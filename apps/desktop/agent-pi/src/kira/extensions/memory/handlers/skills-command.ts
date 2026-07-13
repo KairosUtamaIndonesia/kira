@@ -396,7 +396,7 @@ export function buildUnifiedSkillRows(
 export function filterSkillRows(rows: SkillModalRow[], query: string): SkillModalRow[] {
   const trimmed = query.trim();
   if (!trimmed) return rows;
-  return fuzzyFilter(rows, trimmed, (row) => row.searchText);
+  return fuzzyFilter<SkillModalRow>(rows, trimmed, (row) => row.searchText);
 }
 
 export function getSelectedSkillIds(rows: SkillModalRow[]): string[] {
