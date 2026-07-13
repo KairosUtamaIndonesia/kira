@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "cd agent-pi && bun run build && bun run scripts/copy-sdk-assets.ts && cd .. && bun run build",
+    "beforeBuildCommand": "cd agent-pi && bun run build && cd .. && bun run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -38,9 +38,7 @@
       "signingIdentity": "-"
     },
     "resources": {
-      "../agent-pi/dist/server.mjs": "agent-runtime/server.mjs",
-      "../agent-pi/dist/pi-sdk": "agent-runtime/pi-sdk",
-      "../agent-pi/skills": "agent-runtime/skills"
+      "../agent-pi/dist/server.mjs": "agent-runtime/server.mjs"
     }
   },
   "plugins": {
