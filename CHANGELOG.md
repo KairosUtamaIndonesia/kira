@@ -6,6 +6,42 @@ side-by-side with your app, and team management is coming through the cloud cons
 
 This is just the start. More surface, more capability, more agentic.
 
+## [3.5.0](https://github.com/KairosUtamaIndonesia/kira/compare/v3.4.0...v3.5.0) (2026-07-13)
+
+
+### Features
+
+* merge agent runtime overhaul branch ([2f908af](https://github.com/KairosUtamaIndonesia/kira/commit/2f908af55ef4f960692e9f89a4193e0317db0652))
+* route title + commit-message generation through sidecar ([c1b5ce2](https://github.com/KairosUtamaIndonesia/kira/commit/c1b5ce2a64107f55acfcee04d1190f33cdee8c63))
+* **skills:** added brd/fsd/tsd skill ([359f322](https://github.com/KairosUtamaIndonesia/kira/commit/359f3223d4bf5e9d60ad03f83e8e93eef2e8ffb2))
+* **skills:** added brd/fsd/tsd skill ([3871a81](https://github.com/KairosUtamaIndonesia/kira/commit/3871a81b0c266052ddc6fe3a5d1773ec9bb77215))
+* upgrade ask_user tool with full schema, multi-select, preview, and free-text fallback ([87ad08c](https://github.com/KairosUtamaIndonesia/kira/commit/87ad08c08811cf0d7cc8dc4b128baf55b0a51439))
+* wire ExtensionUIContext bridge for ask_user tool and extension UI ([d6c7a46](https://github.com/KairosUtamaIndonesia/kira/commit/d6c7a46be28dc81ec5c9da92d605317313e442fe))
+* wire guardrails and memory extensions into agent sessions ([3e826d5](https://github.com/KairosUtamaIndonesia/kira/commit/3e826d58e401cb297f5b98b8182f334d72902f17))
+
+
+### Bug Fixes
+
+* add @earendil-works/pi-tui dep and fix fuzzyFilter type inference ([9f9a21b](https://github.com/KairosUtamaIndonesia/kira/commit/9f9a21bd96bbb393476ebe7248303448be15afd8))
+* add ES2024 lib for Promise.withResolvers ([7b77551](https://github.com/KairosUtamaIndonesia/kira/commit/7b7755123358f54ed0be787ffaf26ce8200532ba))
+* add missing agent-pi deps and resolve tsc strict type errors ([595fa3c](https://github.com/KairosUtamaIndonesia/kira/commit/595fa3cc89d3c9d50f280a3a7d7ae31c82239a18))
+* add TTL cache to explorer file reference suggestions ([60602f7](https://github.com/KairosUtamaIndonesia/kira/commit/60602f71d8552d90f5b7de91496ae8f82ce7490c))
+* clean up ask_user tool UI — parse options for display, inline sentinel input ([5dc060a](https://github.com/KairosUtamaIndonesia/kira/commit/5dc060a78b5cfe9dcaf676689e2dc0ec99e052a1))
+* handle register_project command in session-host ([671a31b](https://github.com/KairosUtamaIndonesia/kira/commit/671a31b3854070b7392e3a8809ecd8e10c1274b8))
+* keep agent thread tree state in sync after socket events and abort ([7d2b939](https://github.com/KairosUtamaIndonesia/kira/commit/7d2b939081e5df1b352fd1bb100fdec02b7dab5a))
+* resolve CI failures — format, lint, typecheck, and build ([4783e42](https://github.com/KairosUtamaIndonesia/kira/commit/4783e4231144cdabc41ad1f657781ee26478d0ab))
+* resolve CI failures — format, lint, typecheck, and clippy ([dc31fbd](https://github.com/KairosUtamaIndonesia/kira/commit/dc31fbd7f7a86e49843bcdd76b981b1d2edcbe25))
+* resolve lint errors and format issues ([a03d468](https://github.com/KairosUtamaIndonesia/kira/commit/a03d468bf7d6d14a8f23486513a529e48da5090f))
+* resolve remaining lint errors and format issues ([0da9d33](https://github.com/KairosUtamaIndonesia/kira/commit/0da9d3381d45d76142cb13a13646b5377f9ce1a6))
+* set KIRA_AGENT_PI_DATA_DIR in dev env ([de4fddc](https://github.com/KairosUtamaIndonesia/kira/commit/de4fddc952037486a792513af1f28e44cb9af80d))
+* update lockfile after adding log.ts ([12f3aaa](https://github.com/KairosUtamaIndonesia/kira/commit/12f3aaae677969ce2529de1615eec5cbc0e5d22a))
+* update lockfile after merging refactor branch ([619c49e](https://github.com/KairosUtamaIndonesia/kira/commit/619c49e57016af3caac3c91935397e699634d43b))
+
+
+### Reverts
+
+* undo main's refactor and subsequent fixes back to merge base ([7e7b7b9](https://github.com/KairosUtamaIndonesia/kira/commit/7e7b7b922bb71b47455869497586e4d3fea6f311))
+
 ## [3.4.0](https://github.com/KairosUtamaIndonesia/kira/compare/v3.3.1...v3.4.0) (2026-07-01)
 
 
