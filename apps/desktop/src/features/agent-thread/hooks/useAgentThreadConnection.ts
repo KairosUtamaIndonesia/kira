@@ -98,6 +98,8 @@ function processEvent(
           }),
         ),
       );
+      // Content blocks in the snapshot replace in-flight tool outputs.
+      setToolOutputs({});
       setStreaming(false);
       break;
 
@@ -135,6 +137,7 @@ function processEvent(
       if (text) {
         setToolOutputs((prev) => ({ ...prev, [e.toolCallId]: text }));
       }
+      // Setting isError (even false) marks the in-flight tool as completed.
       setMessages((prev) =>
         prev.map((m) => (m.id === e.toolCallId ? { ...m, isError: e.isError } : m)),
       );
@@ -178,22 +181,27 @@ function extractResultText(result: unknown): string {
   return parts.join("\n");
 }
 
+/**
+ * Appends a streaming delta. Deltas only accumulate into the LAST message
+ * when it is the active stream block for this role; otherwise the previous
+ * stream block of this role (if any) is finalized with a permanent id and a
+ * fresh block is started. This keeps interleaved thinking → text → tool →
+ * thinking sequences as separate blocks in order, instead of merging all
+ * deltas of a role into one giant block for the whole run.
+ */
 function upsertStreaming(
   messages: TranscriptMessage[],
   delta: string,
   role: "assistant" | "thinking",
 ): TranscriptMessage[] {
   const id = `__stream_${role}__`;
-  const idx = messages.findIndex((m) => m.id === id);
-  if (idx >= 0) {
-    const updated: TranscriptMessage = {
-      ...(messages[idx] as TranscriptMessage),
-      text: (messages[idx] as TranscriptMessage).text + delta,
-    };
-    return [...messages.slice(0, idx), updated, ...messages.slice(idx + 1)];
+  const last = messages[messages.length - 1];
+  if (last && last.id === id) {
+    return [...messages.slice(0, -1), { ...last, text: last.text + delta }];
   }
-  const entry: TranscriptMessage = { id, role, text: delta };
-  return [...messages, entry];
+  // Finalize an earlier stream block of this role that is no longer last
+  const finalized = messages.map((m) => (m.id === id ? { ...m, id: crypto.randomUUID() } : m));
+  return [...finalized, { id, role, text: delta }];
 }
 
 // ── Hook ─────────────────────────────────────────────────────────────
@@ -224,13 +232,6 @@ export function useAgentThreadConnection(
   const socket = useAppSocket();
 
   const { nodes: treeNodes, activeLeafId: currentLeafId } = treeStateFrom(treeEntries);
-
-  // Clean up tool outputs on messages snapshot (content blocks replace them)
-  useEffect(() => {
-    if (messages.some((m) => m.content && m.content.length > 0)) {
-      setToolOutputs({});
-    }
-  }, [messages]);
 
   // Register project + open thread on mount, close on unmount
   useEffect(() => {

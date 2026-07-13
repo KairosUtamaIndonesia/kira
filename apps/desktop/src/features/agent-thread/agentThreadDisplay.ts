@@ -101,13 +101,14 @@ export function buildAgentThreadTranscript(
       // In-flight thinking (before messages snapshot lands)
       if (msg.text) blocks.push({ type: "thinking", id: nextId(), thinking: msg.text });
     } else if (msg.role === "tool") {
-      // In-flight tool from tool_execution_start — use toolOutputs for output
+      // In-flight tool from tool_execution_start — live output streams in
+      // via tool_execution_update/end into toolOutputs.
       const tool: AgentThreadToolCallDisplay = {
         id: msg.id,
         toolName: msg.toolName ?? "",
         input: msg.text,
-        output: "",
-        status: resolveToolStatus(msg.isError ?? false, state.isStreaming),
+        output: toolOutputs[msg.id] ?? "",
+        status: resolveInFlightToolStatus(msg.isError, state.isStreaming),
       };
       extractRichFields(tool);
       blocks.push({ type: "tool-call", tool });
@@ -200,10 +201,17 @@ function resolveToolCallStatus(
   return "succeeded";
 }
 
-function resolveToolStatus(isError: boolean, isStreaming: boolean): ToolCallStatus {
-  if (isError) return "failed";
-  if (isStreaming) return "running";
-  return "succeeded";
+/**
+ * Status for an in-flight tool message. `isError` is only set once
+ * tool_execution_end arrives, so `undefined` means the tool is still running
+ * (while the agent streams); a defined value means it completed.
+ */
+function resolveInFlightToolStatus(
+  isError: boolean | undefined,
+  isStreaming: boolean,
+): ToolCallStatus {
+  if (isError !== undefined) return isError ? "failed" : "succeeded";
+  return isStreaming ? "running" : "succeeded";
 }
 
 // ── Tree helpers ─────────────────────────────────────────────────────
