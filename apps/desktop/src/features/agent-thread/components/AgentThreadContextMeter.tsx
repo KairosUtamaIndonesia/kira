@@ -39,7 +39,7 @@ function AgentThreadContextMeter({ state }: AgentThreadContextMeterProps) {
         usedTokens={usage.usedTokens}
         maxTokens={usage.contextWindow}
         modelId={usage.modelId}
-        costUsd={usage.cost?.total ?? 0}
+        costUsd={usage.cost ? usage.cost.total : 0}
       >
         <ContextTrigger className="h-6 gap-1.5 px-1.5 text-xs" />
         <ContextContent align="end" className="text-xs">

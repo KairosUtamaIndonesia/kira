@@ -219,7 +219,9 @@ export function treeEntriesToJson(entries: TreeEntry[]): SessionTreeNodeJson[] {
         text: e.preview,
         ...(e.label !== undefined ? { label: e.label } : {}),
         ...(e.timestamp !== undefined ? { timestamp: e.timestamp } : {}),
-        ...(e.type === "message" ? { role: e.preview.startsWith("user:") ? "user" : "assistant" } : {}),
+        ...(e.type === "message"
+          ? { role: e.preview.startsWith("user:") ? "user" : "assistant" }
+          : {}),
       },
       children: [],
     });

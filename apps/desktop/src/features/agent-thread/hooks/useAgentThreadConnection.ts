@@ -27,7 +27,16 @@ export type AgentThreadContextUsageState =
   | { status: "loading" }
   | { status: "empty" }
   | { status: "error"; message: string }
-  | { status: "ready"; usage: { usedTokens: number; contextWindow: number; modelId: string; usage?: { total: number }; cost?: { total: number } } };
+  | {
+      status: "ready";
+      usage: {
+        usedTokens: number;
+        contextWindow: number;
+        modelId: string;
+        usage?: { total: number };
+        cost?: { total: number };
+      };
+    };
 
 export type ExtensionUiRequest = {
   id: string;

@@ -33,7 +33,7 @@ type TranscriptMessage = {
 type PiTranscriptState = {
   messages: TranscriptMessage[];
   isStreaming: boolean;
-  model: string | null;
+  model: string | undefined;
 };
 
 export type {
