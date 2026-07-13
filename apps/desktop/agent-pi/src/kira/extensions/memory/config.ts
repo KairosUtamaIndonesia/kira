@@ -78,7 +78,9 @@ const DEFAULT_CONFIG: MemoryConfig = {
   sessionSearch: { variant: "legacy" },
 };
 
-export function getDefaultConfigPath(): string { return path.join(getAgentRoot(), "config.json"); }
+export function getDefaultConfigPath(): string {
+  return path.join(getAgentRoot(), "config.json");
+}
 
 const isNonNegativeNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value) && value >= 0;

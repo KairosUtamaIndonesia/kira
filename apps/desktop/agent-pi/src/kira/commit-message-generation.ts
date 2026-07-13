@@ -25,7 +25,8 @@ async function generateCommitMessage(
 ): Promise<GenerateCommitMessageResult> {
   try {
     const defaultRef = getDefaultModel();
-    const resolved = defaultRef !== undefined ? modelRegistry.find(defaultRef.provider, defaultRef.id) : undefined;
+    const resolved =
+      defaultRef !== undefined ? modelRegistry.find(defaultRef.provider, defaultRef.id) : undefined;
     const model = resolved !== undefined ? resolved : (await modelRegistry.getAvailable())[0];
     if (!model) return { error: "No models available" };
 

@@ -58,7 +58,7 @@ interface QuestionAnswer {
   questionIndex: number;
   question: string;
   kind: "option" | "custom" | "multi";
-  answer: string | null;
+  answer: string | undefined;
   selected?: string[];
   preview: string | undefined;
 }
@@ -100,8 +100,7 @@ function validateQuestionnaire(params: unknown): ValidationResult {
         message: "Each question requires at least " + MIN_OPTIONS + " options",
       };
     }
-    const qText =
-      "question" in rawQ && typeof rawQ.question === "string" ? rawQ.question : "";
+    const qText = "question" in rawQ && typeof rawQ.question === "string" ? rawQ.question : "";
     if (seenQuestions.has(qText)) {
       return {
         ok: false,
@@ -129,8 +128,7 @@ function validateQuestionnaire(params: unknown): ValidationResult {
           message: "Each question requires at least " + MIN_OPTIONS + " options",
         };
       }
-      const label =
-        "label" in rawO && typeof rawO.label === "string" ? rawO.label : "";
+      const label = "label" in rawO && typeof rawO.label === "string" ? rawO.label : "";
       if (RESERVED_LABELS.includes(label as (typeof RESERVED_LABELS)[number])) {
         return {
           ok: false,
@@ -169,11 +167,7 @@ async function askSingleSelect(
   const options = q.options.map(formatOptionLine);
   options.push(String(q.options.length + 1) + ". " + OTHER_SENTINEL);
 
-  const chosen: string | undefined = await ctx.ui.select(
-    header + q.question,
-    options,
-    {},
-  );
+  const chosen: string | undefined = await ctx.ui.select(header + q.question, options, {});
   if (chosen === undefined) return undefined;
 
   const idx = Number.parseInt(chosen, 10) - 1;
@@ -221,7 +215,14 @@ async function askMultiSelect(
 
   const trimmed = value.trim();
   if (trimmed.length === 0) {
-    return { questionIndex, question: q.question, kind: "multi", answer: null, selected: [], preview: undefined };
+    return {
+      questionIndex,
+      question: q.question,
+      kind: "multi",
+      answer: undefined,
+      selected: [],
+      preview: undefined,
+    };
   }
 
   // Try to parse as comma/space-separated indices
@@ -229,31 +230,41 @@ async function askMultiSelect(
   const indices = tokens.map((tok) => {
     if (/^\d+\.?$/.test(tok)) {
       const i = Number.parseInt(tok, 10) - 1;
-      return i >= 0 && i < q.options.length ? i : null;
+      return i >= 0 && i < q.options.length ? i : undefined;
     }
-    return null;
+    return undefined; // eslint-disable-line unicorn/no-useless-undefined
   });
 
-  if (indices.every((i): i is number => i !== null)) {
+  if (indices.every((i): i is number => i !== undefined)) {
     const selected: string[] = [];
     for (const i of indices) {
       const opt = q.options[i];
       if (opt === undefined) continue;
       if (!selected.includes(opt.label)) selected.push(opt.label);
     }
-    return { questionIndex, question: q.question, kind: "multi", answer: null, selected, preview: undefined };
+    return {
+      questionIndex,
+      question: q.question,
+      kind: "multi",
+      answer: undefined,
+      selected,
+      preview: undefined,
+    };
   }
 
   // Non-index input -> custom answer
-  return { questionIndex, question: q.question, kind: "custom", answer: trimmed, preview: undefined };
+  return {
+    questionIndex,
+    question: q.question,
+    kind: "custom",
+    answer: trimmed,
+    preview: undefined,
+  };
 }
 
 // ── Response envelope ──────────────────────────────────────────────────
 
-function buildToolResult(
-  text: string,
-  details: { answers: QuestionAnswer[]; cancelled: boolean },
-) {
+function buildToolResult(text: string, details: { answers: QuestionAnswer[]; cancelled: boolean }) {
   return {
     content: [{ type: "text" as const, text }],
     details,
@@ -270,10 +281,7 @@ function buildQuestionnaireResponse(answers: QuestionAnswer[], cancelled: boolea
     let scalar: string;
     switch (a.kind) {
       case "multi":
-        scalar =
-          a.selected && a.selected.length > 0
-            ? a.selected.join(", ")
-            : NO_INPUT_PLACEHOLDER;
+        scalar = a.selected && a.selected.length > 0 ? a.selected.join(", ") : NO_INPUT_PLACEHOLDER;
         break;
       case "custom":
         scalar = a.answer && a.answer.length > 0 ? a.answer : NO_INPUT_PLACEHOLDER;
@@ -287,8 +295,7 @@ function buildQuestionnaireResponse(answers: QuestionAnswer[], cancelled: boolea
     segments.push(parts.join(". ") + ".");
   }
 
-  const text =
-    ENVELOPE_PREFIX + " " + segments.join(" ") + " " + ENVELOPE_SUFFIX;
+  const text = ENVELOPE_PREFIX + " " + segments.join(" ") + " " + ENVELOPE_SUFFIX;
   return buildToolResult(text, { answers, cancelled: false });
 }
 
@@ -339,10 +346,10 @@ export const askUserTool = defineTool({
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
     // ctx is inferred as ExtensionContext via defineTool's generic
     if (!ctx.hasUI) {
-      return buildToolResult(
-        "Error: UI not available (running in non-interactive mode)",
-        { answers: [], cancelled: true },
-      );
+      return buildToolResult("Error: UI not available (running in non-interactive mode)", {
+        answers: [],
+        cancelled: true,
+      });
     }
 
     const validation = validateQuestionnaire(params);
@@ -352,7 +359,6 @@ export const askUserTool = defineTool({
         cancelled: true,
       });
     }
-
 
     const answers: QuestionAnswer[] = [];
     for (let qi = 0; qi < params.questions.length; qi++) {

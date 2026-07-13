@@ -16,8 +16,8 @@ import { AgentActionIndicator } from "./AgentActionIndicator";
 import { AgentThreadRawEventStream } from "./AgentThreadRawEventStream";
 import { AgentThreadTranscript } from "./AgentThreadTranscript";
 import { Composer } from "./Composer";
-import { SessionTree } from "./SessionTree";
 import { ExtensionUiInline } from "./ExtensionUiModal";
+import { SessionTree } from "./SessionTree";
 
 type AgentThreadPanelProps = {
   api: { setTitle(title: string): void };

@@ -9,12 +9,11 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import type { AgentThreadPanelParams } from "../types";
 
 import { treeStateFrom } from "../agentThreadDisplay";
+import { setAgentThreadTitleGenerationState } from "../agentThreadStatusStore";
 import { useAppSocket } from "../AppSocketProvider";
 import { getCloudConfig } from "../cloudConfig";
 import { type TranscriptMessage } from "../piTranscriptState";
 import { requestOverSocket } from "../socketRequest";
-import { setAgentThreadTitleGenerationState } from "../agentThreadStatusStore";
-
 
 export type AgentThreadRuntimeState =
   | { status: "starting" }
@@ -50,7 +49,10 @@ export interface UseAgentConnectionResult {
   /** Pending extension UI requests awaiting user response. */
   extensionUiRequests: ExtensionUiRequest[];
   /** Respond to an extension UI request. */
-  respondToExtensionUi: (id: string, response: { value?: string; confirmed?: boolean; cancelled?: boolean }) => void;
+  respondToExtensionUi: (
+    id: string,
+    response: { value?: string; confirmed?: boolean; cancelled?: boolean },
+  ) => void;
   sendPrompt: (message: string) => Promise<boolean>;
   abortPrompt: () => Promise<void>;
   navigateTree: (entryId: string) => Promise<void>;
@@ -61,7 +63,6 @@ const maxImmediateTitleLength = 50;
 function isUntitledThreadTitle(title: string) {
   return title === "New Thread" || title === "Agent Thread";
 }
-
 
 // ── processEvent — directly mutates the messages array ────
 
@@ -298,7 +299,6 @@ export function useAgentThreadConnection(
           break;
 
         case "extension_ui_request":
-          console.debug("[ext-ui] received extension_ui_request:", e.method, e.id, e.title);
           if (e.method === "notify") {
             // Fire-and-forget notifications — could show a toast in the future
             break;

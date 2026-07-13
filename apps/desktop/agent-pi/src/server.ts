@@ -4,6 +4,7 @@
  * All frontend connections share one WS. Commands carry threadId for routing.
  * The SessionHost manages project-scoped infrastructure and per-thread sessions.
  */
+/* eslint-disable no-console */
 
 import { WebSocketServer } from "ws";
 
@@ -61,7 +62,9 @@ async function main() {
       }
       const prev = queue;
       const threadId = "threadId" in cmd ? cmd.threadId : undefined;
-      console.error(`[agent-pi] cmd: ${cmd.type}${threadId !== undefined ? ` thread=${threadId.slice(0, 8)}` : ""}`);
+      console.error(
+        `[agent-pi] cmd: ${cmd.type}${threadId !== undefined ? ` thread=${threadId.slice(0, 8)}` : ""}`,
+      );
       queue = (async () => {
         try {
           await prev;

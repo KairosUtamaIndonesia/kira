@@ -1,4 +1,3 @@
-
 export function readOptionalEnv(name: string): string | undefined {
   const value = process.env[name];
   if (value === undefined) {

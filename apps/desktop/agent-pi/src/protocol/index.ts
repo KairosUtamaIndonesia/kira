@@ -18,7 +18,14 @@ export type ClientCommand =
       cloudApiKey: string;
     }
   // Thread management
-  | { type: "register_project"; projectPath: string; projectId: string; sessionId: string; cloudApiUrl: string; cloudApiKey: string }
+  | {
+      type: "register_project";
+      projectPath: string;
+      projectId: string;
+      sessionId: string;
+      cloudApiUrl: string;
+      cloudApiKey: string;
+    }
   | { type: "open_thread"; threadId: string; projectPath: string; sessionId: string }
   | { type: "close_thread"; threadId: string }
   // Thread actions
@@ -28,7 +35,13 @@ export type ClientCommand =
   | { type: "compact"; threadId: string; customInstructions?: string }
   | { type: "get_tree"; threadId: string }
   | { type: "navigate_tree"; threadId: string; entryId: string; summarize?: boolean }
-  | { type: "extension_ui_response"; id: string; value?: string; confirmed?: boolean; cancelled?: boolean }
+  | {
+      type: "extension_ui_response";
+      id: string;
+      value?: string;
+      confirmed?: boolean;
+      cancelled?: boolean;
+    }
   // Global (no thread context)
   | { type: "refresh_model_catalog" }
   | { type: "generate_title"; requestId: string; prompt: string; assistantText: string }
@@ -98,7 +111,7 @@ export type ThreadServerEvent =
       method: "notify";
       message: string;
       notifyType?: "info" | "warning" | "error";
-    }
+    };
 
 /** Top-level event — wraps thread events with their threadId. */
 export type ServerEvent =

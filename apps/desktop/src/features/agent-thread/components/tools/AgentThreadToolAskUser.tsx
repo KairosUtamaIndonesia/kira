@@ -29,8 +29,6 @@ type AskUserQuestion = {
   multiSelect: boolean;
 };
 
-
-
 function AgentThreadToolAskUser({ tool }: Props) {
   const questions = questionsFromTool(tool);
   const firstQuestion = questions[0];
@@ -75,18 +73,16 @@ function AskUserBody({
           <span>{q.question}</span>
         </div>
       ))}
-      <p className="italic text-xs">Waiting for your response...</p>
+      <p className="text-xs italic">Waiting for your response...</p>
     </div>
   );
 }
 
 function AnsweredAnswer({ output }: { output: unknown }) {
   const text = answerTextFromOutput(output);
-  if (text.length === 0) return null;
+  if (text.length === 0) return undefined; // eslint-disable-line unicorn/no-useless-undefined
   return (
-    <div className="rounded-md border bg-editor-surface-secondary px-3 py-2 text-sm">
-      {text}
-    </div>
+    <div className="bg-editor-surface-secondary rounded-md border px-3 py-2 text-sm">{text}</div>
   );
 }
 
@@ -135,8 +131,7 @@ function answerTextFromDetails(details: object): string {
   for (const a of details.answers) {
     if (!a || typeof a !== "object") continue;
 
-    const question =
-      "question" in a && typeof a.question === "string" ? a.question : "";
+    const question = "question" in a && typeof a.question === "string" ? a.question : "";
 
     if ("kind" in a && a.kind === "multi") {
       // Multi-select: show selected labels
@@ -148,20 +143,17 @@ function answerTextFromDetails(details: object): string {
       lines.push(question + ": " + answerText);
     } else if ("kind" in a && a.kind === "custom") {
       // Custom/free-text: show the typed answer
-      const answer =
-        "answer" in a && typeof a.answer === "string" ? a.answer : "(no input)";
+      const answer = "answer" in a && typeof a.answer === "string" ? a.answer : "(no input)";
       lines.push(question + ": " + answer);
     } else if ("kind" in a && a.kind === "option") {
       // Option selection: show the label
-      const answer =
-        "answer" in a && typeof a.answer === "string" ? a.answer : "(no input)";
+      const answer = "answer" in a && typeof a.answer === "string" ? a.answer : "(no input)";
       lines.push(question + ": " + answer);
     } else if ("cancelled" in a && a.cancelled) {
       lines.push(question + ": skipped");
     } else {
       // Legacy fallback: try answer field
-      const answer =
-        "answer" in a && typeof a.answer === "string" ? a.answer : "(no input)";
+      const answer = "answer" in a && typeof a.answer === "string" ? a.answer : "(no input)";
       lines.push(question + ": " + answer);
     }
   }
@@ -184,15 +176,11 @@ function questionFromUnknown(value: unknown): AskUserQuestion {
   if (!value || typeof value !== "object") {
     return { question: String(value), header: "", options: [], multiSelect: false };
   }
-  const question =
-    "question" in value && typeof value.question === "string" ? value.question : "";
+  const question = "question" in value && typeof value.question === "string" ? value.question : "";
   const header =
-    "header" in value && typeof value.header === "string"
-      ? value.header.slice(0, 16)
-      : "";
+    "header" in value && typeof value.header === "string" ? value.header.slice(0, 16) : "";
   const multiSelect = "multiSelect" in value && Boolean(value.multiSelect);
-  const options =
-    "options" in value ? optionsFromUnknown(value.options) : [];
+  const options = "options" in value ? optionsFromUnknown(value.options) : [];
 
   return { question, header, options, multiSelect };
 }
@@ -203,18 +191,11 @@ function optionsFromUnknown(value: unknown): AskUserOption[] {
     if (!item || typeof item !== "object") {
       return { label: String(item), description: "", preview: undefined };
     }
-    const label =
-      "label" in item && typeof item.label === "string"
-        ? item.label.slice(0, 60)
-        : "";
+    const label = "label" in item && typeof item.label === "string" ? item.label.slice(0, 60) : "";
     const description =
-      "description" in item && typeof item.description === "string"
-        ? item.description
-        : "";
+      "description" in item && typeof item.description === "string" ? item.description : "";
     const preview =
-      "preview" in item && typeof item.preview === "string"
-        ? item.preview
-        : undefined;
+      "preview" in item && typeof item.preview === "string" ? item.preview : undefined;
     return { label, description, preview };
   });
 }

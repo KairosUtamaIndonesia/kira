@@ -14,24 +14,36 @@ import type { ExtensionUiRequest } from "../hooks/useAgentThreadConnection";
 
 type Props = {
   requests: ExtensionUiRequest[];
-  onRespond: (id: string, response: { value?: string; confirmed?: boolean; cancelled?: boolean }) => void;
+  onRespond: (
+    id: string,
+    response: { value?: string; confirmed?: boolean; cancelled?: boolean },
+  ) => void;
 };
 
 function ExtensionUiInline({ requests, onRespond }: Props) {
   const request = requests[requests.length - 1];
-  if (request === undefined) return null;
+  if (request === undefined) return undefined; // eslint-disable-line unicorn/no-useless-undefined
 
   return (
     <div className="mx-auto w-full max-w-6xl px-2">
-      <div className="rounded-lg border bg-editor-surface-secondary p-4 shadow-sm">
+      <div className="bg-editor-surface-secondary rounded-lg border p-4 shadow-sm">
         {request.method === "select" && (
-          <SelectInline request={request as ExtensionUiRequest & { method: "select" }} onRespond={onRespond} />
+          <SelectInline
+            request={request as ExtensionUiRequest & { method: "select" }}
+            onRespond={onRespond}
+          />
         )}
         {request.method === "confirm" && (
-          <ConfirmInline request={request as ExtensionUiRequest & { method: "confirm" }} onRespond={onRespond} />
+          <ConfirmInline
+            request={request as ExtensionUiRequest & { method: "confirm" }}
+            onRespond={onRespond}
+          />
         )}
         {request.method === "input" && (
-          <InputInline request={request as ExtensionUiRequest & { method: "input" }} onRespond={onRespond} />
+          <InputInline
+            request={request as ExtensionUiRequest & { method: "input" }}
+            onRespond={onRespond}
+          />
         )}
       </div>
     </div>
@@ -45,7 +57,7 @@ function SelectInline({
   request: ExtensionUiRequest & { method: "select" };
   onRespond: Props["onRespond"];
 }) {
-  const [selected, setSelected] = useState<string | undefined>(undefined);
+  const [selected, setSelected] = useState<string | undefined>();
 
   return (
     <div className="space-y-3">
@@ -64,7 +76,12 @@ function SelectInline({
         ))}
       </div>
       <div className="flex gap-2">
-        <Button type="button" variant="ghost" size="sm" onClick={() => onRespond(request.id, { cancelled: true })}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => onRespond(request.id, { cancelled: true })}
+        >
           Cancel
         </Button>
         <Button
@@ -96,7 +113,12 @@ function ConfirmInline({
         <p className="text-sm text-muted-foreground">{request.message}</p>
       )}
       <div className="flex gap-2">
-        <Button type="button" variant="ghost" size="sm" onClick={() => onRespond(request.id, { confirmed: false })}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => onRespond(request.id, { confirmed: false })}
+        >
           No
         </Button>
         <Button type="button" size="sm" onClick={() => onRespond(request.id, { confirmed: true })}>
@@ -130,7 +152,12 @@ function InputInline({
         }}
       />
       <div className="flex gap-2">
-        <Button type="button" variant="ghost" size="sm" onClick={() => onRespond(request.id, { cancelled: true })}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => onRespond(request.id, { cancelled: true })}
+        >
           Cancel
         </Button>
         <Button

@@ -17,6 +17,10 @@ import { type WebSocket } from "ws";
 
 import type { ClientCommand, TreeEntry } from "../protocol";
 
+import { generateCommitMessage } from "./commit-message-generation";
+import { ExtensionUIBridge } from "./extension-ui-bridge";
+import guardrailsExtension from "./extensions/guardrails/index";
+import memoryExtension from "./extensions/memory/index";
 import {
   authStorage,
   modelRegistry,
@@ -25,12 +29,8 @@ import {
 } from "./model-registry";
 import { extractText, serializeMessages } from "./serialize";
 import { attachSession, pushState } from "./session-thread";
-import { ExtensionUIBridge } from "./extension-ui-bridge";
-import { askUserTool } from "./tools/ask-user-tool";
 import { generateAgentThreadTitle } from "./title-generation";
-import { generateCommitMessage } from "./commit-message-generation";
-import guardrailsExtension from "./extensions/guardrails/index";
-import memoryExtension from "./extensions/memory/index";
+import { askUserTool } from "./tools/ask-user-tool";
 
 const AGENT_DIR =
   process.env.KIRA_AGENT_DIR ??
@@ -106,11 +106,14 @@ export class SessionHost {
     });
   }
 
-  async openThread(ws: WebSocket, input: {
-    threadId: string;
-    projectPath: string;
-    sessionId: string;
-  }): Promise<void> {
+  async openThread(
+    ws: WebSocket,
+    input: {
+      threadId: string;
+      projectPath: string;
+      sessionId: string;
+    },
+  ): Promise<void> {
     const pp = input.projectPath;
     const project = this.projects.get(pp);
     if (!project) throw new Error(`Project ${pp} not registered`);
@@ -298,19 +301,43 @@ export class SessionHost {
           break;
         case "generate_title":
           try {
-            const { title } = await generateAgentThreadTitle({ prompt: cmd.prompt, assistantText: cmd.assistantText });
+            const { title } = await generateAgentThreadTitle({
+              prompt: cmd.prompt,
+              assistantText: cmd.assistantText,
+            });
             ws.send(JSON.stringify({ type: "title_generated", requestId: cmd.requestId, title }));
           } catch (e) {
-            ws.send(JSON.stringify({ type: "title_generation_failed", requestId: cmd.requestId, error: (e as Error).message }));
+            ws.send(
+              JSON.stringify({
+                type: "title_generation_failed",
+                requestId: cmd.requestId,
+                error: (e as Error).message,
+              }),
+            );
           }
           break;
         case "generate_commit_message":
           {
-            const result = await generateCommitMessage({ stagedDiff: cmd.stagedDiff, recentLog: cmd.recentLog });
+            const result = await generateCommitMessage({
+              stagedDiff: cmd.stagedDiff,
+              recentLog: cmd.recentLog,
+            });
             if ("commitMessage" in result) {
-              ws.send(JSON.stringify({ type: "commit_message_generated", requestId: cmd.requestId, commitMessage: result.commitMessage }));
+              ws.send(
+                JSON.stringify({
+                  type: "commit_message_generated",
+                  requestId: cmd.requestId,
+                  commitMessage: result.commitMessage,
+                }),
+              );
             } else {
-              ws.send(JSON.stringify({ type: "commit_message_generation_failed", requestId: cmd.requestId, error: result.error }));
+              ws.send(
+                JSON.stringify({
+                  type: "commit_message_generation_failed",
+                  requestId: cmd.requestId,
+                  error: result.error,
+                }),
+              );
             }
           }
           break;

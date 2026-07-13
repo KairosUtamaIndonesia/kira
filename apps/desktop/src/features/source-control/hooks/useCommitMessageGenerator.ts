@@ -1,10 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
+
 import { useAppSocket } from "@/features/agent-thread/AppSocketProvider";
 import { requestOverSocket } from "@/features/agent-thread/socketRequest";
 
 import type { SourceControlProjectInput } from "../types";
-
 
 export function useCommitMessageGenerator() {
   const [isGenerating, setIsGenerating] = useState(false);
@@ -55,7 +55,10 @@ export function useCommitMessageGenerator() {
             if (event.type === "commit_message_generated" && event.requestId === requestId) {
               return event.commitMessage;
             }
-            if (event.type === "commit_message_generation_failed" && event.requestId === requestId) {
+            if (
+              event.type === "commit_message_generation_failed" &&
+              event.requestId === requestId
+            ) {
               throw new Error(event.error);
             }
             return;

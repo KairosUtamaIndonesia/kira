@@ -13,7 +13,6 @@ type AgentThreadPanelParams = {
   title: string;
 };
 
-
 /** One transcript entry. Assistant messages carry raw content blocks (pi TUI style).
  *  During streaming, tool/thinking roles are used for in-flight display;
  *  the final state comes from the `messages` snapshot with content blocks. */

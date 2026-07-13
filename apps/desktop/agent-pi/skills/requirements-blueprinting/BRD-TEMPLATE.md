@@ -212,11 +212,11 @@ FE-3: Create, view, modify, and cancel meal subscriptions.
 
 **Format:** Table with feature ID, Release 1 scope, and Release 2 (or later) scope.
 
-| Feature Category | Release 1 | Release 2 |
-|---|---|---|
-| FE-1, Order from cafeteria | Lunch menu only; payroll deduction only | Credit/debit card payments |
-| FE-2, Order from restaurants | Not implemented | Delivery to campus only |
-| FE-3, Meal subscriptions | Not implemented | If time permits |
+| Feature Category             | Release 1                               | Release 2                  |
+| ---------------------------- | --------------------------------------- | -------------------------- |
+| FE-1, Order from cafeteria   | Lunch menu only; payroll deduction only | Credit/debit card payments |
+| FE-2, Order from restaurants | Not implemented                         | Delivery to campus only    |
+| FE-3, Meal subscriptions     | Not implemented                         | If time permits            |
 
 **Questions to Ask:**
 
@@ -259,11 +259,11 @@ LI-3: Remediation of revoked access is not automated; system generates a report.
 
 **Format:** Table.
 
-| Stakeholder | Major Value | Attitudes | Major Interests | Constraints |
-|---|---|---|---|---|
-| Corporate Management | Improved productivity; cost savings | Strong commitment | Cost savings must exceed costs | None |
-| Cafeteria Staff | Efficient staff time; satisfaction | Receptive; union concern | Job preservation | Training needed |
-| End Users | Time savings; convenience | Enthusiastic | Simplicity; reliability; choices | Need device/access |
+| Stakeholder          | Major Value                         | Attitudes                | Major Interests                  | Constraints        |
+| -------------------- | ----------------------------------- | ------------------------ | -------------------------------- | ------------------ |
+| Corporate Management | Improved productivity; cost savings | Strong commitment        | Cost savings must exceed costs   | None               |
+| Cafeteria Staff      | Efficient staff time; satisfaction  | Receptive; union concern | Job preservation                 | Training needed    |
+| End Users            | Time savings; convenience           | Enthusiastic             | Simplicity; reliability; choices | Need device/access |
 
 **Questions to Ask:**
 
@@ -281,13 +281,13 @@ LI-3: Remediation of revoked access is not automated; system generates a report.
 
 **Format:** Table.
 
-| Dimension | Constraint | Driver | Degree of Freedom |
-|---|---|---|---|
-| Features | All Release 1 features must be operational | | |
-| Quality | 95% UAT pass; all security tests pass | | |
-| Schedule | | | Overrun up to 2 weeks acceptable |
-| Cost | | | Overrun up to 15% acceptable |
-| Staff | | Team: PM, BA, 3 devs, 1 tester | Additional dev available if needed |
+| Dimension | Constraint                                 | Driver                         | Degree of Freedom                  |
+| --------- | ------------------------------------------ | ------------------------------ | ---------------------------------- |
+| Features  | All Release 1 features must be operational |                                |                                    |
+| Quality   | 95% UAT pass; all security tests pass      |                                |                                    |
+| Schedule  |                                            |                                | Overrun up to 2 weeks acceptable   |
+| Cost      |                                            |                                | Overrun up to 15% acceptable       |
+| Staff     |                                            | Team: PM, BA, 3 devs, 1 tester | Additional dev available if needed |
 
 **Questions to Ask:**
 
@@ -304,20 +304,20 @@ LI-3: Remediation of revoked access is not automated; system generates a report.
 
 **Format:** Table per use case with these fields:
 
-| Field | Content |
-|---|---|
-| **ID and Name** | UC-1 Descriptive Name |
-| **Primary Actor** | Who initiates |
-| **Secondary Actors** | Systems or roles involved |
-| **Description** | Brief summary |
-| **Trigger** | What starts this use case |
-| **Preconditions** | What must be true before |
-| **Postconditions** | What must be true after |
-| **Normal Flow** | Numbered step list |
-| **Alternative Flows** | Branch paths |
-| **Exceptions** | Error conditions with E-numbers |
-| **Priority** | High/Medium/Low |
-| **Business Rules** | Rules that govern the flow |
+| Field                 | Content                         |
+| --------------------- | ------------------------------- |
+| **ID and Name**       | UC-1 Descriptive Name           |
+| **Primary Actor**     | Who initiates                   |
+| **Secondary Actors**  | Systems or roles involved       |
+| **Description**       | Brief summary                   |
+| **Trigger**           | What starts this use case       |
+| **Preconditions**     | What must be true before        |
+| **Postconditions**    | What must be true after         |
+| **Normal Flow**       | Numbered step list              |
+| **Alternative Flows** | Branch paths                    |
+| **Exceptions**        | Error conditions with E-numbers |
+| **Priority**          | High/Medium/Low                 |
+| **Business Rules**    | Rules that govern the flow      |
 
 **Questions to Ask:**
 
@@ -360,10 +360,10 @@ LI-3: Remediation of revoked access is not automated; system generates a report.
 
 **Planning Language Notation:**
 
-| Component | Meaning | Explanation |
-|---|---|---|
-| Scale | The unit of measurement | What is being measured (dollars, time, percentage) |
-| Meter | The measurement method | How data is collected and verified |
-| Past | The baseline | Current documented performance level |
-| Goal | The minimum target | Required performance for success |
-| Stretch | The aspirational target | Maximum potential success level |
+| Component | Meaning                 | Explanation                                        |
+| --------- | ----------------------- | -------------------------------------------------- |
+| Scale     | The unit of measurement | What is being measured (dollars, time, percentage) |
+| Meter     | The measurement method  | How data is collected and verified                 |
+| Past      | The baseline            | Current documented performance level               |
+| Goal      | The minimum target      | Required performance for success                   |
+| Stretch   | The aspirational target | Maximum potential success level                    |

@@ -39,13 +39,13 @@ The property that every ID referenced in a document has a definition somewhere i
 
 Every document produced by this skill includes:
 
-| Element | Content |
-|---|---|
-| Title | Document name + project name |
-| Author | Placeholder or known author |
-| Version | `x.y.z` (start at `1.0.0`) |
-| Status | Draft / Review / Approved |
-| Date | Generation date |
+| Element | Content                      |
+| ------- | ---------------------------- |
+| Title   | Document name + project name |
+| Author  | Placeholder or known author  |
+| Version | `x.y.z` (start at `1.0.0`)   |
+| Status  | Draft / Review / Approved    |
+| Date    | Generation date              |
 
 ## Revision History
 

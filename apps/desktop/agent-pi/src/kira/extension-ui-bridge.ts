@@ -7,9 +7,10 @@
  * extension_ui_response. Fire-and-forget methods (notify) send and return.
  */
 
+import type { WebSocket } from "ws";
+
 import { type ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import { randomUUID } from "node:crypto";
-import type { WebSocket } from "ws";
 
 import type { ThreadServerEvent } from "../protocol";
 
@@ -60,25 +61,25 @@ export class ExtensionUIBridge {
     return {
       select: (title, options, opts) =>
         dialogPromise(
-          opts?.timeout,
+          opts ? opts.timeout : undefined,
           undefined,
-          { method: "select", title, options, timeout: opts?.timeout },
+          { method: "select", title, options, timeout: opts ? opts.timeout : undefined },
           (r) => (r === undefined ? undefined : String(r)),
         ) as Promise<string | undefined>,
 
       confirm: (title, message, opts) =>
         dialogPromise(
-          opts?.timeout,
+          opts ? opts.timeout : undefined,
           false,
-          { method: "confirm", title, message, timeout: opts?.timeout },
+          { method: "confirm", title, message, timeout: opts ? opts.timeout : undefined },
           (r) => r === true,
         ) as Promise<boolean>,
 
       input: (title, placeholder, opts) =>
         dialogPromise(
-          opts?.timeout,
+          opts ? opts.timeout : undefined,
           undefined,
-          { method: "input", title, placeholder, timeout: opts?.timeout },
+          { method: "input", title, placeholder, timeout: opts ? opts.timeout : undefined },
           (r) => (r === undefined ? undefined : String(r)),
         ) as Promise<string | undefined>,
 
@@ -93,6 +94,7 @@ export class ExtensionUIBridge {
       },
 
       // ── No-ops (matching RPC mode) ──────────────────────────────
+      /* eslint-disable @typescript-eslint/no-empty-function, unicorn/no-useless-undefined */
 
       onTerminalInput: () => () => {},
       setStatus: () => {},
@@ -120,6 +122,7 @@ export class ExtensionUIBridge {
       setTheme: () => ({ success: false, error: "Not supported in WebSocket mode" }),
       getToolsExpanded: () => false,
       setToolsExpanded: () => {},
+      /* eslint-enable @typescript-eslint/no-empty-function, unicorn/no-useless-undefined */
     };
   }
 
@@ -127,20 +130,23 @@ export class ExtensionUIBridge {
    * Resolve a pending extension UI request with the frontend's response.
    * Called when an extension_ui_response command arrives.
    */
-  resolve(id: string, response: { value?: string; confirmed?: boolean; cancelled?: boolean }): void {
+  resolve(
+    id: string,
+    response: { value?: string; confirmed?: boolean; cancelled?: boolean },
+  ): void {
     const pending = this.pending.get(id);
     if (!pending) return;
     this.pending.delete(id);
     clearTimeout(pending.timer);
 
     if (response.cancelled) {
-      pending.resolve(undefined);
+      pending.resolve();
     } else if (response.confirmed !== undefined) {
       pending.resolve(response.confirmed);
     } else if (response.value !== undefined) {
       pending.resolve(response.value);
     } else {
-      pending.resolve(undefined);
+      pending.resolve();
     }
   }
 
