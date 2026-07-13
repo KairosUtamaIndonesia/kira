@@ -1,10 +1,3 @@
-export function readRequiredEnv(name: string): string {
-  const value = process.env[name];
-  if (value === undefined || value.trim().length === 0) {
-    throw new Error(`${name} must be set.`);
-  }
-  return value;
-}
 
 export function readOptionalEnv(name: string): string | undefined {
   const value = process.env[name];
@@ -17,14 +10,11 @@ export function readOptionalEnv(name: string): string | undefined {
   return value;
 }
 
-export function readRuntimeToken(): string {
-  return readRequiredEnv("KIRA_AGENT_RUNTIME_TOKEN");
-}
-
-export function readProjectPath(): string {
-  return readRequiredEnv("KIRA_AGENT_PROJECT_PATH");
-}
-
 export function readPiDataDir(): string {
-  return readRequiredEnv("KIRA_AGENT_PI_DATA_DIR");
+  return (
+    process.env.KIRA_AGENT_PI_DATA_DIR ??
+    (process.platform === "win32"
+      ? `${process.env.APPDATA}/Kira`
+      : `${process.env.HOME}/.config/kira`)
+  );
 }

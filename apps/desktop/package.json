@@ -65,6 +65,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@kira/agent-pi": "workspace:*",
     "@kira/tsconfig": "workspace:*",
     "@tauri-apps/cli": "^2",
     "@types/node": "^25.9.1",

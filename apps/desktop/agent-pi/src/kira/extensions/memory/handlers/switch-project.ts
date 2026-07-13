@@ -14,7 +14,7 @@ import * as path from "node:path";
 
 import type { MemoryConfig } from "../types.js";
 
-import { AGENT_ROOT } from "../paths.js";
+import { getAgentRoot } from "../paths.js";
 
 export function registerSwitchProjectCommand(pi: ExtensionAPI, config?: MemoryConfig): void {
   const projectsMemoryDir =
@@ -23,7 +23,7 @@ export function registerSwitchProjectCommand(pi: ExtensionAPI, config?: MemoryCo
     description: "Switch the active project for project-scoped memory",
 
     async handler(_args, ctx) {
-      const agentDir = AGENT_ROOT;
+      const agentDir = getAgentRoot();
       const projectsDir = path.join(agentDir, projectsMemoryDir);
 
       // Discover all project directories (subdirectories of projects-memory/ that have MEMORY.md)

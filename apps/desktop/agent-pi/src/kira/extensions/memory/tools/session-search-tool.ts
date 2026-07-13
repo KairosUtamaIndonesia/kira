@@ -10,7 +10,7 @@ import type {
 } from "../store/session-anchor-search.js";
 import type { SessionSearchConfig } from "../types.js";
 
-import { AGENT_ROOT } from "../paths.js";
+import { getAgentRoot } from "../paths.js";
 import { DatabaseManager } from "../store/db.js";
 import { searchSessionAnchors } from "../store/session-anchor-search.js";
 import { searchSessions, getIndexedMessageCount } from "../store/session-search.js";
@@ -27,7 +27,7 @@ interface SessionSearchToolOptions {
   sessionsDir?: string;
 }
 
-const DEFAULT_SESSIONS_DIR = path.join(AGENT_ROOT, "sessions");
+const DEFAULT_SESSIONS_DIR = path.join(getAgentRoot(), "sessions");
 
 export function registerSessionSearchTool(
   pi: ExtensionAPI,

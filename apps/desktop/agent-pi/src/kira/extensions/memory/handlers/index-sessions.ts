@@ -7,11 +7,11 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import fs from "node:fs";
 import path from "node:path";
 
-import { AGENT_ROOT } from "../paths.js";
+import { getAgentRoot } from "../paths.js";
 import { DatabaseManager } from "../store/db.js";
 import { indexAllSessions, getSessionStats } from "../store/session-indexer.js";
 
-const SESSIONS_DIR = path.join(AGENT_ROOT, "sessions");
+const SESSIONS_DIR = path.join(getAgentRoot(), "sessions");
 
 export function registerIndexSessionsCommand(pi: ExtensionAPI): void {
   pi.registerCommand("memory-index-sessions", {
@@ -41,7 +41,7 @@ export function registerIndexSessionsCommand(pi: ExtensionAPI): void {
           "info",
         );
 
-        const memoryDir = path.join(AGENT_ROOT, "data");
+        const memoryDir = path.join(getAgentRoot(), "data");
         const dbManager = new DatabaseManager(memoryDir);
 
         try {

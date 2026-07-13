@@ -115,7 +115,6 @@ pub struct NotificationSettings {
     custom_sounds: Vec<CustomNotificationSound>,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TerminalSettingsUpdateInput {
@@ -152,10 +151,8 @@ pub enum SettingsError {
     UnsupportedCustomNotificationSoundFile(String),
     #[error("Custom notification sound is too large. Maximum size is 5 MiB")]
     CustomNotificationSoundTooLarge,
-    #[allow(dead_code)]
     #[error("shell path is not valid: {0}")]
     InvalidShellPath(String),
-    #[allow(dead_code)]
     #[error("shell path is not executable: {0}")]
     ShellNotExecutable(String),
     #[error("failed to read Appearance settings: {0}")]
@@ -267,7 +264,6 @@ pub async fn notification_sound_read(
 }
 
 #[tauri::command]
-#[allow(dead_code)]
 #[allow(
     clippy::needless_pass_by_value,
     reason = "Tauri commands require State by value"
@@ -279,7 +275,6 @@ pub async fn terminal_settings_get(
 }
 
 #[tauri::command]
-#[allow(dead_code)]
 #[allow(
     clippy::needless_pass_by_value,
     reason = "Tauri commands require State by value"
@@ -815,7 +810,6 @@ fn path_to_string(path: &Path) -> Result<String, SettingsError> {
     })
 }
 
-#[allow(dead_code)]
 async fn get_terminal_settings(pool: &SqlitePool) -> Result<TerminalSettings, SettingsError> {
     let shell_path = app_setting_value(pool, TERMINAL_SHELL_PATH_KEY)
         .await
@@ -830,7 +824,6 @@ async fn get_terminal_settings(pool: &SqlitePool) -> Result<TerminalSettings, Se
     })
 }
 
-#[allow(dead_code)]
 fn validate_shell_path(path_str: &str) -> Result<(), SettingsError> {
     const SHELL_TEST_MARKER: &str = "kira-shell-test";
 
@@ -874,7 +867,6 @@ fn validate_shell_path(path_str: &str) -> Result<(), SettingsError> {
     Ok(())
 }
 
-#[allow(dead_code)]
 async fn update_terminal_settings(
     pool: &SqlitePool,
     input: TerminalSettingsUpdateInput,
@@ -934,14 +926,6 @@ pub async fn terminal_shell_path(pool: &SqlitePool) -> Option<String> {
         .flatten()
 }
 
-/// Returns the primary shell path configured for the agent (Pi).
-pub async fn agent_shell_path(pool: &SqlitePool) -> Option<String> {
-    app_setting_value(pool, TERMINAL_SHELL_PATH_KEY)
-        .await
-        .ok()
-        .flatten()
-}
-
 /// Returns the configured Bun binary path override, if set.
 pub async fn bun_path_get(pool: &SqlitePool) -> Option<String> {
     app_setting_value(pool, AGENT_RUNTIME_BUN_PATH_KEY)
@@ -949,7 +933,6 @@ pub async fn bun_path_get(pool: &SqlitePool) -> Option<String> {
         .ok()
         .flatten()
 }
-#[allow(dead_code)]
 async fn upsert_or_delete_option_in_transaction(
     transaction: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     key: &str,

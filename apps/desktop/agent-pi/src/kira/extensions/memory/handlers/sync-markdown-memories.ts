@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { ENTRY_DELIMITER, MEMORY_FILE, USER_FILE } from "../constants.js";
-import { AGENT_ROOT } from "../paths.js";
+import { getAgentRoot } from "../paths.js";
 import { DatabaseManager } from "../store/db.js";
 import { parseMarkdownMemoryEntry, syncMemoryEntry } from "../store/sqlite-memory-store.js";
 
@@ -104,7 +104,7 @@ export function syncMarkdownMemoriesToSqlite(
   dbManager: DatabaseManager,
   globalDir: string,
   projectsMemoryDir?: string,
-  agentRoot = AGENT_ROOT,
+  agentRoot = getAgentRoot(),
 ): BackfillCounters & { projectCount: number } {
   const counters: BackfillCounters = {
     filesScanned: 0,
@@ -146,7 +146,7 @@ export function registerSyncMarkdownMemoriesCommand(
   dbManager: DatabaseManager,
   globalDir: string,
   projectsMemoryDir?: string,
-  agentRoot = AGENT_ROOT,
+  agentRoot = getAgentRoot(),
 ): void {
   pi.registerCommand("memory-sync-markdown", {
     description: "Backfill Markdown memories into the SQLite search store",

@@ -4,7 +4,9 @@ import * as path from "node:path";
 import { readPiDataDir } from "../../env.js";
 import { DEFAULT_PROJECTS_MEMORY_DIR } from "./constants.js";
 
-export const AGENT_ROOT = path.join(readPiDataDir(), ".agent");
+export function getAgentRoot(): string {
+  return path.join(readPiDataDir(), ".agent");
+}
 
 export function expandHome(input: string): string {
   if (input === "~") return os.homedir();
@@ -20,7 +22,7 @@ export function normalizeConfiguredMemoryDir(input: string): string | undefined 
 
   const expanded = expandHome(trimmed);
   if (path.isAbsolute(expanded)) return path.normalize(expanded);
-  return path.resolve(AGENT_ROOT, expanded);
+  return path.resolve(getAgentRoot(), expanded);
 }
 
 function isSafeRelativeDirectory(input: string): boolean {
@@ -37,7 +39,7 @@ export function normalizeProjectsMemoryDir(input: string): string | undefined {
 
   if (path.isAbsolute(expanded)) {
     const resolved = path.resolve(expanded);
-    const relativeToAgentRoot = path.relative(AGENT_ROOT, resolved);
+    const relativeToAgentRoot = path.relative(getAgentRoot(), resolved);
     if (
       relativeToAgentRoot === "" ||
       relativeToAgentRoot.startsWith("..") ||
@@ -55,5 +57,5 @@ export function normalizeProjectsMemoryDir(input: string): string | undefined {
 
 export function resolveProjectsRoot(projectsMemoryDir = DEFAULT_PROJECTS_MEMORY_DIR): string {
   const normalized = normalizeProjectsMemoryDir(projectsMemoryDir) ?? DEFAULT_PROJECTS_MEMORY_DIR;
-  return path.join(AGENT_ROOT, normalized);
+  return path.join(getAgentRoot(), normalized);
 }

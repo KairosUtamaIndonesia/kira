@@ -1,977 +1,452 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+/**
+ * useAgentThreadConnection — processEvent drives a flat messages array.
+ * Uses the global AppSocket connection instead of creating its own WS.
+ */
 
-import { useSkillsList } from "@/features/skills/hooks/useSkillsList";
+import { type ServerEvent, type ThreadServerEvent, type TreeEntry } from "@kira/agent-pi/protocol";
+import { useEffect, useRef, useState, useCallback } from "react";
 
-import type {
-  AgentThreadContextUsage,
-  AgentThreadPanelParams,
-  AgentThreadTree,
-  SessionTreeNodeJson,
-  PiMessage,
-  PiTranscriptState,
-} from "../types";
+import type { AgentThreadPanelParams } from "../types";
 
+import { treeStateFrom } from "../agentThreadDisplay";
+import { useAppSocket } from "../AppSocketProvider";
+import { getCloudConfig } from "../cloudConfig";
+import { type TranscriptMessage } from "../piTranscriptState";
+import { requestOverSocket } from "../socketRequest";
 import { setAgentThreadTitleGenerationState } from "../agentThreadStatusStore";
-import {
-  generateAgentThreadTitle,
-  getAgentThreadContextUsage,
-  prepareAgentThread,
-} from "../api/agentRuntimeApi";
-import { expandSlashCommandInText } from "../expandUserMessage";
-import {
-  appendLocalUserMessage,
-  applyPiEvent,
-  emptyPiTranscriptState,
-  hydratePiTranscript,
-} from "../piTranscriptState";
 
-declare global {
-  interface PromiseConstructor {
-    withResolvers<T>(): {
-      promise: Promise<T>;
-      resolve: (value: T | PromiseLike<T>) => void;
-      reject: (reason?: unknown) => void;
-    };
-  }
-}
 
-type AgentThreadRuntimeState =
+export type AgentThreadRuntimeState =
   | { status: "starting" }
-  | { status: "connecting"; baseUrl: string }
-  | { status: "ready"; baseUrl: string }
-  | { status: "sending"; baseUrl: string }
-  | { status: "error"; message: string }
-  | { status: "stopped" };
-
-type AgentThreadContextUsageState =
-  | { status: "loading" }
-  | { status: "empty" }
-  | { status: "ready"; usage: AgentThreadContextUsage }
+  | { status: "connecting" }
+  | { status: "ready" }
+  | { status: "sending" }
   | { status: "error"; message: string };
 
-type AgentThreadTitleGenerationState =
-  | { status: "idle" }
-  | { status: "generating" }
-  | { status: "done" };
+export type AgentThreadContextUsageState =
+  | { status: "loading" }
+  | { status: "empty" }
+  | { status: "ready"; usage: { usedTokens: number; contextWindow: number; modelId: string } };
 
-type CompactionSummary = {
-  tokensBefore: number;
-  summary: string;
-  timestamp: number;
-};
-
-type UseAgentThreadConnectionOptions = {
-  onAutoTitled?: (title: string) => void;
-};
-
-type PiCommandResponse = {
-  id?: string;
-  type: "response";
-  command: string;
-  success: boolean;
-  error?: string;
-  data?: unknown;
-};
-
-type PendingCommand<TResponse = PiCommandResponse> = {
-  resolve: (response: TResponse) => void;
-  reject: (error: Error) => void;
-};
-
-type ActivePrompt = {
+export type ExtensionUiRequest = {
   id: string;
-  parts: string[];
-  resolve: (text: string) => void;
-  reject: (error: Error) => void;
+  method: "select" | "confirm" | "input";
+  title: string;
+  options?: string[];
+  message?: string;
+  placeholder?: string;
 };
 
-type PiEventListener = (event: unknown) => void;
-
-class AbortError extends Error {
-  readonly name = "AbortError";
+export interface UseAgentConnectionResult {
+  messages: TranscriptMessage[];
+  isStreaming: boolean;
+  model: string | undefined;
+  runtimeState: AgentThreadRuntimeState;
+  treeNodes: ReturnType<typeof treeStateFrom>["nodes"];
+  currentLeafId: string | undefined;
+  isCompacting: boolean;
+  /** In-flight tool output (toolCallId -> text), updated by tool_execution_update. */
+  toolOutputs: Record<string, string>;
+  /** Pending extension UI requests awaiting user response. */
+  extensionUiRequests: ExtensionUiRequest[];
+  /** Respond to an extension UI request. */
+  respondToExtensionUi: (id: string, response: { value?: string; confirmed?: boolean; cancelled?: boolean }) => void;
+  sendPrompt: (message: string) => Promise<boolean>;
+  abortPrompt: () => Promise<void>;
+  navigateTree: (entryId: string) => Promise<void>;
 }
 
-const minimumTitleGenerationVisibleMs = 1200;
+const maxImmediateTitleLength = 50;
 
-function useAgentThreadConnection(
-  params: AgentThreadPanelParams,
-  options?: UseAgentThreadConnectionOptions,
+function isUntitledThreadTitle(title: string) {
+  return title === "New Thread" || title === "Agent Thread";
+}
+
+
+// ── processEvent — directly mutates the messages array ────
+
+function processEvent(
+  e: ThreadServerEvent,
+  setMessages: React.Dispatch<React.SetStateAction<TranscriptMessage[]>>,
+  setStreaming: (v: boolean) => void,
+  setToolOutputs: React.Dispatch<React.SetStateAction<Record<string, string>>>,
 ) {
-  const [runtimeState, setRuntimeState] = useState<AgentThreadRuntimeState>({
-    status: "starting",
-  });
-  const [contextUsageState, setContextUsageState] = useState<AgentThreadContextUsageState>({
-    status: "loading",
-  });
-  const [titleGenerationState, setTitleGenerationState] = useState<AgentThreadTitleGenerationState>(
-    {
-      status: "idle",
-    },
-  );
-  const [transcript, setTranscript] = useState(emptyPiTranscriptState);
-  const [isCompacting, setIsCompacting] = useState(false);
-  const [compactionSummary, setCompactionSummary] = useState<CompactionSummary>();
-  const [pendingSteers, setPendingSteers] = useState<string[]>([]);
-  const [treeNodes, setTreeNodes] = useState<SessionTreeNodeJson[]>([]);
-  const [currentLeafId, setCurrentLeafId] = useState<string>();
-  const treeDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(void 0);
-  const isCompactingRef = useRef(false);
-  const socketRef = useRef<PiAgentSocket | undefined>(void 0);
-  const runtimeStateRef = useRef(runtimeState);
-  const runtimeInfoRef = useRef<{ baseUrl: string; token: string } | undefined>(void 0);
-  const skillsList = useSkillsList(params.folderPath);
-  const hasAutoTitledRef = useRef(false);
-  const isFirstPromptRef = useRef(true);
-  const onAutoTitledRef = useRef(options === undefined ? undefined : options.onAutoTitled);
-  onAutoTitledRef.current = options === undefined ? undefined : options.onAutoTitled;
-  runtimeStateRef.current = runtimeState;
-  isCompactingRef.current = isCompacting;
-  // Stable ref to the Pi event handler — avoids capturing stale deps in effect subscriptions.
-  const handlePiEventRef = useRef<PiEventListener | null>(null);
-  handlePiEventRef.current = function handlePiEvent(event: unknown) {
-    setTranscript((currentTranscript) => applyPiEvent(currentTranscript, event));
-    if (isRecord(event)) {
-      if (event.type === "compaction_start") {
-        setIsCompacting(true);
-      } else if (event.type === "compaction_end") {
-        setIsCompacting(false);
-        if (event.result !== undefined && isRecord(event.result)) {
-          const result = event.result;
-          const summary = typeof result.summary === "string" ? result.summary : undefined;
-          const tokensBefore =
-            typeof result.tokensBefore === "number" ? result.tokensBefore : undefined;
-          if (summary !== undefined && tokensBefore !== undefined) {
-            setCompactionSummary({ tokensBefore, summary, timestamp: Date.now() });
-          }
-        }
-      }
-      if (event.type === "queue_update" && Array.isArray(event.steering)) {
-        setPendingSteers(event.steering as string[]);
-      }
-      if (event.type === "tree_updated") {
-        if (Array.isArray(event.nodes)) {
-          setTreeNodes(event.nodes as SessionTreeNodeJson[]);
-        }
-        if (typeof event.currentLeafId === "string") {
-          setCurrentLeafId(event.currentLeafId);
-        }
-      }
-    }
-  };
-
-  function scheduleTreeRefresh() {
-    if (treeDebounceRef.current !== undefined) {
-      clearTimeout(treeDebounceRef.current);
-    }
-    treeDebounceRef.current = setTimeout(async () => {
-      const runtime = runtimeInfoRef.current;
-      if (runtime === undefined) {
-        return;
-      }
-      try {
-        const result = await fetchPiTree(runtime.baseUrl, runtime.token, params.threadId);
-        setTreeNodes(result.nodes);
-        setCurrentLeafId(result.currentLeafId);
-        setTranscript((current) =>
-          applyPiEvent(current, {
-            type: "tree_updated",
-            nodes: result.nodes,
-            currentLeafId: result.currentLeafId,
+  switch (e.type) {
+    case "messages":
+      setMessages(
+        e.messages.map(
+          (m): TranscriptMessage => ({
+            id: m.id ?? crypto.randomUUID(),
+            role: m.role,
+            text: m.text,
+            ...(m.toolName !== undefined && { toolName: m.toolName }),
+            ...(m.isError !== undefined && { isError: m.isError }),
+            ...(m.toolCallId !== undefined && { toolCallId: m.toolCallId }),
+            ...(m.content !== undefined && { content: m.content }),
           }),
-        );
-      } catch {
-        // Tree fetch is a UI enhancement; silently ignore errors.
+        ),
+      );
+      setStreaming(false);
+      break;
+
+    case "text_delta":
+      setStreaming(true);
+      setMessages((prev) => upsertStreaming(prev, e.delta, "assistant"));
+      break;
+
+    case "thinking_delta":
+      setStreaming(true);
+      setMessages((prev) => upsertStreaming(prev, e.delta, "thinking"));
+      break;
+
+    case "tool_execution_start":
+      setStreaming(true);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: e.toolCallId,
+          role: "tool",
+          text: JSON.stringify(e.args ?? {}, undefined, 2),
+          toolName: e.toolName,
+        },
+      ]);
+      setToolOutputs((prev) => ({ ...prev, [e.toolCallId]: "" }));
+      break;
+
+    case "tool_execution_update":
+      // Replace, not append: each update contains the FULL accumulated output
+      setToolOutputs((prev) => ({ ...prev, [e.toolCallId]: e.partialResult }));
+      break;
+
+    case "tool_execution_end": {
+      const text = extractResultText(e.result);
+      if (text) {
+        setToolOutputs((prev) => ({ ...prev, [e.toolCallId]: text }));
       }
-    }, 500);
-  }
-
-  const runtimeInput = useMemo(
-    () => ({
-      projectId: params.projectId,
-      sessionId: params.sessionId,
-      threadId: params.threadId,
-    }),
-    [params.projectId, params.sessionId, params.threadId],
-  );
-
-  const respondToRequest = useCallback(
-    async (requestId: string, response: unknown): Promise<boolean> => {
-      const socket = socketRef.current;
-      if (socket === undefined) {
-        return false;
-      }
-      try {
-        await socket.respondToToolUi(requestId, response);
-        return true;
-      } catch {
-        return false;
-      }
-    },
-    [],
-  );
-
-  useEffect(() => {
-    let disposed = false;
-    let unsubscribe: (() => void) | undefined;
-    let socket: PiAgentSocket | undefined;
-    async function connectRuntime() {
-      try {
-        const runtime = await prepareAgentThread(runtimeInput);
-        if (disposed) {
-          return;
-        }
-        runtimeInfoRef.current = { baseUrl: runtime.baseUrl, token: runtime.token };
-        // Fetch tree data on mount (fire-and-forget, non-critical).
-        try {
-          const result = await fetchPiTree(runtime.baseUrl, runtime.token, params.threadId);
-          if (!disposed) {
-            setTreeNodes(result.nodes);
-            setCurrentLeafId(result.currentLeafId);
-            setTranscript((current) =>
-              applyPiEvent(current, {
-                type: "tree_updated",
-                nodes: result.nodes,
-                currentLeafId: result.currentLeafId,
-              }),
-            );
-          }
-        } catch {
-          // Tree fetch is a UI enhancement; silently ignore errors.
-        }
-
-        const session = await loadPiSession(runtime.baseUrl, runtime.token, params.threadId);
-        if (disposed) {
-          return;
-        }
-
-        setTranscript(hydratePiTranscript(session.messages));
-        setContextUsageState(
-          session.contextUsage === undefined
-            ? { status: "empty" }
-            : { status: "ready", usage: session.contextUsage },
-        );
-        if (session.compaction !== undefined) {
-          setCompactionSummary({ ...session.compaction, timestamp: Date.now() });
-        }
-        setRuntimeState({ status: "connecting", baseUrl: runtime.baseUrl });
-        socket = PiAgentSocket.connect({
-          baseUrl: runtime.baseUrl,
-          token: runtime.token,
-          threadId: params.threadId,
-        });
-        socketRef.current = socket;
-        unsubscribe = socket.onEvent((event) => {
-          const handler = handlePiEventRef.current;
-          if (handler !== null) handler(event);
-        });
-        await socket.ready;
-
-        if (!disposed) {
-          setRuntimeState({ status: "ready", baseUrl: runtime.baseUrl });
-          await refreshContextUsage(params.threadId, setContextUsageState, runtime);
-        }
-      } catch (error) {
-        if (!disposed) {
-          setRuntimeState({ status: "error", message: errorMessageFromUnknown(error) });
-        }
-      }
+      setMessages((prev) =>
+        prev.map((m) => (m.id === e.toolCallId ? { ...m, isError: e.isError } : m)),
+      );
+      break;
     }
 
-    void connectRuntime();
+    case "agent_end":
+      setStreaming(false);
+      setMessages((prev) =>
+        prev.map((m) => (m.id.startsWith("__stream_") ? { ...m, id: crypto.randomUUID() } : m)),
+      );
+      break;
 
-    return () => {
-      disposed = true;
-      if (unsubscribe !== undefined) {
-        unsubscribe();
-      }
-      if (treeDebounceRef.current !== undefined) {
-        clearTimeout(treeDebounceRef.current);
-      }
-      if (socket !== undefined) {
-        socket.close(1000, "Agent Thread panel closed.");
-      }
-      if (socketRef.current === socket) {
-        socketRef.current = undefined;
-      }
-      // Best-effort cleanup: release the session from the agent-pi's in-memory cache.
-      // The session persists on disk (JSONL) and will reload if the panel reopens.
-      const runtime = runtimeInfoRef.current;
-      if (runtime !== undefined) {
-        fetch(`${runtime.baseUrl}/app/agent-threads/${encodeURIComponent(params.threadId)}`, {
-          method: "DELETE",
-          headers: { authorization: `Bearer ${runtime.token}` },
-          // oxlint-disable-next-line promise/prefer-await-to-then — fire-and-forget in a sync cleanup
-        }).catch(() => {
-          /* best-effort cleanup */
+    case "state_update":
+      setStreaming(e.state.isStreaming);
+      break;
+  }
+}
+
+/**
+ * Extracts joined text from an SDK tool result: { content: [{ type: "text", text }] }.
+ * The result arrives untyped over the wire, so narrow step by step.
+ */
+function extractResultText(result: unknown): string {
+  if (!result || typeof result !== "object" || !("content" in result)) return "";
+  const content = result.content;
+  if (!Array.isArray(content)) return "";
+  const parts: string[] = [];
+  for (const block of content) {
+    if (
+      block &&
+      typeof block === "object" &&
+      "type" in block &&
+      block.type === "text" &&
+      "text" in block &&
+      typeof block.text === "string"
+    ) {
+      parts.push(block.text);
+    }
+  }
+  return parts.join("\n");
+}
+
+function upsertStreaming(
+  messages: TranscriptMessage[],
+  delta: string,
+  role: "assistant" | "thinking",
+): TranscriptMessage[] {
+  const id = `__stream_${role}__`;
+  const idx = messages.findIndex((m) => m.id === id);
+  if (idx >= 0) {
+    const updated: TranscriptMessage = {
+      ...(messages[idx] as TranscriptMessage),
+      text: (messages[idx] as TranscriptMessage).text + delta,
+    };
+    return [...messages.slice(0, idx), updated, ...messages.slice(idx + 1)];
+  }
+  const entry: TranscriptMessage = { id, role, text: delta };
+  return [...messages, entry];
+}
+
+// ── Hook ─────────────────────────────────────────────────────────────
+
+export function useAgentThreadConnection(
+  params: AgentThreadPanelParams,
+  options?: { onAutoTitled?: (title: string) => void | Promise<void> },
+): UseAgentConnectionResult {
+  const [runtimeState, setRuntimeState] = useState<AgentThreadRuntimeState>({ status: "starting" });
+  const [messages, setMessages] = useState<TranscriptMessage[]>([]);
+  const [isStreaming, setStreaming] = useState(false);
+  const [model, setModel] = useState<string | undefined>();
+  const [treeEntries, setTreeEntries] = useState<TreeEntry[]>([]);
+  const [isCompacting, setIsCompacting] = useState(false);
+  const [toolOutputs, setToolOutputs] = useState<Record<string, string>>({});
+  const [extensionUiRequests, setExtensionUiRequests] = useState<ExtensionUiRequest[]>([]);
+  const closedRef = useRef(false);
+
+  const hasAutoTitledRef = useRef(false);
+  // eslint-disable-next-line unicorn/no-useless-undefined -- required: no overload for useRef<T>()
+  const pendingPromptRef = useRef<string | undefined>(undefined);
+  const onAutoTitled = options === undefined ? undefined : options.onAutoTitled;
+  const onAutoTitledRef = useRef(onAutoTitled);
+  onAutoTitledRef.current = onAutoTitled;
+  const messagesRef = useRef<TranscriptMessage[]>([]);
+  messagesRef.current = messages;
+
+  const socket = useAppSocket();
+
+  const { nodes: treeNodes, activeLeafId: currentLeafId } = treeStateFrom(treeEntries);
+
+  // Clean up tool outputs on messages snapshot (content blocks replace them)
+  useEffect(() => {
+    if (messages.some((m) => m.content && m.content.length > 0)) {
+      setToolOutputs({});
+    }
+  }, [messages]);
+
+  // Register project + open thread on mount, close on unmount
+  useEffect(() => {
+    closedRef.current = false;
+
+    setRuntimeState({ status: "connecting" });
+
+    const init = async () => {
+      try {
+        const config = await getCloudConfig();
+        if (closedRef.current) return;
+        socket.send({
+          type: "register_project",
+          projectPath: params.folderPath,
+          projectId: params.projectId,
+          sessionId: params.sessionId,
+          cloudApiUrl: config.url,
+          cloudApiKey: config.api_key,
         });
+        socket.send({
+          type: "open_thread",
+          threadId: params.threadId,
+          projectPath: params.folderPath,
+          sessionId: params.sessionId,
+        });
+        setRuntimeState({ status: "ready" });
+      } catch {
+        if (closedRef.current) return;
+        setRuntimeState({ status: "error", message: "Cloud config unavailable" });
       }
     };
-  }, [params.threadId, runtimeInput]);
-  async function sendPrompt(message: string) {
-    const state = runtimeStateRef.current;
-    if (state.status !== "ready" && state.status !== "sending") {
-      return false;
-    }
+    init();
 
-    const socket = socketRef.current;
-    if (socket === undefined) {
-      setRuntimeState({ status: "error", message: "Agent Thread socket is not connected." });
-      return false;
-    }
-    setRuntimeState({ status: "sending", baseUrl: state.baseUrl });
-    try {
-      const expanded = await expandForLocalTranscript(message, params.folderPath, skillsList);
-      setTranscript((currentTranscript) => appendLocalUserMessage(currentTranscript, expanded));
-      const result = await socket.prompt(expanded);
+    return () => {
+      closedRef.current = true;
+    };
+  }, [socket, params.threadId, params.folderPath, params.projectId, params.sessionId]);
 
-      if (
-        isFirstPromptRef.current &&
-        !hasAutoTitledRef.current &&
-        isUntitledAgentThreadTitle(params.title)
-      ) {
-        isFirstPromptRef.current = false;
-        const trimmedPrompt = message.trim();
-        if (trimmedPrompt.length <= 50) {
-          hasAutoTitledRef.current = true;
-          const onAutoTitled = onAutoTitledRef.current;
-          if (onAutoTitled !== undefined) {
-            onAutoTitled(trimmedPrompt);
+  // Subscribe to events for this thread
+  useEffect(() => {
+    const unsub = socket.onEvent((event: ServerEvent) => {
+      if (event.type !== "thread_event" || event.threadId !== params.threadId) return;
+      const e = event.event;
+
+      switch (e.type) {
+        case "error":
+          setRuntimeState({ status: "error", message: e.message });
+          setStreaming(false);
+          break;
+
+        case "state_update":
+          setModel(e.state.model);
+          setStreaming(e.state.isStreaming);
+          break;
+
+        case "tree_data":
+          setTreeEntries(e.entries);
+          break;
+
+        case "compaction_start":
+          setIsCompacting(true);
+          break;
+
+        case "compaction_end":
+          setIsCompacting(false);
+          break;
+
+        case "agent_start":
+          setRuntimeState({ status: "sending" });
+          processEvent(e, setMessages, setStreaming, setToolOutputs);
+          break;
+
+        case "agent_end":
+          setRuntimeState({ status: "ready" });
+          processEvent(e, setMessages, setStreaming, setToolOutputs);
+          settleAutoTitleRef.current();
+          break;
+
+        case "extension_ui_request":
+          console.debug("[ext-ui] received extension_ui_request:", e.method, e.id, e.title);
+          if (e.method === "notify") {
+            // Fire-and-forget notifications — could show a toast in the future
+            break;
           }
-        } else {
-          void generateTitleFromModel(trimmedPrompt, result);
-        }
-      }
-      const runtimeInfo = runtimeInfoRef.current;
-      if (runtimeInfo === undefined) {
-        throw new Error("Agent Thread runtime connection is missing.");
-      }
+          setExtensionUiRequests((prev) => [
+            ...prev,
+            {
+              id: e.id,
+              method: e.method,
+              title: e.title,
+              ...(e.method === "select" && { options: e.options }),
+              ...(e.method === "confirm" && { message: e.message }),
+              ...(e.method === "input" && { placeholder: e.placeholder }),
+            },
+          ]);
+          break;
 
-      await refreshContextUsage(params.threadId, setContextUsageState, {
-        baseUrl: state.baseUrl,
-        token: runtimeInfo.token,
-      });
-      setRuntimeState({ status: "ready", baseUrl: state.baseUrl });
+        default:
+          processEvent(e, setMessages, setStreaming, setToolOutputs);
+          break;
+      }
+    });
+    return unsub;
+  }, [socket, params.threadId]);
+
+  const respondToExtensionUi = useCallback(
+    (id: string, response: { value?: string; confirmed?: boolean; cancelled?: boolean }) => {
+      setExtensionUiRequests((prev) => prev.filter((r) => r.id !== id));
+      socket.send({ type: "extension_ui_response", id, ...response });
+    },
+    [socket],
+  );
+
+  const sendPrompt = useCallback(
+    async (message: string): Promise<boolean> => {
+      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "user", text: message }]);
+      socket.send({ type: "prompt", threadId: params.threadId, message });
+      armAutoTitleRef.current(message);
       return true;
-    } catch (error) {
-      if (!(error instanceof AbortError)) {
-        setRuntimeState({ status: "error", message: errorMessageFromUnknown(error) });
+    },
+    [socket, params.threadId],
+  );
+
+  const abortPrompt = useCallback(async () => {
+    socket.send({ type: "abort", threadId: params.threadId });
+  }, [socket, params.threadId]);
+
+  const navigateTree = useCallback(
+    async (entryId: string) => {
+      socket.send({ type: "navigate_tree", threadId: params.threadId, entryId });
+    },
+    [socket, params.threadId],
+  );
+
+  function armAutoTitle(message: string) {
+    if (hasAutoTitledRef.current || !isUntitledThreadTitle(params.title)) {
+      return;
+    }
+    const trimmed = message.trim();
+    if (trimmed.length <= maxImmediateTitleLength) {
+      hasAutoTitledRef.current = true;
+      void applyTitle(trimmed);
+    } else if (pendingPromptRef.current === undefined) {
+      pendingPromptRef.current = trimmed;
+    }
+  }
+
+  function settleAutoTitle() {
+    const prompt = pendingPromptRef.current;
+    if (prompt === undefined) {
+      return;
+    }
+    pendingPromptRef.current = undefined;
+    const msgs = messagesRef.current;
+    let assistantText = "";
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const candidate = msgs[i];
+      if (candidate !== undefined && candidate.role === "assistant") {
+        assistantText = candidate.text;
+        break;
       }
-      return false;
     }
-  }
-  async function abortPrompt() {
-    const socket = socketRef.current;
-    if (socket === undefined) return;
-    const state = runtimeStateRef.current;
-    if (state.status !== "sending") return;
-    try {
-      await socket.abort();
-    } catch {
-      // Abort command failure shouldn't leave the thread stuck in "sending".
-      // State is set to "ready" regardless; the agent will settle naturally.
-    }
-    setRuntimeState({ status: "ready", baseUrl: state.baseUrl });
-  }
-  async function steerPrompt(message: string) {
-    const socket = socketRef.current;
-    if (socket === undefined) {
-      return false;
-    }
-    setPendingSteers((prev) => [...prev, message]);
-    try {
-      await socket.steer(message);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  async function clearQueuedSteers() {
-    const socket = socketRef.current;
-    if (socket === undefined) return;
-    try {
-      await socket.clearQueue();
-    } catch {
-      // best effort
-    }
-  }
-
-  function removeSteer(index: number) {
-    setPendingSteers((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  async function switchModel(modelLabel: string) {
-    const socket = socketRef.current;
-    if (socket === undefined) {
+    if (assistantText.length === 0) {
       return;
     }
-    try {
-      await socket.switchModel(modelLabel);
-    } catch {
-      // Model switch failure is informational; the session continues with the
-      // previous model.
-    }
+    void generateTitleFromModel(prompt, assistantText);
   }
 
-  async function navigateTree(entryId: string) {
-    const socket = socketRef.current;
-    const runtime = runtimeInfoRef.current;
-    if (socket === undefined || runtime === undefined) {
-      return;
-    }
-    try {
-      await socket.navigateTree(entryId);
-      // Reload session — backend now returns messages for the new branch only.
-      const [treeResult, session] = await Promise.all([
-        fetchPiTree(runtime.baseUrl, runtime.token, params.threadId),
-        loadPiSession(runtime.baseUrl, runtime.token, params.threadId),
-      ]);
-      setTreeNodes(treeResult.nodes);
-      setCurrentLeafId(treeResult.currentLeafId);
-      setTranscript(hydratePiTranscript(session.messages));
-      setTranscript((current) =>
-        applyPiEvent(current, {
-          type: "tree_updated",
-          nodes: treeResult.nodes,
-          currentLeafId: treeResult.currentLeafId,
-        }),
-      );
-    } catch {
-      // Navigation failure is informational; the session state is unchanged.
-    }
-  }
-
-  async function generateTitleFromModel(prompt: string, assistantResult: string) {
-    if (hasAutoTitledRef.current) {
+  async function generateTitleFromModel(prompt: string, assistantText: string) {
+    if (hasAutoTitledRef.current || assistantText.length === 0) {
       return;
     }
 
-    setTitleGenerationState({ status: "generating" });
     setAgentThreadTitleGenerationState(params.threadId, { status: "generating" });
-    const generationStartedAt = performance.now();
-    let generatedTitle = "";
 
+    const requestId = crypto.randomUUID();
+    let title = "";
     try {
-      generatedTitle = await generateAgentThreadTitle({
-        projectId: params.projectId,
-        sessionId: params.sessionId,
-        threadId: params.threadId,
-        prompt,
-        assistantText: assistantResult,
-      });
+      title = await requestOverSocket<string>(
+        socket.send,
+        socket.onEvent,
+        { type: "generate_title", requestId, prompt, assistantText },
+        (event: ServerEvent) => {
+          if (event.type === "title_generated" && event.requestId === requestId) {
+            return event.title;
+          }
+          if (event.type === "title_generation_failed" && event.requestId === requestId) {
+            throw new Error(event.error);
+          }
+          return;
+        },
+      );
     } catch {
       // Title generation is cosmetic; silently fail.
     }
 
-    await waitForMinimumTitleGenerationDuration(generationStartedAt);
-    if (generatedTitle.length > 0 && !hasAutoTitledRef.current) {
+    if (title.length > 0 && !hasAutoTitledRef.current) {
       hasAutoTitledRef.current = true;
-      const onAutoTitled = onAutoTitledRef.current;
-      if (onAutoTitled !== undefined) {
-        await onAutoTitled(generatedTitle);
-      }
+      await applyTitle(title);
     }
-    setTitleGenerationState({ status: "done" });
     setAgentThreadTitleGenerationState(params.threadId, { status: "done" });
   }
 
-  async function runSlashCommandAction(
-    _kind: "compact",
-    args: string,
-  ): Promise<{ ok: boolean; error?: string }> {
-    if (isCompactingRef.current) {
-      return { ok: false, error: "Already compacting." };
-    }
-    const socket = socketRef.current;
-    if (socket === undefined) {
-      return { ok: false, error: "Agent Thread socket is not connected." };
-    }
-    const state = runtimeStateRef.current;
-    if (state.status !== "ready") {
-      return { ok: false, error: "Agent Thread is not ready." };
-    }
-    try {
-      await socket.compact(args);
-      scheduleTreeRefresh();
-      return { ok: true };
-    } catch (error) {
-      return { ok: false, error: errorMessageFromUnknown(error) };
+  async function applyTitle(title: string) {
+    const cb = onAutoTitledRef.current;
+    if (cb !== undefined) {
+      await cb(title);
     }
   }
 
+  const armAutoTitleRef = useRef(armAutoTitle);
+  armAutoTitleRef.current = armAutoTitle;
+  const settleAutoTitleRef = useRef(settleAutoTitle);
+  settleAutoTitleRef.current = settleAutoTitle;
+
   return {
-    contextUsageState,
-    compactionSummary,
-    isCompacting,
-    runSlashCommandAction,
-    transcript,
+    messages,
+    isStreaming,
+    model,
+    runtimeState,
     treeNodes,
     currentLeafId,
-    respondToRequest,
-    abortPrompt,
-    runtimeState,
+    isCompacting,
+    toolOutputs,
+    extensionUiRequests,
+    respondToExtensionUi,
     sendPrompt,
-    steerPrompt,
-    pendingSteers,
-    clearQueuedSteers,
-    removeSteer,
+    abortPrompt,
     navigateTree,
-    switchModel,
-    titleGenerationState,
   };
 }
-
-class PiAgentSocket {
-  readonly ready: Promise<void>;
-  private readonly socket: WebSocket;
-  private readonly listeners = new Set<PiEventListener>();
-  private readonly pendingCommands = new Map<string, PendingCommand>();
-  private activePrompt: ActivePrompt | undefined;
-
-  private constructor(socket: WebSocket, ready: Promise<void>) {
-    this.socket = socket;
-    this.ready = ready;
-    this.socket.addEventListener("message", (event) => this.handleMessage(event));
-    this.socket.addEventListener("close", () => this.rejectPending("Agent Thread socket closed."));
-    this.socket.addEventListener("error", () => this.rejectPending("Agent Thread socket failed."));
-  }
-
-  static connect(input: { baseUrl: string; token: string; threadId: string }) {
-    const url = agentSocketUrl(input.baseUrl, input.threadId, input.token);
-    const socket = new WebSocket(url);
-    const { promise, resolve, reject } = Promise.withResolvers<void>();
-    socket.addEventListener("open", () => resolve(), { once: true });
-    socket.addEventListener(
-      "error",
-      () => reject(new Error("Agent Thread socket failed to connect.")),
-      { once: true },
-    );
-    return new PiAgentSocket(socket, promise);
-  }
-
-  onEvent(listener: PiEventListener) {
-    this.listeners.add(listener);
-    return () => {
-      this.listeners.delete(listener);
-    };
-  }
-
-  close(code?: number, reason?: string) {
-    this.socket.close(code, reason);
-  }
-
-  async prompt(message: string) {
-    this.aborted = false;
-    const id = crypto.randomUUID();
-    const { promise, resolve, reject } = Promise.withResolvers<string>();
-    this.activePrompt = { id, parts: [], resolve, reject };
-    await this.sendCommand({ id, type: "prompt", message });
-    return promise;
-  }
-
-  async abort() {
-    const id = crypto.randomUUID();
-    await this.sendCommand({ id, type: "abort" });
-    const activePrompt = this.activePrompt;
-    if (activePrompt !== undefined) {
-      this.activePrompt = undefined;
-      activePrompt.reject(new AbortError("Agent response interrupted by user."));
-    }
-  }
-  async steer(message: string) {
-    const id = crypto.randomUUID();
-    await this.sendCommand({ id, type: "steer", message });
-  }
-
-  async followUp(message: string) {
-    const id = crypto.randomUUID();
-    await this.sendCommand({ id, type: "follow_up", message });
-  }
-  async clearQueue() {
-    const id = crypto.randomUUID();
-    await this.sendCommand({ id, type: "clear_queue" });
-  }
-
-  respondToToolUi(requestId: string, response: unknown) {
-    return this.sendCommand({ id: requestId, type: "tool_ui_response", response });
-  }
-  async navigateTree(
-    targetId: string,
-    options?: {
-      summarize?: boolean;
-      customInstructions?: string;
-      replaceInstructions?: boolean;
-      label?: string;
-    },
-  ) {
-    const id = crypto.randomUUID();
-    const command: {
-      id: string;
-      type: string;
-      targetId: string;
-      options?: Record<string, unknown>;
-    } = { id, type: "navigate_tree", targetId };
-    if (options !== undefined) {
-      command.options = options;
-    }
-    await this.sendCommand(command);
-  }
-  async compact(customInstructions: string | undefined) {
-    const id = crypto.randomUUID();
-    await this.sendCommand({
-      id,
-      type: "compact",
-      ...(customInstructions === undefined ? {} : { customInstructions }),
-    });
-  }
-
-  /** Switch the active model for this agent session. */
-  async switchModel(modelLabel: string) {
-    const id = crypto.randomUUID();
-    await this.sendCommand({ id, type: "switch_model", modelLabel });
-  }
-  private sendCommand(command: {
-    id: string;
-    type: string;
-    message?: string;
-    response?: unknown;
-    targetId?: string;
-    options?: Record<string, unknown>;
-    customInstructions?: string;
-    modelLabel?: string;
-  }) {
-    if (this.socket.readyState !== WebSocket.OPEN) {
-      return Promise.reject(new Error("Agent Thread socket is not open."));
-    }
-
-    const { promise, resolve, reject } = Promise.withResolvers<PiCommandResponse>();
-    this.pendingCommands.set(command.id, { resolve, reject });
-    this.socket.send(JSON.stringify(command));
-    return promise.then((response) => {
-      if (!response.success) {
-        throw new Error(response.error ?? `Agent command ${command.type} failed.`);
-      }
-      return response;
-    });
-  }
-
-  private handleMessage(event: MessageEvent) {
-    const payload = parseSocketPayload(event.data);
-    if (payload === undefined) {
-      return;
-    }
-    if (isPiCommandResponse(payload)) {
-      this.handleResponse(payload);
-      return;
-    }
-    if (isPromptError(payload)) {
-      this.rejectActivePrompt(payload.message);
-      this.emit(payload);
-      return;
-    }
-    this.collectPromptText(payload);
-    this.emit(payload);
-    if (isSettledEvent(payload)) {
-      this.resolveActivePrompt();
-    }
-  }
-  private handleResponse(response: PiCommandResponse) {
-    const id = response.id;
-    if (id === undefined) {
-      return;
-    }
-    const pending = this.pendingCommands.get(id);
-    if (pending === undefined) {
-      return;
-    }
-    this.pendingCommands.delete(id);
-    pending.resolve(response);
-  }
-
-  private emit(event: unknown) {
-    for (const listener of this.listeners) {
-      listener(event);
-    }
-  }
-
-  private collectPromptText(event: unknown) {
-    const activePrompt = this.activePrompt;
-    if (activePrompt === undefined || !isRecord(event)) {
-      return;
-    }
-    const text = textDeltaFromEvent(event);
-    if (text !== undefined) {
-      activePrompt.parts.push(text);
-    }
-  }
-
-  private resolveActivePrompt() {
-    const activePrompt = this.activePrompt;
-    if (activePrompt === undefined) {
-      return;
-    }
-    this.activePrompt = undefined;
-    activePrompt.resolve(activePrompt.parts.join(""));
-  }
-
-  private rejectActivePrompt(message: string) {
-    const activePrompt = this.activePrompt;
-    if (activePrompt === undefined) {
-      return;
-    }
-    this.activePrompt = undefined;
-    activePrompt.reject(new Error(message));
-  }
-
-  private rejectPending(message: string) {
-    const error = new Error(message);
-    for (const pending of this.pendingCommands.values()) {
-      pending.reject(error);
-    }
-    this.pendingCommands.clear();
-    const activePrompt = this.activePrompt;
-    if (activePrompt !== undefined) {
-      this.activePrompt = undefined;
-      activePrompt.reject(error);
-    }
-  }
-}
-
-function agentSocketUrl(baseUrl: string, threadId: string, token: string) {
-  const url = new URL(baseUrl);
-  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-  url.pathname = `/agents/${encodeURIComponent(threadId)}/ws`;
-  url.searchParams.set("token", token);
-  return url;
-}
-
-function parseSocketPayload(data: unknown) {
-  if (typeof data !== "string") {
-    return;
-  }
-  try {
-    return JSON.parse(data) as unknown;
-  } catch {
-    return;
-  }
-}
-
-function isPiCommandResponse(value: unknown): value is PiCommandResponse {
-  return isRecord(value) && value.type === "response" && typeof value.command === "string";
-}
-
-function isPromptError(value: unknown): value is { type: "error"; message: string } {
-  return isRecord(value) && value.type === "error" && typeof value.message === "string";
-}
-
-function isSettledEvent(value: unknown) {
-  return (
-    isRecord(value) &&
-    (value.type === "agent_end" || value.type === "settled" || value.type === "turn_complete")
-  );
-}
-
-function textDeltaFromEvent(value: Record<string, unknown>) {
-  if (value.type === "message_update" && isRecord(value.assistantMessageEvent)) {
-    return textDeltaFromEvent(value.assistantMessageEvent);
-  }
-  if (value.type === "text_delta") {
-    const delta = value.delta;
-    if (typeof delta === "string") {
-      return delta;
-    }
-    const text = value.text;
-    return typeof text === "string" ? text : undefined;
-  }
-  if (value.type === "message_delta" && typeof value.delta === "string") {
-    return value.delta;
-  }
-  if (value.type === "message" && typeof value.text === "string") {
-    return value.text;
-  }
-  return;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-function isUntitledAgentThreadTitle(title: string) {
-  return title === "New Thread" || title === "Agent Thread";
-}
-async function waitForMinimumTitleGenerationDuration(startedAt: number) {
-  const remainingMs = minimumTitleGenerationVisibleMs - (performance.now() - startedAt);
-  if (remainingMs <= 0) {
-    return;
-  }
-
-  const { promise, resolve } = Promise.withResolvers<void>();
-  setTimeout(resolve, remainingMs);
-  await promise;
-}
-
-async function refreshContextUsage(
-  threadId: string,
-  setContextUsageState: (state: AgentThreadContextUsageState) => void,
-  runtime: { baseUrl: string; token: string },
-) {
-  try {
-    const sessionUsage = await waitForPiSessionContextUsage(
-      runtime.baseUrl,
-      runtime.token,
-      threadId,
-    );
-    if (sessionUsage !== undefined) {
-      setContextUsageState({ status: "ready", usage: sessionUsage });
-      return;
-    }
-
-    const usage = await getAgentThreadContextUsage({ threadId });
-    setContextUsageState(usage === null ? { status: "empty" } : { status: "ready", usage });
-  } catch (error) {
-    setContextUsageState({ status: "error", message: errorMessageFromUnknown(error) });
-  }
-}
-
-async function waitForPiSessionContextUsage(
-  baseUrl: string,
-  token: string,
-  threadId: string,
-): Promise<AgentThreadContextUsage | undefined> {
-  return waitForPiSessionContextUsageAttempt(baseUrl, token, threadId, [0, 100, 250, 500, 1000]);
-}
-
-async function waitForPiSessionContextUsageAttempt(
-  baseUrl: string,
-  token: string,
-  threadId: string,
-  retryDelaysMs: number[],
-): Promise<AgentThreadContextUsage | undefined> {
-  const [delayMs, ...remainingDelaysMs] = retryDelaysMs;
-  if (delayMs === undefined) {
-    return undefined;
-  }
-
-  if (delayMs > 0) {
-    await delay(delayMs);
-  }
-
-  const session = await loadPiSession(baseUrl, token, threadId);
-  if (session.contextUsage !== undefined) {
-    return session.contextUsage;
-  }
-
-  return waitForPiSessionContextUsageAttempt(baseUrl, token, threadId, remainingDelaysMs);
-}
-
-async function delay(durationMs: number) {
-  const { promise, resolve } = Promise.withResolvers<void>();
-  setTimeout(resolve, durationMs);
-  await promise;
-}
-
-type PiSessionPayload = {
-  messages: PiMessage[];
-  contextUsage: AgentThreadContextUsage | undefined;
-  compaction: { tokensBefore: number; summary: string } | undefined;
-};
-
-function fetchPiTree(baseUrl: string, token: string, threadId: string): Promise<AgentThreadTree> {
-  return fetch(`${baseUrl}/app/agent-threads/${encodeURIComponent(threadId)}/tree`, {
-    headers: { authorization: `Bearer ${token}` },
-  }).then(async (response) => {
-    if (!response.ok) {
-      throw new Error(`Failed to fetch Pi tree: ${response.status}`);
-    }
-    const payload = (await response.json()) as { nodes?: unknown; currentLeafId?: unknown };
-    return {
-      nodes: Array.isArray(payload.nodes) ? payload.nodes : [],
-      currentLeafId: typeof payload.currentLeafId === "string" ? payload.currentLeafId : undefined,
-    } satisfies AgentThreadTree;
-  });
-}
-
-async function loadPiSession(
-  baseUrl: string,
-  token: string,
-  threadId: string,
-): Promise<PiSessionPayload> {
-  const response = await fetch(
-    `${baseUrl}/app/agent-threads/${encodeURIComponent(threadId)}/session`,
-    {
-      headers: { authorization: `Bearer ${token}` },
-    },
-  );
-  if (!response.ok) {
-    throw new Error(`Failed to load Pi session: ${response.status} ${await response.text()}`);
-  }
-  const payload = (await response.json()) as {
-    messages?: unknown[];
-    contextUsage?: unknown;
-    compaction?: unknown;
-  };
-  const compaction = isCompactionSummary(payload.compaction) ? payload.compaction : undefined;
-  return {
-    messages: Array.isArray(payload.messages)
-      ? payload.messages.filter((message): message is PiMessage => isRecord(message))
-      : [],
-    contextUsage: isAgentThreadContextUsage(payload.contextUsage)
-      ? payload.contextUsage
-      : undefined,
-    compaction,
-  };
-}
-function isAgentThreadContextUsage(value: unknown): value is AgentThreadContextUsage {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  return (
-    typeof value.usedTokens === "number" &&
-    typeof value.contextWindow === "number" &&
-    typeof value.maxOutputTokens === "number" &&
-    typeof value.modelId === "string" &&
-    isRecord(value.usage) &&
-    isRecord(value.cost)
-  );
-}
-
-function isCompactionSummary(value: unknown): value is { tokensBefore: number; summary: string } {
-  return (
-    isRecord(value) && typeof value.tokensBefore === "number" && typeof value.summary === "string"
-  );
-}
-
-function errorMessageFromUnknown(error: unknown) {
-  if (typeof error === "string") {
-    return error;
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return "Agent Thread runtime failed.";
-}
-
-type SkillsListHookState = ReturnType<typeof useSkillsList>;
-
-async function expandForLocalTranscript(
-  message: string,
-  projectPath: string,
-  skillsList: SkillsListHookState,
-): Promise<string> {
-  if (skillsList.state.status !== "ready") {
-    return message;
-  }
-  const { bundled, project } = skillsList.state.result;
-  return expandSlashCommandInText(message, {
-    projectPath,
-    skills: [...bundled, ...project],
-  });
-}
-
-export { useAgentThreadConnection };
-export type {
-  AgentThreadContextUsageState,
-  AgentThreadRuntimeState,
-  AgentThreadTitleGenerationState,
-  PiTranscriptState,
-};

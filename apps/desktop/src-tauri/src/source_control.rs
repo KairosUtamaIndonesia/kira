@@ -4,7 +4,6 @@ use std::process::Command;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::org_config::fetch_model_catalog;
 use crate::persistence::PersistenceStore;
 
 #[derive(Debug, Deserialize)]
@@ -157,12 +156,6 @@ pub enum SourceControlError {
     MissingCommitMessage,
     #[error("path resolves outside the project folder: {0}")]
     PathOutsideProject(String),
-    #[error("no API key configured — sign in to generate commit messages")]
-    MissingApiKey,
-    #[error("no default model found in the organization catalog")]
-    MissingDefaultModel,
-    #[error("failed to read organization configuration: {0}")]
-    OrgConfig(String),
     #[error("failed to run git {operation}: {message}")]
     GitCommand { operation: String, message: String },
     #[error("failed to inspect Git repository: {0}")]
@@ -333,12 +326,9 @@ pub async fn source_control_diff(
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct StagedDiffLogResult {
+pub(crate) struct StagedDiffLogResult {
     pub staged_diff: String,
     pub recent_log: String,
-    pub provider_api_key: String,
-    pub provider_base_url: String,
-    pub upstream_model_id: String,
 }
 
 #[tauri::command]
@@ -360,27 +350,9 @@ pub async fn source_control_staged_diff_log(
         &["log", "--oneline", "-10", "--no-decorate"],
     )?;
 
-    let catalog = fetch_model_catalog()
-        .await
-        .map_err(|e| SourceControlError::OrgConfig(e.to_string()))?;
-
-    let default_model = catalog
-        .models
-        .iter()
-        .find(|m| m.is_default)
-        .ok_or(SourceControlError::MissingDefaultModel)?;
-
-    let provider_api_key = default_model
-        .api_key
-        .clone()
-        .ok_or(SourceControlError::MissingApiKey)?;
-
     Ok(StagedDiffLogResult {
         staged_diff,
         recent_log,
-        provider_api_key,
-        provider_base_url: default_model.provider_base_url.clone(),
-        upstream_model_id: default_model.upstream_model_id.clone(),
     })
 }
 
