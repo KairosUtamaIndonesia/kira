@@ -6,6 +6,13 @@ side-by-side with your app, and team management is coming through the cloud cons
 
 This is just the start. More surface, more capability, more agentic.
 
+## [3.5.2](https://github.com/KairosUtamaIndonesia/kira/compare/v3.5.1...v3.5.2) (2026-07-15)
+
+
+### Bug Fixes
+
+* propagate configured terminal shell to Agent Pi sidecar ([9f63424](https://github.com/KairosUtamaIndonesia/kira/commit/9f63424888fc3f1c9efc16067b8d90ecb252cdbe))
+
 ## [3.5.1](https://github.com/KairosUtamaIndonesia/kira/compare/v3.5.0...v3.5.1) (2026-07-13)
 
 
