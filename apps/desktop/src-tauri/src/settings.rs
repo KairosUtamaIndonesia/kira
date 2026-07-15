@@ -910,6 +910,16 @@ async fn update_terminal_settings(
     })
 }
 
+/// Returns the configured primary shell path only (never the Terminal Panel override).
+/// This is used by Agent Pi which should always receive the primary shell path,
+/// not the Terminal Panel override.
+pub async fn primary_shell_path(pool: &SqlitePool) -> Option<String> {
+    app_setting_value(pool, TERMINAL_SHELL_PATH_KEY)
+        .await
+        .ok()
+        .flatten()
+}
+
 /// Returns the effective shell path for the terminal, preferring the terminal-specific
 /// override when set, falling back to the primary shell path.
 pub async fn terminal_shell_path(pool: &SqlitePool) -> Option<String> {

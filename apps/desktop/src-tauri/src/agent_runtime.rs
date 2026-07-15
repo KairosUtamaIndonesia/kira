@@ -126,6 +126,12 @@ async fn launch_runtime(
     app: &tauri::AppHandle,
     store: &PersistenceStore,
 ) -> Result<Option<Child>, AgentRuntimeError> {
+    // Read the primary shell path so the production sidecar receives it, not the
+    // Terminal Panel override.  Only the per-child `cmd.env` bridge applies here;
+    // dev mode (tauri.ts) must rely on the developer setting KIRA_AGENT_SHELL_PATH
+    // manually because tauri.ts spawns the sidecar before Rust code runs.
+    let shell_path = crate::settings::primary_shell_path(store.pool()).await;
+
     if cfg!(debug_assertions) {
         return Ok(None);
     }
@@ -158,6 +164,9 @@ async fn launch_runtime(
         "KIRA_AGENT_PI_DATA_DIR",
         store.app_data_dir().to_string_lossy().as_ref(),
     );
+    if let Some(ref path) = shell_path {
+        cmd.env("KIRA_AGENT_SHELL_PATH", path);
+    }
     cmd.kill_on_drop(true);
     crate::process_ext::hide_console_window(cmd.as_std_mut());
 

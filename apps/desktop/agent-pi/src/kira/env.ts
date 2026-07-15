@@ -17,3 +17,16 @@ export function readPiDataDir(): string {
       : `${process.env.HOME}/.config/kira`)
   );
 }
+
+/**
+ * Reads the optional primary shell path configured for Agent Pi.
+ *
+ * Set by the Tauri backend via `KIRA_AGENT_SHELL_PATH` (production) or by
+ * the developer in their environment (dev via `tauri.ts`).
+ *
+ * Returns `undefined` when unset, allowing the consumer to fall back to
+ * the Pi SDK / system default.
+ */
+export function readAgentShellPath(): string | undefined {
+  return readOptionalEnv("KIRA_AGENT_SHELL_PATH");
+}

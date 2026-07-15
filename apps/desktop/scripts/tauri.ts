@@ -94,6 +94,11 @@ async function runTauriDev(args: readonly string[]) {
     KIRA_AGENT_DIR: agentDir,
     KIRA_VITE_PORT: String(devPort),
     KIRA_VITE_HMR_PORT: String(hmrPort),
+    // Passed through from process.env so developers can set it manually;
+    // in production the Rust backend reads from SQLite and sets it directly.
+    ...(process.env.KIRA_AGENT_SHELL_PATH !== undefined
+      ? { KIRA_AGENT_SHELL_PATH: process.env.KIRA_AGENT_SHELL_PATH }
+      : {}),
   };
 
   // 1. Start agent-pi sidecar

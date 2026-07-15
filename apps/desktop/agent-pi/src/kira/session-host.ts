@@ -11,12 +11,12 @@ import {
   type CreateAgentSessionResult,
   DefaultResourceLoader,
   SessionManager,
-  SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { type WebSocket } from "ws";
 
 import type { ClientCommand, TreeEntry } from "../protocol";
 
+import { createAgentSettings } from "./agent-settings";
 import { generateCommitMessage } from "./commit-message-generation";
 import { ExtensionUIBridge } from "./extension-ui-bridge";
 import guardrailsExtension from "./extensions/guardrails/index";
@@ -142,7 +142,7 @@ export class SessionHost {
           authStorage,
           modelRegistry,
           resourceLoader: project.resourceLoader,
-          settingsManager: SettingsManager.inMemory(),
+          settingsManager: createAgentSettings(),
           sessionManager,
           ...(model !== undefined && { model }),
           customTools: [askUserTool],
