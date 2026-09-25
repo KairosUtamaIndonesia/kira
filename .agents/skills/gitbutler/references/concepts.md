@@ -32,11 +32,9 @@ workspace (gitbutler/workspace)
 
 1. **No `git checkout`**: You don't switch between branches. All applied branches exist simultaneously in your workspace.
 
-2. **Multiple staging areas**: Each branch is like having its own `git add` staging area. You stage files to specific branches.
+2. **The `gitbutler/workspace` branch**: A merge commit containing all applied stacks. Don't interact with it directly - use `but` commands.
 
-3. **The `gitbutler/workspace` branch**: A merge commit containing all applied stacks. Don't interact with it directly - use `but` commands.
-
-4. **Applied vs Unapplied**: Control which branches are active:
+3. **Applied vs Unapplied**: Control which branches are active:
    - Applied branches: In your working directory
    - Unapplied branches: Exist but not active
    - Use `but apply`/`but unapply` to control
@@ -46,23 +44,51 @@ workspace (gitbutler/workspace)
 Every object gets a short, human-readable CLI ID shown in `but status`. IDs are generated per-session and are unique across all entity types (no two objects share an ID) — always read them from `but status`.
 
 ```
-Commits:    1b, 8f, c2     (short hex prefixes of the SHA, long enough to be unique)
+Commits:    1, kyn, mpq#0  (short change-ID prefix when the commit has one, sha prefix otherwise;
+                             a #N suffix disambiguates commits sharing a change ID)
 Branches:   fe, bu, ui     (unique 2–3 char substring of the branch name, e.g. "fe" from "feature-x";
                              falls back to auto-generated ID if no unique substring exists)
-Files:      g0, h0, i0     (auto-generated, 2–3 chars)
-Hunks:      j0, k1, l2     (auto-generated, 2–3 chars)
+Files:      g, qs, uo      (derived from the file path, long enough to be unique)
+Hunks:      g:5, uo:d      (<file-id>:<hunk-id>; the hunk part is derived from the hunk's content)
+Committed files: kyn:n     (<commit-id>:<file-id>, shown under each commit in `but status -fv`)
 Stacks:     m0, n0          (auto-generated, 2–3 chars)
 ```
 
-**Why?** Git commit SHAs are long (40 chars). CLI IDs are short (2-3 chars) and unique within your current workspace context.
+**Why?** Git commit SHAs are long (40 chars). CLI IDs are short, variable-length, and unique within your current workspace context. Commits, files, and hunks may use a single character when that is unambiguous.
+
+**Reading status output:** the first token on each line is that line's ID. Verbose commit lines append an informational `(sha …)` after the timestamp — it changes on every amend; do not pass it to commands.
+
+**Stability:** Branch short IDs identify branches only within the workspace snapshot that produced them; branch names remain stable across unrelated workspace mutations. File/hunk IDs copied from the current output generally remain usable across ordinary commits, so you can reference several in a row, including across chained `but commit` calls. If an ID stops resolving, re-read the diff and continue. Commit IDs are change-ID prefixes when the commit has a change ID and sha prefixes otherwise. Change-ID refs survive history edits (`amend`, `squash`, `move`, `uncommit`, `reword`); sha refs and `#N`-suffixed refs do not — a stale sha can silently resolve to the wrong commit. History edits may run in sequence off one status read when every ref involved is a change-ID ref; otherwise run them one at a time with `--status-after` to get the next ref.
 
 **Usage:** Pass these IDs as arguments to commands:
 
 ```bash
-but commit <branch-id> -m "message"      # Commit to branch
-but stage <file-or-hunk-id> <branch-id>  # Stage file or hunk to branch
-but rub <commit-id> <commit-id>          # Squash commits
+but commit -b <branch-name> -m "message" <file-or-hunk-id>   # Commit selected changes to a branch
+but amend -t <commit-id> <file-or-hunk-id> <file-or-hunk-id>  # Amend file(s) or hunk(s) into commit
+but squash <commit-id> -t <commit-id> -m "message"         # Squash commits
 ```
+
+IDs are positional and space-separated. `but help cli-ids` documents every ID kind in detail.
+
+**Linked worktrees** (experimental, only with the `worktreeManipulation` feature flag on): each
+active linked worktree gets its own ID and is drawn in `but status` as a lane — a braced
+`{<branch>}` heading (the worktree name when its `HEAD` is detached) nested above the commit the
+worktree rests on — another worktree's commit included, lanes nest recursively — or standing on
+its own below the stacks when it rests outside the workspace.
+The lane lists that checkout's uncommitted files and the commits the worktree owns; in `--json`
+they appear in a top-level `worktrees` array. The worktree ID on the heading names its whole
+uncommitted area the way `zz` names the main worktree's, and `<worktree-name>:<path>` scopes a
+filename to that checkout — `zz:<path>` keeps meaning the main worktree. A filename dirty in
+several checkouts at once is ambiguous; the error suggests the scoped forms. A worktree file or
+heading ID — like `zz` for the main checkout — works as a `but commit` change and a `but amend`
+source: the change lands on the target and leaves that worktree's uncommitted area. Without a
+target flag, worktree changes commit to the tip of the worktree's own branch; an explicit target
+commit or branch does not have to be the worktree's own. One operation reads from one checkout
+at a time — a selection mixing checkouts is refused. A worktree is also a target: `but commit`,
+`but move`, and `but pick` with `-b <worktree-id-or-its-branch-name>` or `--below <worktree-id>`
+place the commit on the tip of the branch the worktree has checked out (`--above` is refused —
+that is its uncommitted area). A worktree's own commits carry ordinary commit IDs: `reword`, `move`,
+`squash`, and `pick` accept them, and the worktree's branch and checkout follow the rewrite.
 
 ## Parallel vs Stacked Branches
 
@@ -85,7 +111,7 @@ Example: Adding a new API endpoint and updating button styles are independent.
 
 ### Stacked Branches (Dependent Work)
 
-**To stack an existing branch** on top of another: `but move <child-branch-name> <parent-branch-name>`.
+**To stack an existing branch** on top of another: `but move <child-branch-name> --above <parent-branch-name>`.
 
 **To create a new stacked branch** from scratch: `but branch new <name> -a <anchor>` — only use this when the child branch doesn't exist yet.
 
@@ -104,84 +130,53 @@ Example: User profile page needs authentication to be implemented first.
 
 **Stacking two existing branches:** If both branches already exist and you need to make one depend on the other, use top-level `move`:
 ```bash
-but move feature/frontend feature/backend
+but move feature/frontend --above feature/backend
 # Now frontend is stacked on top of backend — both in the same stack
 ```
 
 To tear off a branch from a stack:
 
 ```bash
-but move feature/frontend zz
+but move feature/frontend --unstack
 ```
 
-**Dependency tracking:** GitButler automatically tracks which changes depend on which commits. You can't stage dependent changes to the wrong branch.
+**Dependency tracking:** GitButler automatically tracks which changes depend on which commits. A dependent change can only be committed to the stack that contains the commits it depends on.
 
-## Multiple Staging Areas
+## The Editing Model
 
-Traditional git has ONE staging area:
+History editing is expressed as *sources* and a *target*. Sources are positional CLI IDs; the target
+is a flag. `zz` is a special ID meaning "the uncommitted area".
 
-```bash
-git add file1.js    # Stage to THE staging area
-git add file2.js    # Stage to THE staging area
-git commit          # Commit from THE staging area
-```
+`but squash` carries most of the model — what it does depends on the kinds you combine:
 
-GitButler has MULTIPLE staging areas (one per branch):
+| Sources          | Target (`-t`) | Operation                         | Example                       |
+| ---------------- | ------------- | --------------------------------- | ----------------------------- |
+| Commit(s)        | Commit        | Squash commits together           | `but squash mm -t nn -m "…"`  |
+| Branch           | Commit        | Squash a branch into a commit     | `but squash <branch-name> -t nn -m "…"` |
+| Commit(s)        | Branch        | Squash into the branch's newest   | `but squash mm -t <branch-name> -m "…"` |
+| Branch           | *(none)*      | Squash the branch into one commit | `but squash <branch-name> -m "…"`       |
+| Uncommitted file | Commit        | Amend the change into a commit    | `but squash a1 -t nn`         |
+| `zz`             | Commit        | Amend everything into a commit    | `but squash zz -t nn`         |
+| Commit           | `zz`          | Uncommit the commit               | `but squash mm -t zz`         |
+| Branch           | `zz`          | Uncommit and remove the branch    | `but squash <branch-name> -t zz`         |
+| Committed file   | Commit        | Move the file to another commit   | `but squash nn:a -t mm`       |
 
-```bash
-but stage file1.js api-branch    # Stage to api-branch's staging area
-but stage file2.js ui-branch     # Stage to ui-branch's staging area
-but commit api-branch -m "..."   # Commit from api-branch's staging area
-but commit ui-branch -m "..."    # Commit from ui-branch's staging area
-```
+**Message flags:** commits or branches compose a NEW message unless the target is `zz`, so without
+`-m` they open an editor and block — always pass one. The remaining rows reuse the target's message
+and need no flag, and `-t zz` rejects message flags outright.
 
-**Unassigned changes:** Files not assigned to any branch yet. Use `but status` to see them, then `but stage` to assign them.
+The two amend rows overlap with `but amend` — prefer `but amend -t nn a1`, which does only that and
+takes the same IDs. Reach for `squash` when the sources are commits, branches, or committed files,
+which `amend` does not accept.
 
-**Auto-assignment:** If only one branch is applied, changes may auto-assign to it.
+The other editing commands are narrower entry points on the same model:
 
-## The `but rub` Philosophy
-
-`but rub` is the core primitive operation: "rub two things together" to perform an action.
-
-### What Happens Based on Types
-
-The operation performed depends on what you combine:
-
-```
-SOURCE ↓ / TARGET →  │ zz (unassigned) │ Commit     │ Branch      │ Stack
-─────────────────────┼─────────────────┼────────────┼─────────────┼────────────
-File/Hunk            │ Unstage         │ Amend      │ Stage       │ Stage
-Commit               │ Undo            │ Squash     │ Move        │ -
-Branch (all changes) │ Unstage all     │ Amend all  │ Reassign    │ Reassign
-Stack (all changes)  │ Unstage all     │ -          │ Reassign    │ Reassign
-Unassigned (zz)      │ -               │ Amend all  │ Stage all   │ Stage all
-File-in-Commit       │ Uncommit        │ Move       │ Uncommit & assign │ -
-```
-
-`zz` is a special target meaning "unassigned" (no branch).
-
-**Common examples:**
-
-| Source | Target | Operation              | Example         |
-| ------ | ------ | ---------------------- | --------------- |
-| File   | Branch | Stage file to branch   | `but rub a1 bu` |
-| File   | Commit | Amend file into commit | `but rub a1 c3` |
-| Commit | Commit | Squash commits         | `but rub c2 c3` |
-| Commit | Branch | Move commit to branch  | `but rub c2 bu` |
-| File   | `zz`   | Unstage file           | `but rub a1 zz` |
-| Commit | `zz`   | Undo commit            | `but rub c2 zz` |
-| `zz`   | Branch | Stage all unassigned   | `but rub zz bu` |
-
-### Higher-Level Conveniences
-
-These commands are wrappers around `but rub`:
-
-- `but stage <file-or-hunk> <branch>` = `but rub <file-or-hunk> <branch>`
-- `but amend <file> <commit>` = `but rub <file> <commit>`
-- `but squash` = Multiple `but rub <commit> <commit>` operations
-- `but move` = commit move/reorder with position control, plus branch stack/tear-off (`<branch> <target-branch>` and `<branch> zz`)
-
-**Why this design?** One powerful primitive is easier to understand and maintain than many specialized commands. Once you understand `but rub`, you understand the editing model.
+- `but amend -t <commit> <changes>` — amend uncommitted files/hunks into a known commit
+- `but uncommit <commits-branches-or-committed-files>` — move committed work back to uncommitted;
+  branches are removed, and committed files in one call must come from one commit
+- `but move <sources> --above|--below|--branch|--unstack` — relocate commits, committed files, or a
+  branch; this is the command with position control
+- `but discard <changes>` — drop work instead of relocating it
 
 ## Dependency Tracking
 
@@ -199,8 +194,8 @@ The uncommitted change **depends on** C1 (because it calls `foo()`).
 
 **Implications:**
 
-1. Can't stage this change to a branch that doesn't have C1
-2. `but absorb` will automatically amend it into C1 (or a commit after C1)
+1. Can't commit this change to a stack that doesn't contain C1
+2. When amending it into history, it belongs in C1 (or a commit after C1)
 3. If you try to move the change, GitButler prevents invalid operations
 
 ### Why This Matters
@@ -208,7 +203,7 @@ The uncommitted change **depends on** C1 (because it calls `foo()`).
 Prevents you from creating broken states:
 
 - Can't move dependent code away from its dependencies
-- Can't stage changes to wrong branches
+- Can't commit changes to the wrong stack
 - Ensures each branch remains independently functional
 
 ## Empty Commits as Placeholders
@@ -216,59 +211,21 @@ Prevents you from creating broken states:
 You can create empty commits:
 
 ```bash
-but commit empty --before c3
-but commit empty --after c3
+but commit --empty --below nn -m "TODO: Add error handling"
+but commit --empty --above nn -m "TODO: Add error handling"
 ```
 
 **Use cases:**
 
 1. **Mark future work:** Create empty commit as placeholder for changes you'll make
-2. **Mark targets:** Use with `but mark <empty-commit-id>` so future changes auto-amend into it
-3. **Organize history:** Add semantic markers in commit history
+2. **Organize history:** Add semantic markers in commit history
 
 Example workflow:
 
 ```bash
-but commit empty --before c5
-but reword <empty-commit-id> -m "TODO: Add error handling"
-but mark <empty-commit-id>
-# Now work on error handling, changes auto-amend into the placeholder
-```
-
-## Auto-Staging and Auto-Commit (Marks)
-
-Set a "mark" on a branch or commit to automatically organize new changes.
-
-### Mark a Branch
-
-```bash
-but mark <branch-id>
-```
-
-New unassigned changes automatically stage to this branch. Useful when focused on one feature.
-
-### Mark a Commit
-
-```bash
-but mark <commit-id>
-```
-
-New changes automatically amend into this commit. Useful for iterative refinement.
-
-### Remove Marks
-
-```bash
-but mark <id> --delete    # Remove specific mark
-but unmark                # Remove all marks
-```
-
-**Example workflow:**
-
-```bash
-but branch new refactor
-but mark <refactor-branch-id>
-# Make lots of changes - they all auto-stage to refactor branch
-but unmark
+but commit --empty --below rr -m "TODO: Add error handling"
+# Later, amend the error handling changes into the placeholder
+but amend -t <empty-commit-id> <file-id>
 ```
 
 ## Operation History (Oplog)
@@ -279,8 +236,7 @@ Every operation in GitButler is recorded in the oplog (operation log).
 
 - Branch creation/deletion
 - Commits
-- Stage operations
-- Rub/squash/move operations
+- Squash/amend/move/uncommit/discard operations
 - Push/pull operations
 
 ### Using Oplog
@@ -308,7 +264,7 @@ Branches can be in two states:
 - Active in your workspace
 - Merged into `gitbutler/workspace`
 - Changes visible in working directory
-- Can make changes, commit, stage files
+- Can make changes and commit
 
 ### Unapplied Branches
 
@@ -321,7 +277,7 @@ Branches can be in two states:
 
 ```bash
 but apply <branch-name>    # Make branch active
-but unapply <id>           # Make branch inactive
+but unapply <branch-name>  # Make branch inactive
 ```
 
 **Use cases:**
@@ -336,11 +292,10 @@ When `but pull` causes conflicts, affected commits are marked as conflicted.
 
 ### Resolution Workflow
 
-1. **Identify:** `but status` shows conflicted commits
-2. **Enter mode:** `but resolve <commit-id>`
-3. **Fix conflicts:** Edit files, remove conflict markers
-4. **Check:** `but resolve status` shows remaining conflicts
-5. **Finalize:** `but resolve finish` or `but resolve cancel`
+1. **Identify:** the `but pull` summary lists each conflicted commit's ID, oldest first (`but status` also shows them)
+2. **Enter mode:** `but resolve <commit-id>` — it prints the conflict regions with line numbers. With several conflicted commits, resolve the oldest first: finishing a lower commit rebases the ones above it
+3. **Fix conflicts:** Edit files, remove conflict markers (`but resolve status` re-lists what remains when several files are conflicted)
+4. **Finalize:** `but resolve finish` or `but resolve cancel` — finish reports leftover markers and the surviving uncommitted changes, so no follow-up check is needed
 
 ### During Resolution
 
@@ -364,9 +319,9 @@ Git commands that don't modify state are safe to use:
 **Don't use in a GitButler workspace:**
 
 - `git status` - Misleading: shows merged workspace state, not individual stacks; missing CLI IDs that agents need
-- `git commit` - Commits to wrong place (bypasses branch assignment)
+- `git commit` - Commits to the workspace merge commit, not your branch
 - `git checkout` - Breaks workspace model
 - `git rebase` - Conflicts with GitButler's management
-- `git merge` - Use `but merge` instead
+- `git merge` - Use `but land` instead
 
 **Rule of thumb:** If it reads, it's fine. If it writes, use `but` instead.

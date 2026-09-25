@@ -1,54 +1,41 @@
 {
-  "name": "kira-v3",
-  "version": "3.5.2",
+  "name": "kira",
+  "version": "0.1.0",
   "private": true,
+  "description": "Kira desktop agent",
   "workspaces": [
     "apps/*",
-    "apps/desktop/agent-pi",
     "packages/*"
   ],
   "type": "module",
   "scripts": {
-    "build": "turbo build",
-    "check": "turbo check",
-    "check:hook": "turbo check --ui=stream --no-color --output-logs=errors-only",
-    "dev": "turbo dev",
-    "dev:cloud": "turbo dev --filter=@kira/cloud",
-    "dev:desktop": "turbo tauri:dev --filter=@kira/desktop",
-    "format": "oxfmt AGENTS.md README.md docs package.json turbo.json .oxfmtrc.json .oxlintrc.json && turbo format",
-    "format:all": "turbo format:all",
-    "format:all:check": "turbo format:all:check",
-    "format:check": "oxfmt --check AGENTS.md README.md docs package.json turbo.json .oxfmtrc.json .oxlintrc.json && turbo format:check",
-    "lint": "turbo lint",
-    "lint:all": "turbo lint:all",
-    "lint:fix": "turbo lint:fix",
-    "setup:hooks": "lefthook install",
-    "tauri": "turbo tauri --filter=@kira/desktop --",
-    "test:rust": "turbo test:rust --filter=@kira/desktop",
-    "turbo": "turbo"
-  },
-  "dependencies": {
-    "nodemailer": "^8.0.10",
-    "portless": "^0.14.0",
-    "react": "19.2.7",
-    "react-dom": "19.2.7",
-    "react-email": "6.5.0"
+    "postinstall": "node scripts/patch-pi-config-dir.mjs && node apps/desktop/node_modules/electron/install.js",
+    "dev:desktop": "bun run --cwd apps/desktop dev -- --remoteDebuggingPort 1987",
+    "dev:admin": "bun run --cwd apps/admin dev",
+    "dev:server": "bun run --cwd apps/server dev",
+    "dev:cliproxyapi": "bun run scripts/dev-cliproxyapi.ts",
+    "dev:upstream": "bun run apps/server/src/test-support/fake-upstream.ts",
+    "build:desktop": "bun run --cwd apps/desktop build",
+    "build:admin": "bun run --cwd apps/admin build",
+    "package:desktop": "bun run --cwd apps/desktop package",
+    "dist:desktop": "bun run --cwd apps/desktop dist",
+    "test": "bun run --cwd apps/desktop test && bun run --cwd apps/server test && bun run --cwd apps/admin test",
+    "typecheck": "bun run --cwd apps/desktop typecheck && bun run --cwd apps/server typecheck && bun run --cwd apps/admin typecheck",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint --fix .",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check ."
   },
   "devDependencies": {
-    "@commitlint/cli": "^21.0.2",
-    "@commitlint/config-conventional": "^21.0.2",
-    "@react-email/ui": "6.5.0",
-    "@typescript/native-preview": "^7.0.0-dev.20260607.1",
-    "lefthook": "^2.1.9",
-    "oxfmt": "^0.53.0",
-    "oxlint": "^1.68.0",
-    "turbo": "^2.6.3"
+    "oxfmt": "^0.68.0",
+    "oxlint": "^1.83.0",
+    "typescript": "^7.0.2"
   },
   "engines": {
-    "node": "^20.9.0 || ^22.11.0"
+    "bun": ">=1.2.0",
+    "node": ">=22.19.0"
   },
-  "packageManager": "bun@1.3.12",
-  "patchedDependencies": {
-    "@better-auth/kysely-adapter@1.6.14": "patches/@better-auth%2Fkysely-adapter@1.6.14.patch"
-  }
+  "trustedDependencies": [
+    "electron"
+  ]
 }

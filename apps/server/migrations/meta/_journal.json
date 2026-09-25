@@ -1,0 +1,104 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1789720646760,
+      "tag": "0000_foundry-state",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1789857092953,
+      "tag": "0001_thin_rockslide",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789994208643,
+      "tag": "0002_previous_swarm",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790014142639,
+      "tag": "0003_purple_gambit",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790055097056,
+      "tag": "0004_mushy_pet_avengers",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790055724932,
+      "tag": "0005_yummy_wonder_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790056973469,
+      "tag": "0006_outgoing_jack_murdock",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790060615286,
+      "tag": "0007_romantic_eternity",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790073458994,
+      "tag": "0008_regular_rachel_grey",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790148553817,
+      "tag": "0009_question_ticket_kinds",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790155357151,
+      "tag": "0010_shaping_ticket_links",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790155357152,
+      "tag": "0011_approved_decisions",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790155357153,
+      "tag": "0012_ticket_outcomes",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790200000000,
+      "tag": "0013_project_glossary",
+      "breakpoints": true
+    }
+  ]
+}

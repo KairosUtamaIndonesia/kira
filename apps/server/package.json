@@ -1,0 +1,35 @@
+{
+  "name": "@kira/server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Kira platform API",
+  "type": "module",
+  "exports": {
+    "./contract": "./src/contract.ts"
+  },
+  "scripts": {
+    "dev": "bun --hot src/index.ts",
+    "start": "bun src/index.ts",
+    "admin": "bun src/admin.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate"
+  },
+  "dependencies": {
+    "@better-auth/api-key": "^1.7.5",
+    "@better-auth/drizzle-adapter": "1.7.5",
+    "@better-auth/electron": "1.7.5",
+    "@elysiajs/openapi": "^1.4.16",
+    "@t3-oss/env-core": "^0.13.11",
+    "better-auth": "1.7.5",
+    "drizzle-orm": "^0.45.2",
+    "elysia": "^1.4.30",
+    "pg": "^8.23.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.10"
+  }
+}

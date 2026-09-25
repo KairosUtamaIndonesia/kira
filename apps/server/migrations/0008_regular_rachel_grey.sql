@@ -1,0 +1,1 @@
+ALTER TABLE "claim" ADD CONSTRAINT "claim_workerId_worker_id_fk" FOREIGN KEY ("workerId") REFERENCES "public"."worker"("id") ON DELETE restrict ON UPDATE no action;

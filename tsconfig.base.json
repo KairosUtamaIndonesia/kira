@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noFallthroughCasesInSwitch": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    // Main-process imports are written with explicit .ts extensions so the code
+    // also runs under plain Node (needed for `node --test`, and for the fact
+    // that Electron's main process is Node, not Bun).
+    "allowImportingTsExtensions": true
+  }
+}

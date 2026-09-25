@@ -1,1 +1,0 @@
-ALTER TABLE "organization_models" ALTER COLUMN "provider_base_url" DROP NOT NULL;
