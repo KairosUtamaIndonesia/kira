@@ -552,6 +552,11 @@ describe('a ticket', () => {
     // all later rows matters: Drizzle applies the entries after the newest recorded row,
     // so leaving 0010-0012 recorded would skip 0009 entirely.
     await database.$client.query('ALTER TABLE "ticket" DROP COLUMN IF EXISTS "sourceChatId"');
+    await database.$client.query('ALTER TABLE "ticket" DROP COLUMN IF EXISTS "status"');
+    await database.$client.query('ALTER TABLE "ticket" DROP COLUMN IF EXISTS "priority"');
+    await database.$client.query('ALTER TABLE "ticket" DROP COLUMN IF EXISTS "assigneeId"');
+    await database.$client.query('ALTER TABLE "ticket" DROP COLUMN IF EXISTS "tags"');
+    await database.$client.query('DROP TABLE IF EXISTS ticket_relationship CASCADE');
     await database.$client.query('DROP TABLE IF EXISTS glossary_history CASCADE');
     await database.$client.query('DROP TABLE IF EXISTS glossary_entry CASCADE');
     await database.$client.query('DROP TABLE IF EXISTS outcome CASCADE');
