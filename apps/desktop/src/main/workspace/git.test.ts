@@ -97,7 +97,7 @@ function gitRuns(): boolean {
  * would not.
  */
 function isolatedGit(): void {
-  const home = tempDir('foundry-git-home-');
+  const home = tempDir('kira-git-home-');
 
   writeFileSync(join(home, 'ignore'), '*.globalignore\n');
   writeFileSync(join(home, 'gitconfig'), `[core]\n\texcludesFile = ${join(home, 'ignore')}\n`);
@@ -119,7 +119,7 @@ function isolatedGit(): void {
  * anything in this checkout.
  */
 function writtenCheckout(): string {
-  const root = tempDir('foundry-checkout-');
+  const root = tempDir('kira-checkout-');
 
   execFileSync('git', ['-C', root, 'init'], { stdio: 'ignore' });
   writeFileSync(join(root, '.gitignore'), 'node_modules/\n*.env\n');
@@ -201,9 +201,9 @@ function committedCheckout(): string {
       '-C',
       root,
       '-c',
-      'user.email=foundry@test',
+      'user.email=kira@test',
       '-c',
-      'user.name=Foundry',
+      'user.name=Kira',
       'commit',
       '-m',
       'the state this was written in',
@@ -251,7 +251,7 @@ test('a folder that is not a checkout is null, which is git saying nothing', asy
     return;
   }
 
-  const folder = tempDir('foundry-not-a-checkout-');
+  const folder = tempDir('kira-not-a-checkout-');
 
   assert.equal(await listedByGit(folder), null);
   assert.equal(await changedByGit(folder), null);

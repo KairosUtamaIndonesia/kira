@@ -113,13 +113,13 @@ import { approvedSpecTicket } from './specPane';
  */
 const PENDING_ID = 'pending-message';
 const STREAMING_ID = 'streaming-reply';
-const CHAT_SORT_STORAGE_KEY = 'foundry.chat-sort';
+const CHAT_SORT_STORAGE_KEY = 'kira.chat-sort';
 const CHAT_SORT_OPTIONS: ChatSort[] = ['recent', 'created', 'alphabetical'];
 // Astryx's own floor (180px) truncates a chat row's title to one or two
 // letters before its timestamp and menu even fit — 320px is the width a
 // live resize check landed on where every row in this sidebar (a chat title
 // with a timestamp trailing it, a workspace name) still reads in full.
-const SIDEBAR_RESIZABLE = { autoSaveId: 'foundry.sidebar', minWidth: 320 };
+const SIDEBAR_RESIZABLE = { autoSaveId: 'kira.sidebar', minWidth: 320 };
 
 /**
  * A pane that is parked — a new chat kept for its words while another chat is
@@ -222,7 +222,7 @@ export default function App() {
   const [workWorkspaceId, setWorkWorkspaceId] = useState<string | null>(null);
   const [workTicketId, setWorkTicketId] = useState<string | null>(null);
   const [usage, setUsage] = useState<Usage | null>(null);
-  /** The models Foundry offers, in the pool's order, as the picker lists them. */
+  /** The models Kira offers, in the pool's order, as the picker lists them. */
   const [models, setModels] = useState<ModelOption[]>([]);
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
@@ -275,7 +275,7 @@ export default function App() {
    * The chat on screen, where the sidebar has it — a chat being composed is not
    * in the list yet, which is why the header names it by what it is — and what
    * the workbench calls the folder it is showing: a workspace's own name, or null
-   * for a workspace Foundry made for the chat, which the pane names in words
+   * for a workspace Kira made for the chat, which the pane names in words
    * because a folder named after a UUID says nothing to anyone.
    */
   const currentChat = chats.find((chat) => chat.id === currentId);
@@ -338,7 +338,7 @@ export default function App() {
         workspaceId !== undefined &&
         approvedSpecTicket(nextShaping) !== null
       ) {
-        const queue = await window.foundry.loadQueue(workspaceId);
+        const queue = await window.kira.loadQueue(workspaceId);
         if (queue.ok) {
           setSpecQueue(queue.value);
           setSpecQueueChatId(result.value.currentId);
@@ -355,7 +355,7 @@ export default function App() {
   );
 
   const refresh = useCallback(async () => {
-    await showState(await window.foundry.loadChat());
+    await showState(await window.kira.loadChat());
   }, [showState]);
 
   /**
@@ -367,24 +367,24 @@ export default function App() {
    * when a sign-in finishes in the browser.
    */
   useEffect(() => {
-    const unsubscribe = window.foundry.onAuthEvent(setAuth);
-    const stopUsage = window.foundry.onUsageEvent(setUsage);
-    void window.foundry.loadAuth().then((result) => {
+    const unsubscribe = window.kira.onAuthEvent(setAuth);
+    const stopUsage = window.kira.onUsageEvent(setUsage);
+    void window.kira.loadAuth().then((result) => {
       setAuth(result.ok ? result.value : { signedIn: false });
     });
     // Read as well as listened for, for the same reason as the auth pair above:
     // the news of a reading that arrived before this window existed was sent to
     // nobody. A reading of null is "no reading", which draws nothing.
-    void window.foundry.loadUsage().then((result) => {
+    void window.kira.loadUsage().then((result) => {
       setUsage(result.ok ? result.value : null);
     });
     // The models the picker offers. Read here rather than carried in the chat
     // state, because the list is the same in every chat and only moves when the
     // server is asked again; which of them a chat runs on is in the chat state,
     // because that is the chat's own. Read once, so a model the pool drops while
-    // the window is open stays on the list until Foundry is restarted — choosing
+    // the window is open stays on the list until Kira is restarted — choosing
     // it is refused by the main process rather than quietly run.
-    void window.foundry.loadModels().then((result) => {
+    void window.kira.loadModels().then((result) => {
       setModels(result.ok ? result.value : []);
     });
 
@@ -395,11 +395,11 @@ export default function App() {
   }, []);
 
   const signIn = useCallback(() => {
-    void window.foundry.signIn();
+    void window.kira.signIn();
   }, []);
 
   const signOut = useCallback(() => {
-    void window.foundry.signOut();
+    void window.kira.signOut();
   }, []);
 
   function showSurface(next: 'chat' | 'settings' | 'work' | 'work-home'): void {
@@ -407,7 +407,7 @@ export default function App() {
   }
 
   useEffect(() => {
-    const unsubscribe = window.foundry.onChatEvent((event) => {
+    const unsubscribe = window.kira.onChatEvent((event) => {
       if (event.type === 'questionnaire-closed') {
         setQuestionnaireDrafts((drafts) => {
           const { [event.requestId]: _closed, ...remaining } = drafts;
@@ -484,7 +484,7 @@ export default function App() {
       void refresh();
     });
 
-    void window.foundry.loadChat().then(showState);
+    void window.kira.loadChat().then(showState);
 
     return unsubscribe;
   }, [currentId, refresh, showState]);
@@ -513,7 +513,7 @@ export default function App() {
         },
       });
 
-      const result = await window.foundry.sendMessage(text);
+      const result = await window.kira.sendMessage(text);
 
       if (!result.ok) {
         // Taking the message back only applies where it was sent: the window may
@@ -541,7 +541,7 @@ export default function App() {
    */
   const chooseModel = useCallback(
     async (chosen: string): Promise<void> => {
-      const result = await window.foundry.chooseModel(chosen);
+      const result = await window.kira.chooseModel(chosen);
 
       if (!result.ok) {
         setError({ chatId: currentId, message: result.error });
@@ -556,7 +556,7 @@ export default function App() {
   /** Change this chat's mode; the main process owns and persists the choice. */
   const chooseChatMode = useCallback(
     async (next: ChatMode): Promise<void> => {
-      const result = await window.foundry.setChatMode(next);
+      const result = await window.kira.setChatMode(next);
       if (!result.ok) {
         setError({ chatId: currentId, message: result.error });
         return;
@@ -574,7 +574,7 @@ export default function App() {
         return;
       }
 
-      const result = await window.foundry.switchBranch(messageId);
+      const result = await window.kira.switchBranch(messageId);
 
       if (!result.ok) {
         setError({ chatId: currentId, message: result.error });
@@ -601,7 +601,7 @@ export default function App() {
   const replace = useCallback(
     async (messageId: string, text: string): Promise<void> => {
       const replaced = transcript.messages.find((message) => message.id === messageId);
-      const taken = await window.foundry.editMessage(messageId);
+      const taken = await window.kira.editMessage(messageId);
 
       if (!taken.ok) {
         setError({ chatId: currentId, message: taken.error });
@@ -707,10 +707,10 @@ export default function App() {
   function decideProposal(proposalId: string, verdict: ProposalVerdict): Promise<string | null> {
     return answer(() =>
       verdict === 'approve'
-        ? window.foundry.approveProposal(proposalId)
+        ? window.kira.approveProposal(proposalId)
         : verdict === 'reject'
-          ? window.foundry.rejectProposal(proposalId)
-          : window.foundry.sendBackOutcome(proposalId),
+          ? window.kira.rejectProposal(proposalId)
+          : window.kira.sendBackOutcome(proposalId),
     );
   }
 
@@ -726,7 +726,7 @@ export default function App() {
    * and says nothing about it.
    */
   async function addWorkspace(): Promise<void> {
-    const added = await run(() => window.foundry.addWorkspace());
+    const added = await run(() => window.kira.addWorkspace());
     if (added === null) return;
 
     setWorkWorkspaceId(added.id);
@@ -754,7 +754,7 @@ export default function App() {
    * open so the person can retry without losing the project they chose.
    */
   async function linkProjectWorkspace(projectId: string): Promise<string | null> {
-    const added = await window.foundry.addWorkspace();
+    const added = await window.kira.addWorkspace();
     if (!added.ok) return added.error;
     if (added.value === null) return null;
 
@@ -772,7 +772,7 @@ export default function App() {
     const joined =
       workspace.projectId === projectId
         ? { ok: true as const, value: workspace }
-        : await window.foundry.joinWorkspace(workspace.id, { kind: 'existing', projectId });
+        : await window.kira.joinWorkspace(workspace.id, { kind: 'existing', projectId });
     if (!joined.ok) return joined.error;
 
     setWorkspaces((held) =>
@@ -789,7 +789,7 @@ export default function App() {
    * where they were working: they are filed nowhere until they are filed again.
    */
   async function removeWorkspace(id: string): Promise<void> {
-    await run(() => window.foundry.removeWorkspace(id));
+    await run(() => window.kira.removeWorkspace(id));
   }
 
   /**
@@ -799,7 +799,7 @@ export default function App() {
    * moment it might otherwise feel like a loss.
    */
   async function archiveChat(id: string): Promise<void> {
-    await run(() => window.foundry.archiveChat(id), id);
+    await run(() => window.kira.archiveChat(id), id);
     toast({
       body: 'Chat archived.',
       endContent: (
@@ -810,7 +810,7 @@ export default function App() {
 
   /** Bring a chat back from being put away. */
   async function restoreChat(id: string): Promise<void> {
-    await run(() => window.foundry.restoreChat(id), id);
+    await run(() => window.kira.restoreChat(id), id);
   }
 
   /**
@@ -819,7 +819,7 @@ export default function App() {
    * could not be — so a refusal is never taken for a deletion.
    */
   async function deleteChat(id: string): Promise<void> {
-    await run(() => window.foundry.deleteChat(id), id);
+    await run(() => window.kira.deleteChat(id), id);
     setDeleting(null);
   }
 
@@ -829,7 +829,7 @@ export default function App() {
    * point of one: the same files, the same instructions beside them.
    */
   async function startChat(workspaceId: string | null): Promise<void> {
-    await switchChat(() => window.foundry.startChat(workspaceId));
+    await switchChat(() => window.kira.startChat(workspaceId));
   }
 
   /**
@@ -862,7 +862,7 @@ export default function App() {
    * chat being forked from stays where it is, branches and all.
    */
   async function forkFrom(messageId: string): Promise<void> {
-    await switchChat(() => window.foundry.forkChat(messageId));
+    await switchChat(() => window.kira.forkChat(messageId));
   }
 
   /**
@@ -875,7 +875,7 @@ export default function App() {
   const give = useCallback(
     async (text: string, lane: QueuedLine['lane']): Promise<void> => {
       const wroteIn = currentId;
-      const result = await window.foundry.queueMessage(text, lane);
+      const result = await window.kira.queueMessage(text, lane);
 
       if (!result.ok) {
         setError({ chatId: wroteIn, message: result.error });
@@ -900,7 +900,7 @@ export default function App() {
 
   /** Take back the words still waiting to be read, so they can be said differently. */
   const takeBack = useCallback(async (): Promise<void> => {
-    const result = await window.foundry.takeQueuedBack();
+    const result = await window.kira.takeQueuedBack();
 
     if (!result.ok) {
       setError({ chatId: currentId, message: result.error });
@@ -917,7 +917,7 @@ export default function App() {
    * yet come back to the box, because stopping is how you change your mind.
    */
   async function stop(): Promise<void> {
-    const result = await window.foundry.stopChat();
+    const result = await window.kira.stopChat();
 
     if (!result.ok) {
       setError({ chatId: currentId, message: result.error });
@@ -946,7 +946,7 @@ export default function App() {
       chat={chat}
       isCurrent={chat.id === currentId}
       isRunning={running.includes(chat.id)}
-      onOpen={() => void switchChat(() => window.foundry.openChat(chat.id))}
+      onOpen={() => void switchChat(() => window.kira.openChat(chat.id))}
       onArchive={() => void archiveChat(chat.id)}
       onDelete={() => setDeleting(chat)}
     />
@@ -1025,11 +1025,11 @@ export default function App() {
     onTakeBack: takeBack,
     onRestored,
     onAnswerQuestionnaire: async (threadId, requestId, result) => {
-      const answered = await window.foundry.answerQuestionnaire(threadId, requestId, result);
+      const answered = await window.kira.answerQuestionnaire(threadId, requestId, result);
       return answered.ok ? null : answered.error;
     },
     onCancelQuestionnaire: async (threadId, requestId) => {
-      const cancelled = await window.foundry.cancelQuestionnaire(threadId, requestId);
+      const cancelled = await window.kira.cancelQuestionnaire(threadId, requestId);
       return cancelled.ok ? null : cancelled.error;
     },
     models,
@@ -1075,7 +1075,7 @@ export default function App() {
             // somebody is in Settings, so the whole rail becomes Settings'
             // instead of just the content beside it.
             <SideNav
-              header={<SideNavHeading heading="Settings" icon={<FoundryMark />} />}
+              header={<SideNavHeading heading="Settings" icon={<KiraMark />} />}
               collapsible
               resizable={SIDEBAR_RESIZABLE}
               footer={
@@ -1126,7 +1126,7 @@ export default function App() {
             </SideNav>
           ) : (
             <SideNav
-              header={<FoundrySideNavHeader />}
+              header={<KiraSideNavHeader />}
               collapsible={{ hasButton: false }}
               resizable={SIDEBAR_RESIZABLE}
               // Settings and sign out both belong to the account using this window
@@ -1276,7 +1276,7 @@ export default function App() {
             // A run's chat is a chat, so the ticket hands the window to it rather than
             // drawing the run's words a second time in the panel (GH #68).
             chatIds={chats.map((each) => each.id)}
-            onOpenChat={(chatId) => void switchChat(() => window.foundry.openChat(chatId))}
+            onOpenChat={(chatId) => void switchChat(() => window.kira.openChat(chatId))}
             onJoined={(joined) =>
               setWorkspaces((held) => held.map((each) => (each.id === joined.id ? joined : each)))
             }
@@ -1397,12 +1397,12 @@ export default function App() {
 }
 
 /**
- * Foundry's mark in the one place the wordmark isn't: the collapsed rail hides
+ * Kira's mark in the one place the wordmark isn't: the collapsed rail hides
  * `SideNavHeading`'s text and shows only its `icon` slot, which is otherwise
  * empty. Built from theme tokens — the accent color and the square corners the
  * theme already commits to — rather than a drawn asset, since there isn't one.
  */
-function FoundryMark() {
+function KiraMark() {
   return (
     <span className="brand-mark" aria-hidden="true">
       F
@@ -1410,12 +1410,12 @@ function FoundryMark() {
   );
 }
 
-function FoundrySideNavHeader() {
+function KiraSideNavHeader() {
   const { isCollapsed } = useSideNavCollapse();
 
   return (
     <div className={isCollapsed ? 'side-nav-header side-nav-header-collapsed' : 'side-nav-header'}>
-      <SideNavHeading heading="Foundry" icon={<FoundryMark />} />
+      <SideNavHeading heading="Kira" icon={<KiraMark />} />
       <SideNavCollapseButton>
         <Icon icon={PanelLeft} size="sm" />
       </SideNavCollapseButton>
@@ -1492,7 +1492,7 @@ function AccountMenu({
 }
 
 /**
- * The signed-in account's initial, drawn the same square way as `FoundryMark`
+ * The signed-in account's initial, drawn the same square way as `KiraMark`
  * so both read as the rail's two identity marks — but in a neutral fill,
  * since this one names a person rather than the product.
  */
@@ -1803,7 +1803,7 @@ function ChatPane({
   usage: Usage | null;
   /** What the chat on screen has used, or null when there is no session in it yet. */
   chatUsage: ChatUsage | null;
-  /** The models Foundry offers, in the pool's order. */
+  /** The models Kira offers, in the pool's order. */
   models: ModelOption[];
   /** The model this chat runs on, or null while it has chosen none. */
   modelId: string | null;
@@ -2260,7 +2260,7 @@ function GlossaryNote({ change }: { change: GlossaryChangeNote }) {
 
   const undo = async (): Promise<void> => {
     setState('working');
-    const result = await window.foundry.undoGlossary(
+    const result = await window.kira.undoGlossary(
       change.workspaceId,
       change.entryId,
       change.version,

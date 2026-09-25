@@ -134,7 +134,7 @@ describe('the usage ledger', () => {
 /**
  * What the database itself said, under whatever the query builder wrapped around it.
  *
- * The refusal has to be the database's rather than Foundry's — that is the whole
+ * The refusal has to be the database's rather than Kira's — that is the whole
  * claim of the reference — but the words it used arrive wrapped in the query
  * builder's own message, so the reason has to be read from the bottom of the chain.
  */

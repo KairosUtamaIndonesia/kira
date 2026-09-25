@@ -129,10 +129,10 @@ function selectorScript(token: string): string {
     if (document.readyState === 'loading' || !document.documentElement) {
       return { token, state: 'loading' };
     }
-    window.__foundryElementSelector?.destroy();
-    window.__foundryElementSelection = null;
+    window.__kiraElementSelector?.destroy();
+    window.__kiraElementSelection = null;
     const style = document.createElement('style');
-    style.textContent = '.__foundry-pick-hover { outline: 2px solid #3b82f6 !important; outline-offset: 2px !important; cursor: crosshair !important; }';
+    style.textContent = '.__kira-pick-hover { outline: 2px solid #3b82f6 !important; outline-offset: 2px !important; cursor: crosshair !important; }';
     document.head?.appendChild(style);
     const label = document.createElement('div');
     Object.assign(label.style, {
@@ -163,9 +163,9 @@ function selectorScript(token: string): string {
     const move = (event) => {
       const element = event.target instanceof Element ? event.target : null;
       if (!element || element === label || label.contains(element)) return;
-      hovered?.classList.remove('__foundry-pick-hover');
+      hovered?.classList.remove('__kira-pick-hover');
       hovered = element;
-      element.classList.add('__foundry-pick-hover');
+      element.classList.add('__kira-pick-hover');
       label.textContent = describe(element);
       label.hidden = false;
       label.style.left = Math.min(event.clientX + 12, innerWidth - 330) + 'px';
@@ -181,7 +181,7 @@ function selectorScript(token: string): string {
       const element = event.target instanceof Element ? event.target : hovered;
       if (!element || element === label || label.contains(element)) return;
       const rect = element.getBoundingClientRect();
-      window.__foundryElementSelection = {
+      window.__kiraElementSelection = {
         token,
         selection: {
           url: location.href,
@@ -200,7 +200,7 @@ function selectorScript(token: string): string {
     const keydown = (event) => {
       if (event.key !== 'Escape') return;
       block(event);
-      window.__foundryElementSelection = { token, cancelled: true };
+      window.__kiraElementSelection = { token, cancelled: true };
       destroy();
     };
     const destroy = () => {
@@ -208,18 +208,18 @@ function selectorScript(token: string): string {
       document.removeEventListener('click', click, true);
       document.removeEventListener('pointerdown', block, true);
       document.removeEventListener('keydown', keydown, true);
-      hovered?.classList.remove('__foundry-pick-hover');
+      hovered?.classList.remove('__kira-pick-hover');
       label.remove();
       style.remove();
-      if (window.__foundryElementSelector?.token === token) {
-        window.__foundryElementSelector = null;
+      if (window.__kiraElementSelector?.token === token) {
+        window.__kiraElementSelector = null;
       }
     };
     document.addEventListener('mousemove', move, true);
     document.addEventListener('click', click, true);
     document.addEventListener('pointerdown', block, true);
     document.addEventListener('keydown', keydown, true);
-    window.__foundryElementSelector = { token, destroy };
+    window.__kiraElementSelector = { token, destroy };
     return { token, state: 'installed' };
   })()`;
 }
@@ -244,7 +244,7 @@ function browserSelectorRuntime(): ElementSelectorRuntime {
           try {
             const value = await execute(
               webview,
-              `JSON.stringify(window.__foundryElementSelection?.token === ${JSON.stringify(token)} ? window.__foundryElementSelection : null)`,
+              `JSON.stringify(window.__kiraElementSelection?.token === ${JSON.stringify(token)} ? window.__kiraElementSelection : null)`,
             );
             const result = typeof value === 'string' ? JSON.parse(value) : null;
             if (!result) {
@@ -269,13 +269,13 @@ function browserSelectorRuntime(): ElementSelectorRuntime {
     clear(webview, token) {
       void execute(
         webview,
-        `if (window.__foundryElementSelector?.token === ${JSON.stringify(token)}) window.__foundryElementSelector.destroy(); if (window.__foundryElementSelection?.token === ${JSON.stringify(token)}) window.__foundryElementSelection = null;`,
+        `if (window.__kiraElementSelector?.token === ${JSON.stringify(token)}) window.__kiraElementSelector.destroy(); if (window.__kiraElementSelection?.token === ${JSON.stringify(token)}) window.__kiraElementSelection = null;`,
       ).catch(() => {});
     },
     destroy(webview, token) {
       void execute(
         webview,
-        `if (window.__foundryElementSelector?.token === ${JSON.stringify(token)}) window.__foundryElementSelector.destroy();`,
+        `if (window.__kiraElementSelector?.token === ${JSON.stringify(token)}) window.__kiraElementSelector.destroy();`,
       ).catch(() => {});
     },
     timeout: (callback) => window.setTimeout(callback, SELECTOR_TIMEOUT_MS),
@@ -382,7 +382,7 @@ export function browserElementSelectionForChat(
   return browserElementSelectionFrom(Reflect.get(detail, 'selection'));
 }
 
-export const BROWSER_ELEMENT_SELECTION_EVENT = 'foundry:browser-element-selection';
+export const BROWSER_ELEMENT_SELECTION_EVENT = 'kira:browser-element-selection';
 
 export function dispatchBrowserElementSelection(
   chatId: string,

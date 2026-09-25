@@ -1,19 +1,19 @@
-# Foundry's server keeps its state in Postgres, and Drizzle owns the schema
+# Kira's server keeps its state in Postgres, and Drizzle owns the schema
 
 Date: 2026-09-18
 
 ## Context
 
-The server began on SQLite — `node:sqlite`, a file at `apps/server/data/foundry.sqlite`. That
+The server began on SQLite — `node:sqlite`, a file at `apps/server/data/kira.sqlite`. That
 is the right shape for the desktop, which keeps one person's chats on one person's machine.
 It is the wrong shape for the platform. What the server holds is a whole company's users,
 their sessions and device keys, and the ledger of what each request used. That is concurrent
 writers, and it is a thing to back up, to restore, and to move between machines without
 copying a file out of a running process.
 
-There was no ORM. Better Auth migrated its own tables through its Kysely adapter, and Foundry
+There was no ORM. Better Auth migrated its own tables through its Kysely adapter, and Kira
 hand-wrote the ledger in SQL with a `PRAGMA user_version` gate — the arrangement ADR 0005
-records. So one database had two owners and two migration systems, and every Foundry query
+records. So one database had two owners and two migration systems, and every Kira query
 was SQL written as a string, with the column names typed out again in the mapper beside it.
 
 Two things make this the moment. The server has never been deployed, so the only database in
@@ -24,13 +24,13 @@ migrating real rows.
 
 ## Decision
 
-**Postgres, in an instance of Foundry's own.** `compose.yaml` runs `postgres:18-alpine` on
-port **5439** for development and tests; `FOUNDRY_DATABASE_URL` points at it, defaulting to
+**Postgres, in an instance of Kira's own.** `compose.yaml` runs `postgres:18-alpine` on
+port **5439** for development and tests; `KIRA_DATABASE_URL` points at it, defaulting to
 that instance the way the pool settings default to the development chain. Production sets it,
 and there it is a secret, because the URL carries the password.
 
 **Drizzle owns the schema, and Better Auth reads its tables through Drizzle's adapter.**
-`src/schema.ts` describes every table in the database — Better Auth's five and Foundry's one —
+`src/schema.ts` describes every table in the database — Better Auth's five and Kira's one —
 and `drizzle-kit` generates the statements in `migrations/`. The server applies them at boot,
 so a checkout and a deployment run the same statements in the same order with no step in
 between to forget.
@@ -43,7 +43,7 @@ database should be.
 
 **Better Auth's names are kept.** Its adapter looks a field up by the name Better Auth uses —
 `schema["userId"]`, not `schema["user_id"]` — so its columns are `userId`, `createdAt`,
-`emailVerified`. Foundry's `usage` table follows them rather than using Postgres's usual
+`emailVerified`. Kira's `usage` table follows them rather than using Postgres's usual
 snake_case, because two naming conventions in one database is worse than either one.
 
 **Nothing was written from memory.** Better Auth's own migrations were run against a scratch
@@ -55,13 +55,13 @@ upgrade, which is the one thing this decision asks of the future.
 
 ## Consequences
 
-**The version gate is gone, and nothing replaces it exactly.** SQLite gave Foundry a number it
+**The version gate is gone, and nothing replaces it exactly.** SQLite gave Kira a number it
 could refuse to open past: a database written by a newer build stopped the older one rather
 than being misread. A Postgres database carries no such number. Drizzle's journal records
 which migrations were applied, which makes migrating repeatable and ordered — but it does not
 stop an old build from running against a database a newer build has already changed. That is a
 real reduction in safety, accepted because nothing is deployed and the alternative is
-maintaining a private version row for a case that has not arisen. If Foundry ever runs two
+maintaining a private version row for a case that has not arisen. If Kira ever runs two
 versions at once, this is the thing to revisit.
 
 **Migrations run at boot, which is safe for one server and not for two.** Every boot applies
@@ -95,7 +95,7 @@ through Drizzle rather than assembling a string.
 **ADR 0005's reasoning about one store still holds, and its wording does not.** The ledger and
 the people it is about must be in one database because a foreign key cannot point into
 another one; that was true of a SQLite file and it is true of a Postgres database. What that
-ADR called "one SQLite file, two owners" — Better Auth migrating one half and Foundry
+ADR called "one SQLite file, two owners" — Better Auth migrating one half and Kira
 hand-writing the other — is superseded here, and its text has been corrected.
 
 **The desktop is untouched, with one exception that is not this ADR's business.** It keeps

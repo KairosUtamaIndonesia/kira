@@ -2,26 +2,26 @@ import { defineTheme } from '@astryxdesign/core/theme';
 import { neutralTheme } from '@astryxdesign/theme-neutral';
 
 /**
- * Foundry's theme, derived from Astryx's Neutral rather than editing it —
+ * Kira's theme, derived from Astryx's Neutral rather than editing it —
  * Neutral's generated palette is a reviewed artifact (see its own README),
  * and `extends` flattens inheritance so this stays a single self-contained
  * theme once built.
  *
- * `astryx theme build` compiles this into `built/foundry.css` /
- * `built/foundry.js` / `built/foundry.d.ts`, which is what the app
+ * `astryx theme build` compiles this into `built/kira.css` /
+ * `built/kira.js` / `built/kira.d.ts`, which is what the app
  * actually imports (see `index.tsx`) — this file is the source theme
  * builds run against, not what ships.
  */
-export const foundryTheme = defineTheme({
-  name: 'foundry',
+export const kiraTheme = defineTheme({
+  name: 'kira',
   extends: neutralTheme,
 
-  // Foundry's brand accent. A single seed derives both light and dark
+  // Kira's brand accent. A single seed derives both light and dark
   // variants (and keeps --color-on-accent's contrast correct) rather than
   // hand-tuning --color-accent per mode.
   color: { accent: '#ff3859' },
 
-  // Same fonts and scale Foundry already loads (Inter/Satoshi/Geist Mono,
+  // Same fonts and scale Kira already loads (Inter/Satoshi/Geist Mono,
   // base 14 / ratio 1.2, bold h3/h4 — matching Neutral's own scale),
   // declared through Astryx's typography config instead of a manual
   // --font-family-* override in CSS.

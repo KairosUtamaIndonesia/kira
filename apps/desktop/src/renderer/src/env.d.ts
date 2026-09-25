@@ -1,9 +1,9 @@
 /// <reference types="vite/client" />
 
-import type { FoundryBridge } from '../../preload/bridge';
+import type { KiraBridge } from '../../preload/bridge';
 
 declare global {
   interface Window {
-    foundry: FoundryBridge;
+    kira: KiraBridge;
   }
 }

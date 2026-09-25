@@ -50,7 +50,7 @@ style.** Sizes, colours and shapes are the theme's own, and the row icon is draw
 the tree's glyphs were. Nothing else in the pane changed, and a row is still named by its label: the
 image is drawn with an empty `alt`, so the icon adds nothing for anyone reading by ear.
 
-**Which set is drawn follows the system's colour scheme.** Foundry's theme hands `color-scheme` to
+**Which set is drawn follows the system's colour scheme.** Kira's theme hands `color-scheme` to
 the system, so the renderer asks the same question the CSS does — `prefers-color-scheme` — and there
 is no theme state of its own to read. The theme's light overrides matter for a handful of real files:
 `bun.lock` and `*.toml` draw differently, most things do not.

@@ -6,7 +6,7 @@ import { tempDir } from '../test-support/temp.ts';
 import { readWorkspaceFile } from './reading.ts';
 
 function folderWith(files: Record<string, Buffer | string>): string {
-  const root = tempDir('foundry-read-');
+  const root = tempDir('kira-read-');
 
   for (const [name, contents] of Object.entries(files)) {
     writeFileSync(join(root, name), contents);

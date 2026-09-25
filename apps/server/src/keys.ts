@@ -1,6 +1,6 @@
 import type { Auth } from './auth';
 
-/** Who a Foundry key belongs to, as both the desktop and the pool route ask it. */
+/** Who a Kira key belongs to, as both the desktop and the pool route ask it. */
 export interface HeldUser {
   id: string;
   email: string;
@@ -17,12 +17,12 @@ export type KeyHolder =
  * Two routes ask this question — the desktop's own key check and the model
  * proxy — and a caller must not be able to get a different answer from one than
  * from the other, so it is written once here. Codes are what a client branches
- * on, so Better Auth's own are passed through rather than Foundry inventing new
+ * on, so Better Auth's own are passed through rather than Kira inventing new
  * names for the same conditions.
  */
 export async function keyHolder(auth: Auth, request: Request): Promise<KeyHolder> {
   const key = presentedKey(request.headers.get('authorization'));
-  if (!key) return refused('KEY_NOT_FOUND', 'No Foundry key was presented.');
+  if (!key) return refused('KEY_NOT_FOUND', 'No Kira key was presented.');
 
   const verification = await auth.api.verifyApiKey({ body: { key } });
   if (!verification.valid || !verification.key) {

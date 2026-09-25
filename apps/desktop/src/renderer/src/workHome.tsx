@@ -75,7 +75,7 @@ export function WorkHome({
 
   async function readProjects(): Promise<void> {
     setIsLoading(true);
-    const result = await window.foundry.joinableProjects();
+    const result = await window.kira.joinableProjects();
     setIsLoading(false);
     if (!result.ok) {
       setTrouble(result.error);

@@ -12,11 +12,11 @@ export const TENANT = '11111111-2222-3333-4444-555555555555';
 export const ORIGIN = 'http://localhost:3000';
 
 export const ENV = {
-  FOUNDRY_ENTRA_TENANT_ID: TENANT,
-  FOUNDRY_ENTRA_CLIENT_ID: 'client-id',
-  FOUNDRY_ENTRA_CLIENT_SECRET: 'client-secret',
-  FOUNDRY_AUTH_SECRET: 'a'.repeat(32),
-  FOUNDRY_BASE_URL: ORIGIN,
+  KIRA_ENTRA_TENANT_ID: TENANT,
+  KIRA_ENTRA_CLIENT_ID: 'client-id',
+  KIRA_ENTRA_CLIENT_SECRET: 'client-secret',
+  KIRA_AUTH_SECRET: 'a'.repeat(32),
+  KIRA_BASE_URL: ORIGIN,
 };
 
 /** A server with a database of its own, as it would be at boot. */
@@ -30,7 +30,7 @@ export async function boot(
   await migrate(database);
   const auth = await createAuth(config, database);
 
-  // The connection comes back with the rest: Foundry's own tables live in the
+  // The connection comes back with the rest: Kira's own tables live in the
   // same database as Better Auth's, so a test that touches them needs it.
   return { config, auth, database, app: createApp({ auth, config, database }) };
 }
@@ -44,7 +44,7 @@ export async function boot(
  */
 export async function listen(entra: Partial<Config['entra']> = {}) {
   const origin = `http://127.0.0.1:${await freePort()}`;
-  const config = configured({ ...ENV, FOUNDRY_BASE_URL: origin }, entra);
+  const config = configured({ ...ENV, KIRA_BASE_URL: origin }, entra);
   const database = await freshDatabase(config.databaseUrl);
   await migrate(database);
   const auth = await createAuth(config, database);
@@ -55,7 +55,7 @@ export async function listen(entra: Partial<Config['entra']> = {}) {
   await waitFor(() => fetch(`${origin}/health`).then((response) => response.ok), 'the server');
 
   // The connection comes back with the rest, as it does from `boot`: a journey
-  // through the app is still a journey about rows in Foundry's own tables.
+  // through the app is still a journey about rows in Kira's own tables.
   return { config, auth, app, database, origin, stop: () => app.stop() };
 }
 
@@ -126,7 +126,7 @@ export async function closeDatabases(): Promise<void> {
 }
 
 /** Where tests keep their tables, made once if it is not already there. */
-const TEST_DATABASE = 'foundry_test';
+const TEST_DATABASE = 'kira_test';
 
 /** The database tests use, coming into existence if this is a fresh machine. */
 async function testDatabase(baseUrl: string): Promise<string> {
@@ -259,11 +259,11 @@ export async function consoleSession(origin: string): Promise<string> {
   if (!toMicrosoft) throw new Error('sign-in did not reach Microsoft');
 
   const atMicrosoft = await fetch(toMicrosoft, { redirect: 'manual' });
-  const backToFoundry = atMicrosoft.headers.get('location');
+  const backToKira = atMicrosoft.headers.get('location');
   await atMicrosoft.body?.cancel();
-  if (!backToFoundry) throw new Error('Microsoft did not send the browser back');
+  if (!backToKira) throw new Error('Microsoft did not send the browser back');
 
-  const signedIn = await fetch(new URL(backToFoundry), {
+  const signedIn = await fetch(new URL(backToKira), {
     redirect: 'manual',
     headers: { cookie: cookieHeader(started) },
   });

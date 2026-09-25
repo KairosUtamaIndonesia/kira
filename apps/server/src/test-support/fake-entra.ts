@@ -9,7 +9,7 @@ export interface EntraAccount {
 }
 
 export interface FakeEntra {
-  /** Point Foundry's `entra.authority` at this. */
+  /** Point Kira's `entra.authority` at this. */
   authority: string;
   /** The tenant named in each authorize URL, in call order. */
   authorizations: string[];
@@ -30,7 +30,7 @@ export interface FakeEntra {
  *
  * It deliberately does not enforce the tenant in the path it was asked for —
  * real Microsoft is what refuses an account from another tenant there. It
- * records the tenant instead, so a test can assert Foundry asked for the
+ * records the tenant instead, so a test can assert Kira asked for the
  * company's own, which is the whole of the tenant restriction.
  */
 export async function startFakeEntra(account: EntraAccount): Promise<FakeEntra> {

@@ -24,7 +24,7 @@ const EXPECTED_SKILLS = [
 const FORBIDDEN_HOST_WORDS = /\bgh\b|github|labels?|\.scratch|pull request|\bPR\b/i;
 const desktopRoot = join(dirname(fileURLToPath(import.meta.url)), '../../../');
 // Keep this loader test independent from skills installed on the developer's machine.
-process.env['HOME'] = mkdtempSync(join(tmpdir(), 'foundry-resource-home-'));
+process.env['HOME'] = mkdtempSync(join(tmpdir(), 'kira-resource-home-'));
 
 function tempDir(prefix: string): Promise<string> {
   return mkdtemp(join(tmpdir(), prefix));
@@ -48,9 +48,9 @@ test('the builder ships the resource directory outside the application bundle', 
 });
 
 test('a packaged resource copy loads beside workspace .agents skills', async () => {
-  const workspace = await tempDir('foundry-resource-workspace-');
-  const agentDir = await tempDir('foundry-resource-agent-');
-  const resourcesPath = await tempDir('foundry-resource-package-');
+  const workspace = await tempDir('kira-resource-workspace-');
+  const agentDir = await tempDir('kira-resource-agent-');
+  const resourcesPath = await tempDir('kira-resource-package-');
   const shippedSkills = join(resourcesPath, 'skills');
   const sourceSkills = bundledSkillsPath({ isPackaged: false });
 

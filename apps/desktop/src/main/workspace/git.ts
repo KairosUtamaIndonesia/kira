@@ -1,7 +1,7 @@
 /**
  * Asking git what is in a folder, and what it hides.
  *
- * Foundry owns no gitignore matcher: nested ignore files, negations,
+ * Kira owns no gitignore matcher: nested ignore files, negations,
  * directory-only patterns, `info/exclude` and the operator's own excludes are
  * all git's to apply, and it applies them in a few milliseconds — measured at
  * 3–15 ms against 289–423 ms for a walk of our own

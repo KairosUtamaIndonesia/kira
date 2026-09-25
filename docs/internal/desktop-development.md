@@ -8,11 +8,11 @@ to be set up by hand first.
 Sign-in returns the app through a custom-protocol deep link:
 
 ```
-ai.foundry.kairos://auth/callback#token=<one-time token>
+ai.kira.kairos://auth/callback#token=<one-time token>
 ```
 
 The browser goes to the server, the server sends it to that address, and the operating system
-looks up whatever application claims `ai.foundry.kairos`. A packaged build claims it —
+looks up whatever application claims `ai.kira.kairos`. A packaged build claims it —
 `protocols` in `apps/desktop/electron-builder.yml` writes the entry. **A development build
 cannot**: Electron running a script has no desktop entry, so `setAsDefaultProtocolClient`
 answers false and the browser has nowhere to send the app.
@@ -24,17 +24,17 @@ nothing ever reached it.
 **The fix is one desktop entry on your machine, once per checkout.**
 
 ```sh
-cat > ~/.local/share/applications/foundry-dev.desktop <<'EOF'
+cat > ~/.local/share/applications/kira-dev.desktop <<'EOF'
 [Desktop Entry]
-Name=Foundry (dev)
-Comment=Handle ai.foundry.kairos:// deep links for the Foundry dev app
+Name=Kira (dev)
+Comment=Handle ai.kira.kairos:// deep links for the Kira dev app
 Exec="<repo>/apps/desktop/node_modules/electron/dist/electron" "<repo>/apps/desktop" %u
 Type=Application
 NoDisplay=true
-MimeType=x-scheme-handler/ai.foundry.kairos;
+MimeType=x-scheme-handler/ai.kira.kairos;
 EOF
 
-xdg-mime default foundry-dev.desktop x-scheme-handler/ai.foundry.kairos
+xdg-mime default kira-dev.desktop x-scheme-handler/ai.kira.kairos
 update-desktop-database ~/.local/share/applications
 ```
 
@@ -48,13 +48,13 @@ written either way.
 ### Check it took
 
 ```sh
-xdg-settings get default-url-scheme-handler ai.foundry.kairos   # foundry-dev.desktop
+xdg-settings get default-url-scheme-handler ai.kira.kairos   # kira-dev.desktop
 ```
 
 Delivering a link by hand proves the whole route end to end, without a browser in the way:
 
 ```sh
-xdg-open 'ai.foundry.kairos://auth/callback#token=whatever'
+xdg-open 'ai.kira.kairos://auth/callback#token=whatever'
 ```
 
 The app should come forward. That token is not real, so the app reports
@@ -80,8 +80,8 @@ earlier attempt will not work, and sign-in has to finish in the app instance tha
 ### Undoing it
 
 ```sh
-rm ~/.local/share/applications/foundry-dev.desktop
-xdg-mime default <your-browser>.desktop x-scheme-handler/ai.foundry.kairos
+rm ~/.local/share/applications/kira-dev.desktop
+xdg-mime default <your-browser>.desktop x-scheme-handler/ai.kira.kairos
 update-desktop-database ~/.local/share/applications
 ```
 

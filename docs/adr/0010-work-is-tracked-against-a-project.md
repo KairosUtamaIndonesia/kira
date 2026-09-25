@@ -10,7 +10,7 @@ folder twice is one project however it was spelled, and a chat with no project i
 nowhere. That is the right shape for what it does today: a chat runs in a directory, and
 grouping chats by directory groups them by what they are about.
 
-Foundry is to become a software factory — agents taking work and running it — and that adds
+Kira is to become a software factory — agents taking work and running it — and that adds
 tickets, blockers and runs to the same model. Folder identity breaks under all three.
 
 **A factory runs agents at the same time on one body of code, and each needs its own
@@ -34,7 +34,7 @@ answer part of identity, when the question only ever needed answering, not stori
 
 **Work is tracked against a project, held by the server.** A project is a shared body of
 work with one queue of tickets. It is not a place on disk, and it is what people and agents
-mean by "what we are building" — Foundry is one.
+mean by "what we are building" — Kira is one.
 
 **Today's `Project` is renamed a workspace:** a folder on someone's machine that a run
 happens in. There are as many workspaces per project as there are agents working at once,
@@ -50,7 +50,7 @@ the git remote was the alternative and it will not do: a folder may have no remo
 a fork's. This link is the one place the shared half and the local half meet, and it is what
 makes a project's tickets runnable on a machine.
 
-**A repository is not a Foundry concept, deliberately.** A workspace knows its own
+**A repository is not a Kira concept, deliberately.** A workspace knows its own
 repositories, from the folders in it and from the git remote that says which body of code
 they are a checkout of. That is enough while every workspace is one a person already had.
 

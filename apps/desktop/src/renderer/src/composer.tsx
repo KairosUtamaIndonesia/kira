@@ -68,7 +68,7 @@ export function Composer({
   usage?: Usage | null;
   /** What this chat itself has used, or null when there is no session to have used it. */
   chatUsage?: ChatUsage | null;
-  /** The models Foundry offers, in the pool's own order. */
+  /** The models Kira offers, in the pool's own order. */
   models?: ModelOption[];
   /** The model this chat runs on, or null when it has chosen none. */
   modelId?: string | null;
@@ -391,7 +391,7 @@ function BrowserElementAttachment({
  *
  * Astryx keeps that slot for exactly this — "left-aligned footer actions (model
  * selector, etc)" — because the choice is about the next thing said rather than
- * about the app. What it offers is what Foundry offers, in the pool's own order,
+ * about the app. What it offers is what Kira offers, in the pool's own order,
  * so a model that cannot answer is not on the list to be picked.
  *
  * A chat that has chosen nothing shows the first of them rather than nothing at
@@ -466,7 +466,7 @@ function ContextGauge({
     setIsCompacting(true);
     setRefusal(null);
 
-    const result = await window.foundry.compactChat();
+    const result = await window.kira.compactChat();
 
     setIsCompacting(false);
     if (!result.ok) setRefusal(result.error);

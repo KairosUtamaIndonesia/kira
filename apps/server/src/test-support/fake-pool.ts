@@ -3,19 +3,19 @@ import { createServer } from 'node:http';
 /**
  * A stand-in for the credential pool's catalog.
  *
- * Foundry asks the pool for the models it can serve, and asks with
+ * Kira asks the pool for the models it can serve, and asks with
  * `client_version=pi`, which switches CLIProxyAPI's answer from OpenAI's list to
  * the Codex client catalog: a `models` array rather than `data`, `slug` rather
  * than `id`, and a pile of client scaffolding — `base_instructions`,
  * `model_messages`, `available_in_plans` — that belongs to a Codex client rather
- * than to Foundry (docs/internal/research/cliproxyapi-interface.md, measured
+ * than to Kira (docs/internal/research/cliproxyapi-interface.md, measured
  * against the running pool).
  *
  * That catalog is the pool's own synthesis, so `fake-upstream` deliberately does
  * not serve it. That double stands in for a *provider* behind the pool, which is
  * a different thing that happens to share the `/v1/models` path. Only the catalog
  * route is modelled here in any detail: the pool's chat path arrives as OpenAI's
- * shape unchanged, which is why most chat tests can point Foundry straight at
+ * shape unchanged, which is why most chat tests can point Kira straight at
  * `fake-upstream`. A completion is answered here too, minimally, so a test that
  * needs both a catalog and a chat — the pre-flight measuring a request against
  * the output limit its model states — can drive one pool. The proxy's cooldowns
@@ -53,7 +53,7 @@ export interface PoolRequest {
 }
 
 export interface FakePool {
-  /** Hand this to Foundry as `config.pool.url`. */
+  /** Hand this to Kira as `config.pool.url`. */
   url: string;
   /** Every request that arrived, in order. */
   requests: PoolRequest[];

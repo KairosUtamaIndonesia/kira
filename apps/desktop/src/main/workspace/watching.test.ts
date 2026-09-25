@@ -138,7 +138,7 @@ const CASES: Case[] = [
 
 for (const testCase of CASES) {
   test(testCase.name, async (t) => {
-    const folder = tempDir('foundry-watch-');
+    const folder = tempDir('kira-watch-');
 
     testCase.arrange?.(folder);
 
@@ -174,7 +174,7 @@ for (const testCase of CASES) {
 }
 
 test('a run that writes without pausing is answered while it is still going', async (t) => {
-  const folder = tempDir('foundry-watch-');
+  const folder = tempDir('kira-watch-');
 
   let changes = 0;
   const watching = watchCase(folder, [], () => {

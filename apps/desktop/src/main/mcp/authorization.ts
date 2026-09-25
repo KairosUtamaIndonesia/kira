@@ -262,7 +262,7 @@ export function mcpOAuth({
 
 function clientMetadata(redirectUri: string): OAuthClientMetadata {
   return {
-    client_name: 'Foundry',
+    client_name: 'Kira',
     redirect_uris: [redirectUri],
     grant_types: ['authorization_code', 'refresh_token'],
     response_types: ['code'],
@@ -372,6 +372,6 @@ function handleCallback(
   }
 
   response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
-  response.end('MCP sign-in is complete. You can return to Foundry.');
+  response.end('MCP sign-in is complete. You can return to Kira.');
   resolve(values);
 }

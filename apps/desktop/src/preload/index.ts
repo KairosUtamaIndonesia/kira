@@ -19,7 +19,7 @@ import {
   type ChatState,
   type ChatMode,
   type FolderListing,
-  type FoundryBridge,
+  type KiraBridge,
   type GlossaryEntry,
   type MemorySettings,
   type McpServer,
@@ -58,7 +58,7 @@ function ask<T>(channel: string, ...args: unknown[]): Promise<Result<T>> {
   );
 }
 
-const bridge: FoundryBridge = {
+const bridge: KiraBridge = {
   platform: process.platform,
 
   registerBrowserGuest: (input) => ask<null>(BROWSER_CHANNELS.register, input),
@@ -281,4 +281,4 @@ const bridge: FoundryBridge = {
   saveShellPath: (path) => ask<null>(SHELL_CHANNELS.save, path),
 };
 
-contextBridge.exposeInMainWorld('foundry', bridge);
+contextBridge.exposeInMainWorld('kira', bridge);

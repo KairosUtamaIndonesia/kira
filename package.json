@@ -1,8 +1,8 @@
 {
-  "name": "foundry",
+  "name": "kira",
   "version": "0.1.0",
   "private": true,
-  "description": "Foundry desktop agent",
+  "description": "Kira desktop agent",
   "workspaces": [
     "apps/*",
     "packages/*"

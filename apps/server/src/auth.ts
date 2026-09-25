@@ -17,7 +17,7 @@ import { schema } from './schema';
  * It is here rather than in the environment because production needs no entry: the
  * console is then served from the base URL, whose origin Better Auth already
  * trusts. This is the development case only, so it is named where the desktop's
- * own scheme is named — as a fact about how Foundry is run, not a setting.
+ * own scheme is named — as a fact about how Kira is run, not a setting.
  *
  * It matters for every request that carries a session cookie, which is the console's
  * whole write surface: signing out, and setting a role later. Signing in carries
@@ -41,7 +41,7 @@ export type Auth = Awaited<ReturnType<typeof createAuth>>;
 /**
  * Build the auth instance.
  *
- * It does not create its own tables. Better Auth's tables and Foundry's are one
+ * It does not create its own tables. Better Auth's tables and Kira's are one
  * schema with one set of statements (`src/schema.ts`, applied by `migrate()`),
  * so the server says what the database should look like in one place instead of
  * running two migrations that each own half of it. Better Auth reaches them
@@ -96,7 +96,7 @@ function authOptions(config: Config, database: Database) {
       // sign-in back to the app over a custom-protocol deep link, by a
       // one-time code with its own short expiry (ADR 0004).
       electron(),
-      // Who may administer Foundry (ADR 0007). Signing in proves which employee
+      // Who may administer Kira (ADR 0007). Signing in proves which employee
       // someone is, never that they run the place, so the role this adds is a
       // second question the tenant cannot answer. The console gates on it and
       // sets it; the first admin is granted out of band — see `admin.ts` —

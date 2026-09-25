@@ -62,8 +62,8 @@ import {
 import { WorkspaceTab } from './workspaceTab';
 
 /** Where the window's width and whether it is showing are remembered. */
-const WORKBENCH_STORAGE_KEY = 'foundry.workbench';
-const BROWSER_STORAGE_KEY = 'foundry.browsers.v1';
+const WORKBENCH_STORAGE_KEY = 'kira.workbench';
+const BROWSER_STORAGE_KEY = 'kira.browsers.v1';
 
 /**
  * Where a drag stops being a narrower pane and becomes no pane at all. Inside the
@@ -112,7 +112,7 @@ export function Workbench({
   chatId: string;
   /** Whether the chat on screen is the one being composed, which has no workspace yet. */
   composing: boolean;
-  /** What to call the folder the chat works in, or null for one Foundry made. */
+  /** What to call the folder the chat works in, or null for one Kira made. */
   workspaceName: string | null;
   shaping: ShapingState;
   /** The approved spec's tickets, read from the queue; null until there are any to read. */
@@ -169,7 +169,7 @@ export function Workbench({
   function openFile(path: string) {
     setTabs(opened(tabs, chatId, path));
 
-    void window.foundry.readWorkspaceFile(chatId, path).then((result) => {
+    void window.kira.readWorkspaceFile(chatId, path).then((result) => {
       setReadings((held) => new Map(held).set(readingKey(path), contentsOf(result)));
     });
   }
@@ -224,8 +224,8 @@ export function Workbench({
             if (next === WORKSPACE) setWorkspaceVisits((visits) => visits + 1);
             if (next === BROWSER) {
               const browserId = browsersOf(browsers, chatId).activeId;
-              if (browserId) void window.foundry.activateBrowser(chatId, browserId);
-              else void window.foundry.deactivateBrowser(chatId);
+              if (browserId) void window.kira.activateBrowser(chatId, browserId);
+              else void window.kira.deactivateBrowser(chatId);
             }
           }}
           hasDivider
@@ -420,7 +420,7 @@ function TicketsTab({
     setReadyRetryError(null);
     setReadyRetryPending(true);
     try {
-      const result = await window.foundry.retryBreakdownReady();
+      const result = await window.kira.retryBreakdownReady();
       if (!result.ok) setReadyRetryError(result.error);
     } catch (error) {
       setReadyRetryError(error instanceof Error ? error.message : String(error));

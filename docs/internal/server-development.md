@@ -7,14 +7,14 @@ gates on.
 ## The chain
 
 ```
-desktop  →  Foundry server  →  CLIProxyAPI  →  a provider subscription
+desktop  →  Kira server  →  CLIProxyAPI  →  a provider subscription
             (Bun, Elysia)      (127.0.0.1:8317)
 ```
 
-Foundry holds no provider credential. CLIProxyAPI holds the company's subscription logins and
-presents them upstream; Foundry presents one caller key to CLIProxyAPI and decides, from its
+Kira holds no provider credential. CLIProxyAPI holds the company's subscription logins and
+presents them upstream; Kira presents one caller key to CLIProxyAPI and decides, from its
 own records, what each user may spend. In development all three run on one machine, and the
-desktop never talks to the proxy — it only ever knows the Foundry server.
+desktop never talks to the proxy — it only ever knows the Kira server.
 
 ## The server
 
@@ -23,10 +23,10 @@ cp apps/server/.env.example apps/server/.env   # then fill in the Entra values
 bun run dev:server
 ```
 
-It listens on the port in `FOUNDRY_BASE_URL`. Every value is validated at boot and the process
+It listens on the port in `KIRA_BASE_URL`. Every value is validated at boot and the process
 refuses to start until they are all correct, reporting every problem in one run.
 
-**Foundry's own routes type the clients that call them, from this app rather than from a
+**Kira's own routes type the clients that call them, from this app rather than from a
 document.** `src/contract.ts` publishes `App = ReturnType<typeof createApp>` as the package's
 only exported subpath, and a client says `treaty<App>(server)` against it. So adding a route is
 all it takes to type the call: the path, the body and every status the route can answer with
@@ -37,7 +37,7 @@ Auth's routes are the library's own surface and stay with its own client
 ## The database
 
 Everything server-side lives in one Postgres database: the people Better Auth knows about, and
-the rows Foundry writes about them. Development and tests run their own instance, which is a
+the rows Kira writes about them. Development and tests run their own instance, which is a
 service in `compose.yaml`:
 
 ```sh
@@ -46,9 +46,9 @@ docker compose up -d --wait
 bun run dev:server
 ```
 
-It listens on **5439**, a port of Foundry's own rather than Postgres's 5432, because a machine
+It listens on **5439**, a port of Kira's own rather than Postgres's 5432, because a machine
 is likely to be running another project's Postgres too. (On this one, 5432, 5433 and 5434
-belong to other projects.) The server reads `FOUNDRY_DATABASE_URL`, which defaults to that
+belong to other projects.) The server reads `KIRA_DATABASE_URL`, which defaults to that
 instance, so a checkout runs with nothing to fill in. A deployed server sets it, and there it
 carries the password and is a secret.
 
@@ -58,14 +58,14 @@ answering, so the server's first connection does not race the container's startu
 of the day can fail to connect.
 
 The server creates its own tables at boot. Tests do not touch this database's tables: they keep
-theirs in a database of their own called `foundry_test` on the same instance, which each boot
+theirs in a database of their own called `kira_test` on the same instance, which each boot
 empties and migrates again, so what one test leaves behind cannot be seen by another.
 
 ### Changing the schema
 
 Every table in the database is described in `apps/server/src/schema.ts` — Better Auth's five,
 because it reads them through Drizzle's adapter and no longer migrates anything itself, and
-Foundry's own. Change what you want the database to be there, then:
+Kira's own. Change what you want the database to be there, then:
 
 ```sh
 bun run --cwd apps/server db:generate   # writes the statements into apps/server/migrations/
@@ -89,7 +89,7 @@ against the original rather than trusting it:
 
 1. Build the same database twice on a scratch instance — once by letting your own schema be
    migrated, once by having Better Auth migrate itself. `getMigrations` from
-   `better-auth/db/migration` still produces its version, even though Foundry no longer calls
+   `better-auth/db/migration` still produces its version, even though Kira no longer calls
    it in `auth.ts`.
 2. Dump what a reader could notice of each and compare: columns with their types, nullability
    and defaults, then primary keys, foreign keys, unique constraints and indexes, from
@@ -102,7 +102,7 @@ standing between a dependency bump and a column that quietly stopped existing.
 
 ## Making an admin
 
-Signing in says which employee someone is; it never says they run Foundry. That second
+Signing in says which employee someone is; it never says they run Kira. That second
 question is a **role** on the user, and granting it takes a session that already holds the
 role — which is nothing at the start, and nothing again if the last administrator is ever
 removed. So the first one, and the way back in, come from outside the console (ADR 0007):
@@ -113,7 +113,7 @@ bun run --cwd apps/server admin ada@company.example
 
 Run it **after** that person has signed in. The user row exists only once Entra has said who
 they are, so an address nobody has signed in with is refused by name rather than turned into
-an account Foundry invented:
+an account Kira invented:
 
 ```
 ada@company.example has not signed in yet. Sign in from the desktop, then run this again.
@@ -140,8 +140,8 @@ curl -fsSLO "$BASE/checksums.txt"
 curl -fsSLO "$BASE/CLIProxyAPI_7.3.7_linux_amd64.tar.gz"
 grep CLIProxyAPI_7.3.7_linux_amd64.tar.gz checksums.txt | sha256sum -c -
 tar -xzf CLIProxyAPI_7.3.7_linux_amd64.tar.gz
-mkdir -p ~/.local/share/foundry/cliproxyapi/bin
-install -m 0755 cli-proxy-api ~/.local/share/foundry/cliproxyapi/bin/
+mkdir -p ~/.local/share/kira/cliproxyapi/bin
+install -m 0755 cli-proxy-api ~/.local/share/kira/cliproxyapi/bin/
 ```
 
 On macOS the checker is `shasum -a 256 -c -`, and the asset name is `darwin_arm64` or
@@ -154,16 +154,16 @@ name together, and keep the version in step with the pin in the research note be
 bun run dev:cliproxyapi
 ```
 
-The first run writes `~/.config/foundry/cliproxyapi.yaml` and then leaves it alone, so your
+The first run writes `~/.config/kira/cliproxyapi.yaml` and then leaves it alone, so your
 edits survive; delete the file if you want it written fresh. Arguments are passed through,
 which is how the provider logins work.
 
 | path                                                     | what it is                                         |
 | -------------------------------------------------------- | -------------------------------------------------- |
-| `~/.config/foundry/cliproxyapi.yaml`                     | the config you edit                                |
-| `~/.local/share/foundry/cliproxyapi/bin/cli-proxy-api`   | the binary                                         |
-| `~/.local/share/foundry/cliproxyapi/auth/`               | one JSON per provider login — **real credentials** |
-| `~/.local/share/foundry/cliproxyapi/config.example.yaml` | the shipped example, for the knobs we do not set   |
+| `~/.config/kira/cliproxyapi.yaml`                     | the config you edit                                |
+| `~/.local/share/kira/cliproxyapi/bin/cli-proxy-api`   | the binary                                         |
+| `~/.local/share/kira/cliproxyapi/auth/`               | one JSON per provider login — **real credentials** |
+| `~/.local/share/kira/cliproxyapi/config.example.yaml` | the shipped example, for the knobs we do not set   |
 
 ### Signing in a provider
 
@@ -181,21 +181,21 @@ Those files are the company's subscriptions. They are not in the checkout and mu
 never commit them, never copy one into the repository to make a test pass, and never run two
 CLIProxyAPI processes against one `auth-dir`, which has no lock.
 
-### The key Foundry presents
+### The key Kira presents
 
-`api-keys` holds one development key, `foundry-dev-pool-key`. Foundry's server presents it as a
+`api-keys` holds one development key, `kira-dev-pool-key`. Kira's server presents it as a
 bearer credential, so whatever the server is configured with has to match this. It is a
 development value in a file on one machine, and must never be reused anywhere real.
 
 ### Checking that it answers
 
 ```sh
-KEY='Authorization: Bearer foundry-dev-pool-key'
+KEY='Authorization: Bearer kira-dev-pool-key'
 curl -sS -H "$KEY" http://127.0.0.1:8317/v1/models | jq
 curl -sS -H "$KEY" 'http://127.0.0.1:8317/v1/models?client_version=pi' | jq '.models[0]'
 ```
 
-The first is the OpenAI-shaped list Foundry proxies to the app. The second is the Codex-client
+The first is the OpenAI-shaped list Kira proxies to the app. The second is the Codex-client
 catalogue — the same endpoint with a `client_version` parameter — and it is the one carrying
 per-model facts: context window, input modalities, reasoning levels, visibility.
 
@@ -229,7 +229,7 @@ those are.
 
 - [`research/cliproxyapi-interface.md`](./research/cliproxyapi-interface.md) — what the proxy does, read from source and measured against a running instance.
 - [`desktop-development.md`](./desktop-development.md) — running the app, and the deep-link entry it needs.
-- [`../adr/0003-model-credentials.md`](../adr/0003-model-credentials.md) — why the provider logins are not Foundry's to hold.
+- [`../adr/0003-model-credentials.md`](../adr/0003-model-credentials.md) — why the provider logins are not Kira's to hold.
 - [`../adr/0007-admins.md`](../adr/0007-admins.md) — why an admin is a role, and why the first one is granted out of band.
 - [`../adr/0008-typed-routes.md`](../adr/0008-typed-routes.md) — how this server's routes type the clients that call them.
 - [`../adr/0009-postgres.md`](../adr/0009-postgres.md) — why the server's state is in Postgres, and why one schema owns all of it.

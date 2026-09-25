@@ -1,8 +1,8 @@
 {
-  "name": "@foundry/admin",
+  "name": "@kira/admin",
   "version": "0.1.0",
   "private": true,
-  "description": "Foundry administration console",
+  "description": "Kira administration console",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -14,8 +14,8 @@
   "dependencies": {
     "@astryxdesign/core": "^0.6.2",
     "@elysiajs/eden": "^1.4.9",
-    "@foundry/server": "workspace:*",
-    "@foundry/theme": "workspace:*",
+    "@kira/server": "workspace:*",
+    "@kira/theme": "workspace:*",
     "@stylexjs/stylex": "0.19.1",
     "better-auth": "1.7.5",
     "react": "^19.3.0",

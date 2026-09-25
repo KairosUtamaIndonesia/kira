@@ -1,14 +1,14 @@
 import { treaty } from '@elysiajs/eden';
-import type { App } from '@foundry/server/contract';
+import type { App } from '@kira/server/contract';
 import { type Loaded, reasonFor } from './result';
 
 /**
- * Foundry's own routes, typed by the server rather than by a copy of them
+ * Kira's own routes, typed by the server rather than by a copy of them
  * (docs/adr/0008-typed-routes.md). The address is this page's own origin, because
  * the console is one origin with the API: in production the server serves it, and
  * in development Vite proxies `/api` to it.
  */
-const foundry = treaty<App>(window.location.origin);
+const kira = treaty<App>(window.location.origin);
 
 /** One request that was turned away, as the console reads it back. */
 export interface Refusal {
@@ -33,11 +33,11 @@ export type Readings = Record<string, Loaded<Reading>>;
 
 /** What one person has used this month, and what they are allowed. */
 export async function readAllowance(userId: string): Promise<Loaded<Reading>> {
-  const { data, error } = await foundry.api.admin.usage({ userId }).get();
+  const { data, error } = await kira.api.admin.usage({ userId }).get();
   if (error) {
     return {
       ok: false,
-      message: why(error, 'Foundry would not say what this person has used.'),
+      message: why(error, 'Kira would not say what this person has used.'),
     };
   }
 
@@ -54,16 +54,16 @@ export async function setAllowance(
   userId: string,
   tokensPerMonth: number | null,
 ): Promise<Loaded<Reading>> {
-  const { data, error } = await foundry.api.admin.allowance({ userId }).put({ tokensPerMonth });
+  const { data, error } = await kira.api.admin.allowance({ userId }).put({ tokensPerMonth });
   if (error) {
-    return { ok: false, message: why(error, 'Foundry would not change this allowance.') };
+    return { ok: false, message: why(error, 'Kira would not change this allowance.') };
   }
 
   return { ok: true, value: readingOf(data) };
 }
 
 /**
- * The sentence Foundry answered with.
+ * The sentence Kira answered with.
  *
  * A refusal arrives in the error envelope and a request the server could not read
  * arrives in Elysia's own shape; both carry a message, and `reasonFor` is what

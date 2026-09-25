@@ -1,7 +1,7 @@
 /**
- * Foundry's extension, as pi sees it.
+ * Kira's extension, as pi sees it.
  *
- * Foundry hands pi's session bootstrap the options a resource loader is built
+ * Kira hands pi's session bootstrap the options a resource loader is built
  * from, carrying this factory, and pi calls the factory while it builds the
  * session. Every hook below is therefore ordinary typed TypeScript in this repo —
  * checked by `typecheck` and reachable by the same tests as the rest of the agent
@@ -48,13 +48,13 @@ import {
 import { toolAllowedInMode, toolsForMode, workflowForMode } from '../workflow.ts';
 
 /**
- * Foundry's extension: the hooks pi calls, and nothing else.
+ * Kira's extension: the hooks pi calls, and nothing else.
  *
  * The shape is named rather than left as pi's `InlineExtension`, which is a union
- * that also covers a bare factory function: what Foundry hands over is always the
+ * that also covers a bare factory function: what Kira hands over is always the
  * named form, so saying so is what lets a test call the factory the way pi does.
  */
-export function foundryExtension({
+export function kiraExtension({
   cwd,
   store,
   threadId,
@@ -89,7 +89,7 @@ export function foundryExtension({
   registerCleanup?: (cleanup: () => void) => void;
 }): { name: string; factory: (pi: ExtensionAPI) => void } {
   return {
-    name: 'foundry',
+    name: 'kira',
     factory: (pi: ExtensionAPI) => {
       const registeredMcpTools = new Set<string>();
       const mode = (): ChatMode => store.getThread(threadId).mode;
@@ -268,7 +268,7 @@ function resultContent(
 /**
  * Draw what this chat has worked out, and hand back everything it now holds.
  *
- * The one model call Foundry makes on its own behalf, so it happens once per
+ * The one model call Kira makes on its own behalf, so it happens once per
  * compaction and only when there is something to conclude from: a chat that has
  * noticed nothing has nothing to draw, and asking anyway would spend a person's
  * allowance to be told so.
@@ -337,7 +337,7 @@ async function concludedBy(
     // are new is decided by the table rather than by this function.
     return store.loadReflections(threadId);
   } catch (error) {
-    console.error('[foundry] what this chat worked out was not drawn:', error);
+    console.error('[kira] what this chat worked out was not drawn:', error);
 
     return [];
   }
@@ -363,7 +363,7 @@ function decidedInProject(store: ThreadStore, threadId: string): Observation[] {
 
     return observationsOf(store.loadWorkspaceObservations(workspaceId, threadId));
   } catch (error) {
-    console.error('[foundry] what the rest of the workspace decided was not read:', error);
+    console.error('[kira] what the rest of the workspace decided was not read:', error);
 
     return [];
   }

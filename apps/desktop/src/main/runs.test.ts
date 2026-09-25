@@ -86,7 +86,7 @@ const proposalSlice: Ticket = { ...slice, runs: [proposalRun] };
 
 /** A ticket's own folder, made for the case and swept up after. */
 function folderMade(): string {
-  return tempDir('foundry-run-folder-');
+  return tempDir('kira-run-folder-');
 }
 
 /** A wire that answers what one case needs and records everything it was asked. */
@@ -110,7 +110,7 @@ function wire(
       return {
         kind: 'ok',
         body: {
-          project: { id: projectId, name: 'Foundry', prefix: 'FND' },
+          project: { id: projectId, name: 'Kira', prefix: 'FND' },
           tickets: queueTickets,
           counts: { draft: 0, ready: 0, blocked: 0, running: 0, 'needs-you': 0, done: 0 },
         },
@@ -559,7 +559,7 @@ test('a run the server will not start gives the claim back rather than holding i
 });
 
 test('a folder that is gone refuses Run rather than claiming a ticket it cannot work', async () => {
-  const { runs, calls } = keeper({ folder: join(tmpdir(), 'foundry-not-there-at-all') });
+  const { runs, calls } = keeper({ folder: join(tmpdir(), 'kira-not-there-at-all') });
 
   await assert.rejects(() => runs.start('workspace-1', 'ticket-1'), /not there any more/);
   assert.deepEqual(calls, []);

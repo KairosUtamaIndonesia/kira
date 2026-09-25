@@ -4,7 +4,7 @@
  * Both sides import from here — the preload for the channels it invokes, `ipc/`
  * for the same names and these types — so neither has to import the other. It
  * holds no electron and no pi, so the renderer tsconfig can include it as the
- * single source of truth for `window.foundry`. Extract it into a shared package
+ * single source of truth for `window.kira`. Extract it into a shared package
  * once the server needs it too.
  */
 
@@ -242,7 +242,7 @@ export type ChatPart =
        * way back to a sentence would be to parse prose that was itself generated.
        */
       lastWords: string | null;
-      /** The whole reconstruction, exactly as Foundry wrote it. */
+      /** The whole reconstruction, exactly as Kira wrote it. */
       reconstruction: string;
     };
 
@@ -290,7 +290,7 @@ export interface ChatTranscript {
 /**
  * What kind of thing Kira is holding.
  *
- * Foundry's words for what the observer notices: the summary's headings, which
+ * Kira's words for what the observer notices: the summary's headings, which
  * is also what a panel groups by.
  */
 export type MemoryKind = 'goal' | 'changed' | 'read' | 'commit' | 'preference';
@@ -643,7 +643,7 @@ export interface TicketRun {
 /** Who a line in a run's transcript came from. */
 export const SAID_BY = ['person', 'agent', 'note'] as const;
 
-/** The person steering it, the agent doing the work, or a note Foundry itself adds. */
+/** The person steering it, the agent doing the work, or a note Kira itself adds. */
 export type SaidBy = (typeof SAID_BY)[number];
 
 /**
@@ -967,7 +967,7 @@ export type AuthState = { signedIn: false } | { signedIn: true; user: AuthUser }
  * Whether an answer from anywhere names a person, rather than merely claiming to.
  *
  * Two things read a user back from bytes neither of them wrote — the key store
- * opening its file, and the Foundry server's answers — so the shape is checked
+ * opening its file, and the Kira server's answers — so the shape is checked
  * in one place rather than twice.
  */
 export function isAuthUser(value: unknown): value is AuthUser {
@@ -1021,7 +1021,7 @@ export const USAGE_CHANNELS = {
 } as const;
 
 /**
- * One model Foundry offers, as the window draws it.
+ * One model Kira offers, as the window draws it.
  *
  * The id is what a model is asked for by, and the name is what the pool calls
  * it. Nothing else crosses: what a model costs, how wide its window is and
@@ -1121,7 +1121,7 @@ export interface McpServerDraft {
  * Two answers and a suggestion, and the last two are apart on purpose. `enabled` is
  * whether the observational-memory workers run at all; `chosen` is the model this
  * person chose to reflect with, and is null until they choose one; `recommended` is
- * what Foundry suggests, and is null only when the server cannot ask its pool. The
+ * what Kira suggests, and is null only when the server cannot ask its pool. The
  * suggestion never binds anybody — whoever chooses gets what they chose — and a
  * window handed one effective model instead of these two would save the suggestion
  * back as a decision the first time it saved anything.
@@ -1135,7 +1135,7 @@ export interface MemorySettings {
 /** What somebody decided, and the whole of what they can change. */
 export interface MemoryChoice {
   enabled: boolean;
-  /** A model of their own, or null for "whichever Foundry suggests". */
+  /** A model of their own, or null for "whichever Kira suggests". */
   chosen: string | null;
 }
 
@@ -1164,7 +1164,7 @@ export const MEMORY_CHANNELS = {
   save: 'memory:save',
 } as const;
 
-/** The Settings surface for Foundry-owned MCP servers. */
+/** The Settings surface for Kira-owned MCP servers. */
 export const MCP_CHANNELS = {
   load: 'mcp:load',
   add: 'mcp:add',
@@ -1178,7 +1178,7 @@ export const MCP_CHANNELS = {
   event: 'mcp:event',
 } as const;
 /** Commands from the one trusted renderer to register its owned browser guest. */
-export const BROWSER_PROFILE_PARTITION = 'persist:foundry-browser';
+export const BROWSER_PROFILE_PARTITION = 'persist:kira-browser';
 export const BROWSER_CHANNELS = {
   register: 'browser:register',
   activate: 'browser:activate',
@@ -1243,7 +1243,7 @@ export interface ShellTestResult {
   resolvedPath: string;
 }
 
-export interface FoundryBridge {
+export interface KiraBridge {
   /** Host platform, so the renderer can adapt without importing Node APIs. */
   platform: string;
   /** Register a guest created by this window, after Electron attaches it. */
@@ -1497,7 +1497,7 @@ export interface FoundryBridge {
   /** Subscribe to new readings. Returns an unsubscribe function. */
   onUsageEvent(listener: (usage: Usage | null) => void): () => void;
   /**
-   * The models Foundry offers, in the order the pool ranks them, so the picker
+   * The models Kira offers, in the order the pool ranks them, so the picker
    * draws what can actually be run rather than what the machine once knew.
    */
   loadModels(): Promise<Result<ModelOption[]>>;

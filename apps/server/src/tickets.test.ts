@@ -131,7 +131,7 @@ async function project(
   const response = await send(
     app,
     '/api/projects',
-    body('POST', bearer(key), { name: 'Foundry', prefix: 'FND', ...made }),
+    body('POST', bearer(key), { name: 'Kira', prefix: 'FND', ...made }),
   );
   if (response.status !== 200) throw new Error(`no project: ${await response.text()}`);
 
@@ -302,15 +302,15 @@ describe('a project', () => {
   test('is made with a name and a prefix, and read back in the list', async () => {
     const { app, key } = await signedIn();
 
-    const made = await project(app, key, { name: 'Foundry', prefix: 'FND' });
+    const made = await project(app, key, { name: 'Kira', prefix: 'FND' });
 
-    expect(made.name).toBe('Foundry');
+    expect(made.name).toBe('Kira');
     expect(made.prefix).toBe('FND');
 
     const listed = await send(app, '/api/projects', { headers: bearer(key) });
 
     expect(await listed.json()).toEqual({
-      projects: [{ id: made.id, name: 'Foundry', prefix: 'FND' }],
+      projects: [{ id: made.id, name: 'Kira', prefix: 'FND' }],
     });
   });
 
@@ -319,7 +319,7 @@ describe('a project', () => {
     const made = await project(app, key);
 
     expect(await queue(app, key, made.id)).toEqual({
-      project: { id: made.id, name: 'Foundry', prefix: 'FND' },
+      project: { id: made.id, name: 'Kira', prefix: 'FND' },
       tickets: [],
       counts: { draft: 0, ready: 0, blocked: 0, done: 0, running: 0, 'needs-you': 0 },
     });
@@ -330,7 +330,7 @@ describe('a project', () => {
     const ada = await made.add();
     const grace = await made.add('grace@company.example');
 
-    await project(made.app, ada.key, { name: 'Foundry', prefix: 'FND' });
+    await project(made.app, ada.key, { name: 'Kira', prefix: 'FND' });
 
     const listed = await send(made.app, '/api/projects', { headers: bearer(grace.key) });
 
@@ -376,7 +376,7 @@ describe('a project', () => {
     const refused = await send(
       app,
       '/api/projects',
-      body('POST', bearer(key), { name: 'Foundry', prefix }),
+      body('POST', bearer(key), { name: 'Kira', prefix }),
     );
 
     expect(refused.status).toBe(400);
@@ -891,7 +891,7 @@ describe('a ticket', () => {
     // Read by somebody else, because the person's own key went with them.
     const after = await queue(shared.app, other.key, made.id);
 
-    expect(after.project).toEqual({ id: made.id, name: 'Foundry', prefix: 'FND' });
+    expect(after.project).toEqual({ id: made.id, name: 'Kira', prefix: 'FND' });
     expect(after.tickets).toHaveLength(1);
     expect(after.tickets[0]?.author).toBeNull();
   });
@@ -1900,7 +1900,7 @@ describe('a run', () => {
       },
     });
 
-    // And a verdict that is not one of the two is refused in Foundry's own words.
+    // And a verdict that is not one of the two is refused in Kira's own words.
     const other = await judged(app, person.key, ticket.id, made.id, { verdict: 'maybe' });
     expect(other.status).toBe(400);
     expect((await other.json()).error.code).toBe('VERDICT_UNKNOWN');

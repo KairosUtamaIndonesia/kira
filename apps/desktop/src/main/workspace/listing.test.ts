@@ -103,7 +103,7 @@ for (const testCase of CASES) {
  * machine.
  */
 test('a folder git cannot answer for is read as it is, and says so', async () => {
-  const root = tempDir('foundry-folder-');
+  const root = tempDir('kira-folder-');
   mkdirSync(join(root, 'deep'));
   writeFileSync(join(root, 'b.ts'), '');
   writeFileSync(join(root, 'a.ts'), '');
@@ -117,7 +117,7 @@ test('a folder git cannot answer for is read as it is, and says so', async () =>
 });
 
 test('a folder inside one is read by its path from the workspace root', async () => {
-  const root = tempDir('foundry-folder-');
+  const root = tempDir('kira-folder-');
   mkdirSync(join(root, 'deep'));
   writeFileSync(join(root, 'deep', 'inner.ts'), '');
 
@@ -129,7 +129,7 @@ test('a folder inside one is read by its path from the workspace root', async ()
 });
 
 test('a folder that is not there is a failure, not an empty folder', async () => {
-  const root = tempDir('foundry-folder-');
+  const root = tempDir('kira-folder-');
 
   await assert.rejects(listFolder(root, 'gone'), /ENOENT/);
 });

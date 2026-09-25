@@ -5,7 +5,7 @@ Date: 2026-09-16
 ## Context
 
 Kira runs in the Electron main process and drives pi's built-in tools: `read`,
-`write`, `edit`, `bash`, `grep`, `find`, `ls`. Foundry gives every thread a
+`write`, `edit`, `bash`, `grep`, `find`, `ls`. Kira gives every thread a
 working directory — a project folder the user added, or a folder the app created
 for a new chat — which reads as a "space" the agent operates within.
 
@@ -17,7 +17,7 @@ the user's whole account.
 ## Decision
 
 Kira has the same filesystem reach as a terminal running in the working
-directory. Foundry does not confine it, and does not claim to.
+directory. Kira does not confine it, and does not claim to.
 
 Specifically, we are not building:
 

@@ -11,7 +11,7 @@ import type { ShapingState } from '../../preload/bridge.ts';
 import { ThreadStore, type ObservationRecord, type ThreadRecord } from './threads.ts';
 
 function storePath(): string {
-  return join(tempDir('foundry-store-'), 'threads.db');
+  return join(tempDir('kira-store-'), 'threads.db');
 }
 
 test('a new database reaches the current schema version', () => {
@@ -158,7 +158,7 @@ test('a database from before threads remembered a place opens, and gains one', (
   const record = store.getThread('older-chat');
 
   // The chat is intact, and stands nowhere until someone says otherwise.
-  assert.equal(record.cwd, join(tmpdir(), 'foundry-space'));
+  assert.equal(record.cwd, join(tmpdir(), 'kira-space'));
   assert.equal(record.headId, null);
   // Two steps of migration, not one: a database this old climbs both.
   assert.equal(record.workspaceId, null);
@@ -175,7 +175,7 @@ test('a database from before workspaces opens, and can hold one', () => {
   const store = new ThreadStore(path);
   const record = store.getThread('older-chat');
 
-  assert.equal(record.cwd, join(tmpdir(), 'foundry-space'));
+  assert.equal(record.cwd, join(tmpdir(), 'kira-space'));
   assert.equal(record.workspaceId, null);
 
   const workspace = store.rememberWorkspace(join(tmpdir(), 'api'));
@@ -222,7 +222,7 @@ function beforeProjects(path: string, version: 1 | 2): void {
     .prepare('INSERT INTO threads (id, cwd, created_at, updated_at) VALUES (?, ?, ?, ?)')
     .run(
       'older-chat',
-      join(tmpdir(), 'foundry-space'),
+      join(tmpdir(), 'kira-space'),
       '2026-01-01T00:00:00.000Z',
       '2026-01-01T00:00:00.000Z',
     );
@@ -313,8 +313,8 @@ test('a workspace works a project once it is joined to one, and none before', ()
   assert.equal(workspace.projectId, null);
   assert.equal(store.workspaceAt(join(tmpdir(), 'api'))?.projectId, null);
 
-  assert.equal(store.joinWorkspace(workspace.id, 'foundry-project')?.projectId, 'foundry-project');
-  assert.equal(store.workspaceAt(join(tmpdir(), 'api'))?.projectId, 'foundry-project');
+  assert.equal(store.joinWorkspace(workspace.id, 'kira-project')?.projectId, 'kira-project');
+  assert.equal(store.workspaceAt(join(tmpdir(), 'api'))?.projectId, 'kira-project');
 
   // One answer, replaced rather than accumulated: a folder works one project at a
   // time, and joining another is what changing your mind looks like.
@@ -325,7 +325,7 @@ test('a workspace works a project once it is joined to one, and none before', ()
 test('joining a workspace that is gone answers nothing rather than failing', () => {
   const store = new ThreadStore(storePath());
 
-  assert.equal(store.joinWorkspace('never-existed', 'foundry-project'), undefined);
+  assert.equal(store.joinWorkspace('never-existed', 'kira-project'), undefined);
   store.close();
 });
 
@@ -593,7 +593,7 @@ test('MCP transport and tool selection survive migration and updates', () => {
 
 test('a chat remembers the model it runs on', () => {
   const store = new ThreadStore(storePath());
-  const chat = store.createThread(join(tmpdir(), 'foundry-space'));
+  const chat = store.createThread(join(tmpdir(), 'kira-space'));
 
   // Nothing chosen yet, which is not the same as a model that happens to come
   // first: a chat that has chosen none runs on what the pool prefers.
@@ -637,7 +637,7 @@ test('a chat hands back its stored shaping across a restart', () => {
   for (const item of cases) {
     const path = storePath();
     const store = new ThreadStore(path);
-    const chat = store.createThread(join(tmpdir(), 'foundry-space'));
+    const chat = store.createThread(join(tmpdir(), 'kira-space'));
     store.close();
 
     const raw = new DatabaseSync(path);
@@ -653,7 +653,7 @@ test('a chat hands back its stored shaping across a restart', () => {
 test('a chat remembers the shaping it was given', () => {
   const path = storePath();
   const store = new ThreadStore(path);
-  const chat = store.createThread(join(tmpdir(), 'foundry-space'));
+  const chat = store.createThread(join(tmpdir(), 'kira-space'));
   const shaping: ShapingState = {
     proposals: [
       {
@@ -714,8 +714,8 @@ test('choosing the folder again takes back the chats already working in it', () 
 
 test('a chat that is put away leaves the list and keeps everything it holds', () => {
   const store = new ThreadStore(storePath());
-  const put = store.createThread(join(tmpdir(), 'foundry-space'));
-  const kept = store.createThread(join(tmpdir(), 'foundry-space'));
+  const put = store.createThread(join(tmpdir(), 'kira-space'));
+  const kept = store.createThread(join(tmpdir(), 'kira-space'));
   store.appendEntry(put.id, stored('a', null));
 
   store.archiveThread(put.id);
@@ -727,7 +727,7 @@ test('a chat that is put away leaves the list and keeps everything it holds', ()
     store.listThreads().map((thread) => thread.id),
     [kept.id],
   );
-  assert.equal(store.getThread(put.id).cwd, join(tmpdir(), 'foundry-space'));
+  assert.equal(store.getThread(put.id).cwd, join(tmpdir(), 'kira-space'));
   assert.deepEqual(
     store.loadEntries(put.id).map((entry) => entry.id),
     ['a'],
@@ -737,8 +737,8 @@ test('a chat that is put away leaves the list and keeps everything it holds', ()
 
 test('a chat brought back from being put away rejoins the list', () => {
   const store = new ThreadStore(storePath());
-  const put = store.createThread(join(tmpdir(), 'foundry-space'));
-  const kept = store.createThread(join(tmpdir(), 'foundry-space'));
+  const put = store.createThread(join(tmpdir(), 'kira-space'));
+  const kept = store.createThread(join(tmpdir(), 'kira-space'));
 
   store.archiveThread(put.id);
   store.unarchiveThread(put.id);
@@ -804,7 +804,7 @@ function beforeWorkspacesRename(old: DatabaseSync): void {
  */
 function beforeArchiving(path: string): void {
   const store = new ThreadStore(path);
-  store.createThread(join(tmpdir(), 'foundry-space'));
+  store.createThread(join(tmpdir(), 'kira-space'));
   store.close();
 
   const old = new DatabaseSync(path);
@@ -835,7 +835,7 @@ interface OlderCase {
  */
 function beforeModelMemory(path: string): void {
   const store = new ThreadStore(path);
-  store.createThread(join(tmpdir(), 'foundry-space'));
+  store.createThread(join(tmpdir(), 'kira-space'));
   store.close();
 
   const old = new DatabaseSync(path);
@@ -858,7 +858,7 @@ function beforeModelMemory(path: string): void {
  */
 function beforeKeepingMemory(path: string): void {
   const store = new ThreadStore(path);
-  store.createThread(join(tmpdir(), 'foundry-space'));
+  store.createThread(join(tmpdir(), 'kira-space'));
   store.close();
 
   const old = new DatabaseSync(path);
@@ -880,7 +880,7 @@ function beforeKeepingMemory(path: string): void {
  */
 function beforeConclusions(path: string): void {
   const store = new ThreadStore(path);
-  store.createThread(join(tmpdir(), 'foundry-space'));
+  store.createThread(join(tmpdir(), 'kira-space'));
   store.close();
 
   const old = new DatabaseSync(path);
@@ -901,7 +901,7 @@ function beforeConclusions(path: string): void {
  */
 function beforeProjectMemory(path: string): void {
   const store = new ThreadStore(path);
-  store.createThread(join(tmpdir(), 'foundry-space'));
+  store.createThread(join(tmpdir(), 'kira-space'));
   store.close();
 
   const old = new DatabaseSync(path);
@@ -923,7 +923,7 @@ function beforeProjectMemory(path: string): void {
  */
 function beforeTheRename(path: string): void {
   const store = new ThreadStore(path);
-  store.createThread(join(tmpdir(), 'foundry-space'));
+  store.createThread(join(tmpdir(), 'kira-space'));
   store.close();
 
   const old = new DatabaseSync(path);
@@ -942,7 +942,7 @@ function beforeTheRename(path: string): void {
  */
 function beforeRunsWereChats(path: string): void {
   const store = new ThreadStore(path);
-  store.createThread(join(tmpdir(), 'foundry-space'));
+  store.createThread(join(tmpdir(), 'kira-space'));
   store.close();
 
   const old = new DatabaseSync(path);
@@ -1333,7 +1333,7 @@ for (const testCase of KEPT_CASES) {
     const store = new ThreadStore(storePath());
     const { workspaceId, asking, want } = testCase.arrange(
       store,
-      join(tmpdir(), 'foundry-a-workspace'),
+      join(tmpdir(), 'kira-a-workspace'),
     );
 
     assert.deepEqual(store.loadWorkspaceObservations(workspaceId, asking), want);
@@ -1343,7 +1343,7 @@ for (const testCase of KEPT_CASES) {
 
 test('what a workspace kept goes when the workspace goes', () => {
   const store = new ThreadStore(storePath());
-  const workspace = store.rememberWorkspace(join(tmpdir(), 'foundry-a-workspace'));
+  const workspace = store.rememberWorkspace(join(tmpdir(), 'kira-a-workspace'));
   const gone = store.createThread(tmpdir(), { workspaceId: workspace.id });
   const beside = store.createThread(tmpdir(), { workspaceId: workspace.id });
 
@@ -1530,7 +1530,7 @@ function concludedBy(store: ThreadStore, threadId: string) {
 
 test('a chat says which ticket it is a run of, and an ordinary chat says nothing', () => {
   const store = new ThreadStore(storePath());
-  const folder = join(tmpdir(), 'foundry-space');
+  const folder = join(tmpdir(), 'kira-space');
 
   const ordinary = store.createThread(folder);
   const run = store.createThread(folder, { ticketId: 'ticket-one' });

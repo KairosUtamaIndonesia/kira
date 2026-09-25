@@ -38,8 +38,8 @@ function chat(key: string, body: Record<string, unknown> = {}): RequestInit {
   };
 }
 
-describe('a chat through Foundry', () => {
-  test('a chat with a Foundry key reaches the pool and streams back', async () => {
+describe('a chat through Kira', () => {
+  test('a chat with a Kira key reaches the pool and streams back', async () => {
     const pool = await startFakeUpstream();
     const { app, auth } = await boot({}, { url: pool.url, key: 'pool-key' });
     const ada = await user(auth);
@@ -50,7 +50,7 @@ describe('a chat through Foundry', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toContain('text/event-stream');
 
-    // What reached the pool: Foundry's own key, never the caller's, and the
+    // What reached the pool: Kira's own key, never the caller's, and the
     // body the caller sent.
     expect(pool.requests).toHaveLength(1);
     expect(pool.requests[0]?.authorization).toBe('Bearer pool-key');
@@ -85,7 +85,7 @@ describe('a chat through Foundry', () => {
     expect(response.status).toBe(401);
     expect((await response.json()).error.code).toBe(expected);
 
-    // The point of the check: a chat Foundry will not answer is one the pool
+    // The point of the check: a chat Kira will not answer is one the pool
     // never sees, so nothing was spent on it.
     expect(pool.requests).toHaveLength(0);
 
@@ -246,7 +246,7 @@ describe('what a chat used', () => {
 
     const response = await send(app, '/v1/chat/completions', chat(key.key));
 
-    // The caller's copy stops where Foundry's did. A stream that is cut off
+    // The caller's copy stops where Kira's did. A stream that is cut off
     // leaves no trace of its own at the transport level — the connection simply
     // stops, and that is indistinguishable from a reply that ended — so what
     // says it broke is the pool's end marker being absent, which is the same
@@ -318,8 +318,8 @@ describe('what a chat used', () => {
   });
 });
 
-describe('the models Foundry offers', () => {
-  test('are the ones the pool can serve, as Foundry describes them', async () => {
+describe('the models Kira offers', () => {
+  test('are the ones the pool can serve, as Kira describes them', async () => {
     const pool = await startFakePool();
     const { app, auth } = await boot({}, { url: pool.url, key: 'pool-key' });
     const ada = await user(auth);
@@ -345,7 +345,7 @@ describe('the models Foundry offers', () => {
     });
 
     // Asked for the catalog at all — the query is what makes the pool answer in
-    // the shape this reads — and with Foundry's own key, never the caller's.
+    // the shape this reads — and with Kira's own key, never the caller's.
     expect(pool.requests).toHaveLength(1);
     expect(pool.requests[0]).toMatchObject({
       path: '/v1/models',
@@ -360,7 +360,7 @@ describe('the models Foundry offers', () => {
    * Every way the catalog can fail to arrive.
    *
    * `reached` is whether the pool was asked at all, which for a refused caller
-   * is the point: a request Foundry will not answer is one nothing was spent on.
+   * is the point: a request Kira will not answer is one nothing was spent on.
    */
   const refusals: {
     name: string;
@@ -394,7 +394,7 @@ describe('the models Foundry offers', () => {
       code: 'POOL_UNREACHABLE',
     },
     {
-      name: 'the pool refuses the key Foundry presents',
+      name: 'the pool refuses the key Kira presents',
       presents: 'issued',
       answers: { status: 401, body: '{"error":"Invalid API key"}' },
       reached: true,
@@ -704,7 +704,7 @@ describe('what a person is allowed', () => {
 
   test('a pool that cannot say what a model allows leaves pi’s own ceiling', async () => {
     // The provider fake answers the plain model list rather than the pool's
-    // catalog, so Foundry cannot learn a limit from it — and a request with no
+    // catalog, so Kira cannot learn a limit from it — and a request with no
     // ceiling must still be measured against something rather than waved through.
     const pool = await startFakeUpstream();
     const { app, auth, database } = await boot({}, { url: pool.url, key: 'pool-key' });
@@ -712,7 +712,7 @@ describe('what a person is allowed', () => {
     const key = await issue(auth, ada.id, 'workstation');
 
     // Two tokens of question, so the boundary is pi's 16384 and nothing else.
-    // No ceiling at all in the request, which is what sends Foundry looking.
+    // No ceiling at all in the request, which is what sends Kira looking.
     await setAllowance(database, ada.id, 16_385);
     expect(
       (await send(app, '/v1/chat/completions', chat(key.key, { max_tokens: undefined }))).status,

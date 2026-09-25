@@ -11,15 +11,15 @@ import type {
 import { ThreadStore } from '../../db/threads.ts';
 import { tempDir } from '../../test-support/temp.ts';
 import { resumeSession } from '../agent.ts';
-import { foundryModels, type Models } from '../models.ts';
+import { kiraModels, type Models } from '../models.ts';
 import { createThread } from '../storage.ts';
-import { foundryExtension } from './factory.ts';
+import { kiraExtension } from './factory.ts';
 import { recallTool } from './recallTool.ts';
 
 // Hermetic, as the other booting tests are: pi reads `PI_CODING_AGENT_DIR` for
 // settings and credentials and `HOME` for the global skills source.
-const AGENT_DIR = tempDir('foundry-recall-agent-');
-process.env['HOME'] = tempDir('foundry-recall-home-');
+const AGENT_DIR = tempDir('kira-recall-agent-');
+process.env['HOME'] = tempDir('kira-recall-home-');
 process.env['PI_CODING_AGENT_DIR'] = AGENT_DIR;
 
 // Compaction is what recall exists for, so the chat in the headline test below
@@ -33,10 +33,10 @@ writeFileSync(
 
 /** The models a session runs on, and a server that is not there. */
 function offlineModels(): Models {
-  const cache = join(tempDir('foundry-recall-models-'), 'models.json');
+  const cache = join(tempDir('kira-recall-models-'), 'models.json');
   writeFileSync(cache, JSON.stringify({ models: [{ id: 'served-model', name: 'Served Model' }] }));
 
-  return foundryModels({
+  return kiraModels({
     server: 'http://127.0.0.1:1',
     cachePath: cache,
     token: async () => 'device-key',
@@ -77,8 +77,8 @@ function writer(session: SessionManager): Writer {
     session.appendMessage({
       role: 'assistant',
       content,
-      api: 'foundry',
-      provider: 'foundry',
+      api: 'kira',
+      provider: 'kira',
       model: 'served-model',
       usage: usage(),
       stopReason,
@@ -157,8 +157,8 @@ async function lookedUp(fill: (chat: Writer) => void): Promise<{
     scope?: 'chat' | 'workspace';
   }) => Promise<string>;
 }> {
-  const cwd = tempDir('foundry-recall-space-');
-  const path = join(tempDir('foundry-recall-store-'), 'threads.db');
+  const cwd = tempDir('kira-recall-space-');
+  const path = join(tempDir('kira-recall-store-'), 'threads.db');
   const store = new ThreadStore(path);
 
   const thread = createThread(store, cwd);
@@ -224,8 +224,8 @@ test('recall reaches a turn that compaction removed from what Kira can see', asy
   // The whole reason the tool exists. Everything is written, the chat compacts
   // so that only the last reply is left in context, and the opening turn — gone
   // from what the model is shown — is still readable by its number.
-  const cwd = tempDir('foundry-recall-space-');
-  const path = join(tempDir('foundry-recall-store-'), 'threads.db');
+  const cwd = tempDir('kira-recall-space-');
+  const path = join(tempDir('kira-recall-store-'), 'threads.db');
   const store = new ThreadStore(path);
 
   const thread = createThread(store, cwd);
@@ -378,14 +378,14 @@ test('the extension hands pi the tool, so a lookup shows in the transcript', asy
   // A tool nobody registered is a tool Kira cannot call, and a lookup she cannot
   // call is invisible — which is the one thing recall exists to avoid, since
   // checking has to be distinguishable from remembering.
-  const store = new ThreadStore(join(tempDir('foundry-recall-'), 'threads.db'));
+  const store = new ThreadStore(join(tempDir('kira-recall-'), 'threads.db'));
   const registered: string[] = [];
   const pi = {
     on: () => undefined,
     registerTool: (tool: { name: string }) => registered.push(tool.name),
   } as unknown as ExtensionAPI;
 
-  foundryExtension({ cwd: tmpdir(), store, threadId: 'any', models: MODELS }).factory(pi);
+  kiraExtension({ cwd: tmpdir(), store, threadId: 'any', models: MODELS }).factory(pi);
 
   assert.deepEqual(registered, [
     'browser_open',
@@ -411,8 +411,8 @@ test('a turn the summary names can be read back by the number it gave', async ()
   // written at the compaction, asked for afterwards, through the tool — because
   // the two halves number turns in different places and only this notices if they
   // stop agreeing.
-  const cwd = tempDir('foundry-recall-space-');
-  const path = join(tempDir('foundry-recall-store-'), 'threads.db');
+  const cwd = tempDir('kira-recall-space-');
+  const path = join(tempDir('kira-recall-store-'), 'threads.db');
   const store = new ThreadStore(path);
 
   const thread = createThread(store, cwd);
@@ -508,7 +508,7 @@ test('a workspace search in a chat filed under no workspace searches only itself
 test('a workspace search does not reach a chat filed under another workspace', async () => {
   const chat = await lookedUp(EXCHANGES);
   chat.store.rememberWorkspace(chat.cwd);
-  const other = chat.store.rememberWorkspace(tempDir('foundry-recall-other-'));
+  const other = chat.store.rememberWorkspace(tempDir('kira-recall-other-'));
   fillBeside(chat.store, chat.cwd, other.id, ROLLBACK);
 
   assert.equal(

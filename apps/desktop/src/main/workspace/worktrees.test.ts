@@ -18,17 +18,17 @@ import { runWorktrees } from './worktrees.ts';
 
 /** A configuration of this test's own, so an operator's git settings change nothing. */
 function isolatedGit(): void {
-  const home = tempDir('foundry-runs-home-');
+  const home = tempDir('kira-runs-home-');
   writeFileSync(join(home, 'gitconfig'), '');
 
   process.env['GIT_CONFIG_GLOBAL'] = join(home, 'gitconfig');
   process.env['GIT_CONFIG_SYSTEM'] = devNull;
   // Commits are made by the two tests that need a starting point, and a machine with no
   // identity of its own must not be why they fail.
-  process.env['GIT_AUTHOR_NAME'] = 'Foundry';
-  process.env['GIT_AUTHOR_EMAIL'] = 'foundry@example.test';
-  process.env['GIT_COMMITTER_NAME'] = 'Foundry';
-  process.env['GIT_COMMITTER_EMAIL'] = 'foundry@example.test';
+  process.env['GIT_AUTHOR_NAME'] = 'Kira';
+  process.env['GIT_AUTHOR_EMAIL'] = 'kira@example.test';
+  process.env['GIT_COMMITTER_NAME'] = 'Kira';
+  process.env['GIT_COMMITTER_EMAIL'] = 'kira@example.test';
 }
 
 before(isolatedGit);
@@ -40,7 +40,7 @@ after(() => {
 
 /** A checkout to run in, with one commit so there is a branch to work from. */
 function checkout(): string {
-  const root = tempDir('foundry-project-');
+  const root = tempDir('kira-project-');
   execFileSync('git', ['-C', root, 'init', '-q', '-b', 'main'], { stdio: 'ignore' });
   writeFileSync(join(root, 'README.md'), 'the project\n');
   execFileSync('git', ['-C', root, 'add', '.'], { stdio: 'ignore' });
@@ -51,7 +51,7 @@ function checkout(): string {
 
 /** Where a run of this ticket would work. */
 function runPath(): string {
-  return join(tempDir('foundry-run-'), 'work');
+  return join(tempDir('kira-run-'), 'work');
 }
 
 /** The branches a checkout knows. */
@@ -65,7 +65,7 @@ function branchNames(folder: string): string[] {
 }
 
 function originFor(project: string): string {
-  const remote = mkdtempSync(join(tmpdir(), 'foundry-remote-'));
+  const remote = mkdtempSync(join(tmpdir(), 'kira-remote-'));
   temporary.push(remote);
   execFileSync('git', ['init', '-q', '--bare', remote], { stdio: 'ignore' });
   execFileSync('git', ['-C', project, 'remote', 'add', 'origin', remote], { stdio: 'ignore' });
@@ -166,21 +166,21 @@ test('a checkout a run abandoned is cleared out of the way of the next one', asy
 });
 
 test('a folder that is not a checkout has no run to give', async () => {
-  const nowhere = tempDir('foundry-not-a-project-');
+  const nowhere = tempDir('kira-not-a-project-');
 
   assert.equal(await runWorktrees().make(nowhere, 'kira-7', runPath()), null);
 });
 
 test('a folder that is gone has no run to give either', async () => {
   assert.equal(
-    await runWorktrees().make(join(tmpdir(), 'foundry-gone-nowhere'), 'kira-8', runPath()),
+    await runWorktrees().make(join(tmpdir(), 'kira-gone-nowhere'), 'kira-8', runPath()),
     null,
   );
 });
 
 test('the first spec run pushes its branch and later slices start from it', async () => {
   const project = checkout();
-  const remote = mkdtempSync(join(tmpdir(), 'foundry-remote-'));
+  const remote = mkdtempSync(join(tmpdir(), 'kira-remote-'));
   temporary.push(remote);
   execFileSync('git', ['init', '-q', '--bare', remote], { stdio: 'ignore' });
   execFileSync('git', ['-C', project, 'remote', 'add', 'origin', remote], { stdio: 'ignore' });

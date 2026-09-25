@@ -620,7 +620,7 @@ export function openChats(
               : ticket;
           settle(threadId, proposal.id, { ...proposal, status: 'approved', ticketId: blocked.id });
           await conversation.send(
-            'The person approved the spec proposal. Foundry recorded it. Immediately propose its ticket breakdown with shape_breakdown_proposal. Do not publish the tickets; wait for the person to approve the breakdown.',
+            'The person approved the spec proposal. Kira recorded it. Immediately propose its ticket breakdown with shape_breakdown_proposal. Do not publish the tickets; wait for the person to approve the breakdown.',
           );
           return;
         }
@@ -629,7 +629,7 @@ export function openChats(
           const { kind: _map, ...map } = proposal;
           const ticket = await tracker.createMap(workspaceId, map, threadId);
           settle(threadId, proposal.id, { ...proposal, status: 'approved', ticketId: ticket.id });
-          await conversation.send('The person approved the map proposal. Foundry recorded it.');
+          await conversation.send('The person approved the map proposal. Kira recorded it.');
           return;
         }
         case 'decision': {
@@ -641,7 +641,7 @@ export function openChats(
             decisionId: proposal.id,
           });
           await conversation.send(
-            'The person approved the Decision proposal. Foundry recorded it.',
+            'The person approved the Decision proposal. Kira recorded it.',
           );
           return;
         }
@@ -655,7 +655,7 @@ export function openChats(
               : { decisionProposal: proposal.decisionProposal }),
           });
           settle(threadId, proposal.id, { ...proposal, status: 'approved', outcomeId: outcome.id });
-          await conversation.send('The person approved the Outcome proposal. Foundry recorded it.');
+          await conversation.send('The person approved the Outcome proposal. Kira recorded it.');
           return;
         }
         case 'breakdown': {
@@ -680,8 +680,8 @@ export function openChats(
           });
           await conversation.send(
             readyRefusal === null
-              ? 'The person approved the breakdown. Foundry published the tickets and marked them ready.'
-              : `The person approved the breakdown. Foundry published the drafts but refused readiness: ${readyRefusal}`,
+              ? 'The person approved the breakdown. Kira published the tickets and marked them ready.'
+              : `The person approved the breakdown. Kira published the drafts but refused readiness: ${readyRefusal}`,
           );
           return;
         }

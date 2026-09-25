@@ -13,7 +13,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 /**
- * Every table in Foundry's database, as code rather than as statements someone
+ * Every table in Kira's database, as code rather than as statements someone
  * ran once.
  *
  * The first five belong to Better Auth, which reads and writes them through its
@@ -531,7 +531,7 @@ export const run = pgTable(
  * window is a way of watching them, and closing the window does not lose them. An entry
  * is written once and never changed, because a transcript somebody can edit afterwards is
  * not a record of what happened. `saidBy` is who said it — the person steering, the agent
- * doing the work, or a note Foundry adds itself, such as why a run stopped.
+ * doing the work, or a note Kira adds itself, such as why a run stopped.
  */
 export const transcript = pgTable(
   'transcript',

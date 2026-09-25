@@ -19,11 +19,11 @@ const SIGN_IN_PAGE = `<!doctype html>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Sign in to Foundry</title>
+    <title>Sign in to Kira</title>
   </head>
   <body>
     <main>
-      <h1>Foundry</h1>
+      <h1>Kira</h1>
       <p>Sign in with your company Microsoft account.</p>
       <form method="post" action="/sign-in">
         <button type="submit">Sign in with Microsoft</button>
@@ -51,7 +51,7 @@ export function createApp({
       .use(
         openapi({
           documentation: {
-            info: { title: 'Foundry platform API', version: '0.1.0' },
+            info: { title: 'Kira platform API', version: '0.1.0' },
           },
         }),
       )
@@ -121,7 +121,7 @@ export function createApp({
             200: t.Object({ id: t.String(), email: t.String(), name: t.String() }),
             401: REFUSAL,
           },
-          detail: { summary: 'The user a Foundry key belongs to' },
+          detail: { summary: 'The user a Kira key belongs to' },
         },
       )
       .use(createPool({ auth, config, database }))

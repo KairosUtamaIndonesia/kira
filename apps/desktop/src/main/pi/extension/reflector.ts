@@ -1,17 +1,17 @@
 /**
  * The one model-backed stage: drawing conclusions from what a chat has noticed.
  *
- * Everything else in Foundry's memory is worked out from the words — the ledger
+ * Everything else in Kira's memory is worked out from the words — the ledger
  * is a function of the turns, and the summary is a selection of the ledger. What
  * the words amount to is the part regex cannot reach, so it is asked of a model,
  * and asked once per compaction rather than once per turn: a chat is reflected on
  * when it is being summarised, not while it is being used.
  *
- * The call is made through a real pi session on Foundry's own provider, with no
+ * The call is made through a real pi session on Kira's own provider, with no
  * tools and a session of its own that is thrown away afterwards. That is what
  * keeps a reflection's tokens on the same path as any other call — the same
  * provider, the same Usage row, the same refusal — rather than reaching past pi
- * for a stream of its own, which would be a second way for Foundry to spend a
+ * for a stream of its own, which would be a second way for Kira to spend a
  * person's allowance.
  *
  * Failing is ordinary here. A chat whose reflector cannot be reached still
@@ -174,9 +174,9 @@ export async function askForConclusions(
 ): Promise<string[]> {
   const remembered = modelId === null ? null : await models.find(modelId);
   const choice = remembered ?? (await models.preferred());
-  if (choice === null) throw new Error('Foundry is not offering any models to reflect with.');
+  if (choice === null) throw new Error('Kira is not offering any models to reflect with.');
 
-  // Built to answer one question and thrown away, so it carries none of Foundry's
+  // Built to answer one question and thrown away, so it carries none of Kira's
   // hooks and none of a chat's tools — and nothing is loaded out of the
   // directory it runs in either. That last part matters: the reflector runs in
   // the chat's own cwd, so unless context files are switched off it is handed

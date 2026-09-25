@@ -1,13 +1,13 @@
 import { Theme } from '@astryxdesign/core/theme';
 import type { ReactNode } from 'react';
-import { foundryTheme } from './built/foundry';
+import { kiraTheme } from './built/kira';
 import './theme.css';
 
 /**
- * Foundry's theme, applied once so every surface is themed the same way.
+ * Kira's theme, applied once so every surface is themed the same way.
  *
  * The CSS comes with this import rather than being asked for separately: a
- * consumer that took the provider without the rules would draw Foundry's
+ * consumer that took the provider without the rules would draw Kira's
  * components in Astryx's default type, and nothing would say so. What is left for
  * a consumer is its own layout, which is structure rather than looks.
  *
@@ -15,6 +15,6 @@ import './theme.css';
  * typefaces and not the arrangement. Two surfaces reading as one product also
  * needs them built from the same components.
  */
-export function FoundryTheme({ children }: { children: ReactNode }) {
-  return <Theme theme={foundryTheme}>{children}</Theme>;
+export function KiraTheme({ children }: { children: ReactNode }) {
+  return <Theme theme={kiraTheme}>{children}</Theme>;
 }

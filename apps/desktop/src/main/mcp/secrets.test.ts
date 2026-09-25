@@ -19,7 +19,7 @@ function keyring({ key = 0x5a, ...overrides }: Partial<SecretKeeper> & { key?: n
 }
 
 function directory(): string {
-  return tempDir('foundry-mcp-secrets-');
+  return tempDir('kira-mcp-secrets-');
 }
 
 const CREDENTIALS: McpServerCredentials = {

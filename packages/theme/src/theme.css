@@ -1,15 +1,15 @@
 /*
- * Foundry's theme, in one place so every surface imports the same one.
+ * Kira's theme, in one place so every surface imports the same one.
  *
  * The first block is Astryx's own entry points, not ours: its reset, its compiled
- * CSS (astryx.css is StyleX's output, generated in Astryx's build), and Foundry's
- * own derived theme (built/foundry.css, generated from foundryTheme.ts by
+ * CSS (astryx.css is StyleX's output, generated in Astryx's build), and Kira's
+ * own derived theme (built/kira.css, generated from kiraTheme.ts by
  * `astryx theme build` — see package.json's `theme:build` script). Importing
  * them here rather than in each app is what makes this package the whole of
- * "how Foundry looks".
+ * "how Kira looks".
  *
  * Nothing below needs StyleX compilation, which is why a consumer only has to
- * import this file: astryx.css arrives precompiled, and what Foundry adds of its
+ * import this file: astryx.css arrives precompiled, and what Kira adds of its
  * own is plain CSS. A component that styled itself with StyleX would move that
  * cost onto every consumer's build.
  */
@@ -17,7 +17,7 @@
 @import '@fontsource-variable/geist-mono';
 @import '@astryxdesign/core/reset.css';
 @import '@astryxdesign/core/astryx.css';
-@import './built/foundry.css';
+@import './built/kira.css';
 
 @font-face {
   font-family: 'Satoshi Variable';

@@ -14,7 +14,7 @@
  * cannot be reached" and "that prefix is taken" is decided in one place, in the
  * main process, where the key is.
  *
- * Everything crossing this seam is Foundry's vocabulary: a workspace is a folder
+ * Everything crossing this seam is Kira's vocabulary: a workspace is a folder
  * and the project it works, and no path handling or database row reaches the
  * renderer.
  */

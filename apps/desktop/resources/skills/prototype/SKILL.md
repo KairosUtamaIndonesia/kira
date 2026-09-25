@@ -1,6 +1,6 @@
 ---
 name: prototype
-description: Build a throwaway prototype to answer one Foundry design question.
+description: Build a throwaway prototype to answer one Kira design question.
 ---
 
 A prototype is throwaway code that answers one question. State that question before writing code and choose the smallest artifact that lets a person judge it.

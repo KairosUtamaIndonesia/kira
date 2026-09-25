@@ -53,7 +53,7 @@ direction: the runtime says a run can be stopped only once the adapter is handed
 itself whether there is something to stop.
 
 Waiting words are the second deliberate exception, in the other direction: the runtime
-offers a queue of its own — `ExternalThreadQueueAdapter` — and Foundry does not use it.
+offers a queue of its own — `ExternalThreadQueueAdapter` — and Kira does not use it.
 That queue belongs to whoever builds it, which is why `createMessageQueue` is exported:
 pending drafts live in the window, and steering means cancelling the run and saying the
 words again. pi's queue is the opposite — it lives in the session, and steering means
@@ -171,7 +171,7 @@ that took its place, or the workspace when it was the last, and never closes the
 to that tab, so a reader closing tabs with the keyboard stays in the strip.
 
 The workbench names the folder it is showing: a project's chat shows the folder's own name, as
-projects already do, and a workspace Foundry made for the chat says so in words, because its own
+projects already do, and a workspace Kira made for the chat says so in words, because its own
 name is a UUID. An empty folder gets a sentence rather than a blank panel, and anything that
 fails is shown in the pane that failed, so a refusal never reads as an empty folder.
 
@@ -239,7 +239,7 @@ and `ipc/` both import it, so neither imports the other. Nothing in `preload/` i
   `helpers.ts`.
 - One word means one thing everywhere.
 - pi's identifiers stay inside the code that adapts to pi. Anything a user reads or the
-  renderer receives uses Foundry's words.
+  renderer receives uses Kira's words.
 
 ## Tests
 

@@ -52,7 +52,7 @@ export type TrackerAnswer<T> =
   | { kind: 'signed-out' }
   | { kind: 'unavailable' };
 
-/** The server's half of the tracker, as `auth/foundry.ts` implements it. */
+/** The server's half of the tracker, as `auth/kira.ts` implements it. */
 export interface TrackerWire {
   /** The projects anyone signed in may work in. */
   projects(key: string): Promise<TrackerAnswer<ProjectSummary[]>>;
@@ -301,8 +301,8 @@ export interface Tracker {
 
 /** A folder that works no project is not an error, but it is not a queue either. */
 export const NO_PROJECT = 'This folder is not working a project yet.';
-export const NOBODY_SIGNED_IN = 'Nobody is signed in to Foundry.';
-export const UNREACHABLE = 'Foundry could not be reached.';
+export const NOBODY_SIGNED_IN = 'Nobody is signed in to Kira.';
+export const UNREACHABLE = 'Kira could not be reached.';
 
 export function trackerFor({
   token,

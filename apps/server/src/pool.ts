@@ -14,22 +14,22 @@ import { OUTCOME, recordUsage, type UsageRecord } from './usage';
  * It speaks OpenAI's Chat Completions shape because the desktop's pi client
  * does, and forwards into the pool — CLIProxyAPI — which holds the company's
  * provider logins and presents them upstream
- * (docs/adr/0003-model-credentials.md). Foundry holds no provider credential;
+ * (docs/adr/0003-model-credentials.md). Kira holds no provider credential;
  * what it holds is the pool's caller key, and that is the one thing a caller
  * must not be able to reach.
  *
- * The shape here is pi's rather than Foundry's, which is two decisions. It
- * stays out of Foundry's OpenAPI document, because it is not an API Foundry is
+ * The shape here is pi's rather than Kira's, which is two decisions. It
+ * stays out of Kira's OpenAPI document, because it is not an API Kira is
  * offering. And a refusal from the pool is passed back as the pool wrote it, so
  * a client reads it the way it reads a provider's own errors.
  *
  * What a request used is counted on the way past and written to the ledger —
- * the one thing about a request that nothing downstream of Foundry will ever
+ * the one thing about a request that nothing downstream of Kira will ever
  * tell it (docs/adr/0005-allowances.md).
  *
- * The catalog Foundry offers lives here too, because it comes from the same
+ * The catalog Kira offers lives here too, because it comes from the same
  * place: which models exist is a question only the pool can answer, and it is
- * Foundry that translates the answer. That one is Foundry's own shape rather
+ * Kira that translates the answer. That one is Kira's own shape rather
  * than pi's — see `catalogIn`.
  */
 export function createPool({
@@ -51,7 +51,7 @@ export function createPool({
         }
 
         // The body goes upstream as it arrived rather than re-encoded: it is
-        // pi's request, and a field Foundry does not understand is not one it
+        // pi's request, and a field Kira does not understand is not one it
         // has any business rewriting.
         const body = await request.text();
 
@@ -97,7 +97,7 @@ export function createPool({
             body,
           });
         } catch (cause) {
-          // The pool being down is the failure Foundry can actually expect, and
+          // The pool being down is the failure Kira can actually expect, and
           // it has to arrive as something a client can report rather than as a
           // bare 500.
           return status(
@@ -141,14 +141,14 @@ export function createPool({
 
         // Counted beside the reply rather than in front of it: a caller's last byte
         // should not wait on the ledger, and a caller who hangs up should not cost
-        // Foundry the record of what was spent on them.
+        // Kira the record of what was spent on them.
         void tally(toCount, {
           database,
           userId: held.user.id,
           asked,
           streaming: contentType.includes('text/event-stream'),
         }).catch((cause) =>
-          console.error('[foundry] what a chat used was not written down:', cause),
+          console.error('[kira] what a chat used was not written down:', cause),
         );
 
         return new Response(toCaller, { status: upstream.status, headers });
@@ -208,13 +208,13 @@ function refusalReasonIn(body: string, status: number): string {
 /**
  * pi's own ceiling for a request that states none.
  *
- * Kept here rather than invented, so Foundry's estimate of a request agrees with
+ * Kept here rather than invented, so Kira's estimate of a request agrees with
  * the client that would have made it.
  */
 const DEFAULT_OUTPUT_TOKENS = 16384;
 
 /**
- * Write down a request Foundry turned away.
+ * Write down a request Kira turned away.
  *
  * A refusal costs nothing and is still a fact worth keeping: it is how an
  * operator sees who is being refused and why, and for a refusal by the pool it is
@@ -296,12 +296,12 @@ export async function poolCatalog(config: Config): Promise<PoolCatalog> {
  * Two facts and two codes. A pool that could not be reached at all is a transport
  * failure; one that answered with something that is not a catalog is a gateway or
  * a misconfiguration, and the only way that usually happens is something between
- * Foundry and the pool answering in HTML.
+ * Kira and the pool answering in HTML.
  *
- * Either way it is Foundry's problem rather than the caller's — a pool that turns
- * away the key Foundry presents is a server misconfigured, and passing that 401
+ * Either way it is Kira's problem rather than the caller's — a pool that turns
+ * away the key Kira presents is a server misconfigured, and passing that 401
  * back would tell the caller their own key was wrong — so it is refused with
- * Foundry's own code and a 502. Written once because two routes ask the pool about
+ * Kira's own code and a 502. Written once because two routes ask the pool about
  * its catalog and neither should invent its own words for what went wrong.
  */
 export type PoolAnswer =
@@ -514,7 +514,7 @@ function counted(value: unknown): number {
 }
 
 /**
- * A completion request, as far as Foundry can read one.
+ * A completion request, as far as Kira can read one.
  *
  * Parsed from the bytes rather than taken from anywhere else because the bytes are
  * already here and are what went upstream. Anything unreadable reads as nothing.
@@ -528,7 +528,7 @@ function askedIn(body: string): unknown {
 }
 
 /**
- * The model a request asked for, as far as Foundry can read it.
+ * The model a request asked for, as far as Kira can read it.
  *
  * A body without one is a body the pool will refuse, and a refused request leaves
  * no row to put a model in.
@@ -573,14 +573,14 @@ function promptIn(asked: unknown): number {
 }
 
 /**
- * The models the pool can serve, as Foundry describes them.
+ * The models the pool can serve, as Kira describes them.
  *
- * Only what the pool stated is carried, under Foundry's names. A field the pool
+ * Only what the pool stated is carried, under Kira's names. A field the pool
  * does not carry is left out rather than guessed: pi's model entry wants more
  * than the pool knows, and a context window or an output limit invented here
  * would read as a fact rather than as the guess it is. The id is the exception,
  * because it is what a model is asked for by — an entry without one means this
- * was not a catalog Foundry can read, and half a catalog is a wrong one.
+ * was not a catalog Kira can read, and half a catalog is a wrong one.
  *
  * A `null` answer is therefore "that was not a catalog", never "there are no
  * models": an empty catalog is an empty array, and the two are different facts
@@ -588,7 +588,7 @@ function promptIn(asked: unknown): number {
  *
  * Two more of the pool's facts are read here rather than copied out. A model the
  * pool marks `hide` is one it does not want offered, so it is left out of what
- * Foundry offers; and `priority` is the pool's own ranking, which is what decides
+ * Kira offers; and `priority` is the pool's own ranking, which is what decides
  * the order these come back in — a desktop with no model chosen yet takes the
  * first, and the pool is the one that knows which model should be.
  */
@@ -629,7 +629,7 @@ interface ReadCatalogEntry {
   rank: number;
 }
 
-/** One entry of the pool's catalog, as far as Foundry can read it. */
+/** One entry of the pool's catalog, as far as Kira can read it. */
 function catalogModelIn(entry: unknown): ReadCatalogEntry | null {
   if (typeof entry !== 'object' || entry === null) return null;
 
@@ -661,7 +661,7 @@ function catalogModelIn(entry: unknown): ReadCatalogEntry | null {
 
   // The pool says what a model reasons at, not whether it reasons. A model with
   // nothing declared is one to offer without reasoning rather than one to guess
-  // at, so this is the one fact here that Foundry works out rather than copies.
+  // at, so this is the one fact here that Kira works out rather than copies.
   const levels = held.supported_reasoning_levels;
   if (Array.isArray(levels)) model.reasoning = levels.length > 0;
 

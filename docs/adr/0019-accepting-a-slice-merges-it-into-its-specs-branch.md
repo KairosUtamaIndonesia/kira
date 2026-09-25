@@ -28,7 +28,7 @@ to date with the spec branch. That run's proposal is then accepted in the usual 
 
 **Nothing reaches the main line without a person.** The spec's own run is the integration pass
 on the spec branch. Accepting it closes the spec. A person then opens and merges the pull
-request in their git host, so Foundry holds no host-specific code and no host credential.
+request in their git host, so Kira holds no host-specific code and no host credential.
 
 **A ticket outside a spec** closes on accept and keeps its branch. A person lands it.
 
@@ -38,7 +38,7 @@ request in their git host, so Foundry holds no host-specific code and no host cr
   ready would stall on a human merge at every step.
 - **Stack each run on its gate's branch.** A slice with two gates has no single base, and the
   stack still has to be landed by hand.
-- **Foundry opens the pull request.** Friendlier, but it is host-specific and needs the
+- **Kira opens the pull request.** Friendlier, but it is host-specific and needs the
   person's host credentials. This can be revisited once the spec branch works.
 
 ## Consequences

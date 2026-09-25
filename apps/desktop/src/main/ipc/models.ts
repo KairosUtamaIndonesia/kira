@@ -1,7 +1,7 @@
 /**
  * The models channel's handlers.
  *
- * Two things the window cannot answer for itself. Which models Foundry is
+ * Two things the window cannot answer for itself. Which models Kira is
  * offering lives with the provider registration in this process, and pi keeps no
  * copy a window can read; and which one a chat runs on is a change to a live
  * session rather than a value, so it is asked for rather than set.
@@ -10,7 +10,7 @@
  * model is best; the one thing it does decide is what a model the pool did not
  * name is called, which is by the id it is asked for by.
  */
-import type { CatalogModel } from '@foundry/server/contract';
+import type { CatalogModel } from '@kira/server/contract';
 import { MODELS_CHANNELS, type ModelOption, type Result } from '../../preload/bridge.ts';
 import { envelope, withId } from './result.ts';
 
@@ -18,7 +18,7 @@ export { MODELS_CHANNELS };
 
 /** What the handlers need from the main process. */
 export interface ModelDeps {
-  /** The models Foundry offers, in the pool's own order. */
+  /** The models Kira offers, in the pool's own order. */
   offered(): Promise<CatalogModel[]>;
   /** Run the chat on screen on the model `modelId` names. */
   choose(modelId: string): Promise<void>;

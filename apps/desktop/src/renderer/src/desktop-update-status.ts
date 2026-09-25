@@ -7,7 +7,7 @@ export function desktopUpdateStatusText(snapshot: DesktopUpdateSnapshot | null):
     case 'unsupported':
       return 'Updates are not available for this installation.';
     case 'up-to-date':
-      return 'Foundry is up to date.';
+      return 'Kira is up to date.';
     case 'downloading':
       return `Downloading version ${snapshot.availableVersion ?? ''}…`;
     case 'downloaded':

@@ -271,7 +271,7 @@ test('a prefix is suggested from the folder, and is always one the server takes'
   const cases: { name: string; folder: string; want: string }[] = [
     { name: 'a plain name', folder: 'kira', want: 'KIRA' },
     { name: 'a name with a dash', folder: 'my-project', want: 'MYPROJ' },
-    { name: 'a name with a space', folder: 'Foundry Desktop', want: 'FOUNDR' },
+    { name: 'a name with a space', folder: 'Kira Desktop', want: 'FOUNDR' },
     { name: 'a name that starts with a digit', folder: '123', want: 'F123' },
     { name: 'a name with nothing usable in it', folder: '—', want: 'PROJ' },
     { name: 'an empty name', folder: '', want: 'PROJ' },
@@ -423,17 +423,17 @@ test('a ticket that ran several times lists runs a person can tell apart', () =>
 test('a line in a run is drawn by who said it, not by name', () => {
   assert.equal(saidByLabel('person'), 'you');
   assert.equal(saidByLabel('agent'), 'Kira');
-  assert.equal(saidByLabel('note'), 'Foundry');
+  assert.equal(saidByLabel('note'), 'Kira');
 });
 
 test('the line a run opens with is drawn as the brief it was given, not as a person', () => {
-  // Foundry writes the run's opening itself, so the same speaker is drawn differently in
+  // Kira writes the run's opening itself, so the same speaker is drawn differently in
   // the one place where nobody spoke.
   assert.equal(saidByLabel('person', true), 'the brief it started from');
   assert.equal(saidByLabel('person', false), 'you');
   // And it is only the opening: an agent line first in a list is still the agent.
   assert.equal(saidByLabel('agent', true), 'Kira');
-  assert.equal(saidByLabel('note', true), 'Foundry');
+  assert.equal(saidByLabel('note', true), 'Kira');
 });
 
 test('the branch line knows whether a run has made the branch yet', () => {

@@ -1,7 +1,7 @@
 /**
- * The Foundry server, as the desktop talks to it.
+ * The Kira server, as the desktop talks to it.
  *
- * The one module that knows the wire: which of Foundry's endpoints the app
+ * The one module that knows the wire: which of Kira's endpoints the app
  * calls, what they answer, and how Better Auth's Electron client is set up to
  * reach them. It is deliberately thin — every decision about *when* to call
  * what lives in `signIn.ts`, which is exercisable without a server — and it is
@@ -10,7 +10,7 @@
  */
 import { electronClient } from '@better-auth/electron/client';
 import { treaty } from '@elysiajs/eden';
-import type { App } from '@foundry/server/contract';
+import type { App } from '@kira/server/contract';
 import { createAuthClient } from 'better-auth/client';
 import { isAuthUser, type AuthUser } from '../../preload/bridge.ts';
 import {
@@ -32,7 +32,7 @@ import {
   type WorkerStanding,
 } from '../../preload/bridge.ts';
 import type { TrackerAnswer } from '../tracker.ts';
-import { type Foundry, RETURN_PATH } from './signIn.ts';
+import { type Kira, RETURN_PATH } from './signIn.ts';
 
 /**
  * The server, with the client the hand-off is built on.
@@ -43,7 +43,7 @@ import { type Foundry, RETURN_PATH } from './signIn.ts';
  * key is what the machine keeps, and the cookies are held in memory for the run
  * so that there is no second thing on the disk (docs/adr/0004-sign-in.md).
  */
-export function foundryFor({ server, scheme }: { server: string; scheme: string }): Foundry {
+export function kiraFor({ server, scheme }: { server: string; scheme: string }): Kira {
   const cookies = new Map<string, string>();
   const electron = electronClient({
     // Required by the client's options, and the entry point for a sign-in that
@@ -75,7 +75,7 @@ export function foundryFor({ server, scheme }: { server: string; scheme: string 
     ],
   });
 
-  // Foundry's own routes, typed by the server itself: `App` is the type of the
+  // Kira's own routes, typed by the server itself: `App` is the type of the
   // app `createApp` returns, so the path, the body and the status codes below are
   // the server's rather than a second copy kept here by hand that drifts from it.
   // Only a type crosses this line — the contract is imported with `import type`,
@@ -83,8 +83,8 @@ export function foundryFor({ server, scheme }: { server: string; scheme: string 
   //
   // This sits beside `client` rather than replacing it, and the split is the
   // intended shape: Better Auth's routes are the library's own surface and its
-  // client types them, Eden covers what Foundry wrote.
-  const foundry = treaty<App>(server);
+  // client types them, Eden covers what Kira wrote.
+  const kira = treaty<App>(server);
 
   return {
     openSignIn: async () => {
@@ -100,7 +100,7 @@ export function foundryFor({ server, scheme }: { server: string; scheme: string 
         fetchOptions: { throw: true },
       });
       const who = userIn(answer);
-      if (who === null) throw new Error('Foundry did not say who signed in.');
+      if (who === null) throw new Error('Kira did not say who signed in.');
 
       return who;
     },
@@ -125,7 +125,7 @@ export function foundryFor({ server, scheme }: { server: string; scheme: string 
         body: { name: device },
       });
       if (error !== null || typeof data?.key !== 'string') {
-        throw new Error(error?.message ?? 'Foundry issued no key.');
+        throw new Error(error?.message ?? 'Kira issued no key.');
       }
 
       return data.key;
@@ -133,7 +133,7 @@ export function foundryFor({ server, scheme }: { server: string; scheme: string 
 
     check: async (key) => {
       try {
-        const { data, status } = await foundry.api.me.get({
+        const { data, status } = await kira.api.me.get({
           headers: { authorization: `Bearer ${key}` },
         });
 
@@ -153,7 +153,7 @@ export function foundryFor({ server, scheme }: { server: string; scheme: string 
 
     catalog: async (key) => {
       try {
-        const { data, status } = await foundry.api.models.get({
+        const { data, status } = await kira.api.models.get({
           headers: { authorization: `Bearer ${key}` },
         });
 
@@ -170,7 +170,7 @@ export function foundryFor({ server, scheme }: { server: string; scheme: string 
 
     usage: async (key) => {
       try {
-        const { data, status } = await foundry.api.usage.get({
+        const { data, status } = await kira.api.usage.get({
           headers: { authorization: `Bearer ${key}` },
         });
 
@@ -185,7 +185,7 @@ export function foundryFor({ server, scheme }: { server: string; scheme: string 
 
     memory: async (key) => {
       try {
-        const { data, status } = await foundry.api.memory.get({
+        const { data, status } = await kira.api.memory.get({
           headers: { authorization: `Bearer ${key}` },
         });
 
@@ -200,7 +200,7 @@ export function foundryFor({ server, scheme }: { server: string; scheme: string 
 
     saveMemory: async (key, decided) => {
       try {
-        const { data, status, error } = await foundry.api.memory.put(decided, {
+        const { data, status, error } = await kira.api.memory.put(decided, {
           headers: { authorization: `Bearer ${key}` },
         });
 
@@ -231,32 +231,32 @@ export function foundryFor({ server, scheme }: { server: string; scheme: string 
     // whether a person is signed in.
     projects: async (key) =>
       asked(
-        () => foundry.api.projects.get({ headers: bearerFor(key) }),
+        () => kira.api.projects.get({ headers: bearerFor(key) }),
         (data) => (data as { projects: ProjectSummary[] }).projects,
       ),
 
     createProject: async (key, made) =>
       asked(
-        () => foundry.api.projects.post(made, { headers: bearerFor(key) }),
+        () => kira.api.projects.post(made, { headers: bearerFor(key) }),
         (data) => (data as { project: ProjectSummary }).project,
       ),
 
     queue: async (key, projectId) =>
       asked(
-        () => foundry.api.projects({ ref: projectId }).get({ headers: bearerFor(key) }),
+        () => kira.api.projects({ ref: projectId }).get({ headers: bearerFor(key) }),
         asQueue,
       ),
 
     decisions: async (key, projectId) =>
       asked(
-        () => foundry.api.projects({ ref: projectId }).decisions.get({ headers: bearerFor(key) }),
+        () => kira.api.projects({ ref: projectId }).decisions.get({ headers: bearerFor(key) }),
         (data) => asDecisions((data as { decisions: unknown }).decisions),
       ),
 
     createDecision: async (key, projectId, proposal) =>
       asked(
         () =>
-          foundry.api.projects({ ref: projectId }).decisions.post(
+          kira.api.projects({ ref: projectId }).decisions.post(
             {
               context: proposal.context,
               choice: proposal.choice,
@@ -272,21 +272,21 @@ export function foundryFor({ server, scheme }: { server: string; scheme: string 
 
     glossary: async (key, projectId) =>
       asked(
-        () => foundry.api.projects({ ref: projectId }).glossary.get({ headers: bearerFor(key) }),
+        () => kira.api.projects({ ref: projectId }).glossary.get({ headers: bearerFor(key) }),
         (data) => asGlossaryList(data),
       ),
 
     updateGlossary: async (key, projectId, edit) =>
       asked(
         () =>
-          foundry.api.projects({ ref: projectId }).glossary.post(edit, { headers: bearerFor(key) }),
+          kira.api.projects({ ref: projectId }).glossary.post(edit, { headers: bearerFor(key) }),
         (data) => asGlossary((data as { entry: unknown }).entry),
       ),
 
     undoGlossary: async (key, projectId, entryId, version, chatId) =>
       asked(
         () =>
-          foundry.api
+          kira.api
             .projects({ ref: projectId })
             .glossary({ entryId })
             .undo.post({ version, chatId }, { headers: bearerFor(key) }),
@@ -296,7 +296,7 @@ export function foundryFor({ server, scheme }: { server: string; scheme: string 
     createMap: async (key, projectId, proposal) =>
       asked(
         () =>
-          foundry.api.projects({ ref: projectId }).maps.post(proposal, {
+          kira.api.projects({ ref: projectId }).maps.post(proposal, {
             headers: bearerFor(key),
           }),
         (data) => asTicket((data as { ticket: unknown }).ticket),
@@ -305,7 +305,7 @@ export function foundryFor({ server, scheme }: { server: string; scheme: string 
     approveDestinationSpec: async (key, mapTicketId, draft) =>
       asked(
         () =>
-          foundry.api.tickets({ ref: mapTicketId })['destination-spec'].post(draft, {
+          kira.api.tickets({ ref: mapTicketId })['destination-spec'].post(draft, {
             headers: bearerFor(key),
           }),
         (data) => asTicket((data as { ticket: unknown }).ticket),
@@ -314,20 +314,20 @@ export function foundryFor({ server, scheme }: { server: string; scheme: string 
     writeTicket: async (key, projectId, draft) =>
       asked(
         () =>
-          foundry.api.projects({ ref: projectId }).tickets.post(draft, { headers: bearerFor(key) }),
+          kira.api.projects({ ref: projectId }).tickets.post(draft, { headers: bearerFor(key) }),
         (data) => asTicket((data as { ticket: unknown }).ticket),
       ),
 
     changeTicket: async (key, ticketId, change) =>
       asked(
-        () => foundry.api.tickets({ ref: ticketId }).patch(change, { headers: bearerFor(key) }),
+        () => kira.api.tickets({ ref: ticketId }).patch(change, { headers: bearerFor(key) }),
         (data) => asTicket((data as { ticket: unknown }).ticket),
       ),
 
     gateTicket: async (key, ticketId, gatedBy) =>
       asked(
         () =>
-          foundry.api
+          kira.api
             .tickets({ ref: ticketId })
             .gates.post({ gatedBy }, { headers: bearerFor(key) }),
         (data) => asTicket((data as { ticket: unknown }).ticket),
@@ -339,7 +339,7 @@ export function foundryFor({ server, scheme }: { server: string; scheme: string 
       // headers are sent as the payload and the request arrives with no key.
       asked(
         () =>
-          foundry.api
+          kira.api
             .tickets({ ref: ticketId })
             .gates({ gatedBy })
             .delete(undefined, {
@@ -351,7 +351,7 @@ export function foundryFor({ server, scheme }: { server: string; scheme: string 
     publishBreakdown: async (key, specTicketId, children) =>
       asked(
         () =>
-          foundry.api
+          kira.api
             .tickets({ ref: specTicketId })
             .breakdown.post({ children }, { headers: bearerFor(key) }),
         asBreakdown,
@@ -360,7 +360,7 @@ export function foundryFor({ server, scheme }: { server: string; scheme: string 
     markBreakdownReady: async (key, specTicketId) =>
       asked(
         () =>
-          foundry.api.tickets({ ref: specTicketId }).breakdown.ready.post(undefined, {
+          kira.api.tickets({ ref: specTicketId }).breakdown.ready.post(undefined, {
             headers: bearerFor(key),
           }),
         asBreakdown,
@@ -371,12 +371,12 @@ export function foundryFor({ server, scheme }: { server: string; scheme: string 
     // is only whether the server took it, so the window's reading of itself is built
     // here from the fact that an answer arrived at all.
     registerWorker: async (key, made) =>
-      asked(() => foundry.api.workers.post(made, { headers: bearerFor(key) }), asStanding),
+      asked(() => kira.api.workers.post(made, { headers: bearerFor(key) }), asStanding),
 
     heartbeatWorker: async (key, id, workspaces, driving) =>
       asked(
         () =>
-          foundry.api
+          kira.api
             .workers({ id })
             .heartbeat.post({ workspaces, driving }, { headers: bearerFor(key) }),
         asStanding,
@@ -384,7 +384,7 @@ export function foundryFor({ server, scheme }: { server: string; scheme: string 
 
     workerGone: async (key, id) =>
       asked(
-        () => foundry.api.workers({ id }).delete(undefined, { headers: bearerFor(key) }),
+        () => kira.api.workers({ id }).delete(undefined, { headers: bearerFor(key) }),
         (data) => data,
       ),
 
@@ -393,7 +393,7 @@ export function foundryFor({ server, scheme }: { server: string; scheme: string 
     claimTicket: async (key, ticketId, workerId) =>
       asked(
         () =>
-          foundry.api
+          kira.api
             .tickets({ ref: ticketId })
             .claim.post({ workerId }, { headers: bearerFor(key) }),
         (data) => asTicket((data as { ticket: unknown }).ticket),
@@ -402,7 +402,7 @@ export function foundryFor({ server, scheme }: { server: string; scheme: string 
     releaseTicket: async (key, ticketId) =>
       asked(
         () =>
-          foundry.api
+          kira.api
             .tickets({ ref: ticketId })
             .claim.delete(undefined, { headers: bearerFor(key) }),
         (data) => data,
@@ -411,7 +411,7 @@ export function foundryFor({ server, scheme }: { server: string; scheme: string 
     startRun: async (key, ticketId, workerId) =>
       asked(
         () =>
-          foundry.api
+          kira.api
             .tickets({ ref: ticketId })
             .runs.post({ workerId }, { headers: bearerFor(key) }),
         asRun,
@@ -420,7 +420,7 @@ export function foundryFor({ server, scheme }: { server: string; scheme: string 
     recordRun: async (key, ticketId, runId, recorded) =>
       asked(
         () =>
-          foundry.api
+          kira.api
             .tickets({ ref: ticketId })
             .runs({ runId })
             .patch(recorded, { headers: bearerFor(key) }),
@@ -430,7 +430,7 @@ export function foundryFor({ server, scheme }: { server: string; scheme: string 
     endRun: async (key, ticketId, runId, ending) =>
       asked(
         () =>
-          foundry.api
+          kira.api
             .tickets({ ref: ticketId })
             .runs({ runId })
             .end.post(ending, { headers: bearerFor(key) }),
@@ -439,14 +439,14 @@ export function foundryFor({ server, scheme }: { server: string; scheme: string 
 
     readTicket: async (key, ref) =>
       asked(
-        () => foundry.api.tickets({ ref }).get({ headers: bearerFor(key) }),
+        () => kira.api.tickets({ ref }).get({ headers: bearerFor(key) }),
         (data) => asTicket((data as { ticket: unknown }).ticket),
       ),
 
     openQuestion: async (key, ticketId, chatId) =>
       asked(
         () =>
-          foundry.api
+          kira.api
             .tickets({ ref: ticketId })
             ['question-chat'].post({ chatId }, { headers: bearerFor(key) }),
         (data) => asTicket((data as { ticket: unknown }).ticket),
@@ -455,14 +455,14 @@ export function foundryFor({ server, scheme }: { server: string; scheme: string 
     recordOutcome: async (key, ticketId, value) =>
       asked(
         () =>
-          foundry.api.tickets({ ref: ticketId }).outcome.post(value, { headers: bearerFor(key) }),
+          kira.api.tickets({ ref: ticketId }).outcome.post(value, { headers: bearerFor(key) }),
         (data) => asOutcome((data as { outcome: unknown }).outcome),
       ),
 
     approveOutcome: async (key, ticketId, value) =>
       asked(
         () =>
-          foundry.api
+          kira.api
             .tickets({ ref: ticketId })
             .outcome.approve.post(value, { headers: bearerFor(key) }),
         (data) => asOutcome((data as { outcome: unknown }).outcome),
@@ -471,7 +471,7 @@ export function foundryFor({ server, scheme }: { server: string; scheme: string 
     takeOverTicket: async (key, ticketId) =>
       asked(
         () =>
-          foundry.api
+          kira.api
             .tickets({ ref: ticketId })
             // By hand: no worker and no lease, so a claim taken over this way belongs to a
             // person and never expires on its own (GH #75).
@@ -482,7 +482,7 @@ export function foundryFor({ server, scheme }: { server: string; scheme: string 
     judgeRun: async (key, ticketId, runId, verdict) =>
       asked(
         () =>
-          foundry.api
+          kira.api
             .tickets({ ref: ticketId })
             .runs({ runId })
             .verdict.post({ verdict }, { headers: bearerFor(key) }),
@@ -492,7 +492,7 @@ export function foundryFor({ server, scheme }: { server: string; scheme: string 
     readTranscript: async (key, ticketId, runId) =>
       asked(
         () =>
-          foundry.api
+          kira.api
             .tickets({ ref: ticketId })
             .runs({ runId })
             .transcript.get({ headers: bearerFor(key) }),
@@ -502,7 +502,7 @@ export function foundryFor({ server, scheme }: { server: string; scheme: string 
     sayInRun: async (key, ticketId, runId, said) =>
       asked(
         () =>
-          foundry.api
+          kira.api
             .tickets({ ref: ticketId })
             .runs({ runId })
             .transcript.post(said, { headers: bearerFor(key) }),
@@ -511,7 +511,7 @@ export function foundryFor({ server, scheme }: { server: string; scheme: string 
   };
 }
 
-/** The header every Foundry route is asked with. */ function bearerFor(
+/** The header every Kira route is asked with. */ function bearerFor(
   key: string,
 ): Record<string, string> {
   return { authorization: `Bearer ${key}` };
@@ -549,7 +549,7 @@ async function asked<T>(
     return understood === null
       ? {
           kind: 'refused',
-          message: 'Foundry answered with something this build does not understand.',
+          message: 'Kira answered with something this build does not understand.',
         }
       : { kind: 'ok', body: understood };
   } catch {
@@ -570,7 +570,7 @@ function refusedBy(status: number, said: unknown): TrackerAnswer<never> {
 
   return {
     kind: 'refused',
-    message: messageIn(said) ?? 'Foundry would not take that.',
+    message: messageIn(said) ?? 'Kira would not take that.',
   };
 }
 

@@ -27,7 +27,7 @@ function handlersFor(
   };
 }
 
-test('the window is told the models Foundry offers, in the order it offers them', async () => {
+test('the window is told the models Kira offers, in the order it offers them', async () => {
   const { handlers } = handlersFor();
 
   // The order is the pool's ranking rather than anything decided here, so it
@@ -59,13 +59,13 @@ test('a choice that names no model is refused before it reaches a session', asyn
 test('a choice the pool does not offer is a failure, not a crash', async () => {
   const { handlers } = handlersFor({
     choose: async (modelId) => {
-      throw new Error(`Foundry is not offering ${modelId}.`);
+      throw new Error(`Kira is not offering ${modelId}.`);
     },
   });
 
   assert.deepEqual(await handlers.choose('nope-9'), {
     ok: false,
-    error: 'Foundry is not offering nope-9.',
+    error: 'Kira is not offering nope-9.',
   });
 });
 

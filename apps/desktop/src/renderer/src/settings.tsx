@@ -62,7 +62,7 @@ export default function SettingsPage({
   showing,
 }: {
   user: AuthUser;
-  /** The models Foundry offers, read once by the shell, because every chat shares them. */
+  /** The models Kira offers, read once by the shell, because every chat shares them. */
   models: readonly ModelOption[];
   /** Workspaces are the scopes Settings groups MCP servers under. */
   workspaces: readonly WorkspaceSummary[];
@@ -96,10 +96,10 @@ function UpdatesSection() {
 
   useMountEffect(() => {
     let mounted = true;
-    const unsubscribe = window.foundry.onDesktopUpdateEvent((next) => {
+    const unsubscribe = window.kira.onDesktopUpdateEvent((next) => {
       if (mounted) setSnapshot(next);
     });
-    void window.foundry.loadDesktopUpdate().then((result) => {
+    void window.kira.loadDesktopUpdate().then((result) => {
       if (!mounted) return;
       if (result.ok) setSnapshot(result.value);
       else setProblem(result.error);
@@ -113,7 +113,7 @@ function UpdatesSection() {
   async function check(): Promise<void> {
     setBusy(true);
     setProblem(null);
-    const result = await window.foundry.checkDesktopUpdate();
+    const result = await window.kira.checkDesktopUpdate();
     setBusy(false);
     if (result.ok) setSnapshot(result.value);
     else setProblem(result.error);
@@ -122,7 +122,7 @@ function UpdatesSection() {
   async function install(): Promise<void> {
     setBusy(true);
     setProblem(null);
-    const result = await window.foundry.installDesktopUpdate();
+    const result = await window.kira.installDesktopUpdate();
     setBusy(false);
     if (!result.ok) setProblem(result.error);
     else if (!result.value.installed) setProblem(result.value.message);
@@ -136,7 +136,7 @@ function UpdatesSection() {
       <VStack gap={1}>
         <Heading level={2}>Updates</Heading>
         <Text color="secondary" size="sm">
-          Foundry checks for updates automatically and downloads them in the background.
+          Kira checks for updates automatically and downloads them in the background.
         </Text>
       </VStack>
       <Section padding={4}>
@@ -185,7 +185,7 @@ function ShellSection() {
 
   useMountEffect(() => {
     let mounted = true;
-    void window.foundry.loadShellSettings().then((result) => {
+    void window.kira.loadShellSettings().then((result) => {
       if (!mounted) return;
       if (result.ok) {
         setSnapshot(result.value);
@@ -203,7 +203,7 @@ function ShellSection() {
 
   async function browse(): Promise<void> {
     setProblem(null);
-    const result = await window.foundry.browseShellPath();
+    const result = await window.kira.browseShellPath();
     if (!result.ok) {
       setProblem(result.error);
       return;
@@ -219,7 +219,7 @@ function ShellSection() {
     setBusy(true);
     setProblem(null);
     setTestResult(null);
-    const result = await window.foundry.testShellPath(candidate);
+    const result = await window.kira.testShellPath(candidate);
     setBusy(false);
     if (!result.ok) {
       setTestedPath(undefined);
@@ -233,13 +233,13 @@ function ShellSection() {
   async function saveShell(): Promise<void> {
     setBusy(true);
     setProblem(null);
-    const result = await window.foundry.saveShellPath(candidate);
+    const result = await window.kira.saveShellPath(candidate);
     setBusy(false);
     if (!result.ok) {
       setProblem(result.error);
       return;
     }
-    const loaded = await window.foundry.loadShellSettings();
+    const loaded = await window.kira.loadShellSettings();
     if (loaded.ok) setSnapshot(loaded.value);
     else setProblem(loaded.error);
     setTestedPath(undefined);
@@ -249,7 +249,7 @@ function ShellSection() {
   async function useAutomaticDetection(): Promise<void> {
     setBusy(true);
     setProblem(null);
-    const result = await window.foundry.saveShellPath(null);
+    const result = await window.kira.saveShellPath(null);
     if (!result.ok) {
       setBusy(false);
       setProblem(result.error);
@@ -258,7 +258,7 @@ function ShellSection() {
     setPath('');
     setTestedPath(undefined);
     setTestResult(null);
-    const loaded = await window.foundry.loadShellSettings();
+    const loaded = await window.kira.loadShellSettings();
     if (loaded.ok) setSnapshot(loaded.value);
     else setProblem(loaded.error);
     setBusy(false);
@@ -276,7 +276,7 @@ function ShellSection() {
       <VStack gap={1}>
         <Heading level={2}>Kira’s command line</Heading>
         <Text color="secondary" size="sm">
-          Foundry detects Bash automatically. Choose another Bash-compatible executable if you
+          Kira detects Bash automatically. Choose another Bash-compatible executable if you
           prefer a different installation or the detected one does not work.
         </Text>
         <Text color="secondary" size="sm">
@@ -368,7 +368,7 @@ function AccountPane({ user }: { user: AuthUser }) {
       <VStack gap={1}>
         <Heading level={2}>Account</Heading>
         <Text color="secondary" size="sm">
-          Your Foundry account on this device.
+          Your Kira account on this device.
         </Text>
       </VStack>
 
@@ -423,7 +423,7 @@ function MemorySection({ models }: { models: readonly ModelOption[] }) {
   const [problem, setProblem] = useState<string | null>(null);
 
   useMountEffect(() => {
-    void window.foundry.loadMemory().then((result) => {
+    void window.kira.loadMemory().then((result) => {
       setHeld(result.ok ? result.value : null);
       setAsked(true);
     });
@@ -434,7 +434,7 @@ function MemorySection({ models }: { models: readonly ModelOption[] }) {
     setBusy(true);
     setProblem(null);
 
-    const saved = await window.foundry.saveMemory(next);
+    const saved = await window.kira.saveMemory(next);
 
     setBusy(false);
     if (!saved.ok) {
@@ -467,7 +467,7 @@ function MemorySection({ models }: { models: readonly ModelOption[] }) {
 
         {!asked ? null : held === null ? (
           <Text color="secondary" size="sm">
-            Foundry cannot say what this account decided — sign in, or check that the server is
+            Kira cannot say what this account decided — sign in, or check that the server is
             reachable.
           </Text>
         ) : (
@@ -482,7 +482,7 @@ function MemorySection({ models }: { models: readonly ModelOption[] }) {
 
             {models.length === 0 ? (
               <Text color="secondary" size="sm">
-                Foundry has no model list to choose from — sign in, or check that the server can
+                Kira has no model list to choose from — sign in, or check that the server can
                 reach its pool.
               </Text>
             ) : (
@@ -541,13 +541,13 @@ function McpSection({ workspaces }: { workspaces: readonly WorkspaceSummary[] })
 
   useMountEffect(() => {
     let mounted = true;
-    void window.foundry.loadMcpServers().then((result) => {
+    void window.kira.loadMcpServers().then((result) => {
       if (!mounted) return;
       setAsked(true);
       if (result.ok) setServers(result.value);
       else setProblem(result.error);
     });
-    return window.foundry.onMcpEvent((next) => {
+    return window.kira.onMcpEvent((next) => {
       if (mounted) setServers(next);
     });
   });
@@ -626,8 +626,8 @@ function McpSection({ workspaces }: { workspaces: readonly WorkspaceSummary[] })
       ...(credentials === undefined ? {} : { credentials }),
     } as const;
     const result = editingId === null
-      ? await window.foundry.addMcpServer(draft)
-      : await window.foundry.updateMcpServer(editingId, draft);
+      ? await window.kira.addMcpServer(draft)
+      : await window.kira.updateMcpServer(editingId, draft);
     setBusy(false);
     if (!result.ok) {
       setProblem(result.error);
@@ -640,7 +640,7 @@ function McpSection({ workspaces }: { workspaces: readonly WorkspaceSummary[] })
   async function removeServer(id: string): Promise<void> {
     setBusy(true);
     setProblem(null);
-    const result = await window.foundry.removeMcpServer(id);
+    const result = await window.kira.removeMcpServer(id);
     setBusy(false);
     if (!result.ok) setProblem(result.error);
     else setServers((current) => current.filter((server) => server.id !== id));
@@ -649,7 +649,7 @@ function McpSection({ workspaces }: { workspaces: readonly WorkspaceSummary[] })
   async function reconnectServer(id: string): Promise<void> {
     setBusy(true);
     setProblem(null);
-    const result = await window.foundry.reconnectMcpServer(id);
+    const result = await window.kira.reconnectMcpServer(id);
     setBusy(false);
     if (!result.ok) setProblem(result.error);
   }
@@ -657,7 +657,7 @@ function McpSection({ workspaces }: { workspaces: readonly WorkspaceSummary[] })
   async function changeEnabled(server: McpServer): Promise<void> {
     setBusy(true);
     setProblem(null);
-    const result = await window.foundry.setMcpServerEnabled(server.id, !server.enabled);
+    const result = await window.kira.setMcpServerEnabled(server.id, !server.enabled);
     setBusy(false);
     if (!result.ok) setProblem(result.error);
   }
@@ -665,7 +665,7 @@ function McpSection({ workspaces }: { workspaces: readonly WorkspaceSummary[] })
   async function changeTools(server: McpServer, next: 'all' | string[]): Promise<void> {
     setBusy(true);
     setProblem(null);
-    const result = await window.foundry.setMcpServerToolSelection(server.id, next);
+    const result = await window.kira.setMcpServerToolSelection(server.id, next);
     setBusy(false);
     if (!result.ok) setProblem(result.error);
     else setToolSelection(next);
@@ -675,8 +675,8 @@ function McpSection({ workspaces }: { workspaces: readonly WorkspaceSummary[] })
     setBusy(true);
     setProblem(null);
     const result = action === 'sign-in'
-      ? await window.foundry.signInMcpServer(server.id)
-      : await window.foundry.signOutMcpServer(server.id);
+      ? await window.kira.signInMcpServer(server.id)
+      : await window.kira.signOutMcpServer(server.id);
     setBusy(false);
     if (!result.ok) setProblem(result.error);
   }

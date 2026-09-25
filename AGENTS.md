@@ -100,7 +100,7 @@ Don't overwrite unrelated work or use live sessions, credentials, or workspace s
 
 ## Documentation
 
-`docs/` contains guides for people **using** Foundry. `docs/internal/` contains conventions, architectural decisions, and procedures for people and agents **building** it.
+`docs/` contains guides for people **using** Kira. `docs/internal/` contains conventions, architectural decisions, and procedures for people and agents **building** it.
 
 Keep one home for each subject and link to it elsewhere. Update the section that became inaccurate rather than appending a work log. Document constraints and reasoning the code cannot explain; don't maintain a prose copy of the implementation.
 

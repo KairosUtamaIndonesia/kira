@@ -25,7 +25,7 @@ seconds, during which every IPC queued behind it, the listing of the tree includ
 hung for about eight seconds because of it. Naming the levels costs one watch each and returns at
 once, and the pane names a folder when it is opened, so nothing on screen goes unwatched.
 
-**Foundry takes on no watcher dependency for this.** `@parcel/watcher` would buy throttling worth
+**Kira takes on no watcher dependency for this.** `@parcel/watcher` would buy throttling worth
 about ten lines, at the cost of a C++ prebuild and the `asarUnpack` decision that comes with it.
 `chokidar` is the same trade worse: it still sits on `fs.watch` and inherits every limit below,
 removing only the event-shape work. Recursive watching has been supported on Linux since Node

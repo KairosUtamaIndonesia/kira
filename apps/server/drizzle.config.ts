@@ -18,5 +18,5 @@ export default defineConfig({
   schema: './src/schema.ts',
   out: './migrations',
   dialect: 'postgresql',
-  dbCredentials: { url: process.env.FOUNDRY_DATABASE_URL ?? DEFAULT_DATABASE_URL },
+  dbCredentials: { url: process.env.KIRA_DATABASE_URL ?? DEFAULT_DATABASE_URL },
 });

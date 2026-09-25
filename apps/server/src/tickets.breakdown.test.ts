@@ -29,7 +29,7 @@ async function fixture() {
   const projectResponse = await send(
     made.app,
     '/api/projects',
-    body('POST', bearer(key), { name: 'Foundry', prefix: 'FND' }),
+    body('POST', bearer(key), { name: 'Kira', prefix: 'FND' }),
   );
   const project = (await projectResponse.json()).project as { id: string };
   const specResponse = await send(

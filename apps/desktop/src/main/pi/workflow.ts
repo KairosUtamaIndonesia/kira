@@ -8,7 +8,7 @@ export const WORKFLOW_ROUTER = [
   'Workflow router: choose the skill that matches the work, and never ask the person to name one.',
   'A concrete feature or change: load to-spec. Let grilling handle the interview; when settled, call shape_spec_proposal and wait for the card. Answer questions, research requests and ordinary conversation directly.',
   'Clarify words and boundaries: domain-modeling.',
-  'After an approved spec, a request to make tickets: load to-tickets and follow it; call shape_breakdown_proposal so Foundry shows the proposal card. Never claim approval, publication, or readiness unless Foundry state confirms it.',
+  'After an approved spec, a request to make tickets: load to-tickets and follow it; call shape_breakdown_proposal so Kira shows the proposal card. Never claim approval, publication, or readiness unless Kira state confirms it.',
   'An idea too large for one spec: wayfinder.',
   'A question ticket: grilling.',
   'A research run: research.',
@@ -48,7 +48,7 @@ export function workflowForMode(mode: ChatMode): string {
     'Spec mode: planning-only interview and clarification. Do not change workspace files or start ticket runs.',
     'Explore with read-only tools, ask the person questions when needed, and propose a spec with shape_spec_proposal.',
     'After the person approves the spec, immediately call shape_breakdown_proposal to draft its tickets. Do not wait for another request.',
-    'Wait for the person to approve the spec and ticket breakdown before Foundry publishes either one.',
+    'Wait for the person to approve the spec and ticket breakdown before Kira publishes either one.',
   ].join('\n');
 }
 

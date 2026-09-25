@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { ThreadStore } from '../../db/threads.ts';
 import type { McpManager, McpToolBinding } from '../../mcp/servers.ts';
-import { foundryExtension } from './factory.ts';
+import { kiraExtension } from './factory.ts';
 
 const TOOL: McpToolBinding = {
   name: 'fixture_echo',
@@ -19,7 +19,7 @@ const TOOL: McpToolBinding = {
   },
 };
 
-test('the Foundry extension exposes app-level MCP tools and forwards calls', async () => {
+test('the Kira extension exposes app-level MCP tools and forwards calls', async () => {
   let changed: (() => void) | undefined;
   let callToolResult: {
     content: Array<
@@ -49,7 +49,7 @@ test('the Foundry extension exposes app-level MCP tools and forwards calls', asy
   const store = new ThreadStore(':memory:');
   store.createThread('/tmp', { id: 'thread-1' });
 
-  foundryExtension({
+  kiraExtension({
     cwd: '/tmp',
     store,
     threadId: 'thread-1',

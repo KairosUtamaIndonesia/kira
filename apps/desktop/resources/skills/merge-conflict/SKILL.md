@@ -10,6 +10,6 @@ Use this only when the project checkout has an active merge conflict.
 2. Find the primary source for each intent: the relevant ticket, Decision, run summary and nearby tests.
 3. Resolve each hunk by preserving both intents where possible. When they are incompatible, choose the behavior that satisfies the active ticket and record the trade-off in the run.
 4. Search for remaining conflict markers, then run formatting, typechecking and focused tests before the full relevant suite.
-5. Stage the resolved files and finish the project operation through its normal Foundry checkout flow.
+5. Stage the resolved files and finish the project operation through its normal Kira checkout flow.
 
 Never hide a conflict by discarding one side, and never report success while conflict markers or failing checks remain.

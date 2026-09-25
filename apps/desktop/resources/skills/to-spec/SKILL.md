@@ -1,6 +1,6 @@
 ---
 name: to-spec
-description: Shape a concrete feature or change into a Foundry spec. Interview the person in chat, then propose the spec with shape_spec_proposal.
+description: Shape a concrete feature or change into a Kira spec. Interview the person in chat, then propose the spec with shape_spec_proposal.
 ---
 
 Turn a feature or change the person wants built into a spec proposal. The interview happens in the chat, one question at a time. The spec reaches the tracker only when the person approves the proposal card.

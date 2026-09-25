@@ -5,7 +5,7 @@
  * at all, and which model does the reflecting. They live here rather than on a
  * machine because they are the account's own — the same answer on every desktop
  * somebody signs in on — and because the server is the only party that can answer
- * the third question this route is asked, which is what Foundry would suggest to
+ * the third question this route is asked, which is what Kira would suggest to
  * somebody who would rather not choose (GH #43).
  *
  * Memory is not compaction. Turning it off stops the observer and the reflector;
@@ -65,7 +65,7 @@ export async function setMemory(
 }
 
 /**
- * What a person is told: their two answers, and what Foundry would suggest.
+ * What a person is told: their two answers, and what Kira would suggest.
  *
  * `chosen` and `recommended` are apart rather than one effective model on purpose.
  * A window handed only the effective one could not tell a choice from a
@@ -102,7 +102,7 @@ export function createMemory({
       },
       {
         response: { 200: SETTINGS, 401: REFUSAL },
-        detail: { summary: "Somebody's own memory settings, and what Foundry suggests" },
+        detail: { summary: "Somebody's own memory settings, and what Kira suggests" },
       },
     )
     .put(
@@ -151,7 +151,7 @@ export function createMemory({
 }
 
 /**
- * The two answers, and what Foundry suggests.
+ * The two answers, and what Kira suggests.
  *
  * Memory runs unless somebody turned it off, and a model of their own only counts
  * while the pool still offers it: one the pool has dropped is not a model any chat
@@ -177,13 +177,13 @@ async function settingsFor(database: Database, config: Config, userId: string) {
 }
 
 /**
- * Which model Foundry suggests for the reflecting.
+ * Which model Kira suggests for the reflecting.
  *
  * There is no price to rank by. The pool is a proxy over subscription logins
  * rather than a priced catalog, and its own catalog body carries no cost field at
  * all — read from the running pool rather than assumed
  * (docs/internal/research/cliproxyapi-interface.md) — so "the cheapest model" is
- * not a number Foundry can work out. The suggestion is therefore the model the
+ * not a number Kira can work out. The suggestion is therefore the model the
  * deployment names for it, and failing that the model the pool itself puts first:
  * the pool is the party that decides what its models are for, and its order is
  * already what `/api/models` serves.

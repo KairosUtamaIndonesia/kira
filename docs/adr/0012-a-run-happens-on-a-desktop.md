@@ -5,7 +5,7 @@ Date: 2026-09-21
 ## Context
 
 ADR 0010 puts the queue on the server and ADR 0011 says what a run owes. Neither says
-where a run executes, and the answer is not free: Foundry has no remote sandboxes, so there
+where a run executes, and the answer is not free: Kira has no remote sandboxes, so there
 is no server-side place to give an agent a checkout, a test run, and a real app to drive.
 
 What the desktop already has is most of a runner. The agent loop is local
@@ -69,9 +69,9 @@ a driver who has gone is a run that waits rather than one somebody else takes up
 **Accepting a proposal is a verdict, not a merge.** The person the ticket is for reads the
 diff, the checks, and the review, and accepts or sends it back. Accepting closes the ticket
 and records the verdict; the merge happens in their own git client, in the workspace the run
-happened in. Foundry never rewrites a history, settles a conflict, or lands a branch for
+happened in. Kira never rewrites a history, settles a conflict, or lands a branch for
 someone — so a ticket can be accepted while its branch is unmerged, which is a visible
-process failure rather than one Foundry prevents.
+process failure rather than one Kira prevents.
 
 ## Consequences
 
@@ -88,7 +88,7 @@ running. Without that the queue lies, and the lie is invisible — a stalled tic
 a busy one.
 
 **Concurrency is bounded by the machine, not by the queue.** A worker takes as many runs as
-it was told it could hold, and no more. Foundry's own concurrency limit is therefore whatever
+it was told it could hold, and no more. Kira's own concurrency limit is therefore whatever
 the laptops in the room will bear, which is a real limit to write down rather than a number to
 discover under load.
 

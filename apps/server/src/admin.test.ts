@@ -61,7 +61,7 @@ describe('granting an admin', () => {
     const { auth } = await boot();
     await user(auth, 'ada@company.example');
 
-    // Signing in is Entra's word for who someone is; the role is Foundry's word
+    // Signing in is Entra's word for who someone is; the role is Kira's word
     // for what they run. A new user arrives with the ordinary one.
     expect(await roleOf(auth, 'ada@company.example')).toBe('user');
   });

@@ -1,6 +1,6 @@
 ---
 name: grilling
-description: Stress-test a Foundry idea, decision or plan until its boundaries are shared.
+description: Stress-test a Kira idea, decision or plan until its boundaries are shared.
 ---
 
 Interview the person relentlessly until there is shared understanding. Map the subject as a decision tree: each decision branches into the decisions that depend on it.
@@ -9,7 +9,7 @@ Interview the person relentlessly until there is shared understanding. Map the s
 
 Ask one question per turn: the next decision whose prerequisites are settled. Give your recommended answer and one sentence of why, so the person can accept it in a word. When they push back or rewrite it, their answer is the answer: re-map the branches it touches before choosing the next question.
 
-Finding facts is your job. Look them up in the project, the tracker (`tracker_queue`, `tracker_read_ticket`, `tracker_read_glossary`, `tracker_read_decisions`) and the code instead of asking. Decisions belong to the person. When a term becomes precise, use the Foundry vocabulary: project, ticket kind, band, dependency, run, Outcome and Decision.
+Finding facts is your job. Look them up in the project, the tracker (`tracker_queue`, `tracker_read_ticket`, `tracker_read_glossary`, `tracker_read_decisions`) and the code instead of asking. Decisions belong to the person. When a term becomes precise, use the Kira vocabulary: project, ticket kind, band, dependency, run, Outcome and Decision.
 
 Done when every branch of the tree has been visited and nothing important remains silently assumed.
 

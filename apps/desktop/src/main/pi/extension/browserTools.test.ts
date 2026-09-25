@@ -28,7 +28,7 @@ test('browser tools stay bound to their chat and expose bounded page actions', a
 
   const filled = await tools[3]!.execute(
     'call-fill',
-    { selector: 'input[name="q"]', text: 'Foundry' },
+    { selector: 'input[name="q"]', text: 'Kira' },
     undefined,
     undefined,
     {} as never,
@@ -41,7 +41,7 @@ test('browser tools stay bound to their chat and expose bounded page actions', a
     { chatId: 'chat-one', operation: { action: 'navigate', url: 'https://example.com' } },
     {
       chatId: 'chat-one',
-      operation: { action: 'fill', selector: 'input[name="q"]', text: 'Foundry' },
+      operation: { action: 'fill', selector: 'input[name="q"]', text: 'Kira' },
     },
     { chatId: 'chat-one', operation: { action: 'screenshot' } },
   ]);

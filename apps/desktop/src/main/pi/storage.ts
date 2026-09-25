@@ -4,7 +4,7 @@
  * Threads are stored in SQLite (`store.ts`), but pi's session manager only
  * writes to files, so this module owns the one seam between the two: hand pi an
  * in-memory manager and take its writes somewhere else. It is the only file in
- * Foundry that depends on pi's private `_persist`, so it is the only file an
+ * Kira that depends on pi's private `_persist`, so it is the only file an
  * upgrade of pi can break in that way — which is why it is named after pi
  * rather than after the conversation it happens to be storing.
  */
@@ -18,7 +18,7 @@ import type { ChatMode } from '../../preload/bridge.ts';
 import { parentIdOf, type ThreadStore } from '../db/threads.ts';
 
 /**
- * A thread as pi sees it: Foundry's identity and working directory, plus the
+ * A thread as pi sees it: Kira's identity and working directory, plus the
  * session manager that holds its entries.
  *
  * Distinct from `ThreadRecord`, which is how the database sees the same thread —

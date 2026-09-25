@@ -198,7 +198,7 @@ const CASES: Case[] = [
   {
     name: 'authorizes through a loopback callback and persists only encrypted OAuth state',
     async run() {
-      const path = await mkdtemp(join(tmpdir(), 'foundry-mcp-oauth-'));
+      const path = await mkdtemp(join(tmpdir(), 'kira-mcp-oauth-'));
       const fixture = await authorizationFixture();
       const secrets = mcpSecretStore({ secrets: keyring(), path });
       const manager = mcpOAuth({
@@ -243,7 +243,7 @@ const CASES: Case[] = [
   {
     name: 'reports when OS-backed encryption is unavailable without opening the browser',
     async run() {
-      const path = await mkdtemp(join(tmpdir(), 'foundry-mcp-oauth-'));
+      const path = await mkdtemp(join(tmpdir(), 'kira-mcp-oauth-'));
       const fixture = await authorizationFixture();
       const secrets = mcpSecretStore({
         secrets: { ...keyring(), available: () => false },
@@ -273,7 +273,7 @@ const CASES: Case[] = [
   {
     name: 'rejects a wrong callback state without exchanging its authorization code',
     async run() {
-      const path = await mkdtemp(join(tmpdir(), 'foundry-mcp-oauth-'));
+      const path = await mkdtemp(join(tmpdir(), 'kira-mcp-oauth-'));
       const fixture = await authorizationFixture();
       const secrets = mcpSecretStore({ secrets: keyring(), path });
       const manager = mcpOAuth({
@@ -297,7 +297,7 @@ const CASES: Case[] = [
   {
     name: 'rejects a callback from a mismatched authorization-server issuer',
     async run() {
-      const path = await mkdtemp(join(tmpdir(), 'foundry-mcp-oauth-'));
+      const path = await mkdtemp(join(tmpdir(), 'kira-mcp-oauth-'));
       const fixture = await authorizationFixture();
       const secrets = mcpSecretStore({ secrets: keyring(), path });
       const manager = mcpOAuth({
@@ -323,7 +323,7 @@ const CASES: Case[] = [
   {
     name: 'MCP manager signs in, refreshes tokens, reconnects, and signs out',
     async run() {
-      const path = await mkdtemp(join(tmpdir(), 'foundry-mcp-oauth-'));
+      const path = await mkdtemp(join(tmpdir(), 'kira-mcp-oauth-'));
       const fixture = await authorizationFixture();
       const secrets = mcpSecretStore({ secrets: keyring(), path: join(path, 'secrets') });
       const store = new ThreadStore(join(path, 'threads.db'));
@@ -377,7 +377,7 @@ const CASES: Case[] = [
   {
     name: 'disabling a server cancels a pending browser sign-in',
     async run() {
-      const path = await mkdtemp(join(tmpdir(), 'foundry-mcp-oauth-'));
+      const path = await mkdtemp(join(tmpdir(), 'kira-mcp-oauth-'));
       const fixture = await authorizationFixture();
       const secrets = mcpSecretStore({ secrets: keyring(), path: join(path, 'secrets') });
       const store = new ThreadStore(join(path, 'threads.db'));
@@ -413,7 +413,7 @@ const CASES: Case[] = [
   {
     name: 'changing an HTTP server URL drops its saved OAuth credentials',
     async run() {
-      const path = await mkdtemp(join(tmpdir(), 'foundry-mcp-oauth-'));
+      const path = await mkdtemp(join(tmpdir(), 'kira-mcp-oauth-'));
       const fixture = await authorizationFixture();
       const secrets = mcpSecretStore({ secrets: keyring(), path: join(path, 'secrets') });
       const store = new ThreadStore(join(path, 'threads.db'));
@@ -463,7 +463,7 @@ const CASES: Case[] = [
   {
     name: 'sign-out clears OAuth credentials but leaves static server credentials intact',
     async run() {
-      const path = await mkdtemp(join(tmpdir(), 'foundry-mcp-oauth-'));
+      const path = await mkdtemp(join(tmpdir(), 'kira-mcp-oauth-'));
       const fixture = await authorizationFixture();
       const secrets = mcpSecretStore({ secrets: keyring(), path });
       const manager = mcpOAuth({

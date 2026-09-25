@@ -4,7 +4,7 @@
  * The names are part of the shared contract, so they live in `preload/bridge.ts`
  * and the preload and `ipc/` both import them; only the handlers are here. Apart
  * from electron this folder knows nothing about how it is reached, so these can
- * be exercised with plain objects. Everything crossing this seam is Foundry's
+ * be exercised with plain objects. Everything crossing this seam is Kira's
  * vocabulary: no pi types and no pi words reach the renderer.
  */
 import {

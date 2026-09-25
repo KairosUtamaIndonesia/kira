@@ -2,10 +2,10 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import type { AuthState } from '../../preload/bridge.ts';
 import { type KeyStore, type StoredKey } from './keys.ts';
-import { type Foundry, handoffToken, type KeyVerdict, signIn, type SignIn } from './signIn.ts';
+import { type Kira, handoffToken, type KeyVerdict, signIn, type SignIn } from './signIn.ts';
 
 const DEVICE = 'brandons-laptop';
-const SCHEME = 'ai.foundry.kairos';
+const SCHEME = 'ai.kira.kairos';
 const MINTED = 'the-key-just-issued';
 
 const REMEMBERED: StoredKey = {
@@ -43,7 +43,7 @@ function memory(calls: string[], box: { held: StoredKey | null }): KeyStore {
 }
 
 /** The server as the flow uses it, recording every call it is asked to make. */
-function foundry(calls: string[], quirks: Quirks = {}): Foundry {
+function kira(calls: string[], quirks: Quirks = {}): Kira {
   const fail = (call: 'claim' | 'retireDeviceKeys' | 'mintKey' | 'endSession') => {
     const message = quirks.fails?.[call];
     if (message !== undefined) throw new Error(message);
@@ -73,7 +73,7 @@ function foundry(calls: string[], quirks: Quirks = {}): Foundry {
     },
     catalog: async (key) => {
       // Signing in never asks for the catalog, so this is only here to be a
-      // `Foundry`: what the server serves is the business of `pi/models.ts`.
+      // `Kira`: what the server serves is the business of `pi/models.ts`.
       calls.push(`catalog ${key}`);
       return { kind: 'unavailable' };
     },
@@ -96,7 +96,7 @@ function foundry(calls: string[], quirks: Quirks = {}): Foundry {
       fail('endSession');
     },
     // The tracker is not sign-in's business at all: it belongs to `main/tracker.ts`,
-    // and these are here only to be a `Foundry`. A call that reached them would be
+    // and these are here only to be a `Kira`. A call that reached them would be
     // a bug in the flow, so they record it and answer nothing.
     projects: async () => {
       calls.push('projects');
@@ -335,7 +335,7 @@ for (const testCase of CASES) {
     const box = { held: testCase.held ?? null };
     const auth = signIn({
       keys: memory(calls, box),
-      foundry: foundry(calls, testCase.quirks),
+      kira: kira(calls, testCase.quirks),
       device: DEVICE,
       onChange: (state) => {
         calls.push(state.signedIn ? `signed in as ${state.user.name}` : 'signed out');
@@ -390,7 +390,7 @@ const LINKS = [
   { name: 'a link with nothing but a scheme', link: `${SCHEME}:/`, want: null },
   {
     name: 'the application path, which is what a second launch passes',
-    link: '/home/someone/foundry/apps/desktop',
+    link: '/home/someone/kira/apps/desktop',
     want: null,
   },
   { name: 'not a link at all', link: 'not a link at all', want: null },

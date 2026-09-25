@@ -32,11 +32,11 @@ interface BrowserBounds {
 }
 
 const browserHost = (() => {
-  const existing = document.getElementById('foundry-browser-surface');
+  const existing = document.getElementById('kira-browser-surface');
   if (existing) return existing;
 
   const host = document.createElement('div');
-  host.id = 'foundry-browser-surface';
+  host.id = 'kira-browser-surface';
   Object.assign(host.style, {
     position: 'fixed',
     inset: '0',
@@ -132,7 +132,7 @@ export function BrowserPane({
         setBusy(false);
       };
       const attached = (): void => {
-        void window.foundry
+        void window.kira
           .registerBrowserGuest({
             browserId: browser.id,
             chatId,
@@ -143,7 +143,7 @@ export function BrowserPane({
               setProblem(result.error);
               return;
             }
-            if (active) void window.foundry.activateBrowser(chatId, browser.id);
+            if (active) void window.kira.activateBrowser(chatId, browser.id);
           });
       };
 

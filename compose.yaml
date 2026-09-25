@@ -1,10 +1,10 @@
-# The database Foundry's server keeps its own state in, for development and for
-# tests. Production points FOUNDRY_DATABASE_URL at a real instance instead; this
+# The database Kira's server keeps its own state in, for development and for
+# tests. Production points KIRA_DATABASE_URL at a real instance instead; this
 # exists so a checkout has somewhere to run.
 #
 # Its own port rather than Postgres's default, so it cannot collide with another
 # project's Postgres on the same machine — docs/internal/server-development.md has
-# the ports Foundry claims and why.
+# the ports Kira claims and why.
 #
 # A named volume, so `docker compose down` does not throw away what was in it
 # and `down -v` does.
@@ -14,11 +14,11 @@ services:
     ports:
       - '5439:5432'
     environment:
-      POSTGRES_USER: foundry
-      POSTGRES_PASSWORD: foundry
-      POSTGRES_DB: foundry
+      POSTGRES_USER: kira
+      POSTGRES_PASSWORD: kira
+      POSTGRES_DB: kira
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U foundry -d foundry']
+      test: ['CMD-SHELL', 'pg_isready -U kira -d kira']
       interval: 5s
       timeout: 5s
       retries: 10
@@ -27,7 +27,7 @@ services:
     # upgrade can use `pg_upgrade --link`. Mounting .../data is what the image
     # refuses to start on.
     volumes:
-      - foundry-postgres:/var/lib/postgresql
+      - kira-postgres:/var/lib/postgresql
 
 volumes:
-  foundry-postgres:
+  kira-postgres:

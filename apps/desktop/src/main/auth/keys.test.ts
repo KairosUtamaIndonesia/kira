@@ -32,7 +32,7 @@ function keyring({ key = 0x5a, ...overrides }: Partial<SecretKeeper> & { key?: n
 
 /** A path in a directory of its own, which is the whole of what the store needs. */
 function tempPath(): string {
-  return join(tempDir('foundry-key-'), 'key.json');
+  return join(tempDir('kira-key-'), 'key.json');
 }
 
 /** What is in the file before the store is opened. */

@@ -6,7 +6,7 @@ import { signIn } from './api/auth';
 import Notice from './notice';
 
 /**
- * What a browser that is not signed in to Foundry at all is shown.
+ * What a browser that is not signed in to Kira at all is shown.
  *
  * Signing in leaves this page for Microsoft's and comes back to this address, so a
  * successful attempt draws nothing here: the page is loaded again with a session
@@ -17,7 +17,7 @@ export default function SignIn() {
   const [failure, setFailure] = useState<string | null>(null);
 
   return (
-    <Notice title="Foundry administration">
+    <Notice title="Kira administration">
       <Text color="secondary">Sign in with your company Microsoft account.</Text>
       <Button
         label="Sign in with Microsoft"

@@ -8,11 +8,11 @@ import { ThreadStore } from '../db/threads.ts';
 import type { Proposal } from '../../preload/bridge.ts';
 import type { Tracker } from '../tracker.ts';
 import { openChats, type OpenChats } from './openChats.ts';
-import { foundryModels } from './models.ts';
+import { kiraModels } from './models.ts';
 import { createThread } from './storage.ts';
 
-process.env['HOME'] = mkdtempSync(join(tmpdir(), 'foundry-shaping-home-'));
-process.env['PI_CODING_AGENT_DIR'] = mkdtempSync(join(tmpdir(), 'foundry-shaping-agent-'));
+process.env['HOME'] = mkdtempSync(join(tmpdir(), 'kira-shaping-home-'));
+process.env['PI_CODING_AGENT_DIR'] = mkdtempSync(join(tmpdir(), 'kira-shaping-agent-'));
 
 /** One streamed provider reply: words, or a single tool call. */
 type Reply = { say: string } | { call: string; arguments: Record<string, unknown> };
@@ -72,13 +72,13 @@ async function shapingChat(
   if (address === null || typeof address === 'string') throw new Error('the provider has no port');
 
   const store = new ThreadStore(
-    join(mkdtempSync(join(tmpdir(), 'foundry-shaping-store-')), 'threads.db'),
+    join(mkdtempSync(join(tmpdir(), 'kira-shaping-store-')), 'threads.db'),
   );
-  const workspace = store.rememberWorkspace(mkdtempSync(join(tmpdir(), 'foundry-shaping-space-')));
+  const workspace = store.rememberWorkspace(mkdtempSync(join(tmpdir(), 'kira-shaping-space-')));
   const thread = createThread(store, workspace.folder, { workspaceId: workspace.id });
-  const cachePath = join(mkdtempSync(join(tmpdir(), 'foundry-shaping-models-')), 'models.json');
+  const cachePath = join(mkdtempSync(join(tmpdir(), 'kira-shaping-models-')), 'models.json');
   writeFileSync(cachePath, JSON.stringify({ models: [{ id: 'served-model', name: 'Served' }] }));
-  const models = foundryModels({
+  const models = kiraModels({
     server: `http://127.0.0.1:${address.port}`,
     cachePath,
     token: async () => 'device-key',

@@ -231,9 +231,9 @@ describe('the documented API', () => {
     expect(paths).toContain('/health');
 
     // ADR 0003: the OpenAI-shaped seam is a compatibility surface for the
-    // desktop's client rather than an API Foundry offers, and the catalog is
+    // desktop's client rather than an API Kira offers, and the catalog is
     // shaped for that same client. Documenting either would promise a shape
-    // Foundry does not own.
+    // Kira does not own.
     expect(paths).not.toContain('/v1/chat/completions');
     expect(paths).not.toContain('/api/models');
   });

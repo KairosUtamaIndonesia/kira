@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import type { Ticket } from '../../../preload/bridge.ts';
 import { ThreadStore } from '../../db/threads.ts';
 import { startConversation } from '../conversations.ts';
-import { foundryModels } from '../models.ts';
+import { kiraModels } from '../models.ts';
 import { trackerFor, type TrackerAnswer, type TrackerWire } from '../../tracker.ts';
 
 const draft: Ticket = {
@@ -42,9 +42,9 @@ function streamAnswer(response: ServerResponse, body: unknown): void {
 test('a real Kira session reads and edits through the main-process tracker seam', async (t) => {
   const previousHome = process.env['HOME'];
   const previousAgentDir = process.env['PI_CODING_AGENT_DIR'];
-  process.env['HOME'] = mkdtempSync(join(tmpdir(), 'foundry-tracker-session-home-'));
+  process.env['HOME'] = mkdtempSync(join(tmpdir(), 'kira-tracker-session-home-'));
   process.env['PI_CODING_AGENT_DIR'] = mkdtempSync(
-    join(tmpdir(), 'foundry-tracker-session-agent-'),
+    join(tmpdir(), 'kira-tracker-session-agent-'),
   );
   t.after(() => {
     if (previousHome === undefined) delete process.env['HOME'];
@@ -110,20 +110,20 @@ test('a real Kira session reads and edits through the main-process tracker seam'
   if (address === null || typeof address === 'string') throw new Error('the provider has no port');
 
   const store = new ThreadStore(
-    join(mkdtempSync(join(tmpdir(), 'foundry-tracker-session-')), 'threads.db'),
+    join(mkdtempSync(join(tmpdir(), 'kira-tracker-session-')), 'threads.db'),
   );
   const workspace = store.rememberWorkspace(
-    mkdtempSync(join(tmpdir(), 'foundry-tracker-session-space-')),
+    mkdtempSync(join(tmpdir(), 'kira-tracker-session-space-')),
   );
   const cachePath = join(
-    mkdtempSync(join(tmpdir(), 'foundry-tracker-session-models-')),
+    mkdtempSync(join(tmpdir(), 'kira-tracker-session-models-')),
     'models.json',
   );
   writeFileSync(
     cachePath,
     JSON.stringify({ models: [{ id: 'served-model', name: 'Served Model' }] }),
   );
-  const models = foundryModels({
+  const models = kiraModels({
     server: `http://127.0.0.1:${address.port}`,
     cachePath,
     token: async () => 'device-key',

@@ -35,7 +35,7 @@ async function project(app: Awaited<ReturnType<typeof boot>>['app'], key: string
   const response = await send(
     app,
     '/api/projects',
-    json('POST', key, { name: 'Foundry', prefix: 'FND' }),
+    json('POST', key, { name: 'Kira', prefix: 'FND' }),
   );
   return (await response.json()).project as { id: string };
 }

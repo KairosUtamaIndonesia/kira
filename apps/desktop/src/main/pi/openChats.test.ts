@@ -17,13 +17,13 @@ import type { ChatState } from '../../preload/bridge.ts';
 import { ThreadStore } from '../db/threads.ts';
 import { tempDir } from '../test-support/temp.ts';
 import { type OpenChats, openChats } from './openChats.ts';
-import { foundryModels, type Models } from './models.ts';
+import { kiraModels, type Models } from './models.ts';
 import { createThread, type PiThread } from './storage.ts';
 
 // Hermetic: pi reads `PI_CODING_AGENT_DIR` for credentials and `HOME` for the
 // global skills source, so neither leaks in from the developer's machine.
-process.env['HOME'] = tempDir('foundry-open-home-');
-process.env['PI_CODING_AGENT_DIR'] = tempDir('foundry-open-agent-dir-');
+process.env['HOME'] = tempDir('kira-open-home-');
+process.env['PI_CODING_AGENT_DIR'] = tempDir('kira-open-agent-dir-');
 
 /**
  * The models these chats run on: what a launch that has asked before remembers.
@@ -32,10 +32,10 @@ process.env['PI_CODING_AGENT_DIR'] = tempDir('foundry-open-agent-dir-');
  * for a chat to open.
  */
 function rememberedModels(ids: string[] = ['served-model']): Models {
-  const cache = join(tempDir('foundry-open-models-'), 'models.json');
+  const cache = join(tempDir('kira-open-models-'), 'models.json');
   writeFileSync(cache, JSON.stringify({ models: ids.map((id) => ({ id, name: id })) }));
 
-  return foundryModels({
+  return kiraModels({
     server: 'http://localhost:4100',
     cachePath: cache,
     token: async () => 'device-key',
@@ -64,10 +64,10 @@ interface Fixture {
  * leaving chats that predate persisted shaping state.
  */
 function storedChats(): Fixture {
-  const store = new ThreadStore(join(tempDir('foundry-open-store-'), 'threads.db'));
+  const store = new ThreadStore(join(tempDir('kira-open-store-'), 'threads.db'));
   const asked: string[] = [];
   const ids = ['where are we', 'and the tests'].map((words) => {
-    const thread = createThread(store, tempDir('foundry-open-space-'));
+    const thread = createThread(store, tempDir('kira-open-space-'));
     asked.push(ask(thread, words));
 
     return thread.threadId;
@@ -128,7 +128,7 @@ function newWorkspaces(): { make: () => string; made: string[] } {
   return {
     made,
     make: () => {
-      const folder = tempDir('foundry-open-space-');
+      const folder = tempDir('kira-open-space-');
       made.push(folder);
 
       return folder;
@@ -264,7 +264,7 @@ test('composing a new chat creates nothing, in a workspace or nowhere', async ()
   const fixture = storedChats();
   const workspaces = newWorkspaces();
   const chats = openChats(fixture.store, () => {}, workspaces.make, MODELS);
-  const workspace = fixture.store.rememberWorkspace(tempDir('foundry-open-workspace-'));
+  const workspace = fixture.store.rememberWorkspace(tempDir('kira-open-workspace-'));
   const before = fixture.store.listThreads().length;
 
   await show(chats, fixture, 0);
@@ -344,7 +344,7 @@ test('forgetting a workspace unfiles its chats, which keep working where they we
   const fixture = storedChats();
   const workspaces = newWorkspaces();
   const chats = openChats(fixture.store, () => {}, workspaces.make, MODELS);
-  const workspace = fixture.store.rememberWorkspace(tempDir('foundry-open-workspace-'));
+  const workspace = fixture.store.rememberWorkspace(tempDir('kira-open-workspace-'));
   const filed = createThread(fixture.store, workspace.folder, { workspaceId: workspace.id });
 
   await chats.open(filed.threadId);
@@ -398,8 +398,8 @@ test('closing every chat forgets the new one being composed', async () => {
 });
 
 test('a fork is filed where the chat it came from was filed', async () => {
-  const store = new ThreadStore(join(tempDir('foundry-open-store-'), 'threads.db'));
-  const workspace = store.rememberWorkspace(tempDir('foundry-open-workspace-'));
+  const store = new ThreadStore(join(tempDir('kira-open-store-'), 'threads.db'));
+  const workspace = store.rememberWorkspace(tempDir('kira-open-workspace-'));
   const source = createThread(store, workspace.folder, { workspaceId: workspace.id });
   const asked = ask(source, 'where are we');
   const workspaces = newWorkspaces();
@@ -431,8 +431,8 @@ test('with nothing open there is nothing to show or send', async () => {
 });
 
 test('a ticket run remains an ordinary flat chat row beside its shaping chat', async () => {
-  const store = new ThreadStore(join(tempDir('foundry-open-store-'), 'threads.db'));
-  const workspace = store.rememberWorkspace(tempDir('foundry-open-workspace-'));
+  const store = new ThreadStore(join(tempDir('kira-open-store-'), 'threads.db'));
+  const workspace = store.rememberWorkspace(tempDir('kira-open-workspace-'));
   const shaping = createThread(store, workspace.folder, { workspaceId: workspace.id });
   const run = createThread(store, workspace.folder, {
     workspaceId: workspace.id,
@@ -622,8 +622,8 @@ test('deleting a chat the window is not showing leaves the window where it is', 
 });
 
 test('deleting the last chat leaves a new chat to compose in', async () => {
-  const store = new ThreadStore(join(tempDir('foundry-open-store-'), 'threads.db'));
-  const thread = createThread(store, tempDir('foundry-open-space-'));
+  const store = new ThreadStore(join(tempDir('kira-open-store-'), 'threads.db'));
+  const thread = createThread(store, tempDir('kira-open-space-'));
   ask(thread, 'anything at all');
   const workspaces = newWorkspaces();
   const chats = openChats(store, () => {}, workspaces.make, MODELS);

@@ -9,7 +9,7 @@ import { ThreadStore } from '../db/threads.ts';
 import { createThread, openThread } from './storage.ts';
 
 function tempStorePath(): string {
-  return join(tempDir('foundry-threads-'), 'threads.db');
+  return join(tempDir('kira-threads-'), 'threads.db');
 }
 
 /**
@@ -23,7 +23,7 @@ function asStored<T>(value: T): T {
 test('a conversation survives closing and reopening', () => {
   const path = tempStorePath();
   const store = new ThreadStore(path);
-  const thread = createThread(store, join(tmpdir(), 'foundry-space'));
+  const thread = createThread(store, join(tmpdir(), 'kira-space'));
 
   thread.sessionManager.appendMessage({ role: 'user', content: 'remember this', timestamp: 1 });
   const labeled = thread.sessionManager.appendMessage({
@@ -52,11 +52,11 @@ test('a conversation survives closing and reopening', () => {
 test('opening a chat does not change its activity order', () => {
   const path = tempStorePath();
   const store = new ThreadStore(path);
-  const older = createThread(store, join(tmpdir(), 'foundry-older-space'));
+  const older = createThread(store, join(tmpdir(), 'kira-older-space'));
 
   older.sessionManager.appendMessage({ role: 'user', content: 'older', timestamp: 1 });
 
-  const newer = createThread(store, join(tmpdir(), 'foundry-newer-space'));
+  const newer = createThread(store, join(tmpdir(), 'kira-newer-space'));
   newer.sessionManager.appendMessage({ role: 'user', content: 'newer', timestamp: 2 });
   const before = store.listThreads().map((thread) => thread.id);
   assert.deepEqual(before, [newer.threadId, older.threadId]);
@@ -73,7 +73,7 @@ test('opening a chat does not change its activity order', () => {
 test('a remembered place that is no longer stored is passed over', () => {
   const path = tempStorePath();
   const store = new ThreadStore(path);
-  const thread = createThread(store, join(tmpdir(), 'foundry-space'));
+  const thread = createThread(store, join(tmpdir(), 'kira-space'));
   const question = thread.sessionManager.appendMessage({
     role: 'user',
     content: 'say hi',
@@ -92,7 +92,7 @@ test('a remembered place that is no longer stored is passed over', () => {
 test('entries are written to the database, not to pi session files', () => {
   const path = tempStorePath();
   const store = new ThreadStore(path);
-  const thread = createThread(store, join(tmpdir(), 'foundry-space'));
+  const thread = createThread(store, join(tmpdir(), 'kira-space'));
 
   thread.sessionManager.appendMessage({ role: 'user', content: 'hello', timestamp: 1 });
 

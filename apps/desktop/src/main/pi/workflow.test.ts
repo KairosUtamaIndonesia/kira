@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { createBashToolDefinition, type ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { ThreadStore } from '../db/threads.ts';
-import { foundryExtension } from './extension/factory.ts';
+import { kiraExtension } from './extension/factory.ts';
 import { WORKFLOW_ROUTER } from './workflow.ts';
 
 function registered(
@@ -26,9 +26,9 @@ function registered(
     | undefined;
   const tools: string[] = [];
   let activeTools = ['read', 'bash', 'edit', 'write'];
-  const store = new ThreadStore(join(mkdtempSync(join(tmpdir(), 'foundry-router-')), 'threads.db'));
+  const store = new ThreadStore(join(mkdtempSync(join(tmpdir(), 'kira-router-')), 'threads.db'));
   store.createThread(tmpdir(), { id: 'thread-1', mode });
-  const definition = foundryExtension({
+  const definition = kiraExtension({
     cwd: tmpdir(),
     store,
     threadId: 'thread-1',
@@ -119,7 +119,7 @@ test('the workflow router is appended to every system prompt', () => {
     assert.match(WORKFLOW_ROUTER, /call shape_breakdown_proposal/);
     assert.match(
       WORKFLOW_ROUTER,
-      /Never claim approval, publication, or readiness unless Foundry state confirms it/,
+      /Never claim approval, publication, or readiness unless Kira state confirms it/,
     );
   } finally {
     close();

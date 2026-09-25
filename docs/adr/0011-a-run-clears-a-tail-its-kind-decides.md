@@ -50,7 +50,7 @@ one is a conversation" already lives.
   that could not verify says so on the ticket and lands in the band waiting on a person,
   rather than claiming a pass it did not earn.
 - **review** — two axes (Standards, Spec), on a different model from the one that wrote the
-  change. Foundry's pool makes a different provider the ordinary case, not a special one.
+  change. Kira's pool makes a different provider the ordinary case, not a special one.
 - **document** — the prose the change owes: PR body, and a changelog entry when it is
   user-facing.
 

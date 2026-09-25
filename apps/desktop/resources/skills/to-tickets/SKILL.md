@@ -1,6 +1,6 @@
 ---
 name: to-tickets
-description: Break an approved Foundry spec into vertical-slice tickets and propose them with shape_breakdown_proposal.
+description: Break an approved Kira spec into vertical-slice tickets and propose them with shape_breakdown_proposal.
 ---
 
 Break the approved spec into tracer-bullet slices and propose them. The person's Approve on the breakdown card publishes every slice as a child ticket and marks it ready in one step, so each slice must be runnable as written.
@@ -28,6 +28,6 @@ Done when every spec story is covered by a slice, every slice has criteria, and 
 
 Call `shape_breakdown_proposal` with all the slices. The approval card appears on its own. End your turn and wait for the person. When they ask for changes, revise and propose again; the new proposal replaces the old one.
 
-If approval published the drafts but Foundry refused readiness, do not propose the breakdown again. Read the drafts with `tracker_read_ticket`, correct each draft with `tracker_edit_draft`, then ask the person to use the renderer's Mark ready action to retry readiness on those already-published drafts.
+If approval published the drafts but Kira refused readiness, do not propose the breakdown again. Read the drafts with `tracker_read_ticket`, correct each draft with `tracker_edit_draft`, then ask the person to use the renderer's Mark ready action to retry readiness on those already-published drafts.
 
 After approval the person starts work with Run what's ready. Each run is its own chat with its own brief.

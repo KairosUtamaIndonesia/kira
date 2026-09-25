@@ -8,14 +8,14 @@ export type Granted = { granted: true } | { granted: false; reason: string };
 /**
  * Make the person with this address an admin.
  *
- * The role is a fact about a Foundry user, and the only way to hold it is to be
+ * The role is a fact about a Kira user, and the only way to hold it is to be
  * given it — which leaves the first one with nobody to give it. So this runs out
  * of band, with no session and no permission to check, and it is also what gets
  * an administrator back in when the last one has gone: the console can take the
  * role away from everyone, including itself (ADR 0007).
  *
  * A user row exists only once someone has signed in, which is what the refusal
- * says rather than inventing a user who has never been seen. Foundry does not
+ * says rather than inventing a user who has never been seen. Kira does not
  * mint the row itself: the identity is Entra's, and a row written here would be
  * a second one the same person signs into (ADR 0004).
  */

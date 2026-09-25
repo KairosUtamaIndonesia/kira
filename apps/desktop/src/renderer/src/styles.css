@@ -1,6 +1,6 @@
 /*
- * The theme is not ours to state here: importing `@foundry/theme` brings Astryx's
- * entry points, Foundry's typefaces and the family tokens with it, so this surface and
+ * The theme is not ours to state here: importing `@kira/theme` brings Astryx's
+ * entry points, Kira's typefaces and the family tokens with it, so this surface and
  * every other one are themed by the same file.
  *
  * Everything below is app layout: the panes' arrangement now that the frame is
@@ -11,7 +11,7 @@
  * it and there is no prop for it. Lengths come from Astryx's spacing scale so this file
  * says "one step of the rhythm", not "12px".
  *
- * Foundry also compiles its component-level StyleX overrides in the renderer build, so
+ * Kira also compiles its component-level StyleX overrides in the renderer build, so
  * custom component presentation stays with the component rather than coming from here.
  */
 
@@ -27,10 +27,10 @@
 }
 
 /*
- * Foundry's monogram, in the theme's own accent color — nowhere else in the
- * rail wears it, so the collapsed state (where the "Foundry" wordmark itself
+ * Kira's monogram, in the theme's own accent color — nowhere else in the
+ * rail wears it, so the collapsed state (where the "Kira" wordmark itself
  * is hidden) still shows whose window this is. Square rather than round: the
- * theme zeroes every radius on purpose (see foundryTheme.ts), and a rounded
+ * theme zeroes every radius on purpose (see kiraTheme.ts), and a rounded
  * mark would be the one thing in the rail that broke that.
  */
 .brand-mark {

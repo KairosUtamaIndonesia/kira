@@ -11,11 +11,11 @@ import { tempDir } from '../test-support/temp.ts';
 import { mcpManager } from './servers.ts';
 
 function storePath(): string {
-  return join(tempDir('foundry-mcp-'), 'threads.db');
+  return join(tempDir('kira-mcp-'), 'threads.db');
 }
 
 function secretStore({
-  path = join(tempDir('foundry-mcp-secrets-'), 'credentials'),
+  path = join(tempDir('kira-mcp-secrets-'), 'credentials'),
   available = true,
 }: { path?: string; available?: boolean } = {}) {
   const flip = (bytes: Buffer) => Buffer.from([...bytes].map((byte) => byte ^ 0x5a));
@@ -33,7 +33,7 @@ function fixturePath({ answerInitialize = true, listChanged = false } = {}): {
   stopped: string;
   started: string;
 } {
-  const folder = tempDir('foundry-mcp-server-');
+  const folder = tempDir('kira-mcp-server-');
   const stopped = join(folder, 'stopped');
   const started = join(folder, 'started');
   const path = join(folder, 'server.mjs');
@@ -212,8 +212,8 @@ test('workspace MCP servers start on first chat and override only their workspac
   const firstFixture = fixturePath();
   const secondFixture = fixturePath();
   const store = new ThreadStore(storePath());
-  const firstWorkspace = store.rememberWorkspace(tempDir('foundry-mcp-workspace-a-'));
-  const secondWorkspace = store.rememberWorkspace(tempDir('foundry-mcp-workspace-b-'));
+  const firstWorkspace = store.rememberWorkspace(tempDir('kira-mcp-workspace-a-'));
+  const secondWorkspace = store.rememberWorkspace(tempDir('kira-mcp-workspace-b-'));
   const command = (fixture: ReturnType<typeof fixturePath>) => ({
     command: process.execPath,
     args: [fixture.path, fixture.stopped, fixture.started],
@@ -316,7 +316,7 @@ test('editing a server reconnects only that server with its new configuration', 
 
 test('a PATH-resolved npx command starts without a shell-provided absolute path', async () => {
   const server = fixturePath();
-  const folder = tempDir('foundry-mcp-npx-');
+  const folder = tempDir('kira-mcp-npx-');
   const npx = join(folder, 'npx');
   writeFileSync(npx, `#!/bin/sh\nexec "$@"\n`, { mode: 0o755 });
   const store = new ThreadStore(storePath());
@@ -496,7 +496,7 @@ const CREDENTIAL_CASES: Array<{ name: string; run(): Promise<void> }> = [
   {
     name: 'a failed edit restores encrypted credentials unavailable on this device',
     async run() {
-      const path = join(tempDir('foundry-mcp-secrets-'), 'credentials');
+      const path = join(tempDir('kira-mcp-secrets-'), 'credentials');
       const store = new ThreadStore(storePath());
       const saved = store.createMcpServer({ name: 'first', command: 'node', args: [], cwd: null });
       store.createMcpServer({ name: 'taken', command: 'node', args: [], cwd: null });

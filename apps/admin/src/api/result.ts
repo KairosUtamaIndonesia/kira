@@ -15,7 +15,7 @@ interface Failure {
 /**
  * The sentence to show for a failure. The client's messages are already written
  * for a person ("Invalid origin"), so they are passed through rather than
- * replaced with something Foundry made up.
+ * replaced with something Kira made up.
  */
 export function reasonFor(error: Failure | null, fallback: string): string {
   return error?.message ?? error?.statusText ?? fallback;

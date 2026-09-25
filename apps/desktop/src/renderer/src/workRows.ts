@@ -221,10 +221,10 @@ export function runChoiceLabel(run: TicketRun): string {
  * Who a line in a run's transcript is drawn as.
  *
  * By what they are rather than by name, because the transcript records only which of the
- * three said it: the person steering, the agent working, or Foundry itself. "You" is the
+ * three said it: the person steering, the agent working, or Kira itself. "You" is the
  * person at this window, which is who a run started from here is steered by.
  *
- * A run's first line is the one exception, and it is not a person speaking: Foundry opens
+ * A run's first line is the one exception, and it is not a person speaking: Kira opens
  * every run by telling the agent which ticket it is running and what the ticket asks for,
  * and that brief is the contract the run worked to. Drawing it as "you" would put words in
  * somebody's mouth and hide the one thing a person judging the work needs — what the agent
@@ -233,7 +233,7 @@ export function runChoiceLabel(run: TicketRun): string {
 export function saidByLabel(saidBy: SaidBy, opening = false): string {
   if (opening && saidBy === 'person') return 'the brief it started from';
   if (saidBy === 'agent') return 'Kira';
-  if (saidBy === 'note') return 'Foundry';
+  if (saidBy === 'note') return 'Kira';
 
   return 'you';
 }

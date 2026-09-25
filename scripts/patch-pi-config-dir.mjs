@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Renames pi's config directory from `.pi` to `.foundry`.
+ * Renames pi's config directory from `.pi` to `.kira`.
  *
  * pi reads this from a single field in its own package.json:
  *
@@ -22,7 +22,7 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const CONFIG_DIR = '.foundry';
+const CONFIG_DIR = '.kira';
 const PACKAGE = '@earendil-works/pi-coding-agent';
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));

@@ -12,7 +12,7 @@
 
 - Kira can ask up to four structured questions in an inline chat card, with custom or partial answers, multi-select previews, per-question and shared notes, and cancellation.
 
-- After approving a spec, Kira routes natural requests to make tickets through the bundled breakdown workflow. Foundry validates proposals before showing the approval card; published drafts whose readiness was refused can be corrected and readied again without publishing a second breakdown.
+- After approving a spec, Kira routes natural requests to make tickets through the bundled breakdown workflow. Kira validates proposals before showing the approval card; published drafts whose readiness was refused can be corrected and readied again without publishing a second breakdown.
 - Chats can switch between Build, the default mode with workspace tools, and Spec, a planning mode with read-only tools. In Spec mode, approving a spec immediately prompts Kira to propose its ticket breakdown; the person approves that separately, then opens individual tickets in Work.
 - When Kira completes a ready implementation ticket from a regular Build chat, she links the chat and completion evidence to the ticket and marks it done.
 - The workbench now has a persistent embedded browser with safe HTTP(S) navigation, browser tabs, and agent tools for reading, clicking, filling, navigating, and capturing the active page.
@@ -24,7 +24,7 @@
 
 - Tickets now support exactly eight kinds — prototype, bug, feature, refactor, question, research, spec and map. Existing decision tickets are read as questions, and an empty spec stays blocked until it has child tickets.
 
-- Global local-command MCP servers can be added, viewed and removed from Settings. Foundry starts one shared copy of each configured server, shows its connection and discovered tools, and gives those tools to every chat.
+- Global local-command MCP servers can be added, viewed and removed from Settings. Kira starts one shared copy of each configured server, shows its connection and discovered tools, and gives those tools to every chat.
 - A ticket can be claimed and run. Pressing Run on a ready ticket takes a lease on it, says so on
   the desktop that took it, and works it in a checkout of its own on the ticket's branch — the
   project's folder is left alone and the branch survives the checkout being thrown away. The ticket
@@ -46,7 +46,7 @@
   Reading them is not a turn and costs nothing, as reading the rest of her memory is not, and turning
   memory off leaves the pane empty of both.
 
-- Tickets live in Foundry rather than in a tracker beside it. A project is a shared body of work
+- Tickets live in Kira rather than in a tracker beside it. A project is a shared body of work
   with a short prefix of its own, so its tickets are named `FND-12` and a number is never reused; a
   ticket carries what to build, how it is known to be done, and the tickets that gate it. A slice
   blocking its parent is the only relation there is, so a parent is buildable once nothing under it
@@ -136,18 +136,18 @@
   change of plan is kept rather than the latest one alone, each line names the turn it came from
   so `recall` can go back to the words behind it, and a chat filed under a project carries what the
   rest of that project decided. What a summary carries is bounded, so a long chat cannot flood it.
-- Compacting a long chat no longer asks a model to write the summary: Foundry reconstructs it from
+- Compacting a long chat no longer asks a model to write the summary: Kira reconstructs it from
   the turns being discarded, so housekeeping costs nothing from your allowance.
 - A compacted chat now carries what the work was and not only what was said. The goal, the files
   it touched, the commits it made and what you asked for are read out of the whole conversation
   rather than out of the last summary, so the fifth compaction knows what the first one knew
   instead of knowing less. Opening a compaction marker shows all of it.
-- Kira's models come from Foundry rather than from credentials on your machine: signing in is
+- Kira's models come from Kira rather than from credentials on your machine: signing in is
   what gives her one, and the list is remembered, so a chat opens with the same models when the
   server cannot be reached.
-- Foundry has its own typeface: Inter for text, Satoshi for headings, and Geist Mono
+- Kira has its own typeface: Inter for text, Satoshi for headings, and Geist Mono
   for code and commands.
-- Foundry has its own brand accent and a sharp, unrounded look, instead of Astryx's stock Neutral
+- Kira has its own brand accent and a sharp, unrounded look, instead of Astryx's stock Neutral
   theme.
 - Ask again, Edit and Fork are icon buttons, named on hover, and a reply's actions sit
   once per turn beneath the words they act on rather than under each step of her work.
@@ -165,8 +165,8 @@
 - The chat sidebar collapses: a project's chats open in a flyout from its icon, the project
   holding the chat on screen is marked, and the collapsed state is kept between runs like the
   width.
-- The native Electron menu bar is disabled; Foundry's in-window controls are the only menu surface.
-- The window is drawn inside Astryx's app shell: the sidebar is titled Foundry, its width is
+- The native Electron menu bar is disabled; Kira's in-window controls are the only menu surface.
+- The window is drawn inside Astryx's app shell: the sidebar is titled Kira, its width is
   dragged into place and kept between runs, a window too narrow to hold it puts the navigation
   behind a toggle, and the window gains a skip link and named navigation and main landmarks.
 - The chat pane has a soft full-width atmospheric glow and a centered reading column, while the
@@ -257,7 +257,7 @@
   used while Kira is writing in that chat.
 - The app signs in with your company Microsoft account. A machine that is not signed in
   shows only the sign-in; signing in leaves for the system browser and comes back on its
-  own, with nothing to copy or paste. The key Foundry issues is kept encrypted by the
+  own, with nothing to copy or paste. The key Kira issues is kept encrypted by the
   operating system, is still there after a restart, and is taken off the machine when you
   sign out.
 

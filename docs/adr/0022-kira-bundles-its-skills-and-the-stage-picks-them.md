@@ -1,24 +1,24 @@
-# Foundry bundles its skills, and Kira picks them
+# Kira bundles its skills, and Kira picks them
 
 Date: 2026-09-23
 
 ## Context
 
-The workflow Foundry's tickets were modelled on (ADR 0017) lives in skills: grilling, to-spec,
+The workflow Kira's tickets were modelled on (ADR 0017) lives in skills: grilling, to-spec,
 to-tickets, wayfinder, implement and the rest. Today they ship only as files in this repository.
 They reach Kira only when she happens to be working in a checkout of it. They also tell her to
 use `gh`, labels, `.scratch/` and pull requests, none of which apply once tickets live in
-Foundry. Kira has no tracker tools and no instructions of her own.
+Kira. Kira has no tracker tools and no instructions of her own.
 
 ## Decision
 
-**Foundry ships its own trimmed set of skills inside the app.** It loads them through its Pi
+**Kira ships its own trimmed set of skills inside the app.** It loads them through its Pi
 extension. Passages about other trackers, labels, local markdown and pull requests are replaced
-by Foundry's tools. `setup-matt-pocock-skills`, `triage` and `implement-spec` are dropped:
-Foundry is the setup, readiness replaces labels, and Run what's ready replaces orchestrating a
+by Kira's tools. `setup-matt-pocock-skills`, `triage` and `implement-spec` are dropped:
+Kira is the setup, readiness replaces labels, and Run what's ready replaces orchestrating a
 spec by hand.
 
-**Kira picks the skill, and a person never names one.** Foundry's extension puts the router
+**Kira picks the skill, and a person never names one.** Kira's extension puts the router
 in her system prompt on every turn, so she always knows the stages and which skill each one
 wants, and she loads it herself. A run is the exception: its kind decides what it owes
 (ADR 0011), so its brief names the kind's skill.
@@ -49,10 +49,10 @@ change the bundled skills in the first version.
 
 ## Considered options
 
-- **Copy the repository's skills unchanged.** They would instruct Kira to use trackers Foundry
+- **Copy the repository's skills unchanged.** They would instruct Kira to use trackers Kira
   replaces.
 - **Write the whole workflow into Kira's system prompt.** The procedures would stop being
   editable prose that can be tested one at a time. Only the router goes there.
-- **Foundry injects the stage's skill each turn.** Deterministic, but Kira stops being the one
-  deciding, and a conversation that drifts between stages needs Foundry to guess which it is
+- **Kira injects the stage's skill each turn.** Deterministic, but Kira stops being the one
+  deciding, and a conversation that drifts between stages needs Kira to guess which it is
   in.

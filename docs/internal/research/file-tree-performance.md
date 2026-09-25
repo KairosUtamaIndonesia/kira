@@ -31,7 +31,7 @@ is what we fall back to when `git` is missing or the folder is not a checkout.
 The strongest fact against the recommendation is that `git` may not be there: `/usr/bin/git`
 on macOS is a shim that can raise the Command Line Tools installer prompt, and on Windows
 git may simply be absent. That is why GitHub Desktop ships its own git binary
-(`desktop/dugite`). Foundry has not committed to bundling one, so the fallback is part of
+(`desktop/dugite`). Kira has not committed to bundling one, so the fallback is part of
 the recommendation, not an afterthought.
 
 Watch with Node's own `fs.watch(dir, { recursive: true })`, debounced — recursive watching
@@ -86,7 +86,7 @@ matching rules. It is useful for scoped listing, not for deciding what is ignore
 ### Measured cost, raw Node
 
 `node --expose-gc`, Linux, Node 26.5.0 (Electron 44.4.1 bundles Node 24.21.0), on
-`/home/brandon/Workspace/foundry` — 1,396 files outside `node_modules`, 72,431 directory
+`/home/brandon/Workspace/kira` — 1,396 files outside `node_modules`, 72,431 directory
 entries in total, `node_modules` 993 MB:
 
 | approach                                              | time   | heap  | entries kept |
@@ -184,18 +184,18 @@ either compiling a binding ourselves or shipping the crate's most famous consume
 
 ### `fd` and `ripgrep` as sidecars
 
-Both are the `ignore` crate with a CLI. Foundry already has a mechanism for obtaining them:
+Both are the `ignore` crate with a CLI. Kira already has a mechanism for obtaining them:
 `@earendil-works/pi-coding-agent` resolves `fd` and `rg` through
 `dist/utils/tools-manager.js` — first a system binary on `PATH` (`fd`, `fdfind`, `rg`), then a
 GitHub release tarball downloaded into `getBinDir()`, which is `<agentDir>/bin`
-(`dist/config.js`, `getBinDir`; `getAgentDir` resolves to `~/.foundry/agent` after this repo's
+(`dist/config.js`, `getBinDir`; `getAgentDir` resolves to `~/.kira/agent` after this repo's
 `scripts/patch-pi-config-dir.mjs`). `ensureTool` and `getToolPath` are **not** in pi's public
 exports — `dist/index.d.ts` exports `getAgentDir` but not `getBinDir`, `getToolPath` or
 `ensureTool` — so reusing it means a deep import into `dist/`, which is not a contract.
 
 Measured, same three checkouts:
 
-| command                               | foundry (414 files) | clasher (243) | plane (5,248)  |
+| command                               | kira (414 files) | clasher (243) | plane (5,248)  |
 | ------------------------------------- | ------------------- | ------------- | -------------- |
 | `fd --type f`                         | 26 ms / 268         | 23 ms / 239   | 29 ms / 5,177  |
 | `fd --type f --hidden --exclude .git` | 22 ms / 518         | 14 ms / 308   | 16 ms / 5,386  |
@@ -226,7 +226,7 @@ The four invocations the tree needs, from <https://git-scm.com/docs/git-ls-files
 
 Measured, same three checkouts:
 
-| command                                         | foundry               | clasher       | plane             |
+| command                                         | kira               | clasher       | plane             |
 | ----------------------------------------------- | --------------------- | ------------- | ----------------- |
 | `ls-files -co --exclude-standard`               | 9 ms / 414            | 7 ms / 243    | 15 ms / 5,248     |
 | `ls-files -o -i --exclude-standard`             | 102–129 ms / 63,993   | 9 ms / 4,314  | 239 ms / 92,284   |
@@ -235,7 +235,7 @@ Measured, same three checkouts:
 
 Two things fall out.
 
-**The partition is exact.** On foundry the visible set (414) and the ignored set (63,993) are
+**The partition is exact.** On kira the visible set (414) and the ignored set (63,993) are
 disjoint and their union is 64,407 — the exact number of files a raw `readdir` walk finds
 outside `.git`. The tree and the reveal control are therefore two views of one answer, not
 two independent enumerations. `git ls-files -co` also returns tracked files _inside_ ignored
@@ -257,7 +257,7 @@ descent, and git is what makes that possible without a matcher.**
   entries that cost 7 ms when pruned during descent. Pruning during descent requires the
   matcher to be consulted per directory, which requires the cascade to be built as you go.
 - With git as the oracle there is no walk to save: `ls-files` returns the pruned set directly
-  and its cost is independent of how large the ignored subtrees are (9 ms on foundry whether
+  and its cost is independent of how large the ignored subtrees are (9 ms on kira whether
   `node_modules` holds 61,776 files or none). This is the strongest argument for git over any
   matcher: the expensive part is not matching, it is `readdir`.
 - The reveal control does **not** force a full second walk. `-o -i --directory` names the
@@ -334,7 +334,7 @@ descent (one `readFile` per directory for `.gitignore`, matcher call per entry):
 | -------- | ----------------------- | --------------- | ------------------------------------ |
 | clasher  | 28 ms / 5,160           | 22 ms / 5,061   | 25 ms / 383 kept, 777 matcher calls  |
 | plane    | 560 ms / 111,121, +17MB | 46 ms / 6,660   | 281 ms / 6,554, 16,290 matcher calls |
-| foundry  | 289 ms / 72,430         | 9 ms / 959      | 59 ms / 1,138, 2,286 matcher calls   |
+| kira  | 289 ms / 72,430         | 9 ms / 959      | 59 ms / 1,138, 2,286 matcher calls   |
 
 The matcher is not the bottleneck; the extra `readFile` per directory and the extra syscalls
 are. A name-only prune list gets clasher wrong by a factor of thirteen (5,061 entries kept
@@ -575,7 +575,7 @@ For a folder the agent is editing, a debounce plus a re-list of expanded directo
 cheaper than an event diff: re-listing one directory with `git ls-files` scoped by pathspec is
 a few milliseconds, and it reuses the same code path as the initial load.
 
-## 9. What this means for Foundry
+## 9. What this means for Kira
 
 **Build the tree from git, render it lazily, watch it with `fs.watch`.**
 
@@ -633,7 +633,7 @@ The ranking, all four axes:
   5,000-row number above is my estimate from the element count, not a measured ceiling.
 - **Whether `git` is present on the machines we ship to.** I confirmed the mechanism
   (macOS's `/usr/bin/git` shim can raise the CLT installer prompt; GitHub Desktop bundles its
-  own git via `dugite` precisely to avoid this) but did not measure a Foundry install on
+  own git via `dugite` precisely to avoid this) but did not measure a Kira install on
   Windows or on a Mac without Command Line Tools. The fallback in step 5 is a design
   consequence of not knowing, and step 5 is the part to test first.
 - **`git ls-files` inside a subdirectory project.** Scoping with `-- <pathspec>` works, but I

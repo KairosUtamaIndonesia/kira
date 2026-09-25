@@ -1,4 +1,4 @@
-# pi's config directory is renamed to `.foundry`
+# pi's config directory is renamed to `.kira`
 
 Date: 2026-09-16
 
@@ -17,7 +17,7 @@ project-local one (`<cwd>/.pi/skills`, `<cwd>/.pi/extensions`,
 `<cwd>/.pi/settings.json`). The published package ships
 `piConfig: { "configDir": ".pi" }`.
 
-Foundry is not pi and should not leave `.pi` directories in users' project
+Kira is not pi and should not leave `.pi` directories in users' project
 folders or home directories. The directory name is also user-visible: it is
 where their skills and settings live.
 
@@ -30,8 +30,8 @@ is fixed at import time, so the env var cannot reach them.
 Rewrite that one field from a `postinstall` script
 (`scripts/patch-pi-config-dir.mjs`), targeting every installed copy of pi on
 disk. The whole rename lands from the single value — global and project-local
-together. `CONFIG_DIR_NAME` becomes `".foundry"`, so `getAgentDir()` returns
-`~/.foundry/agent` and project resources are read from `<cwd>/.foundry/`.
+together. `CONFIG_DIR_NAME` becomes `".kira"`, so `getAgentDir()` returns
+`~/.kira/agent` and project resources are read from `<cwd>/.kira/`.
 
 Rejected:
 
@@ -41,15 +41,15 @@ Rejected:
   1.4.2 the patch is applied to the hoisted root copy in `node_modules/`, but
   `apps/desktop` resolves pi through its own `node_modules` symlink into
   `node_modules/.bun/`, which stays unpatched. Verified on a completely clean
-  install: root copy `".foundry"`, resolved copy `".pi"`, `CONFIG_DIR_NAME`
+  install: root copy `".kira"`, resolved copy `".pi"`, `CONFIG_DIR_NAME`
   `".pi"`. A patch that reports success while the app keeps reading `.pi` is
   worse than no patch, so the mechanism was replaced.
 - **Forking pi.** Enormous cost for a config value.
 - **Accepting `.pi`.** Contradicts the point of the rename.
 
 We deliberately did _not_ also set `piConfig.name`, which would rename `APP_NAME`
-and with it the env vars (`FOUNDRY_CODING_AGENT_DIR`) and the debug log
-(`foundry-debug.log`). That is churn with no user-visible payoff, and it would
+and with it the env vars (`KIRA_CODING_AGENT_DIR`) and the debug log
+(`kira-debug.log`). That is churn with no user-visible payoff, and it would
 enlarge a patch that has to survive upgrades.
 
 ## Consequences
@@ -72,10 +72,10 @@ Two things the rename cannot reach, both worth knowing:
 - **`.agents/skills`.** `package-manager.js` hardcodes a second, unrelated skills
   convention at `~/.agents/skills` and `<cwd>/.agents/skills`. It is a literal,
   not derived from `configDir`, so those directories keep their name — and pi
-  will pick up a user's existing `~/.agents/skills` inside Foundry.
+  will pick up a user's existing `~/.agents/skills` inside Kira.
 - **Project trust.** Project-local skills, extensions and settings are ignored
   unless the settings manager is told the project is trusted
-  (`settingsManager.isProjectTrusted()`). Foundry must pass `projectTrusted`
+  (`settingsManager.isProjectTrusted()`). Kira must pass `projectTrusted`
   explicitly, which is a real decision, not a formality: project extensions
   execute code.
 

@@ -24,12 +24,12 @@ import {
 } from './conversations.ts';
 import type { Conversation } from './conversations.ts';
 import { createThread, openThread, type PiThread } from './storage.ts';
-import { foundryModels, type Models } from './models.ts';
+import { kiraModels, type Models } from './models.ts';
 
 // Hermetic: pi reads `PI_CODING_AGENT_DIR` for credentials and `HOME` for the
 // global skills source, so neither leaks in from the developer's machine.
-process.env['HOME'] = tempDir('foundry-chat-home-');
-process.env['PI_CODING_AGENT_DIR'] = tempDir('foundry-chat-agent-dir-');
+process.env['HOME'] = tempDir('kira-chat-home-');
+process.env['PI_CODING_AGENT_DIR'] = tempDir('kira-chat-agent-dir-');
 
 /**
  * The models these conversations run on: what a launch that has asked before
@@ -41,10 +41,10 @@ process.env['PI_CODING_AGENT_DIR'] = tempDir('foundry-chat-agent-dir-');
  * except the case that means to.
  */
 function rememberedModels(server = 'http://localhost:4100'): Models {
-  const cache = join(tempDir('foundry-chat-models-'), 'models.json');
+  const cache = join(tempDir('kira-chat-models-'), 'models.json');
   writeFileSync(cache, JSON.stringify({ models: [{ id: 'served-model', name: 'Served Model' }] }));
 
-  return foundryModels({
+  return kiraModels({
     server,
     cachePath: cache,
     token: async () => 'device-key',
@@ -374,9 +374,9 @@ function visible(transcript: ChatTranscript): string[] {
 
 /** Store `steps` in one thread, then answer what reopening it shows. */
 async function transcriptOfStored(steps: Step[]): Promise<Shape> {
-  const path = join(tempDir('foundry-chat-store-'), 'threads.db');
+  const path = join(tempDir('kira-chat-store-'), 'threads.db');
   const store = new ThreadStore(path);
-  const thread = createThread(store, tempDir('foundry-chat-space-'));
+  const thread = createThread(store, tempDir('kira-chat-space-'));
 
   for (const step of steps) {
     step(thread);
@@ -395,9 +395,9 @@ async function transcriptOfStored(steps: Step[]): Promise<Shape> {
 
 /** Store one thread per `case.threads` entry, then answer what the chat list shows. */
 function listedChats(threads: Step[][]): Array<{ title: string; thread: number }> {
-  const store = new ThreadStore(join(tempDir('foundry-chat-store-'), 'threads.db'));
+  const store = new ThreadStore(join(tempDir('kira-chat-store-'), 'threads.db'));
   const created = threads.map((steps) => {
-    const thread = createThread(store, tempDir('foundry-chat-space-'));
+    const thread = createThread(store, tempDir('kira-chat-space-'));
 
     for (const step of steps) {
       step(thread);
@@ -875,7 +875,7 @@ const TRANSCRIPT_CASES = [
   },
   {
     name: 'a compaction pi wrote itself has no words to lead with, and still shows',
-    // What Foundry's extension answers carries the words; a compaction from
+    // What Kira's extension answers carries the words; a compaction from
     // before this feature, or pi's own fallback when the extension cannot answer,
     // carries none. The boundary still says how much it took.
     steps: [
@@ -1130,8 +1130,8 @@ function messageIds(thread: PiThread): string[] {
  * entry, so where the window was reading is only kept if we keep it ourselves.
  */
 async function afterShowing(testCase: BranchCase): Promise<string[]> {
-  const store = new ThreadStore(join(tempDir('foundry-chat-store-'), 'threads.db'));
-  const thread = createThread(store, tempDir('foundry-chat-space-'));
+  const store = new ThreadStore(join(tempDir('kira-chat-store-'), 'threads.db'));
+  const thread = createThread(store, tempDir('kira-chat-space-'));
 
   for (const step of testCase.store) {
     step(thread);
@@ -1202,8 +1202,8 @@ const EDIT_CASES: EditCase[] = [
  * exists to be read.
  */
 async function afterTakingBack(testCase: EditCase): Promise<string[]> {
-  const store = new ThreadStore(join(tempDir('foundry-chat-store-'), 'threads.db'));
-  const thread = createThread(store, tempDir('foundry-chat-space-'));
+  const store = new ThreadStore(join(tempDir('kira-chat-store-'), 'threads.db'));
+  const thread = createThread(store, tempDir('kira-chat-space-'));
 
   for (const step of testCase.store) {
     step(thread);
@@ -1226,8 +1226,8 @@ for (const testCase of EDIT_CASES) {
 }
 
 test('switching to what is not a message is refused, and moves nothing', async () => {
-  const store = new ThreadStore(join(tempDir('foundry-chat-store-'), 'threads.db'));
-  const thread = createThread(store, tempDir('foundry-chat-space-'));
+  const store = new ThreadStore(join(tempDir('kira-chat-store-'), 'threads.db'));
+  const thread = createThread(store, tempDir('kira-chat-space-'));
 
   for (const step of FOLLOW_UP) {
     step(thread);
@@ -1256,8 +1256,8 @@ test('switching to what is not a message is refused, and moves nothing', async (
 });
 
 test('taking a question back keeps the words it replaced, as a branch to go back to', async () => {
-  const store = new ThreadStore(join(tempDir('foundry-chat-store-'), 'threads.db'));
-  const thread = createThread(store, tempDir('foundry-chat-space-'));
+  const store = new ThreadStore(join(tempDir('kira-chat-store-'), 'threads.db'));
+  const thread = createThread(store, tempDir('kira-chat-space-'));
 
   for (const step of FOLLOW_UP) {
     step(thread);
@@ -1291,8 +1291,8 @@ test('taking a question back keeps the words it replaced, as a branch to go back
 });
 
 test('a reply is not yours to take back, and neither is a message that was never there', async () => {
-  const store = new ThreadStore(join(tempDir('foundry-chat-store-'), 'threads.db'));
-  const thread = createThread(store, tempDir('foundry-chat-space-'));
+  const store = new ThreadStore(join(tempDir('kira-chat-store-'), 'threads.db'));
+  const thread = createThread(store, tempDir('kira-chat-space-'));
 
   for (const step of SAID_AGAIN) {
     step(thread);
@@ -1359,8 +1359,8 @@ const FORK_CASES: ForkCase[] = [
 
 /** Fork one conversation per case, and answer what each chat shows afterwards. */
 async function afterForking(testCase: ForkCase): Promise<ForkCase['want']> {
-  const store = new ThreadStore(join(tempDir('foundry-chat-store-'), 'threads.db'));
-  const thread = createThread(store, tempDir('foundry-chat-space-'));
+  const store = new ThreadStore(join(tempDir('kira-chat-store-'), 'threads.db'));
+  const thread = createThread(store, tempDir('kira-chat-space-'));
 
   for (const step of testCase.store) {
     step(thread);
@@ -1392,8 +1392,8 @@ for (const testCase of FORK_CASES) {
 }
 
 test('a fork remembers the chat it came from, and works where that one did', async () => {
-  const store = new ThreadStore(join(tempDir('foundry-chat-store-'), 'threads.db'));
-  const thread = createThread(store, tempDir('foundry-chat-space-'));
+  const store = new ThreadStore(join(tempDir('kira-chat-store-'), 'threads.db'));
+  const thread = createThread(store, tempDir('kira-chat-space-'));
   ask('say hi')(thread);
   const asked = thread.sessionManager.getEntries().at(-1);
   assert.ok(asked, 'the question is stored');
@@ -1414,8 +1414,8 @@ test('a fork remembers the chat it came from, and works where that one did', asy
 });
 
 test('forking from what is not a message fails, and stores nothing', async () => {
-  const store = new ThreadStore(join(tempDir('foundry-chat-store-'), 'threads.db'));
-  const thread = createThread(store, tempDir('foundry-chat-space-'));
+  const store = new ThreadStore(join(tempDir('kira-chat-store-'), 'threads.db'));
+  const thread = createThread(store, tempDir('kira-chat-space-'));
   ask('say hi')(thread);
 
   // A thread's own id is its header's: an entry pi stored, but not a message.
@@ -1445,8 +1445,8 @@ test('a chat continued after reopening links the new message to a message', asyn
   // not a message. A link to one of those is a link to nothing, and the window's
   // runtime refuses the whole tree rather than draw it, so the transcript has to
   // shorten the link to the message above.
-  const store = new ThreadStore(join(tempDir('foundry-chat-store-'), 'threads.db'));
-  const started = await startConversation(store, tempDir('foundry-chat-space-'), MODELS);
+  const store = new ThreadStore(join(tempDir('kira-chat-store-'), 'threads.db'));
+  const started = await startConversation(store, tempDir('kira-chat-space-'), MODELS);
   started.close();
 
   ask('say hi')(openThread(store, started.threadId));
@@ -1463,8 +1463,8 @@ test('a chat continued after reopening links the new message to a message', asyn
 });
 
 test('reopening the chat used most recently continues it instead of starting one', async () => {
-  const path = join(tempDir('foundry-chat-store-'), 'threads.db');
-  const cwd = tempDir('foundry-chat-space-');
+  const path = join(tempDir('kira-chat-store-'), 'threads.db');
+  const cwd = tempDir('kira-chat-space-');
   const store = new ThreadStore(path);
 
   const first = await startConversation(store, cwd, MODELS);
@@ -1489,11 +1489,11 @@ test('reopening the chat used most recently continues it instead of starting one
 });
 
 test('opening a named chat continues that one, not the newest', async () => {
-  const store = new ThreadStore(join(tempDir('foundry-chat-store-'), 'threads.db'));
+  const store = new ThreadStore(join(tempDir('kira-chat-store-'), 'threads.db'));
 
-  const older = createThread(store, tempDir('foundry-chat-space-'));
+  const older = createThread(store, tempDir('kira-chat-space-'));
   ask('the older chat')(older);
-  const newer = createThread(store, tempDir('foundry-chat-space-'));
+  const newer = createThread(store, tempDir('kira-chat-space-'));
   ask('the newer chat')(newer);
 
   // The newer chat is the one a launch resumes; the list asked for the older.
@@ -1511,11 +1511,11 @@ test('opening a named chat continues that one, not the newest', async () => {
 });
 
 test('a new chat is a new thread, and does not touch the one before it', async () => {
-  const path = join(tempDir('foundry-chat-store-'), 'threads.db');
+  const path = join(tempDir('kira-chat-store-'), 'threads.db');
   const store = new ThreadStore(path);
 
-  const first = await startConversation(store, tempDir('foundry-chat-space-'), MODELS);
-  const second = await startConversation(store, tempDir('foundry-chat-space-'), MODELS);
+  const first = await startConversation(store, tempDir('kira-chat-space-'), MODELS);
+  const second = await startConversation(store, tempDir('kira-chat-space-'), MODELS);
 
   assert.notEqual(second.threadId, first.threadId);
   assert.deepEqual(
@@ -1536,8 +1536,8 @@ test('a new chat is a new thread, and does not touch the one before it', async (
 });
 
 test('compacting a chat by hand summarises it now, and shows the boundary', async () => {
-  const store = new ThreadStore(join(tempDir('foundry-chat-store-'), 'threads.db'));
-  const thread = createThread(store, tempDir('foundry-chat-space-'));
+  const store = new ThreadStore(join(tempDir('kira-chat-store-'), 'threads.db'));
+  const thread = createThread(store, tempDir('kira-chat-space-'));
 
   // Long enough that pi will cut it: compaction triggers on tokens, and pi
   // refuses a chat holding too little to be worth summarising. The case below is
@@ -1573,7 +1573,7 @@ test('compacting a chat by hand summarises it now, and shows the boundary', asyn
   const [boundary] = shape.trailing;
   assert.ok(boundary?.type === 'compaction');
 
-  // The words are Foundry's own reconstruction rather than a model's summary,
+  // The words are Kira's own reconstruction rather than a model's summary,
   // and that is the point: this went through the same hook a threshold
   // compaction does, so there is one kind of summary and not two.
   assert.match(boundary.reconstruction, /^## Goal$/m);
@@ -1589,8 +1589,8 @@ test('compacting a chat by hand summarises it now, and shows the boundary', asyn
 });
 
 test('compacting a chat holding almost nothing changes nothing, and says so', async () => {
-  const store = new ThreadStore(join(tempDir('foundry-chat-store-'), 'threads.db'));
-  const thread = createThread(store, tempDir('foundry-chat-space-'));
+  const store = new ThreadStore(join(tempDir('kira-chat-store-'), 'threads.db'));
+  const thread = createThread(store, tempDir('kira-chat-space-'));
 
   ask('the only question')(thread);
   reply({ type: 'text', text: 'the only answer' })(thread);
@@ -1598,7 +1598,7 @@ test('compacting a chat holding almost nothing changes nothing, and says so', as
   const conversation = await resumeConversation(store, thread.threadId, MODELS);
 
   // Refused rather than done, because there is nothing here to summarise — and
-  // refused in Foundry's words, since pi's own ("Nothing to compact (session too
+  // refused in Kira's words, since pi's own ("Nothing to compact (session too
   // small)") is not a sentence that belongs in front of a person.
   await assert.rejects(() => conversation.compact(), {
     message: 'There is nothing in this chat to compact yet.',
@@ -1614,8 +1614,8 @@ test('compacting a chat holding almost nothing changes nothing, and says so', as
 });
 
 test('a chat started where it was told keeps the id it was composed under', async () => {
-  const store = new ThreadStore(join(tempDir('foundry-chat-store-'), 'threads.db'));
-  const workspace = store.rememberWorkspace(tempDir('foundry-chat-workspace-'));
+  const store = new ThreadStore(join(tempDir('kira-chat-store-'), 'threads.db'));
+  const workspace = store.rememberWorkspace(tempDir('kira-chat-workspace-'));
 
   const started = await startConversation(store, workspace.folder, MODELS, {
     id: 'composed-already',
@@ -1634,8 +1634,8 @@ test('a chat started where it was told keeps the id it was composed under', asyn
 });
 
 test('stopping a chat that is not writing leaves it exactly as it was', async () => {
-  const store = new ThreadStore(join(tempDir('foundry-chat-store-'), 'threads.db'));
-  const thread = createThread(store, tempDir('foundry-chat-space-'));
+  const store = new ThreadStore(join(tempDir('kira-chat-store-'), 'threads.db'));
+  const thread = createThread(store, tempDir('kira-chat-space-'));
   ask('where are we')(thread);
   reply({ type: 'text', text: 'in the folder' })(thread);
 
@@ -1695,12 +1695,12 @@ async function refusingProvider(): Promise<{ url: string; stop: () => Promise<vo
 
 test('a turn whose provider refuses is a failure, not an empty reply', async () => {
   const provider = await refusingProvider();
-  const store = new ThreadStore(join(tempDir('foundry-chat-store-'), 'threads.db'));
+  const store = new ThreadStore(join(tempDir('kira-chat-store-'), 'threads.db'));
 
   try {
     const conversation = await startConversation(
       store,
-      tempDir('foundry-chat-space-'),
+      tempDir('kira-chat-space-'),
       rememberedModels(provider.url),
     );
 
@@ -1719,8 +1719,8 @@ test('a turn whose provider refuses is a failure, not an empty reply', async () 
 });
 
 test('a chat whose memory cannot be written still opens, and still says what it holds', async () => {
-  const store = new ThreadStore(join(tempDir('foundry-chat-store-'), 'threads.db'));
-  const thread = createThread(store, tempDir('foundry-chat-space-'));
+  const store = new ThreadStore(join(tempDir('kira-chat-store-'), 'threads.db'));
+  const thread = createThread(store, tempDir('kira-chat-space-'));
   ask('Fix the auth bug in the login flow')(thread);
 
   // What a database that will not take the write looks like from here.
@@ -1741,12 +1741,12 @@ test('a chat whose memory cannot be written still opens, and still says what it 
 
 test('a turn goes on being work Kira was told about, even when it is not answered', async () => {
   const provider = await refusingProvider();
-  const store = new ThreadStore(join(tempDir('foundry-chat-store-'), 'threads.db'));
+  const store = new ThreadStore(join(tempDir('kira-chat-store-'), 'threads.db'));
 
   try {
     const conversation = await startConversation(
       store,
-      tempDir('foundry-chat-space-'),
+      tempDir('kira-chat-space-'),
       rememberedModels(provider.url),
     );
 
@@ -1773,10 +1773,10 @@ test('a turn goes on being work Kira was told about, even when it is not answere
  * server's, and the first is what the pool prefers.
  */
 function modelsOffering(ids: string[]): Models {
-  const cache = join(tempDir('foundry-chat-models-'), 'models.json');
+  const cache = join(tempDir('kira-chat-models-'), 'models.json');
   writeFileSync(cache, JSON.stringify({ models: ids.map((id) => ({ id })) }));
 
-  return foundryModels({
+  return kiraModels({
     server: 'http://localhost:4100',
     cachePath: cache,
     token: async () => 'device-key',
@@ -1785,10 +1785,10 @@ function modelsOffering(ids: string[]): Models {
 }
 
 test('a chat runs on the model it was running on when it was reopened', async () => {
-  const store = new ThreadStore(join(tempDir('foundry-chat-store-'), 'threads.db'));
+  const store = new ThreadStore(join(tempDir('kira-chat-store-'), 'threads.db'));
   const models = modelsOffering(['first-model', 'second-model']);
 
-  const started = await startConversation(store, tempDir('foundry-chat-space-'), models);
+  const started = await startConversation(store, tempDir('kira-chat-space-'), models);
 
   // A chat that has chosen nothing runs on what the pool prefers, which is the
   // first of what it offers rather than a model this side picked.
@@ -1808,10 +1808,10 @@ test('a chat runs on the model it was running on when it was reopened', async ()
 });
 
 test('a chat remembering a model the pool has dropped runs on what it prefers', async () => {
-  const store = new ThreadStore(join(tempDir('foundry-chat-store-'), 'threads.db'));
+  const store = new ThreadStore(join(tempDir('kira-chat-store-'), 'threads.db'));
   const both = modelsOffering(['first-model', 'second-model']);
 
-  const started = await startConversation(store, tempDir('foundry-chat-space-'), both);
+  const started = await startConversation(store, tempDir('kira-chat-space-'), both);
   await started.choose('second-model');
   started.close();
 
@@ -1826,11 +1826,11 @@ test('a chat remembering a model the pool has dropped runs on what it prefers', 
   store.close();
 });
 
-test('a chat remembering another provider’s model runs on Foundry’s', async () => {
-  const store = new ThreadStore(join(tempDir('foundry-chat-store-'), 'threads.db'));
+test('a chat remembering another provider’s model runs on Kira’s', async () => {
+  const store = new ThreadStore(join(tempDir('kira-chat-store-'), 'threads.db'));
   const models = modelsOffering(['first-model']);
 
-  const started = await startConversation(store, tempDir('foundry-chat-space-'), models);
+  const started = await startConversation(store, tempDir('kira-chat-space-'), models);
   started.close();
 
   // What an install that ran on pi's own provider would have written down. The
@@ -1847,9 +1847,9 @@ test('a chat remembering another provider’s model runs on Foundry’s', async 
 });
 
 test('a model the pool does not offer cannot be chosen', async () => {
-  const store = new ThreadStore(join(tempDir('foundry-chat-store-'), 'threads.db'));
+  const store = new ThreadStore(join(tempDir('kira-chat-store-'), 'threads.db'));
   const models = modelsOffering(['first-model']);
-  const conversation = await startConversation(store, tempDir('foundry-chat-space-'), models);
+  const conversation = await startConversation(store, tempDir('kira-chat-space-'), models);
 
   await assert.rejects(
     () => conversation.choose('nope-9'),
@@ -1861,9 +1861,9 @@ test('a model the pool does not offer cannot be chosen', async () => {
 });
 
 test('a fork runs on the model its source ran on, and keeps it', async () => {
-  const store = new ThreadStore(join(tempDir('foundry-chat-store-'), 'threads.db'));
+  const store = new ThreadStore(join(tempDir('kira-chat-store-'), 'threads.db'));
   const models = modelsOffering(['first-model', 'second-model']);
-  const thread = createThread(store, tempDir('foundry-chat-space-'));
+  const thread = createThread(store, tempDir('kira-chat-space-'));
   ask('say hi')(thread);
   const asked = thread.sessionManager.getEntries().at(-1);
   assert.ok(asked, 'the question is stored');
@@ -1886,10 +1886,10 @@ test('a fork runs on the model its source ran on, and keeps it', async () => {
 });
 
 test('a chat whose model the pool drops runs on the pool\u2019s, and remembers that', async () => {
-  const store = new ThreadStore(join(tempDir('foundry-chat-store-'), 'threads.db'));
+  const store = new ThreadStore(join(tempDir('kira-chat-store-'), 'threads.db'));
   const started = await startConversation(
     store,
-    tempDir('foundry-chat-space-'),
+    tempDir('kira-chat-space-'),
     modelsOffering(['first-model', 'second-model']),
     { modelId: 'second-model' },
   );
@@ -1941,8 +1941,8 @@ const SPEND_CASES: Array<{ name: string; store: Step[]; spent: number }> = [
 
 for (const testCase of SPEND_CASES) {
   test(testCase.name, async () => {
-    const store = new ThreadStore(join(tempDir('foundry-chat-store-'), 'threads.db'));
-    const thread = createThread(store, tempDir('foundry-chat-space-'));
+    const store = new ThreadStore(join(tempDir('kira-chat-store-'), 'threads.db'));
+    const thread = createThread(store, tempDir('kira-chat-space-'));
 
     for (const step of testCase.store) {
       step(thread);
@@ -1963,8 +1963,8 @@ for (const testCase of SPEND_CASES) {
 }
 
 test('opening a chat works out what it is holding, and a fork starts holding it', async () => {
-  const store = new ThreadStore(join(tempDir('foundry-chat-store-'), 'threads.db'));
-  const thread = createThread(store, tempDir('foundry-chat-space-'));
+  const store = new ThreadStore(join(tempDir('kira-chat-store-'), 'threads.db'));
+  const thread = createThread(store, tempDir('kira-chat-space-'));
   ask('Fix the auth bug in the login flow')(thread);
   const asked = thread.sessionManager.getEntries().at(-1);
   assert.ok(asked, 'the question is stored');
@@ -2002,8 +2002,8 @@ function heldFacts(store: ThreadStore, threadId: string): { kind: string; text: 
 }
 
 test('memory off stops what a chat works out, and does not throw away what it had', async () => {
-  const store = new ThreadStore(join(tempDir('foundry-chat-store-'), 'threads.db'));
-  const thread = createThread(store, tempDir('foundry-chat-space-'));
+  const store = new ThreadStore(join(tempDir('kira-chat-store-'), 'threads.db'));
+  const thread = createThread(store, tempDir('kira-chat-space-'));
   ask('Fix the auth bug in the login flow')(thread);
   reply({ type: 'text', text: 'Looking at the login flow now.' })(thread);
 
@@ -2038,8 +2038,8 @@ test('memory off stops what a chat works out, and does not throw away what it ha
 });
 
 test('a chat shows what it has worked out, and how far it had read', async () => {
-  const store = new ThreadStore(join(tempDir('foundry-chat-store-'), 'threads.db'));
-  const thread = createThread(store, tempDir('foundry-chat-space-'));
+  const store = new ThreadStore(join(tempDir('kira-chat-store-'), 'threads.db'));
+  const thread = createThread(store, tempDir('kira-chat-space-'));
   ask('Fix the auth bug in the login flow')(thread);
 
   // A conclusion is drawn by the reflector, which is a model call, so the test
@@ -2062,8 +2062,8 @@ test('a chat shows what it has worked out, and how far it had read', async () =>
 });
 
 test('memory off stops showing what a chat worked out, and does not throw it away', async () => {
-  const store = new ThreadStore(join(tempDir('foundry-chat-store-'), 'threads.db'));
-  const thread = createThread(store, tempDir('foundry-chat-space-'));
+  const store = new ThreadStore(join(tempDir('kira-chat-store-'), 'threads.db'));
+  const thread = createThread(store, tempDir('kira-chat-space-'));
   ask('Fix the auth bug in the login flow')(thread);
   store.recordReflections(thread.threadId, [
     { text: 'The queue was rejected for ingest', coversThrough: 1 },

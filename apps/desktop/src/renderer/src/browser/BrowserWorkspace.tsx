@@ -44,20 +44,20 @@ export function BrowserWorkspace({
       title: '',
     };
     onChange(openedBrowser(browsers, chatId, tab));
-    void window.foundry.activateBrowser(chatId, tab.id);
+    void window.kira.activateBrowser(chatId, tab.id);
   };
 
   const select = (browserId: string): void => {
     onChange(showingBrowser(browsers, chatId, browserId));
-    void window.foundry.activateBrowser(chatId, browserId);
+    void window.kira.activateBrowser(chatId, browserId);
   };
 
   const close = (browserId: string): void => {
     const next = closedBrowser(browsers, chatId, browserId);
     onChange(next);
     const selected = browsersOf(next, chatId).activeId;
-    if (selected) void window.foundry.activateBrowser(chatId, selected);
-    else void window.foundry.deactivateBrowser(chatId);
+    if (selected) void window.kira.activateBrowser(chatId, selected);
+    else void window.kira.deactivateBrowser(chatId);
   };
 
   const update = (ownerChatId: string, browserId: string, patch: Partial<BrowserTab>): void => {

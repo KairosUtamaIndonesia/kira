@@ -1,6 +1,6 @@
 ---
 name: diagnosing-bugs
-description: Diagnose a stubborn Foundry failure with a tight reproducer and regression test.
+description: Diagnose a stubborn Kira failure with a tight reproducer and regression test.
 ---
 
 Use this for a bug that resists a first glance, flakes, regressed or has unclear ownership. Refuse to theorize until a command or focused test goes red on the reported behavior.
@@ -14,4 +14,4 @@ Use this for a bug that resists a first glance, flakes, regressed or has unclear
 5. Lock the minimized repro into a regression test at the highest useful seam.
 6. Make the smallest fix, then rerun the original reproducer and the relevant suite.
 
-If the environment needed to reproduce is unavailable, state exactly what artifact or access is needed. Do not invent a theory in its place. Remove tagged instrumentation and temporary fixtures before the run finishes, and put the proven cause and checks in the Foundry run summary.
+If the environment needed to reproduce is unavailable, state exactly what artifact or access is needed. Do not invent a theory in its place. Remove tagged instrumentation and temporary fixtures before the run finishes, and put the proven cause and checks in the Kira run summary.

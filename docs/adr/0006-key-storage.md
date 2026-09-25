@@ -4,7 +4,7 @@ Date: 2026-09-17
 
 ## Context
 
-ADR 0004 has the server issue the desktop a Foundry key after sign-in. Something
+ADR 0004 has the server issue the desktop a Kira key after sign-in. Something
 has to hold that key between launches: it must survive relaunch, never leave the
 main process, be revocable server-side, and be destroyed on sign out.
 

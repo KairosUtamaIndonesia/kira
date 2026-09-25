@@ -1,7 +1,7 @@
 import { t } from 'elysia';
 
 /**
- * The shape Foundry answers a refusal with.
+ * The shape Kira answers a refusal with.
  *
  * OpenAI's error envelope, because `/v1/*` is an OpenAI-compatible surface and pi
  * parses these shapes (docs/adr/0005-allowances.md). `code` is what a client

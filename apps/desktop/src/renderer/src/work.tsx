@@ -599,7 +599,7 @@ export function WorkSurface({
   const read = useCallback(async (): Promise<void> => {
     if (workspace === null || projectId === null) return;
 
-    const answer = await window.foundry.loadQueue(workspace.id);
+    const answer = await window.kira.loadQueue(workspace.id);
 
     if (!answer.ok) {
       // Do not leave stale tickets in hand while the queue is unavailable. An open
@@ -693,7 +693,7 @@ export function WorkSurface({
     );
 
     await wrote(() =>
-      window.foundry.changeTicket(id, {
+      window.kira.changeTicket(id, {
         rank: top === Number.MAX_SAFE_INTEGER ? 0 : top - 1,
       }),
     );
@@ -784,7 +784,7 @@ export function WorkSurface({
       onRetry={() => void read()}
       onLeave={closePanel}
       onWrite={async (draft) => {
-        const written = await wrote(() => window.foundry.writeTicket(workspace.id, draft));
+        const written = await wrote(() => window.kira.writeTicket(workspace.id, draft));
         if (written !== null) {
           setIsWriting(false);
           setOpenId(written.id);
@@ -801,16 +801,16 @@ export function WorkSurface({
       onOpen={openTicket}
       onOpenChat={onOpenChat}
       onRefuse={setRefusal}
-      onWrite={(change) => wrote(() => window.foundry.changeTicket(open.id, change))}
-      onGate={(gatedBy) => wrote(() => window.foundry.gateTicket(open.id, gatedBy))}
-      onUngate={(gatedBy) => wrote(() => window.foundry.ungateTicket(open.id, gatedBy))}
-      onRun={() => acted(() => window.foundry.startRun(workspace.id, open.id))}
-      onQuestion={() => acted(() => window.foundry.openQuestion(workspace.id, open.id))}
-      onTakeOver={() => acted(() => window.foundry.takeOverClaim(open.id))}
-      onLetGo={() => acted(() => window.foundry.releaseClaim(open.id))}
+      onWrite={(change) => wrote(() => window.kira.changeTicket(open.id, change))}
+      onGate={(gatedBy) => wrote(() => window.kira.gateTicket(open.id, gatedBy))}
+      onUngate={(gatedBy) => wrote(() => window.kira.ungateTicket(open.id, gatedBy))}
+      onRun={() => acted(() => window.kira.startRun(workspace.id, open.id))}
+      onQuestion={() => acted(() => window.kira.openQuestion(workspace.id, open.id))}
+      onTakeOver={() => acted(() => window.kira.takeOverClaim(open.id))}
+      onLetGo={() => acted(() => window.kira.releaseClaim(open.id))}
       onResolve={() =>
         acted(() =>
-          window.foundry.resolveRun(
+          window.kira.resolveRun(
             workspace.id,
             open.id,
             refusal?.replace(/^Merge conflict:\s*/, '') ?? 'The spec branch has conflicts.',
@@ -824,7 +824,7 @@ export function WorkSurface({
 
         return last === undefined
           ? Promise.resolve(false)
-          : acted(() => window.foundry.judgeRun(open.id, last.id, verdict, workspace.id));
+          : acted(() => window.kira.judgeRun(open.id, last.id, verdict, workspace.id));
       }}
     />
   );
@@ -1001,7 +1001,7 @@ function Join({
 
   async function read(): Promise<void> {
     setTrouble(null);
-    const answer = await window.foundry.joinableProjects();
+    const answer = await window.kira.joinableProjects();
     if (!answer.ok) {
       setTrouble(answer.error);
       setProjects(null);
@@ -1017,7 +1017,7 @@ function Join({
 
   async function join(request: JoinRequest): Promise<void> {
     setIsJoining(true);
-    const answer = await window.foundry.joinWorkspace(workspace.id, request);
+    const answer = await window.kira.joinWorkspace(workspace.id, request);
     setIsJoining(false);
 
     if (!answer.ok) {
@@ -1055,7 +1055,7 @@ function Join({
           {trouble !== null && (
             <Banner
               status="error"
-              title="Foundry could not answer"
+              title="Kira could not answer"
               description={trouble}
               endContent={
                 <Button
@@ -1456,7 +1456,7 @@ function TicketPanel({
       </div>
       {refusal !== null && (
         <div {...stylex.props(styles.refusal)}>
-          <Banner status="error" title="Foundry would not take that" description={refusal} />
+          <Banner status="error" title="Kira would not take that" description={refusal} />
         </div>
       )}
       <div {...stylex.props(styles.panelBody)}>{children}</div>
@@ -2018,7 +2018,7 @@ function RunReading({
   const [trouble, setTrouble] = useState<string | null>(null);
 
   const read = useCallback(async () => {
-    const answer = await window.foundry.readTranscript(ticketId, run.id);
+    const answer = await window.kira.readTranscript(ticketId, run.id);
 
     if (!answer.ok) {
       setTrouble(answer.error);

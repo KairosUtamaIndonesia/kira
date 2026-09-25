@@ -7,15 +7,15 @@ import type { SessionManager } from '@earendil-works/pi-coding-agent';
 import type { MemorySettings } from '../../../preload/bridge.ts';
 import { ThreadStore } from '../../db/threads.ts';
 import { resumeSession } from '../agent.ts';
-import { foundryModels, type Models } from '../models.ts';
+import { kiraModels, type Models } from '../models.ts';
 import { tempDir } from '../../test-support/temp.ts';
 import { createThread } from '../storage.ts';
 
 // Hermetic, as `agent.test.ts` is: pi reads `PI_CODING_AGENT_DIR` for settings and
 // credentials and `HOME` for the global skills source, so both are pointed at
 // temp directories.
-const AGENT_DIR = tempDir('foundry-compaction-agent-');
-process.env['HOME'] = tempDir('foundry-compaction-home-');
+const AGENT_DIR = tempDir('kira-compaction-agent-');
+process.env['HOME'] = tempDir('kira-compaction-home-');
 process.env['PI_CODING_AGENT_DIR'] = AGENT_DIR;
 
 // pi compacts when the context window fills, and filling a window in a test would
@@ -32,13 +32,13 @@ writeFileSync(
  *
  * The catalog is read from the cache, so booting needs nothing from the network.
  * What the server answers is what the session's own model calls get, which is how
- * the one model call Foundry makes — the reflector — is given something to say.
+ * the one model call Kira makes — the reflector — is given something to say.
  */
 function modelsAt(server: string, ids: readonly string[] = ['served-model']): Models {
-  const cache = join(tempDir('foundry-compaction-models-'), 'models.json');
+  const cache = join(tempDir('kira-compaction-models-'), 'models.json');
   writeFileSync(cache, JSON.stringify({ models: ids.map((id) => ({ id, name: id })) }));
 
-  return foundryModels({
+  return kiraModels({
     server,
     cachePath: cache,
     token: async () => 'device-key',
@@ -52,7 +52,7 @@ function modelsAt(server: string, ids: readonly string[] = ['served-model']): Mo
  * A refusal rather than a dead address: pi retries a call to an address nothing
  * answers on, with backoff, which turns every test in this file into fourteen
  * seconds of waiting. A pool that refuses is the case worth pinning anyway — it
- * is what a person sees when Foundry cannot serve a model.
+ * is what a person sees when Kira cannot serve a model.
  */
 async function refusingProvider(): Promise<{ url: string; stop: () => Promise<void> }> {
   const server = createServer((request, response) => {
@@ -95,7 +95,7 @@ after(() => refused.stop());
 /**
  * A server that answers a completion, as the pool does.
  *
- * A summary is written by Foundry itself and costs nothing, so the only model
+ * A summary is written by Kira itself and costs nothing, so the only model
  * call this can see is the reflector's — which is what makes it evidence rather
  * than plumbing: a conclusion in a summary got there by being drawn by a model.
  */
@@ -203,8 +203,8 @@ function historian(session: SessionManager, since = 0): Historian {
       session.appendMessage({
         role: 'assistant',
         content: [{ type: 'text', text }],
-        api: 'foundry',
-        provider: 'foundry',
+        api: 'kira',
+        provider: 'kira',
         model: 'served-model',
         usage: usage(),
         stopReason: 'stop',
@@ -223,8 +223,8 @@ function historian(session: SessionManager, since = 0): Historian {
           { type: 'text', text },
           { type: 'toolCall', id: call, name: tool, arguments: path === undefined ? {} : { path } },
         ],
-        api: 'foundry',
-        provider: 'foundry',
+        api: 'kira',
+        provider: 'kira',
         model: 'served-model',
         usage: usage(),
         stopReason: 'toolUse',
@@ -267,8 +267,8 @@ async function compacted(
   spoil?: (store: ThreadStore, cwd: string) => void,
   memorySettings?: () => MemorySettings | null,
 ): Promise<Compacted> {
-  const cwd = tempDir('foundry-compaction-space-');
-  const path = join(tempDir('foundry-compaction-store-'), 'threads.db');
+  const cwd = tempDir('kira-compaction-space-');
+  const path = join(tempDir('kira-compaction-store-'), 'threads.db');
   const store = new ThreadStore(path);
   spoil?.(store, cwd);
 
@@ -323,12 +323,12 @@ const EXCHANGES = (chat: Historian): void => {
   chat.kira('I will read that before changing anything.');
 };
 
-test('a chat that fills its window is summarised by Foundry, not by a model', async () => {
+test('a chat that fills its window is summarised by Kira, not by a model', async () => {
   const result = await compacted(EXCHANGES);
 
-  assert.equal(result.fromHook, true, 'pi wrote the summary rather than Foundry');
-  // pi charges nothing for a summary it did not write — the summary is Foundry's
-  // own reconstruction. The one call Foundry makes of its own is the reflector's,
+  assert.equal(result.fromHook, true, 'pi wrote the summary rather than Kira');
+  // pi charges nothing for a summary it did not write — the summary is Kira's
+  // own reconstruction. The one call Kira makes of its own is the reflector's,
   // and this chat's pool refuses it; what that refusal costs is asserted by the
   // cases under this one.
   assert.equal(result.usage, undefined, 'pi accounted for a summary it did not write');
@@ -417,8 +417,8 @@ test('the files Kira touched are carried, and not only what she said about them'
 });
 
 test('a second compaction still knows what the first one saw', async () => {
-  const cwd = tempDir('foundry-compaction-space-');
-  const path = join(tempDir('foundry-compaction-store-'), 'threads.db');
+  const cwd = tempDir('kira-compaction-space-');
+  const path = join(tempDir('kira-compaction-store-'), 'threads.db');
   const store = new ThreadStore(path);
 
   const thread = createThread(store, cwd);
@@ -458,8 +458,8 @@ test('a second compaction still knows what the first one saw', async () => {
 });
 
 test('a chat carries what its workspace decided, and not what another workspace did', async () => {
-  const cwd = tempDir('foundry-workspace-space-');
-  const path = join(tempDir('foundry-workspace-store-'), 'threads.db');
+  const cwd = tempDir('kira-workspace-space-');
+  const path = join(tempDir('kira-workspace-store-'), 'threads.db');
   const store = new ThreadStore(path);
 
   /** A chat of `workspace` that has already worked something out. */
@@ -532,8 +532,8 @@ test('a chat carries what its workspace decided, and not what another workspace 
 });
 
 test('a chat carries what its workspace decided, after that chat is gone', async () => {
-  const cwd = tempDir('foundry-workspace-space-');
-  const path = join(tempDir('foundry-workspace-store-'), 'threads.db');
+  const cwd = tempDir('kira-workspace-space-');
+  const path = join(tempDir('kira-workspace-store-'), 'threads.db');
   const store = new ThreadStore(path);
   const workspace = store.rememberWorkspace(join(cwd, 'one'));
 
@@ -604,9 +604,9 @@ test('a chat being compacted is reflected on, and keeps what it worked out', asy
     const result = await compacted(EXCHANGES, modelsAt(provider.url));
 
     // The call is made by the reflector, not by pi: the summary is still the one
-    // Foundry wrote, and what the model said arrived in it as a conclusion rather
+    // Kira wrote, and what the model said arrived in it as a conclusion rather
     // than as prose.
-    assert.equal(result.fromHook, true, 'pi wrote the summary rather than Foundry');
+    assert.equal(result.fromHook, true, 'pi wrote the summary rather than Kira');
     assert.ok(result.summary.includes('## Reflections'), result.summary);
     assert.ok(
       result.summary.includes(
@@ -646,8 +646,8 @@ test('a chat that is not compacting never asks to be reflected on', async () => 
   const provider = await replyingProvider('Looking.', heard);
 
   try {
-    const cwd = tempDir('foundry-reflection-space-');
-    const store = new ThreadStore(join(tempDir('foundry-reflection-store-'), 'threads.db'));
+    const cwd = tempDir('kira-reflection-space-');
+    const store = new ThreadStore(join(tempDir('kira-reflection-store-'), 'threads.db'));
     const thread = createThread(store, cwd);
     const kira = await resumeSession(store, thread.threadId, modelsAt(provider.url));
 
@@ -677,7 +677,7 @@ test('a chat that has noticed nothing is not asked to be reflected on', async ()
   try {
     const result = await compacted(NOBODY_ASKED, modelsAt(provider.url));
 
-    assert.equal(result.fromHook, true, 'pi wrote the summary rather than Foundry');
+    assert.equal(result.fromHook, true, 'pi wrote the summary rather than Kira');
     assert.deepEqual(
       heard,
       [],
@@ -693,7 +693,7 @@ test("the reflector is given its own rules and not the workspace's", async () =>
   // The reflector runs in the chat's own directory, which is somebody's workspace —
   // with an AGENTS.md in it. pi loads those into a session's instructions, so
   // without saying otherwise the model would be reflecting under a set of rules
-  // about how to write code here, and Foundry's prompt would not be the whole of
+  // about how to write code here, and Kira's prompt would not be the whole of
   // what it was told. The canary is a phrase that exists nowhere but that file.
   const heard: string[] = [];
   const provider = await replyingProvider('Nothing to add.', heard);
@@ -724,7 +724,7 @@ test('a chat whose ledger cannot be read still compacts, and still carries its o
     };
   });
 
-  assert.equal(result.fromHook, true, 'pi wrote the summary rather than Foundry');
+  assert.equal(result.fromHook, true, 'pi wrote the summary rather than Kira');
   assert.ok(
     result.summary.includes('- [1] the deployment runs on Fridays'),
     `the chat lost what it was holding:\n${result.summary}`,
@@ -742,8 +742,8 @@ test('memory off stops what the workspace decided and what a model would draw, a
   const provider = await replyingProvider('The config is deploy.toml.', heard);
 
   try {
-    const cwd = tempDir('foundry-memory-off-space-');
-    const path = join(tempDir('foundry-memory-off-store-'), 'threads.db');
+    const cwd = tempDir('kira-memory-off-space-');
+    const path = join(tempDir('kira-memory-off-store-'), 'threads.db');
     const store = new ThreadStore(path);
 
     const workspace = store.rememberWorkspace(join(cwd, 'the-week'));
@@ -778,9 +778,9 @@ test('memory off stops what the workspace decided and what a model would draw, a
     reopened.close();
     if (compaction?.type !== 'compaction') assert.fail('the chat compacted and stored nothing');
 
-    // Still Foundry's own summary, and still carrying the chat's own words: memory
+    // Still Kira's own summary, and still carrying the chat's own words: memory
     // off is not compaction off.
-    assert.equal(compaction.fromHook, true, 'pi wrote the summary rather than Foundry');
+    assert.equal(compaction.fromHook, true, 'pi wrote the summary rather than Kira');
     assert.ok(
       compaction.summary.includes('the deployment runs on Fridays'),
       `the summary lost the chat's own goal:\n${compaction.summary}`,

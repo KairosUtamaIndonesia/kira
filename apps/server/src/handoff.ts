@@ -16,7 +16,7 @@
  * The app's own id, the other way round, which is how a custom protocol is
  * named so that no other application can claim it.
  */
-export const DESKTOP_SCHEME = 'ai.foundry.kairos';
+export const DESKTOP_SCHEME = 'ai.kira.kairos';
 
 /**
  * The path the app is handed its token on. This is `@better-auth/electron`'s

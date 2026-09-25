@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import type { ProjectSummary, WorkspaceSummary } from '../../preload/bridge.ts';
 import { destinationForProject, projectWorkspaces } from './workNavigation.ts';
 
-const project: ProjectSummary = { id: 'project-1', name: 'Foundry', prefix: 'FND' };
+const project: ProjectSummary = { id: 'project-1', name: 'Kira', prefix: 'FND' };
 const workspace = (id: string, projectId: string | null): WorkspaceSummary => ({
   id,
   name: id,

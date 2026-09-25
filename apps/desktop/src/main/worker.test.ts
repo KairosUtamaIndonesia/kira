@@ -7,7 +7,7 @@
  * The rest is the identifier: the same person on the same laptop has to be the same
  * worker after a restart, and two people sharing a machine have to be two.
  *
- * The wire is a stub, because the point is not what Foundry answers — one test file
+ * The wire is a stub, because the point is not what Kira answers — one test file
  * covers that — but what this desktop does with an answer, including the ones that
  * never arrive.
  */
@@ -104,7 +104,7 @@ describe('a desktop offering itself', () => {
 
   test('offers its name, its machine, and the folders it can run in', async () => {
     const { made, worker } = workerOn(ADA, wire(), {
-      folders: ['/home/brandon/Workspace/kira', '/home/brandon/Workspace/foundry'],
+      folders: ['/home/brandon/Workspace/kira', '/home/brandon/Workspace/kira'],
     });
 
     const standing = await worker.offer();
@@ -116,7 +116,7 @@ describe('a desktop offering itself', () => {
     expect(made.asked[0]?.name).toBe('brandon-laptop');
     expect(made.asked[0]?.workspaces).toEqual([
       '/home/brandon/Workspace/kira',
-      '/home/brandon/Workspace/foundry',
+      '/home/brandon/Workspace/kira',
     ]);
   });
 
@@ -163,7 +163,7 @@ describe('a desktop offering itself', () => {
     const standing = await unreachable.worker.offer();
 
     expect(standing.here).toBe(false);
-    expect(standing.trouble).toBe('Foundry could not be reached.');
+    expect(standing.trouble).toBe('Kira could not be reached.');
 
     const refused = workerOn(ADA, wire({ kind: 'refused', message: 'No such prefix.' }));
     const refusedStanding = await refused.worker.offer();
@@ -176,7 +176,7 @@ describe('a desktop offering itself', () => {
     const stale = workerOn(ADA, wire({ kind: 'signed-out' }));
     const staleStanding = await stale.worker.offer();
     expect(staleStanding.here).toBe(false);
-    expect(staleStanding.trouble).toBe('Foundry no longer recognises this desktop.');
+    expect(staleStanding.trouble).toBe('Kira no longer recognises this desktop.');
   });
 
   test('offers again from scratch after a refused offering, rather than heartbeating it', async () => {

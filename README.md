@@ -1,6 +1,6 @@
-# Foundry
+# Kira
 
-Foundry is a desktop agent application. The desktop app runs the agent loop locally; the
+Kira is a desktop agent application. The desktop app runs the agent loop locally; the
 platform API serves what the app cannot own on the user's machine.
 
 ## Structure
@@ -9,7 +9,7 @@ platform API serves what the app cannot own on the user's machine.
 - `apps/server/` — platform API, served by Bun.
 - `apps/admin/` — administration console, served to a browser.
 - `packages/theme/` — the theme every surface of the product draws with.
-- `docs/` — guides for people using Foundry. `docs/internal/` — conventions and procedures for
+- `docs/` — guides for people using Kira. `docs/internal/` — conventions and procedures for
   people and agents building it. `docs/agents/` — configuration the engineering skills read.
 
 ## Development

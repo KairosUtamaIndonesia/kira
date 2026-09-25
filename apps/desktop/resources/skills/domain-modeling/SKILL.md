@@ -1,6 +1,6 @@
 ---
 name: domain-modeling
-description: Sharpen Foundry's project language and record durable domain decisions.
+description: Sharpen Kira's project language and record durable domain decisions.
 ---
 
 # Domain modeling

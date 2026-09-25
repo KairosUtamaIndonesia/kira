@@ -25,7 +25,7 @@ const ADA = {
 type App = Awaited<ReturnType<typeof boot>>['app'];
 
 /**
- * Walk the journey a browser walks — Foundry, Microsoft, and back — and report
+ * Walk the journey a browser walks — Kira, Microsoft, and back — and report
  * where it ends up.
  */
 async function signIn(app: App) {
@@ -33,7 +33,7 @@ async function signIn(app: App) {
   const toMicrosoft = started.headers.get('location');
   if (!toMicrosoft) throw new Error('sign-in did not send the browser to Microsoft');
 
-  // The browser visiting Microsoft, which sends it straight back to Foundry.
+  // The browser visiting Microsoft, which sends it straight back to Kira.
   // Redirects are not followed: where Microsoft points the browser is exactly
   // what the next step needs to know, and `baseUrl` is not this process.
   const returned = await fetch(toMicrosoft, { redirect: 'manual' });
@@ -132,14 +132,14 @@ describe('sign-in', () => {
     }
   });
 
-  test('signing in is not the same as administering Foundry', async () => {
+  test('signing in is not the same as administering Kira', async () => {
     const entra = await startFakeEntra(ADA);
     try {
       const { app, auth } = await boot({ authority: entra.authority });
       const { finished } = await signIn(app);
       const asAda = { cookie: cookieHeader(finished) };
 
-      // Every employee can sign in and none of them runs Foundry, so the session
+      // Every employee can sign in and none of them runs Kira, so the session
       // says who someone is and the role is the second question asked on top of
       // it (ADR 0007). The admin plugin's own surface is where that is answered,
       // which is what makes it the thing the console calls.

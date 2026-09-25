@@ -6,7 +6,7 @@ import {
 } from '@earendil-works/pi-coding-agent';
 import type { ShellSettingsSnapshot, ShellTestResult } from '../../preload/bridge.ts';
 
-const TEST_COMMAND = "printf 'Foundry shell test passed\\n'";
+const TEST_COMMAND = "printf 'Kira shell test passed\\n'";
 const TEST_TIMEOUT_MS = 5_000;
 
 export interface KiraShell {
@@ -60,7 +60,7 @@ export function kiraShell(
         const detail = Buffer.concat(output).toString('utf8').trim();
         throw new Error(detail || `Bash exited with code ${result.exitCode ?? 'unknown'}.`);
       }
-      if (!Buffer.concat(output).toString('utf8').includes('Foundry shell test passed')) {
+      if (!Buffer.concat(output).toString('utf8').includes('Kira shell test passed')) {
         throw new Error('Bash started but did not return the expected test output.');
       }
 

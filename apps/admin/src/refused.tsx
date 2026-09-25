@@ -4,10 +4,10 @@ import type { Who } from './api/auth';
 import Notice from './notice';
 
 /**
- * What someone who signed in, but does not run Foundry, is told.
+ * What someone who signed in, but does not run Kira, is told.
  *
- * It says who to ask, and nothing about how Foundry is administered. Naming the
- * command would hand the machine Foundry runs on to everyone in the company who
+ * It says who to ask, and nothing about how Kira is administered. Naming the
+ * command would hand the machine Kira runs on to everyone in the company who
  * can sign in, and the reader cannot run it besides — it needs a shell there,
  * which is not something this screen can give anybody. The internal docs are the
  * command's home, and the person who can use it is already reading them.
@@ -19,12 +19,12 @@ import Notice from './notice';
  */
 export default function Refused({ who }: { who: Who }) {
   return (
-    <Notice title="Foundry administration">
+    <Notice title="Kira administration">
       <Text color="secondary">
         You are signed in as {who.email}. Signing in says who you are, not what you may do.
       </Text>
       <Text color="secondary">
-        This console is for the people who run Foundry. Ask one of them for the administrator role.
+        This console is for the people who run Kira. Ask one of them for the administrator role.
       </Text>
       <Button
         label="Check again"

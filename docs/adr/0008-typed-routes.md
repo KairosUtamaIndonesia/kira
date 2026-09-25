@@ -1,13 +1,13 @@
-# A Foundry client is typed by the server's own routes, not by a copy of them
+# A Kira client is typed by the server's own routes, not by a copy of them
 
 Date: 2026-09-18
 
 ## Context
 
-Two clients talk to the Foundry server: the desktop app's main process, and the
+Two clients talk to the Kira server: the desktop app's main process, and the
 administration console. Better Auth's surface has always been typed on both sides, because
 Better Auth ships a client that knows its own routes — `createAuthClient` in
-`apps/desktop/src/main/auth/foundry.ts` and in `apps/admin/src/api/auth.ts`. Foundry's own
+`apps/desktop/src/main/auth/kira.ts` and in `apps/admin/src/api/auth.ts`. Kira's own
 routes had nothing of the kind. There was exactly one of them, `GET /api/me`, and the
 desktop called it with a bare `fetch` and read the answer as `unknown`.
 
@@ -20,14 +20,14 @@ person in; the app simply never believed the server. The shape of a person was a
 down by hand three times: in the route's own schema, in the desktop's `AuthUser`, and in the
 console's `Who`.
 
-Two things make this the moment to settle it. The next routes are Foundry's own — ADR 0005's
+Two things make this the moment to settle it. The next routes are Kira's own — ADR 0005's
 allowances and ADR 0003's credentials — and both have bodies and answers worth getting
 right. And the server is already the shape this needs: `createApp` is a pure factory that
 returns an app without listening, which is exactly what a type can be taken from.
 
 ## Decision
 
-**Foundry's own routes are typed by Eden, the treaty Elysia ships.** `contract.ts` in the
+**Kira's own routes are typed by Eden, the treaty Elysia ships.** `contract.ts` in the
 server exports `App = ReturnType<typeof createApp>`, and a client says `treaty<App>(server)`.
 The types are derived from the app itself — not from a document, and not from a copy — so a
 path, its body and each status it can answer with are the server's own, and a path that does
@@ -35,7 +35,7 @@ not exist does not compile.
 
 **Better Auth keeps its own client, and both sit in an app at once.** The line is who wrote
 the route: `/api/auth/*` is the library's surface and the library's client types it, and
-everything Foundry wrote is Eden's. Two clients in one app is the intended shape rather than
+everything Kira wrote is Eden's. Two clients in one app is the intended shape rather than
 a wart — they answer different questions, and replacing either would mean re-typing something
 that is already typed by whoever owns it.
 
@@ -59,7 +59,7 @@ allowed. Making the server emit declarations means annotating the options it han
 Auth — and that type cannot be named without a reference to a package-internal one (TS2883),
 so the annotation must either name that internal path or widen to `BetterAuthOptions`, which
 drops the plugins' own methods such as `verifyApiKey` off the type. Either way it is a
-hand-written mirror of the library's options, growing every time Foundry sets another one,
+hand-written mirror of the library's options, growing every time Kira sets another one,
 sitting in the server's most delicate file — so that a _client_ can be typed. The smaller
 change is on the client side: `apps/desktop/tsconfig.node.json` and `tsconfig.web.json` are
 no longer composite, and the app typechecks with `tsc --noEmit` per project. Nothing that
@@ -68,7 +68,7 @@ declarations for the same reason: with no references left anywhere, that output 
 and never read.
 
 **Rejected: generating types from the OpenAPI document.** The server already emits a curated
-one at `/openapi/json`, with Foundry's routes described and Better Auth's deliberately
+one at `/openapi/json`, with Kira's routes described and Better Auth's deliberately
 opaque. It types the answer but leaves the call hand-written, so it fixes half of what went
 wrong and adds a generated artifact to keep in step with the server. It is the way out if
 Eden stops fitting — see _Revisit when_ — not the plan.
@@ -91,11 +91,11 @@ it is deliberate, and it is what replaces two copies staying in step by hand.
 The desktop lost incremental typechecking. Correctness is untouched; only the wait is.
 
 Eden is version-sensitive: its conditional types only match when the client resolves the same
-Elysia the server does. Foundry pins eden 1.4.9 against the server's elysia 1.4.x, and both
+Elysia the server does. Kira pins eden 1.4.9 against the server's elysia 1.4.x, and both
 resolve to one copy in the store — a second copy of Elysia is the thing to look for first if
 the client's calls stop being typed.
 
-The console calls no Foundry route yet, so it has no Eden client. It gets one with the first
+The console calls no Kira route yet, so it has no Eden client. It gets one with the first
 route it actually calls, rather than an unused client now.
 
 The bug this ADR opens with would not have been caught by the compiler on its own, and that

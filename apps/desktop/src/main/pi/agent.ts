@@ -9,7 +9,7 @@ import type { MemorySource } from '../memory.ts';
 import type { Tracker } from '../tracker.ts';
 import type { McpManager } from '../mcp/servers.ts';
 import type { Questionnaires } from '../questionnaires.ts';
-import { foundryExtension } from './extension/factory.ts';
+import { kiraExtension } from './extension/factory.ts';
 import { bundledSkillsPath } from './resources.ts';
 import type { Models } from './models.ts';
 import { createThread, forkThread, openThread, type PiThread } from './storage.ts';
@@ -126,7 +126,7 @@ export async function forkSession(
  * session it is opening, because what pi would restore is a model named by
  * whatever wrote the chat — including an install that ran on pi's own provider,
  * for which pi holds a credential (docs/adr/0003-model-credentials.md). Asking
- * for it by id here is what makes that unreachable: a model Foundry does not
+ * for it by id here is what makes that unreachable: a model Kira does not
  * offer is not found, and the chat runs on what the pool prefers instead.
  */
 async function boot(
@@ -149,14 +149,14 @@ async function boot(
   const choice = remembered ?? (await models.preferred());
   if (choice === null) {
     throw new Error(
-      'Foundry is not offering any models. Sign in, and check that the server can reach its pool.',
+      'Kira is not offering any models. Sign in, and check that the server can reach its pool.',
     );
   }
 
   // The session's services are built in two steps rather than one, because this is
-  // where Foundry's own extension joins them: pi builds the resource loader from
+  // where Kira's own extension joins them: pi builds the resource loader from
   // these options, so the extension arrives through the same construction as
-  // every other resource pi loads — rather than a loader of Foundry's own, which
+  // every other resource pi loads — rather than a loader of Kira's own, which
   // would be a second copy of pi's that an upgrade could quietly diverge from.
   const workspaceId = store.getThread(thread.threadId).workspaceId;
   if (workspaceId !== null) {
@@ -175,7 +175,7 @@ async function boot(
       resourceLoaderOptions: {
         additionalSkillPaths: [bundledSkillsPath()],
         extensionFactories: [
-          foundryExtension({
+          kiraExtension({
             cwd: thread.cwd,
             store,
             threadId: thread.threadId,

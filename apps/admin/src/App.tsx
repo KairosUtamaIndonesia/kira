@@ -24,7 +24,7 @@ export default function App({ opening }: { opening: Promise<Opening> }): ReactEl
       return <People who={found.who} users={found.users} readings={found.readings} />;
     case 'failed':
       return (
-        <Notice title="Foundry administration">
+        <Notice title="Kira administration">
           <Text color="secondary">{found.message}</Text>
         </Notice>
       );

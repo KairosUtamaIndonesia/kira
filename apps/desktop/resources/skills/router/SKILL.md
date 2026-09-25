@@ -1,12 +1,12 @@
 ---
 name: router
-description: Choose the Foundry workflow skill that fits the work in front of you.
+description: Choose the Kira workflow skill that fits the work in front of you.
 disable-model-invocation: true
 ---
 
-# Foundry workflow router
+# Kira workflow router
 
-Use Foundry's tracker and run surfaces as the source of truth. A ticket has a kind, acceptance criteria, dependencies and a current band; a run is the conversation that works on one ticket. Keep proposals and decisions in the linked chat until the person approves them.
+Use Kira's tracker and run surfaces as the source of truth. A ticket has a kind, acceptance criteria, dependencies and a current band; a run is the conversation that works on one ticket. Keep proposals and decisions in the linked chat until the person approves them.
 
 ## Idea to shipped work
 
@@ -23,8 +23,8 @@ Use Foundry's tracker and run surfaces as the source of truth. A ticket has a ki
 - Use `/research` for delegated reading against primary sources.
 - Use `/merge-conflict` for an active merge conflict; preserve the intent of both sides and finish with the project's checks.
 
-## Foundry rules
+## Kira rules
 
-Prefer the existing tracker and Work surface over new files or parallel records. Let the server own ticket bands, dependencies, readiness, runs and Outcomes. Do not claim a ticket is ready, publish a proposal, approve an Outcome or close work by editing storage directly; use the corresponding Foundry action and its refusal text.
+Prefer the existing tracker and Work surface over new files or parallel records. Let the server own ticket bands, dependencies, readiness, runs and Outcomes. Do not claim a ticket is ready, publish a proposal, approve an Outcome or close work by editing storage directly; use the corresponding Kira action and its refusal text.
 
 A small, single-session change can go straight to `/implement`. A multi-session change should pass through `/to-spec` and `/to-tickets` so every run has a bounded ticket and explicit blockers.

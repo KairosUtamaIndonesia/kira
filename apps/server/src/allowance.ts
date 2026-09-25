@@ -8,7 +8,7 @@ import { REFUSAL, refusal } from './refusals';
 import { allowance, usage } from './schema';
 
 /**
- * Foundry's allowances: how much of the pool one person may spend in a month
+ * Kira's allowances: how much of the pool one person may spend in a month
  * (docs/adr/0005-allowances.md).
  *
  * An allowance is a number of tokens per calendar month, and the month turns
@@ -346,7 +346,7 @@ async function readingFor(database: Database, config: Config, userId: string) {
   };
 }
 
-/** Whether Foundry knows this person, so an allowance is never set on nobody. */
+/** Whether Kira knows this person, so an allowance is never set on nobody. */
 async function knownPerson(auth: Auth, userId: string): Promise<boolean> {
   const context = await auth.$context;
   return (await context.internalAdapter.findUserById(userId)) !== null;

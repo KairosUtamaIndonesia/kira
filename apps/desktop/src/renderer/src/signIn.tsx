@@ -18,7 +18,7 @@ import { Text } from '@astryxdesign/core/Text';
 export function SignIn({ known, onSignIn }: { known: boolean; onSignIn: () => void }) {
   return (
     <main className="sign-in">
-      <Heading level={1}>Foundry</Heading>
+      <Heading level={1}>Kira</Heading>
       <Text color="secondary">Sign in with your company Microsoft account.</Text>
       <Button label="Sign in with Microsoft" isDisabled={!known} onClick={onSignIn} />
     </main>

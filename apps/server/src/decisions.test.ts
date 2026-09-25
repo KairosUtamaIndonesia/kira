@@ -126,7 +126,7 @@ async function makeProject(app: Awaited<ReturnType<typeof server>>['app'], key: 
   const response = await send(
     app,
     '/api/projects',
-    body('POST', bearer(key), { name: 'Foundry', prefix: 'FND' }),
+    body('POST', bearer(key), { name: 'Kira', prefix: 'FND' }),
   );
   if (response.status !== 200) throw new Error(`no project: ${await response.text()}`);
   return (await response.json()).project as { id: string };

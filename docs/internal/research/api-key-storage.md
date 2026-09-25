@@ -1,10 +1,10 @@
-# Where the desktop stores its Foundry key
+# Where the desktop stores its Kira key
 
 Date: 2026-09-17
 Status: research for the key-storage decision (ADR 0004 issues the key; nothing yet
 decides where it rests). Companion to ADR 0003, 0004 and 0005.
 
-Terminology follows `CONTEXT.md`: **key** is what the desktop presents to Foundry.
+Terminology follows `CONTEXT.md`: **key** is what the desktop presents to Kira.
 "Token" and "credential" appear below only where a source uses them.
 
 ## Bottom line
@@ -279,7 +279,7 @@ Electron's security guidance
   back the sender. Item 17: validate the sender's frame origin in `ipcMain` handlers.
 
 `safeStorage` is a main-process module, so it is not reachable from a sandboxed preload
-anyway. The shape this implies for Foundry is already the shape `docs/internal/desktop-conventions.md`
+anyway. The shape this implies for Kira is already the shape `docs/internal/desktop-conventions.md`
 describes: the window learns "signed in as X / not signed in" over `ipc/`, and nothing
 else. No decrypt call crosses the seam, no key crosses the seam, no `safeStorage` handle
 crosses the seam.
@@ -394,7 +394,7 @@ What this implies for the desktop:
    re-authentication, and `shouldReEncrypt` from `decryptStringAsync` (local key rotation)
    is handled by re-encrypting the blob, not the key.
 
-## 8. What this means for Foundry
+## 8. What this means for Kira
 
 Where it goes, using the conventions already in force:
 

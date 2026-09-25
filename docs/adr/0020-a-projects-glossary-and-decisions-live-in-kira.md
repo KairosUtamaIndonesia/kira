@@ -1,4 +1,4 @@
-# A project's glossary and decisions live in Foundry
+# A project's glossary and decisions live in Kira
 
 Date: 2026-09-23
 
@@ -30,8 +30,8 @@ and the decisions. A run's brief carries the glossary and the decisions its spec
 
 ## Consequences
 
-**Agents outside Foundry do not see them.** Claude Code or Codex in a checkout find no
+**Agents outside Kira do not see them.** Claude Code or Codex in a checkout find no
 `CONTEXT.md` unless an export is added later. Revisit if that turns out to matter.
 
-**Foundry's own repository keeps its `CONTEXT.md` and `docs/adr/` until Foundry is its own
-tracker.** They describe how Foundry is built, and this repository is still worked from GitHub.
+**Kira's own repository keeps its `CONTEXT.md` and `docs/adr/` until Kira is its own
+tracker.** They describe how Kira is built, and this repository is still worked from GitHub.

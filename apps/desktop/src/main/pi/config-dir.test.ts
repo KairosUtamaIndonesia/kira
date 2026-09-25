@@ -12,7 +12,7 @@ import { tempDir } from '../test-support/temp.ts';
 
 /**
  * `scripts/patch-pi-config-dir.mjs` sets `piConfig.configDir` in pi's own
- * package.json to ".foundry", run from `postinstall`. That single value drives
+ * package.json to ".kira", run from `postinstall`. That single value drives
  * both the global agent directory and every workspace-local resource, so losing
  * it — most likely by upgrading pi — silently moves the app back to ".pi".
  * User skills and settings would simply stop being found, with nothing
@@ -20,17 +20,17 @@ import { tempDir } from '../test-support/temp.ts';
  *
  * The second thing they pin is pi's workspace-trust gate: workspace-local skills
  * are ignored unless the settings manager is told the workspace is trusted.
- * Foundry has to opt in deliberately (see ADR 0002).
+ * Kira has to opt in deliberately (see ADR 0002).
  */
 
 // pi discovers skills from a hardcoded `~/.agents/skills` in package-manager.js,
 // which reads process.env.HOME. Without this the skill list depends on whatever
 // the developer happens to have in their home directory.
-const home = tempDir('foundry-home-');
+const home = tempDir('kira-home-');
 process.env['HOME'] = home;
 
 const CASES = [
-  { name: 'trusted workspace', projectTrusted: true, wantProjectSkills: ['foundry-skill'] },
+  { name: 'trusted workspace', projectTrusted: true, wantProjectSkills: ['kira-skill'] },
   { name: 'untrusted workspace', projectTrusted: false, wantProjectSkills: [] },
 ];
 
@@ -43,18 +43,18 @@ function writeSkill(skillsDir: string, name: string): void {
   );
 }
 
-test('pi resolves its config directory to .foundry', () => {
-  assert.equal(CONFIG_DIR_NAME, '.foundry');
-  assert.equal(getAgentDir(), join(home, '.foundry', 'agent'));
+test('pi resolves its config directory to .kira', () => {
+  assert.equal(CONFIG_DIR_NAME, '.kira');
+  assert.equal(getAgentDir(), join(home, '.kira', 'agent'));
 });
 
 for (const testCase of CASES) {
-  test(`${testCase.name}: workspace skills come from .foundry, never .pi`, async () => {
-    const workspace = tempDir('foundry-workspace-');
-    const agentDir = tempDir('foundry-agent-');
+  test(`${testCase.name}: workspace skills come from .kira, never .pi`, async () => {
+    const workspace = tempDir('kira-workspace-');
+    const agentDir = tempDir('kira-agent-');
 
-    // The same skill in both conventions: only .foundry may win.
-    writeSkill(join(workspace, '.foundry', 'skills'), 'foundry-skill');
+    // The same skill in both conventions: only .kira may win.
+    writeSkill(join(workspace, '.kira', 'skills'), 'kira-skill');
     writeSkill(join(workspace, '.pi', 'skills'), 'pi-skill');
 
     const settingsManager = SettingsManager.create(workspace, agentDir, {

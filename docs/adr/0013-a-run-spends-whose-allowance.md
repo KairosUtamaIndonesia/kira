@@ -4,7 +4,7 @@ Date: 2026-09-21
 
 ## Context
 
-ADR 0012 makes the desktop a worker, so a run is a request Foundry sends — one a person starts
+ADR 0012 makes the desktop a worker, so a run is a request Kira sends — one a person starts
 by pressing Run, and one that carries on after they stop watching it. Because a run is a
 steerable chat, watching is a choice its driver makes rather than a requirement of the
 machinery. ADR 0005 counts usage per user per

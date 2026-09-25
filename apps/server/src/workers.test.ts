@@ -88,7 +88,7 @@ async function readyTicket(
   const made = await send(
     app,
     '/api/projects',
-    body('POST', bearer(key), { name: 'Foundry', prefix: 'FND' }),
+    body('POST', bearer(key), { name: 'Kira', prefix: 'FND' }),
   );
   const projectId = (await made.json()).project.id as string;
 
@@ -136,11 +136,11 @@ describe('a worker', () => {
     const ada = await made.add();
 
     await offered(made.app, ada.key);
-    await offered(made.app, ada.key, { workspaces: ['/home/brandon/Workspace/foundry'] });
+    await offered(made.app, ada.key, { workspaces: ['/home/brandon/Workspace/kira'] });
 
     const all = await roll(made.app, ada.key);
     expect(all).toHaveLength(1);
-    expect(all[0]?.workspaces).toEqual(['/home/brandon/Workspace/foundry']);
+    expect(all[0]?.workspaces).toEqual(['/home/brandon/Workspace/kira']);
   });
 
   test('is refused when it does not say what it is called', async () => {

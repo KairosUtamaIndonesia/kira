@@ -47,7 +47,7 @@ const styles = stylex.create({
 
 /**
  * `workspaceName` is what to call the folder: a project's own name, or null when
- * the chat works in a workspace Foundry made, which is named in words because
+ * the chat works in a workspace Kira made, which is named in words because
  * its own name is a UUID.
  *
  * `visits` counts how many times the tab has been shown, and `showing` says
@@ -100,7 +100,7 @@ export function WorkspaceTab({
 
     void Promise.all(
       [...held.current].map(async (folder) => {
-        const result = await window.foundry.listWorkspaceFolder(chatId, folder);
+        const result = await window.kira.listWorkspaceFolder(chatId, folder);
 
         // A later read has already answered: what this one found is older than
         // what is on screen, and drawing it would be going backwards.
@@ -120,14 +120,14 @@ export function WorkspaceTab({
   useEffect(() => {
     if (!showing) return;
 
-    void window.foundry.watchWorkspace(chatId, [...held.current]);
-    const stopWatching = window.foundry.onWorkspaceChanged(() => {
+    void window.kira.watchWorkspace(chatId, [...held.current]);
+    const stopWatching = window.kira.onWorkspaceChanged(() => {
       setChanges((count) => count + 1);
     });
 
     return () => {
       stopWatching();
-      void window.foundry.unwatchWorkspace();
+      void window.kira.unwatchWorkspace();
     };
   }, [chatId, showing]);
 
@@ -135,9 +135,9 @@ export function WorkspaceTab({
     held.current.add(path);
     // A level that has just been opened is a level to keep up with: it is on
     // screen from now on, so it is watched from now on.
-    void window.foundry.watchWorkspace(chatId, [...held.current]);
+    void window.kira.watchWorkspace(chatId, [...held.current]);
 
-    const result = await window.foundry.listWorkspaceFolder(chatId, path);
+    const result = await window.kira.listWorkspaceFolder(chatId, path);
 
     setRead((before) => new Map(before).set(path, readingOf(result)));
   }

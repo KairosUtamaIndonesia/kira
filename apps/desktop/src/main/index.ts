@@ -15,7 +15,7 @@ import { mkdirSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import type { AuthState, ChatEvent } from '../preload/bridge.ts';
-import { foundryFor } from './auth/foundry.ts';
+import { kiraFor } from './auth/kira.ts';
 import { keyStore, type SecretKeeper } from './auth/keys.ts';
 import { handoffToken, signIn, type SignIn } from './auth/signIn.ts';
 import { ThreadStore } from './db/threads.ts';
@@ -31,7 +31,7 @@ import { TRACKER_CHANNELS, trackerHandlers } from './ipc/tracker.ts';
 import { WORKER_CHANNELS, workerHandlers } from './ipc/worker.ts';
 import { WORKSPACE_CHANNELS, workspaceHandlers } from './ipc/workspaces.ts';
 import { workspaceSummaryOf } from './pi/conversations.ts';
-import { foundryModels, type Models } from './pi/models.ts';
+import { kiraModels, type Models } from './pi/models.ts';
 import { memoryFor, type MemoryKeeper } from './memory.ts';
 import { trackerFor, type Tracker } from './tracker.ts';
 import { usageFor, type UsageKeeper } from './usage.ts';
@@ -59,13 +59,13 @@ import { kiraShellSettings, type KiraShell } from './pi/shell.ts';
  *
  * The app's own id the other way round, which is how a custom protocol is named
  * so that no other application can claim it. The server has to trust the same
- * string as an origin, so `FOUNDRY_DESKTOP_SCHEME` in `apps/server/.env` and
+ * string as an origin, so `KIRA_DESKTOP_SCHEME` in `apps/server/.env` and
  * this constant are one decision written twice.
  */
-const SCHEME = 'ai.foundry.kairos';
+const SCHEME = 'ai.kira.kairos';
 
-/** Where the Foundry server is, overridable so a build can be pointed elsewhere. */
-const SERVER = process.env['FOUNDRY_API_URL'] ?? 'http://localhost:4100';
+/** Where the Kira server is, overridable so a build can be pointed elsewhere. */
+const SERVER = process.env['KIRA_API_URL'] ?? 'http://localhost:4100';
 
 /** The stored chats, the ones open, the window showing them, and who is signed in. */
 let store: ThreadStore;
@@ -749,7 +749,7 @@ async function takeDeepLink(link: string | undefined): Promise<void> {
   } catch (error: unknown) {
     // There is nowhere to show this. What a sign-in comes to is a state the
     // window reads, and a failure leaves that state exactly where it was.
-    console.error('Foundry could not finish signing in:', error);
+    console.error('Kira could not finish signing in:', error);
   }
 }
 
@@ -781,7 +781,7 @@ function claimTheScheme(): boolean {
       ? app.setAsDefaultProtocolClient(SCHEME, process.execPath, [resolve(launched)])
       : app.setAsDefaultProtocolClient(SCHEME);
 
-  if (!claimed) console.error(`Foundry could not claim the ${SCHEME} protocol.`);
+  if (!claimed) console.error(`Kira could not claim the ${SCHEME} protocol.`);
 
   // A second copy exists only to hand its command line to the first one, which
   // is how a deep link reaches an app that is already running.
@@ -817,7 +817,7 @@ if (claimTheScheme()) {
   void app
     .whenReady()
     .then(async () => {
-      // Foundry provides its own in-window controls; suppress Electron's default menu.
+      // Kira provides its own in-window controls; suppress Electron's default menu.
       Menu.setApplicationMenu(null);
 
       store = new ThreadStore(join(app.getPath('userData'), 'threads.db'));
@@ -848,9 +848,9 @@ if (claimTheScheme()) {
         secrets,
         path: join(app.getPath('userData'), 'key.json'),
       });
-      const wire = foundryFor({ server: SERVER, scheme: SCHEME });
+      const wire = kiraFor({ server: SERVER, scheme: SCHEME });
 
-      models = foundryModels({
+      models = kiraModels({
         server: SERVER,
         cachePath: join(app.getPath('userData'), 'models.json'),
         token: async () => (await keys.read())?.key ?? null,
@@ -914,7 +914,7 @@ if (claimTheScheme()) {
       );
 
       // Running a ticket. The checkout goes under the app's own data rather than beside
-      // the person's folder, because it is Foundry's scratch space and not their work —
+      // the person's folder, because it is Kira's scratch space and not their work —
       // and the branch it makes is theirs, which is why the checkout can be thrown away
       // and the branch cannot.
       runs = runsFor({
@@ -951,7 +951,7 @@ if (claimTheScheme()) {
       });
       auth = signIn({
         keys,
-        foundry: wire,
+        kira: wire,
         device: hostname(),
         onChange: (state) => void signedInAs(state),
       });
@@ -997,7 +997,7 @@ if (claimTheScheme()) {
 
       // A link that started this copy is a sign-in that was started before
       // there was a window to be returned to, which is the shape of a first
-      // sign-in on a machine that had never run Foundry.
+      // sign-in on a machine that had never run Kira.
       void takeDeepLink(launchedByDeepLink());
 
       app.on('activate', () => {
@@ -1012,7 +1012,7 @@ if (claimTheScheme()) {
       // shown. A key that cannot be read is not one of these: the key store
       // answers "not signed in" for every way a key can fail to be read, so it
       // never reaches this (docs/adr/0006-key-storage.md).
-      console.error('Foundry could not start:', error);
+      console.error('Kira could not start:', error);
       app.quit();
     });
 }

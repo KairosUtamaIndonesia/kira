@@ -29,9 +29,9 @@ const added: WorkspaceSummary = {
   projectId: null,
 };
 
-const joined: WorkspaceSummary = { ...added, projectId: 'foundry-project' };
+const joined: WorkspaceSummary = { ...added, projectId: 'kira-project' };
 
-const projects: ProjectSummary[] = [{ id: 'foundry-project', name: 'Foundry', prefix: 'FND' }];
+const projects: ProjectSummary[] = [{ id: 'kira-project', name: 'Kira', prefix: 'FND' }];
 
 /** Deps that record what they were asked to do; `overrides` replace one of them. */
 function deps(calls: string[], overrides: Partial<WorkspaceDeps> = {}): WorkspaceDeps {
@@ -136,28 +136,28 @@ const CASES: Case[] = [
     makeDeps: (calls) =>
       deps(calls, {
         projects: async () => {
-          throw new Error('Foundry could not be reached.');
+          throw new Error('Kira could not be reached.');
         },
       }),
     call: 'projects',
-    want: { ok: false, error: 'Foundry could not be reached.' },
+    want: { ok: false, error: 'Kira could not be reached.' },
     wantCalls: [],
   },
   {
     name: 'join takes a project the server already holds',
     makeDeps: (calls) => deps(calls),
     call: 'join',
-    args: ['api', { kind: 'existing', projectId: 'foundry-project' }],
+    args: ['api', { kind: 'existing', projectId: 'kira-project' }],
     want: { ok: true, value: joined },
-    wantCalls: ['join api {"kind":"existing","projectId":"foundry-project"}'],
+    wantCalls: ['join api {"kind":"existing","projectId":"kira-project"}'],
   },
   {
     name: 'join takes a project being made, by name and prefix',
     makeDeps: (calls) => deps(calls),
     call: 'join',
-    args: ['api', { kind: 'new', name: 'Foundry', prefix: 'FND' }],
+    args: ['api', { kind: 'new', name: 'Kira', prefix: 'FND' }],
     want: { ok: true, value: joined },
-    wantCalls: ['join api {"kind":"new","name":"Foundry","prefix":"FND"}'],
+    wantCalls: ['join api {"kind":"new","name":"Kira","prefix":"FND"}'],
   },
   {
     name: 'join says why the server would not take the project',
@@ -168,7 +168,7 @@ const CASES: Case[] = [
         },
       }),
     call: 'join',
-    args: ['api', { kind: 'new', name: 'Foundry', prefix: 'FND' }],
+    args: ['api', { kind: 'new', name: 'Kira', prefix: 'FND' }],
     want: { ok: false, error: 'Another project already holds FND.' },
     wantCalls: [],
   },
@@ -176,7 +176,7 @@ const CASES: Case[] = [
     name: 'join refuses a workspace that is not named by an id',
     makeDeps: (calls) => deps(calls, { join: async () => assert.fail('a join happened') }),
     call: 'join',
-    args: ['', { kind: 'existing', projectId: 'foundry-project' }],
+    args: ['', { kind: 'existing', projectId: 'kira-project' }],
     want: { ok: false, error: 'A workspace needs an id to be joined.' },
     wantCalls: [],
   },
@@ -200,7 +200,7 @@ const CASES: Case[] = [
     name: 'join refuses a project being made with no prefix',
     makeDeps: (calls) => deps(calls, { join: async () => assert.fail('a join happened') }),
     call: 'join',
-    args: ['api', { kind: 'new', name: 'Foundry' }],
+    args: ['api', { kind: 'new', name: 'Kira' }],
     want: { ok: false, error: 'That is not a project to join.' },
     wantCalls: [],
   },
@@ -208,7 +208,7 @@ const CASES: Case[] = [
     name: 'join refuses a request that is not a join at all',
     makeDeps: (calls) => deps(calls, { join: async () => assert.fail('a join happened') }),
     call: 'join',
-    args: ['api', 'foundry-project'],
+    args: ['api', 'kira-project'],
     want: { ok: false, error: 'That is not a project to join.' },
     wantCalls: [],
   },

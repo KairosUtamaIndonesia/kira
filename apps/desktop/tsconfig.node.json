@@ -3,7 +3,7 @@
   // Not composite, and typechecked with plain `tsc --noEmit` rather than `tsc -b`.
   // A composite project may only consume another project's *emitted declarations*
   // (TS6307 otherwise), and this one reads the server's route types straight from
-  // `@foundry/server/contract`. The server cannot emit declarations — Better Auth
+  // `@kira/server/contract`. The server cannot emit declarations — Better Auth
   // infers its instance type from options that name a package-internal type — so
   // the choice is to read source, which needs a non-composite project.
   "compilerOptions": {

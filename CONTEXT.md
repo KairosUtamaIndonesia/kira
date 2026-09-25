@@ -1,31 +1,31 @@
-# Foundry
+# Kira
 
-Foundry is a desktop agent application. Its own domain language is about people, the
+Kira is a desktop agent application. Its own domain language is about people, the
 chats they hold with Kira, the work those chats are set to, and the model access that
 lets her answer.
 
 ## Language
 
 **User**:
-A person who signs in to Foundry from the desktop app. Identity comes from the company's
-Microsoft Entra ID tenant, and Foundry stores no password of its own.
+A person who signs in to Kira from the desktop app. Identity comes from the company's
+Microsoft Entra ID tenant, and Kira stores no password of its own.
 _Avoid_: Account, member, customer
 
 **Key**:
-What the desktop presents to Foundry to prove which user it is, issued by the server
+What the desktop presents to Kira to prove which user it is, issued by the server
 after sign-in.
 _Avoid_: Token, API key, session, credential
 
 **Provider**:
-A company whose models are served through Foundry — Anthropic, OpenAI. Foundry holds a
+A company whose models are served through Kira — Anthropic, OpenAI. Kira holds a
 provider's subscription login as a credential, and the desktop holds none.
-_Avoid_: Vendor, model vendor, registered provider (pi's word for the entry Foundry is
+_Avoid_: Vendor, model vendor, registered provider (pi's word for the entry Kira is
 reached under, which holds no credential)
 
 **Credential**:
 A model provider's subscription login, held by the server so the desktop never holds
-it. A credential authenticates Foundry to a provider; a key authenticates a desktop to
-Foundry.
+it. A credential authenticates Kira to a provider; a key authenticates a desktop to
+Kira.
 _Avoid_: Account, provider key, provider account
 
 **Pool**:
@@ -34,8 +34,8 @@ the pool is spent, users are refused by the provider and no allowance is at faul
 _Avoid_: Quota, capacity, budget
 
 **Catalog**:
-The models Foundry offers, resolved from the pool each time the desktop asks. It describes
-what Foundry can serve now, so it grows and shrinks with the pool's credentials rather than
+The models Kira offers, resolved from the pool each time the desktop asks. It describes
+what Kira can serve now, so it grows and shrinks with the pool's credentials rather than
 being a statement of what the company subscribes to. The pool's own ranking is the order,
 so the first of them is what a chat runs on when nobody has chosen one.
 _Avoid_: Model list, registry, models file
@@ -56,14 +56,14 @@ can be read without a second ledger.
 _Avoid_: Spend, consumption, billing, cost
 
 **Refusal**:
-A request Foundry does not send — because the user's allowance is spent, or because the
+A request Kira does not send — because the user's allowance is spent, or because the
 pool would not take it — recorded with the reason so the two are told apart. It costs
 nothing.
 _Avoid_: Error, failure, rejection, block
 
 **Project**:
-A shared body of work, held by the server and worked by anyone signed in to Foundry: the
-home of one queue of tickets. Foundry itself is one. A project is not a place on disk, and
+A shared body of work, held by the server and worked by anyone signed in to Kira: the
+home of one queue of tickets. Kira itself is one. A project is not a place on disk, and
 it may be worked in from any number of folders at once. Opening a folder joins it to a
 project — an existing one or a new one — and that link is what makes the project's tickets
 runnable on that machine (ADR 0010).

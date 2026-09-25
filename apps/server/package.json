@@ -1,8 +1,8 @@
 {
-  "name": "@foundry/server",
+  "name": "@kira/server",
   "version": "0.1.0",
   "private": true,
-  "description": "Foundry platform API",
+  "description": "Kira platform API",
   "type": "module",
   "exports": {
     "./contract": "./src/contract.ts"

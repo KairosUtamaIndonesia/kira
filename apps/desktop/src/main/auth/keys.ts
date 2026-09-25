@@ -1,5 +1,5 @@
 /**
- * The Foundry key at rest.
+ * The Kira key at rest.
  *
  * One small file, holding ciphertext and nothing else, plus the memory that
  * stands in for it on a machine with no keyring to encrypt with. Every way the
@@ -32,7 +32,7 @@ export interface SecretKeeper {
   decrypt(ciphertext: Buffer): Promise<string>;
 }
 
-/** A device's Foundry key, with the person it was issued to. */
+/** A device's Kira key, with the person it was issued to. */
 export interface StoredKey {
   key: string;
   user: AuthUser;

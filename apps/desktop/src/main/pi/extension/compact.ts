@@ -44,7 +44,7 @@ import type { Turn } from './turn.ts';
  *
  * Beside it rather than in it because this is not part of what the model reads:
  * pi keeps `details` on the entry and puts only the summary in front of the
- * model. It is the one place a compaction entry holds Foundry's own vocabulary.
+ * model. It is the one place a compaction entry holds Kira's own vocabulary.
  */
 export interface CompactionDetails {
   /**

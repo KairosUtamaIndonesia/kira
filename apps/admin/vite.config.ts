@@ -18,11 +18,11 @@ const BASE = '/admin/';
  * The dev server's port. Fixed, because the server trusts this one origin for
  * sign-in: a port that moved on its own would stop being the trusted one.
  *
- * Foundry's own number rather than Vite's default — 5173, and so 5174 for whoever
- * got there second. Foundry already holds 4100 for this API, 8317 and 8318 for the
+ * Kira's own number rather than Vite's default — 5173, and so 5174 for whoever
+ * got there second. Kira already holds 4100 for this API, 8317 and 8318 for the
  * model proxy, and 1987 for the desktop's debugging port; a port in Vite's
  * neighbourhood is the one most likely to belong to something else on a machine
- * that runs more than Foundry.
+ * that runs more than Kira.
  *
  * `ADMIN_DEV_ORIGIN` in `apps/server/src/auth.ts` is the other half of this number.
  * The two have to agree: the origin is what the server trusts, and it is an origin
@@ -31,7 +31,7 @@ const BASE = '/admin/';
 const PORT = 4101;
 
 /**
- * The server in development — `FOUNDRY_BASE_URL` in `apps/server/.env`. Requests
+ * The server in development — `KIRA_BASE_URL` in `apps/server/.env`. Requests
  * go through here rather than straight to it, so the console talks to one origin
  * in development as it does in production, and no CORS is needed for a setup
  * production would never use.

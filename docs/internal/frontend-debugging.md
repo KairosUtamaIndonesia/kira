@@ -1,6 +1,6 @@
 # Frontend debugging
 
-Scope: the Foundry Electron window in `apps/desktop/src/renderer/`.
+Scope: the Kira Electron window in `apps/desktop/src/renderer/`.
 
 Use the running desktop app through `agent-browser` rather than treating the renderer as a
 plain browser page. The dev launcher exposes Electron's Chrome DevTools Protocol (CDP) on
@@ -61,7 +61,7 @@ agent-browser skills get electron --full
 
 ## Drive the Electron app
 
-Connect to Foundry's CDP port, inspect the accessibility tree, and use the returned element
+Connect to Kira's CDP port, inspect the accessibility tree, and use the returned element
 references:
 
 ```sh
@@ -79,8 +79,8 @@ checks and `agent-browser console` for renderer errors. Use a named session when
 work is running:
 
 ```sh
-agent-browser --session foundry connect 1987
-agent-browser --session foundry snapshot -i
+agent-browser --session kira connect 1987
+agent-browser --session kira snapshot -i
 ```
 
 If connecting fails, check that the dev app was launched with `bun run dev:desktop`, that the

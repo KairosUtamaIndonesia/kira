@@ -4,7 +4,7 @@
  * pi has neither the credentials for them nor a list of them: the server holds
  * the provider logins and answers with what they can serve
  * (docs/adr/0003-model-credentials.md). This is the one place that knows so. It
- * presents this device's key to pi as `FOUNDRY_TOKEN`, registers Foundry as a
+ * presents this device's key to pi as `KIRA_TOKEN`, registers Kira as a
  * provider of pi's own, and hands a session the runtime and the model to run on.
  *
  * What the server last served is written down, because nothing else keeps it: a
@@ -16,14 +16,14 @@
  * forgetting a working list over.
  */
 import { ModelRuntime, type ProviderModelConfig } from '@earendil-works/pi-coding-agent';
-import type { CatalogModel } from '@foundry/server/contract';
+import type { CatalogModel } from '@kira/server/contract';
 import { readFile, rename, writeFile } from 'node:fs/promises';
 
-/** The provider id Foundry is registered under, which pi has no credential for. */
-const PROVIDER = 'foundry';
+/** The provider id Kira is registered under, which pi has no credential for. */
+const PROVIDER = 'kira';
 
 /** Where pi looks for the key this device presents (docs/adr/0003-model-credentials.md). */
-const KEY_VARIABLE = 'FOUNDRY_TOKEN';
+const KEY_VARIABLE = 'KIRA_TOKEN';
 
 /**
  * What pi assumes when the server did not say.
@@ -56,7 +56,7 @@ export interface ModelChoice {
 }
 
 export interface ModelsDeps {
-  /** The Foundry server, whose `/v1` is where this provider's traffic goes. */
+  /** The Kira server, whose `/v1` is where this provider's traffic goes. */
   server: string;
   /** Where the catalog the server last served is remembered. */
   cachePath: string;
@@ -67,22 +67,22 @@ export interface ModelsDeps {
 }
 
 export interface Models {
-  /** The models Foundry offers, in the pool's own order. */
+  /** The models Kira offers, in the pool's own order. */
   catalog(): Promise<CatalogModel[]>;
   /**
    * What a session runs on when the chat has not chosen one, or null when
-   * Foundry is offering nothing to run.
+   * Kira is offering nothing to run.
    */
   preferred(): Promise<ModelChoice | null>;
-  /** The model `id` names, or null when Foundry no longer offers it. */
+  /** The model `id` names, or null when Kira no longer offers it. */
   find(id: string): Promise<ModelChoice | null>;
-  /** The model `id` names, refusing when Foundry is not offering it. */
+  /** The model `id` names, refusing when Kira is not offering it. */
   want(id: string): Promise<ModelChoice>;
   /** Ask the server again, and remember what it says. */
   refresh(): Promise<void>;
 }
 
-export function foundryModels({ server, cachePath, token, catalog }: ModelsDeps): Models {
+export function kiraModels({ server, cachePath, token, catalog }: ModelsDeps): Models {
   let shared: Promise<ModelRuntime> | undefined;
   let remembered: CatalogModel[] | undefined;
 
@@ -127,7 +127,7 @@ export function foundryModels({ server, cachePath, token, catalog }: ModelsDeps)
     // provider registered without them has nothing to choose — which is why what
     // was remembered is passed here rather than left to the first refresh.
     //
-    // The id is Foundry's own, and pi holds no credential for it, which is what
+    // The id is Kira's own, and pi holds no credential for it, which is what
     // makes local credential resolution unreachable rather than merely unused
     // (docs/adr/0003-model-credentials.md).
     runtime.registerProvider(PROVIDER, {
@@ -143,7 +143,7 @@ export function foundryModels({ server, cachePath, token, catalog }: ModelsDeps)
         if (context.allowNetwork !== true) return entriesIn(await known());
 
         const key = await present();
-        if (key === null) throw new Error('Foundry has no key to ask for its models with.');
+        if (key === null) throw new Error('Kira has no key to ask for its models with.');
 
         // Kept and returned as a promise of its own, so that a refresh has
         // something to wait for that means "this fetch finished" rather than
@@ -154,21 +154,21 @@ export function foundryModels({ server, cachePath, token, catalog }: ModelsDeps)
             // Thrown rather than answered empty, because pi replaces its list with
             // what comes back and an empty list erases every model. This way what
             // the machine already had is kept.
-            throw new Error('Foundry could not say which models it can serve.');
+            throw new Error('Kira could not say which models it can serve.');
           }
 
           const models = modelsIn(answer.body);
           if (models === null) {
             // An answer that is not a catalog is the same fact as no answer: there
             // is nothing here to replace the list in use with.
-            throw new Error('Foundry answered with something that is not a catalog.');
+            throw new Error('Kira answered with something that is not a catalog.');
           }
 
           remembered = models;
           await remember(cachePath, models).catch((problem: unknown) => {
             // The models are in hand either way; only the next cold start is worse
             // off, which is not worth failing a refresh over.
-            console.error('[foundry] the catalog was not written down:', problem);
+            console.error('[kira] the catalog was not written down:', problem);
           });
 
           return entriesIn(models);
@@ -230,7 +230,7 @@ export function foundryModels({ server, cachePath, token, catalog }: ModelsDeps)
       // One sentence, in one place: a caller that needs the model to exist and a
       // caller that can carry on without it differ in what they do about this,
       // not in how they say it.
-      if (choice === null) throw new Error(`Foundry is not offering ${id}.`);
+      if (choice === null) throw new Error(`Kira is not offering ${id}.`);
 
       return choice;
     },
@@ -253,10 +253,10 @@ export function foundryModels({ server, cachePath, token, catalog }: ModelsDeps)
         });
 
         for (const problem of errors.values()) {
-          console.error('[foundry] the catalog was not refreshed:', problem);
+          console.error('[kira] the catalog was not refreshed:', problem);
         }
       } catch (problem: unknown) {
-        console.error('[foundry] the catalog was not refreshed:', problem);
+        console.error('[kira] the catalog was not refreshed:', problem);
       }
 
       // Waiting for the fetch rather than trusting pi's promise, which a
@@ -268,7 +268,7 @@ export function foundryModels({ server, cachePath, token, catalog }: ModelsDeps)
 }
 
 /**
- * The models pi runs, out of the models Foundry offers.
+ * The models pi runs, out of the models Kira offers.
  *
  * Every field pi requires is filled, from what the server said where it said
  * anything and from pi's own defaults where it did not. Cost is the one thing

@@ -92,7 +92,7 @@ export function runWorktrees(): Worktrees {
       try {
         // Merge in a detached temporary worktree. The person's checkout and the local spec
         // ref remain untouched until the remote accepts the complete result.
-        into = await mkdtemp(join(tmpdir(), 'foundry-spec-merge-'));
+        into = await mkdtemp(join(tmpdir(), 'kira-spec-merge-'));
         await git.raw(['worktree', 'add', '--detach', into, specBranch]);
         const merge = simpleGit(into);
 

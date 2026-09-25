@@ -40,11 +40,11 @@ const styles = stylex.create({
   },
 });
 
-/** The role that runs Foundry, as the server's own plugin spells it. */
+/** The role that runs Kira, as the server's own plugin spells it. */
 const ADMIN_ROLE = 'admin';
 
 /**
- * Whether the ordinary role, or the one that runs Foundry.
+ * Whether the ordinary role, or the one that runs Kira.
  *
  * A badge because this is the column the rest of the console will be built on: it
  * is what decides whether someone sees more than this page.
@@ -122,7 +122,7 @@ export default function People({
       variant="wash"
       sideNav={
         <SideNav
-          header={<SideNavHeading heading="Foundry" />}
+          header={<SideNavHeading heading="Kira" />}
           topContent={
             <Text color="secondary" size="sm">
               {who.email}
@@ -147,7 +147,7 @@ export default function People({
         <header {...stylex.props(styles.pageHeader)}>
           <Heading level={1}>People</Heading>
           <Text color="secondary">
-            Everyone who has signed in to Foundry. Signing in says who someone is, never what they
+            Everyone who has signed in to Kira. Signing in says who someone is, never what they
             may do, so this list is the whole company until a role says otherwise — and an
             allowance is what one person may spend of the shared pool in a month.
           </Text>

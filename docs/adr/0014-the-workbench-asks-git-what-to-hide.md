@@ -29,14 +29,14 @@ query limited to that directory. Both are correct by construction because they a
 `.gitignore`, negation, directory-only patterns, `info/exclude` and `core.excludesFile` all
 arrive with `--exclude-standard`.
 
-**Foundry owns no gitignore matcher.** When git cannot answer — it is absent, or the folder is
+**Kira owns no gitignore matcher.** When git cannot answer — it is absent, or the folder is
 not a checkout — the tree shows the folder unfiltered and says so. A folder that is not a
-checkout gets no git affordances at all, not even disabled ones, and Foundry does not
+checkout gets no git affordances at all, not even disabled ones, and Kira does not
 initialise a repository in it.
 
 ## Consequences
 
-**Measured on three real checkouts:** 3–15 ms for the visible set (9 ms on Foundry itself) and
+**Measured on three real checkouts:** 3–15 ms for the visible set (9 ms on Kira itself) and
 4 ms for the ignored roots, against 289–423 ms and 10–18 MB for a pruned Node walk of the same
 trees. The cost does not grow with the size of what is hidden — 9 ms whether `node_modules`
 holds 61,776 files or none — because the expensive part is `readdir`, and git does not do one.

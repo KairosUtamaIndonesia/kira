@@ -217,7 +217,7 @@ export function preferencesIn(turns: readonly Turn[]): string[] {
  * and the rest are left out rather than guessed at: a file reported as altered
  * when it was only read sends the next session somewhere it never went, which is
  * worse than a file it does not name. This is where to add a name if a tool
- * Foundry did not write ever needs one.
+ * Kira did not write ever needs one.
  */
 const ALTERS = new Set(['write', 'edit']);
 const LOOKS = new Set(['read']);

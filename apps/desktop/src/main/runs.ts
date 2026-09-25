@@ -1,7 +1,7 @@
 /**
  * Pressing Run, and what becomes of the run.
  *
- * Run is the one act in Foundry that spends somebody's money on work nobody is watching,
+ * Run is the one act in Kira that spends somebody's money on work nobody is watching,
  * so the order here is the design. The claim comes first, because the server is the party
  * that knows whether a ticket can be picked up and refuses it in its own words. Then the
  * run is started, because a run that cannot begin is recorded saying why rather than
@@ -143,7 +143,7 @@ export function runsFor({
   /** The key, or the sentence a window shows when there is none. */
   async function key(): Promise<string> {
     const held = await token();
-    if (held === null) throw new Error('Nobody is signed in to Foundry.');
+    if (held === null) throw new Error('Nobody is signed in to Kira.');
 
     return held;
   }

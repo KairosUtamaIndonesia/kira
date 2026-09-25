@@ -26,7 +26,7 @@ import { delimiter, dirname, join } from 'node:path';
  */
 
 /**
- * PATH lookup adapted from pi-mcp-adapter's npx-resolver.ts. Foundry keeps this
+ * PATH lookup adapted from pi-mcp-adapter's npx-resolver.ts. Kira keeps this
  * small, host-independent part so a desktop launch can resolve the Node
  * package-manager binaries without relying on a terminal's shell setup.
  */

@@ -2,14 +2,14 @@ import { strict as assert } from 'node:assert';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import type { CatalogModel } from '@foundry/server/contract';
+import type { CatalogModel } from '@kira/server/contract';
 import { tempDir } from '../test-support/temp.ts';
-import { foundryModels, type CatalogAnswer } from './models.ts';
+import { kiraModels, type CatalogAnswer } from './models.ts';
 
 // Hermetic: pi reads `PI_CODING_AGENT_DIR` for credentials and `HOME` for the
 // global skills source, so neither leaks in from the developer's machine.
-process.env['HOME'] = tempDir('foundry-models-home-');
-process.env['PI_CODING_AGENT_DIR'] = tempDir('foundry-models-agent-dir-');
+process.env['HOME'] = tempDir('kira-models-home-');
+process.env['PI_CODING_AGENT_DIR'] = tempDir('kira-models-agent-dir-');
 
 const SERVER = 'http://localhost:4100';
 
@@ -33,7 +33,7 @@ const RETIRED: CatalogModel = { id: 'retired-model', name: 'Retired Model' };
 
 /** A path to a cache that does not exist yet, as a machine that has never asked. */
 function freshCache(): string {
-  return join(tempDir('foundry-models-cache-'), 'models.json');
+  return join(tempDir('kira-models-cache-'), 'models.json');
 }
 
 /** A module over a temp cache, and a server that answers whatever the test says. */
@@ -43,7 +43,7 @@ function modelsFor(
   const asked: string[] = [];
   const cachePath = options.cache ?? freshCache();
 
-  const models = foundryModels({
+  const models = kiraModels({
     server: SERVER,
     cachePath,
     token: async () => (options.token === undefined ? 'device-key' : options.token),
@@ -62,9 +62,9 @@ test('a session runs on what the server offered, in pi’s terms', async () => {
   await models.refresh();
   const choice = await models.preferred();
 
-  // The provider is Foundry's own id, and the address is the server rather than
+  // The provider is Kira's own id, and the address is the server rather than
   // anything on this machine: pi has no credential for this id to fall back to.
-  assert.equal(choice?.model.provider, 'foundry');
+  assert.equal(choice?.model.provider, 'kira');
   assert.equal(choice?.model.baseUrl, `${SERVER}/v1`);
   assert.equal(choice?.model.id, 'served-model');
   assert.equal(choice?.model.name, 'Served Model');
@@ -184,7 +184,7 @@ test('a machine that has not signed in asks the server nothing', async () => {
   assert.equal(existsSync(cachePath), false);
 
   // And no key is left lying in the environment for pi to resolve.
-  assert.equal(process.env['FOUNDRY_TOKEN'], undefined);
+  assert.equal(process.env['KIRA_TOKEN'], undefined);
 });
 
 test('the key this device holds is where pi looks for it', async () => {
@@ -192,7 +192,7 @@ test('the key this device holds is where pi looks for it', async () => {
 
   await models.preferred();
 
-  assert.equal(process.env['FOUNDRY_TOKEN'], 'device-key');
+  assert.equal(process.env['KIRA_TOKEN'], 'device-key');
 });
 
 test('a server that cannot be asked leaves the remembered models alone', async () => {

@@ -1,9 +1,9 @@
 ---
 name: wayfinder
-description: Chart a large Foundry effort as decision tickets until the route to a spec is clear.
+description: Chart a large Kira effort as decision tickets until the route to a spec is clear.
 ---
 
-A loose idea can be too large for one run and still too vague to split into build work. Wayfinding charts the route instead of charging toward it. The shared map is a Foundry map ticket with child decision tickets; its decisions are resolved one at a time until the way is clear.
+A loose idea can be too large for one run and still too vague to split into build work. Wayfinding charts the route instead of charging toward it. The shared map is a Kira map ticket with child decision tickets; its decisions are resolved one at a time until the way is clear.
 
 ## Map contents
 

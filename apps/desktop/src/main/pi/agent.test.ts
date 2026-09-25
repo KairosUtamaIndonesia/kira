@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import { tempDir } from '../test-support/temp.ts';
 import { mcpManager } from '../mcp/servers.ts';
 import { type KiraSession, resumeSession, startSession } from './agent.ts';
-import { foundryModels, type Models } from './models.ts';
+import { kiraModels, type Models } from './models.ts';
 import { createThread } from './storage.ts';
 import { ThreadStore } from '../db/threads.ts';
 
@@ -14,8 +14,8 @@ import { ThreadStore } from '../db/threads.ts';
 // depending on whatever the developer happens to have installed — the boot must
 // work with no credentials present, since resolving a built-in model definition
 // does not need any.
-process.env['HOME'] = tempDir('foundry-agent-home-');
-process.env['PI_CODING_AGENT_DIR'] = tempDir('foundry-agent-dir-');
+process.env['HOME'] = tempDir('kira-agent-home-');
+process.env['PI_CODING_AGENT_DIR'] = tempDir('kira-agent-dir-');
 
 /**
  * The models a session runs on: what a launch that has asked before remembers.
@@ -25,10 +25,10 @@ process.env['PI_CODING_AGENT_DIR'] = tempDir('foundry-agent-dir-');
  * now the server's to say — there is no model of pi's own for it to fall back on.
  */
 function rememberedModels(): Models {
-  const cache = join(tempDir('foundry-agent-models-'), 'models.json');
+  const cache = join(tempDir('kira-agent-models-'), 'models.json');
   writeFileSync(cache, JSON.stringify({ models: [{ id: 'served-model', name: 'Served Model' }] }));
 
-  return foundryModels({
+  return kiraModels({
     server: 'http://localhost:4100',
     cachePath: cache,
     token: async () => 'device-key',
@@ -65,10 +65,10 @@ const CASES: Case[] = [
     },
   },
   {
-    // An install from before Foundry served the models left sessions that had run
+    // An install from before Kira served the models left sessions that had run
     // on pi's own built-in provider, whose credential lives on the machine. This
     // pins the outcome for one of those: whatever the session remembers, it runs on
-    // the model Foundry serves — the runtime holds Foundry's own provider and no
+    // the model Kira serves — the runtime holds Kira's own provider and no
     // other, under an id pi has no credential for, which is what makes a local
     // credential unreachable rather than merely unused
     // (docs/adr/0003-model-credentials.md).
@@ -89,17 +89,17 @@ const CASES: Case[] = [
 
 for (const testCase of CASES) {
   test(`booting ${testCase.name} gives a database-backed session`, async () => {
-    const cwd = tempDir('foundry-agent-space-');
-    const path = join(tempDir('foundry-agent-store-'), 'threads.db');
+    const cwd = tempDir('kira-agent-space-');
+    const path = join(tempDir('kira-agent-store-'), 'threads.db');
     const store = new ThreadStore(path);
 
     const kira = await testCase.open(store, cwd, MODELS);
 
     assert.equal(kira.cwd, cwd);
 
-    // The provider is Foundry's own, and the model is the one the server served:
+    // The provider is Kira's own, and the model is the one the server served:
     // pi holds no credential under that id, so nothing local can answer instead.
-    assert.equal(kira.session.model?.provider, 'foundry');
+    assert.equal(kira.session.model?.provider, 'kira');
     assert.equal(kira.session.model?.id, 'served-model');
     // pi would name a JSONL file here if persistence were still file-based.
     assert.equal(kira.session.sessionManager.getSessionFile(), undefined);
@@ -135,8 +135,8 @@ test(
   'changing the Bash path reaches the next command in an open session',
   { skip: process.platform === 'win32' },
   async () => {
-    const cwd = tempDir('foundry-agent-shell-space-');
-    const store = new ThreadStore(join(tempDir('foundry-agent-shell-store-'), 'threads.db'));
+    const cwd = tempDir('kira-agent-shell-space-');
+    const store = new ThreadStore(join(tempDir('kira-agent-shell-store-'), 'threads.db'));
     const kira = await startSession(store, cwd, MODELS);
 
     try {
@@ -175,7 +175,7 @@ const BOOT_FAILURES = [
 
 for (const testCase of BOOT_FAILURES) {
   test(`failed boot releases MCP subscriptions when ${testCase.name}`, async () => {
-    const store = new ThreadStore(join(tempDir('foundry-agent-failure-store-'), 'threads.db'));
+    const store = new ThreadStore(join(tempDir('kira-agent-failure-store-'), 'threads.db'));
     const manager = mcpManager({ store });
     const subscribe = manager.subscribe.bind(manager);
     let unsubscribed = 0;
@@ -190,7 +190,7 @@ for (const testCase of BOOT_FAILURES) {
 
     try {
       await assert.rejects(
-        startSession(store, tempDir('foundry-agent-failure-space-'), MODELS, {}, undefined, undefined, manager),
+        startSession(store, tempDir('kira-agent-failure-space-'), MODELS, {}, undefined, undefined, manager),
         { message: testCase.error },
       );
       assert.equal(unsubscribed, 1);

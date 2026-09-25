@@ -23,13 +23,13 @@ const PAGE = 100;
 /**
  * Everyone who has signed in.
  *
- * This is the admin plugin's own list rather than one Foundry writes: it already
+ * This is the admin plugin's own list rather than one Kira writes: it already
  * answers with every user, their role and whether they are banned, and a second
  * endpoint saying the same thing would be a second thing to keep true.
  */
 export async function listUsers(): Promise<Loaded<ListedUser[]>> {
   const { data, error } = await auth.admin.listUsers({ query: { limit: PAGE, sortBy: 'email' } });
-  if (error) return { ok: false, message: reasonFor(error, 'Foundry would not list its users.') };
+  if (error) return { ok: false, message: reasonFor(error, 'Kira would not list its users.') };
 
   const users = data.users.map((user) => ({
     id: user.id,

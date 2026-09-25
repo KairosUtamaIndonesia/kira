@@ -39,11 +39,11 @@ async function handOff(origin: string): Promise<Handoff> {
   if (!toMicrosoft) throw new Error('the desktop sign-in did not reach Microsoft');
 
   const atMicrosoft = await fetch(toMicrosoft, { redirect: 'manual' });
-  const backToFoundry = atMicrosoft.headers.get('location');
+  const backToKira = atMicrosoft.headers.get('location');
   await atMicrosoft.body?.cancel();
-  if (!backToFoundry) throw new Error('Microsoft did not send the browser back');
+  if (!backToKira) throw new Error('Microsoft did not send the browser back');
 
-  const signedIn = await fetch(new URL(backToFoundry), {
+  const signedIn = await fetch(new URL(backToKira), {
     redirect: 'manual',
     headers: { cookie: cookieHeader(started) },
   });
@@ -103,7 +103,7 @@ type ExchangeCase = {
 const handoff: ExchangeCase = {
   name: 'the token the app was handed',
   body: (h) => ({ token: h.identifier, state: h.state, code_verifier: h.verifier }),
-  requestOrigin: 'foundry:/',
+  requestOrigin: 'kira:/',
   want: { status: 200, code: null, message: null },
 };
 
@@ -112,19 +112,19 @@ const exchanges: ExchangeCase[] = [
   {
     name: 'a state the token was not issued for',
     body: (h) => ({ ...(handoff.body(h) as object), state: 'somebody-elses-state' }),
-    requestOrigin: 'foundry:/',
+    requestOrigin: 'kira:/',
     want: { status: 400, code: 'STATE_MISMATCH', message: 'state mismatch' },
   },
   {
     name: 'a verifier that is not behind the challenge',
     body: (h) => ({ ...(handoff.body(h) as object), code_verifier: 'not-the-verifier' }),
-    requestOrigin: 'foundry:/',
+    requestOrigin: 'kira:/',
     want: { status: 400, code: 'INVALID_CODE_VERIFIER', message: 'Invalid code verifier' },
   },
   {
     name: 'a token that was never issued',
     body: (h) => ({ ...(handoff.body(h) as object), token: 'never-issued' }),
-    requestOrigin: 'foundry:/',
+    requestOrigin: 'kira:/',
     want: { status: 404, code: 'INVALID_TOKEN', message: 'Invalid or expired token.' },
   },
   {
@@ -132,7 +132,7 @@ const exchanges: ExchangeCase[] = [
     // is worth nothing once the app it was for has used it.
     name: 'the same token a second time',
     body: (h) => handoff.body(h),
-    requestOrigin: 'foundry:/',
+    requestOrigin: 'kira:/',
     times: 2,
     want: { status: 404, code: 'INVALID_TOKEN', message: 'Invalid or expired token.' },
   },
@@ -163,7 +163,7 @@ describe('signing in from the desktop app', () => {
     try {
       const handed = await handOff(server.origin);
 
-      expect(handed.deepLink.startsWith('ai.foundry.kairos://auth/callback#token=')).toBe(true);
+      expect(handed.deepLink.startsWith('ai.kira.kairos://auth/callback#token=')).toBe(true);
       expect(handed.identifier).toBeTruthy();
     } finally {
       await server.stop();
@@ -192,7 +192,7 @@ describe('signing in from the desktop app', () => {
     }
   });
 
-  test('the origins Foundry is driven from are origins it trusts', async () => {
+  test('the origins Kira is driven from are origins it trusts', async () => {
     const server = await listening(ADA);
     try {
       // Asserted as configuration, not as a refusal, because Better Auth turns
@@ -200,7 +200,7 @@ describe('signing in from the desktop app', () => {
       // `bun test` sets, via `skipOriginCheck: isTest() ? true : false` — so the
       // 403 this rule produces cannot be reached from inside the suite. Run
       // against a real process, a request that carries a session cookie and an
-      // origin Foundry has not trusted is refused with INVALID_ORIGIN.
+      // origin Kira has not trusted is refused with INVALID_ORIGIN.
       //
       // Only cookie-bearing requests are checked at all, which is the console's
       // whole write surface: signing out, and setting a role later.
@@ -210,7 +210,7 @@ describe('signing in from the desktop app', () => {
       // console's dev server listens on. Production adds none — the base URL's
       // own origin is trusted already, and that is where the server serves the
       // console from.
-      expect(trustedOrigins).toContain('ai.foundry.kairos:/');
+      expect(trustedOrigins).toContain('ai.kira.kairos:/');
       expect(trustedOrigins).toContain('http://localhost:4101');
     } finally {
       await server.stop();
@@ -224,7 +224,7 @@ describe('signing in from the desktop app', () => {
       const claimed = await exchange(
         server.origin,
         { token: handed.identifier, state: handed.state, code_verifier: handed.verifier },
-        'foundry:/',
+        'kira:/',
       );
       expect(claimed.status).toBe(200);
       expect(((await claimed.json()) as { user: { email: string } }).user.email).toBe(ADA.email);
@@ -234,7 +234,7 @@ describe('signing in from the desktop app', () => {
         headers: {
           'content-type': 'application/json',
           cookie: cookieHeader(claimed),
-          origin: 'foundry:/',
+          origin: 'kira:/',
         },
         body: JSON.stringify({ name: 'brandons-laptop' }),
       });

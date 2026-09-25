@@ -47,7 +47,7 @@ const ICON_URLS = new Map(
 const DARK = '(prefers-color-scheme: dark)';
 
 /**
- * Which way the app is drawing. Foundry's theme hands this to the system —
+ * Which way the app is drawing. Kira's theme hands this to the system —
  * `color-scheme: light dark` on the root — so the system's answer is the app's.
  */
 function schemeNow(): IconScheme {

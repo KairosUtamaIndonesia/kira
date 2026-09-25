@@ -27,7 +27,7 @@ export interface Config {
 }
 
 /**
- * Microsoft's commercial cloud, which is the only place Foundry's tenant lives.
+ * Microsoft's commercial cloud, which is the only place Kira's tenant lives.
  * Better Auth's provider takes this as an option and defaults to the same
  * value; naming it here keeps the endpoint in one place, so a test can point
  * sign-in at a stand-in identity provider instead of reaching Microsoft.
@@ -45,19 +45,19 @@ const WILDCARD_TENANTS = new Set(['common', 'organizations', 'consumers']);
 const MIN_SECRET_LENGTH = 32;
 
 /**
- * The database Foundry keeps its own state in: its users, their sessions, their
+ * The database Kira keeps its own state in: its users, their sessions, their
  * keys, and what each request used.
  *
  * The default is the development database `compose.yaml` runs, the way the pool
  * settings default to the development chain — so a checkout runs with nothing to
  * fill in. A deployed server sets it, and there it is a secret: the URL carries
- * the password. The port is Foundry's own; `docs/internal/server-development.md`
+ * the password. The port is Kira's own; `docs/internal/server-development.md`
  * says which one and why.
  */
-export const DEFAULT_DATABASE_URL = 'postgres://foundry:foundry@127.0.0.1:5439/foundry';
+export const DEFAULT_DATABASE_URL = 'postgres://kira:kira@127.0.0.1:5439/kira';
 
 /**
- * The pool of provider logins model traffic goes through, and the key Foundry
+ * The pool of provider logins model traffic goes through, and the key Kira
  * presents to it.
  *
  * Both defaults are the development chain rather than a guess: CLIProxyAPI on
@@ -68,7 +68,7 @@ export const DEFAULT_DATABASE_URL = 'postgres://foundry:foundry@127.0.0.1:5439/f
  * a provider credential (docs/adr/0003-model-credentials.md).
  */
 const DEFAULT_POOL_URL = 'http://127.0.0.1:8317';
-const DEV_POOL_KEY = 'foundry-dev-pool-key';
+const DEV_POOL_KEY = 'kira-dev-pool-key';
 
 /** Where to listen when the base URL names no port, which means a proxy is in front. */
 const DEFAULT_PORT = 3000;
@@ -86,11 +86,11 @@ const DEFAULT_PORT = 3000;
 const DEFAULT_ALLOWANCE_TOKENS = 20_000_000;
 
 /**
- * The model Foundry suggests for the reflecting, when a deployment names one.
+ * The model Kira suggests for the reflecting, when a deployment names one.
  *
  * Left unset by default, and that is a decision rather than an omission. Which
  * model is cheapest is the thing a person would want suggested, and nothing
- * Foundry can read knows a price: the pool is a proxy over subscription logins
+ * Kira can read knows a price: the pool is a proxy over subscription logins
  * rather than a priced catalog, and its catalog body carries no cost field at all
  * (docs/internal/research/cliproxyapi-interface.md). A deployment that has made
  * that judgement is the only party that can state it, so it states it here — and
@@ -118,7 +118,7 @@ const REQUIRED = 'is required';
 export function loadConfig(env: Record<string, string | undefined>): Config {
   const parsed = createEnv({
     server: {
-      FOUNDRY_ENTRA_TENANT_ID: z
+      KIRA_ENTRA_TENANT_ID: z
         .string({ error: REQUIRED })
         .trim()
         .min(1, REQUIRED)
@@ -126,42 +126,42 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
           (tenant) => !WILDCARD_TENANTS.has(tenant.toLowerCase()),
           "must be the company tenant's GUID; common, organizations and consumers accept accounts from any Microsoft tenant",
         ),
-      FOUNDRY_ENTRA_CLIENT_ID: z.string({ error: REQUIRED }).trim().min(1, REQUIRED),
-      FOUNDRY_ENTRA_CLIENT_SECRET: z.string({ error: REQUIRED }).trim().min(1, REQUIRED),
-      FOUNDRY_AUTH_SECRET: z
+      KIRA_ENTRA_CLIENT_ID: z.string({ error: REQUIRED }).trim().min(1, REQUIRED),
+      KIRA_ENTRA_CLIENT_SECRET: z.string({ error: REQUIRED }).trim().min(1, REQUIRED),
+      KIRA_AUTH_SECRET: z
         .string({ error: REQUIRED })
         .trim()
         .min(MIN_SECRET_LENGTH, `must be at least ${MIN_SECRET_LENGTH} characters`),
-      FOUNDRY_BASE_URL: z
+      KIRA_BASE_URL: z
         .string({ error: REQUIRED })
         .trim()
         .min(1, REQUIRED)
         .refine(isAbsoluteUrl, 'must be an absolute URL'),
-      FOUNDRY_DATABASE_URL: z
+      KIRA_DATABASE_URL: z
         .string()
         .trim()
         .min(1, REQUIRED)
         .refine(isAbsoluteUrl, 'must be an absolute URL')
         .default(DEFAULT_DATABASE_URL),
-      FOUNDRY_POOL_URL: z
+      KIRA_POOL_URL: z
         .string()
         .trim()
         .min(1, REQUIRED)
         .refine(isAbsoluteUrl, 'must be an absolute URL')
         .default(DEFAULT_POOL_URL),
-      FOUNDRY_POOL_KEY: z.string().trim().min(1, REQUIRED).default(DEV_POOL_KEY),
-      FOUNDRY_DEFAULT_ALLOWANCE_TOKENS: z.coerce
+      KIRA_POOL_KEY: z.string().trim().min(1, REQUIRED).default(DEV_POOL_KEY),
+      KIRA_DEFAULT_ALLOWANCE_TOKENS: z.coerce
         .number()
         .int()
         .positive()
         .default(DEFAULT_ALLOWANCE_TOKENS),
-      FOUNDRY_ALLOWANCE_TIMEZONE: z
+      KIRA_ALLOWANCE_TIMEZONE: z
         .string()
         .trim()
         .min(1, REQUIRED)
         .refine(isTimeZone, 'must be an IANA time zone name, such as Asia/Jakarta')
         .default(ALLOWANCE_TIMEZONE),
-      FOUNDRY_REFLECTION_MODEL: z.string().trim().min(1, REQUIRED).optional(),
+      KIRA_REFLECTION_MODEL: z.string().trim().min(1, REQUIRED).optional(),
     },
     runtimeEnv: env,
     // An empty value in a .env file means unset, not "set to an empty string",
@@ -171,30 +171,30 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     // them. Whoever is starting the server needs the list.
     onValidationError: (issues) => {
       const problems = issues.map((issue) => `${String(issue.path?.[0])} ${issue.message}`);
-      throw new Error(`Foundry cannot start:\n  ${problems.join('\n  ')}`);
+      throw new Error(`Kira cannot start:\n  ${problems.join('\n  ')}`);
     },
   });
 
   return {
-    baseUrl: parsed.FOUNDRY_BASE_URL,
-    port: listenPort(parsed.FOUNDRY_BASE_URL),
-    authSecret: parsed.FOUNDRY_AUTH_SECRET,
-    databaseUrl: parsed.FOUNDRY_DATABASE_URL,
+    baseUrl: parsed.KIRA_BASE_URL,
+    port: listenPort(parsed.KIRA_BASE_URL),
+    authSecret: parsed.KIRA_AUTH_SECRET,
+    databaseUrl: parsed.KIRA_DATABASE_URL,
     pool: {
-      url: parsed.FOUNDRY_POOL_URL,
-      key: parsed.FOUNDRY_POOL_KEY,
+      url: parsed.KIRA_POOL_URL,
+      key: parsed.KIRA_POOL_KEY,
     },
     allowance: {
-      defaultTokens: parsed.FOUNDRY_DEFAULT_ALLOWANCE_TOKENS,
-      timezone: parsed.FOUNDRY_ALLOWANCE_TIMEZONE,
+      defaultTokens: parsed.KIRA_DEFAULT_ALLOWANCE_TOKENS,
+      timezone: parsed.KIRA_ALLOWANCE_TIMEZONE,
     },
     memory: {
-      reflectionModel: parsed.FOUNDRY_REFLECTION_MODEL ?? DEFAULT_REFLECTION_MODEL,
+      reflectionModel: parsed.KIRA_REFLECTION_MODEL ?? DEFAULT_REFLECTION_MODEL,
     },
     entra: {
-      tenantId: parsed.FOUNDRY_ENTRA_TENANT_ID,
-      clientId: parsed.FOUNDRY_ENTRA_CLIENT_ID,
-      clientSecret: parsed.FOUNDRY_ENTRA_CLIENT_SECRET,
+      tenantId: parsed.KIRA_ENTRA_TENANT_ID,
+      clientId: parsed.KIRA_ENTRA_CLIENT_ID,
+      clientSecret: parsed.KIRA_ENTRA_CLIENT_SECRET,
       authority: ENTRA_AUTHORITY,
     },
   };

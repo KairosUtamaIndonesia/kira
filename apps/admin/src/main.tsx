@@ -1,5 +1,5 @@
 import { Spinner } from '@astryxdesign/core/Spinner';
-import { FoundryTheme } from '@foundry/theme';
+import { KiraTheme } from '@kira/theme';
 import { StrictMode, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
@@ -21,16 +21,16 @@ const opening = readOpening();
 
 createRoot(root).render(
   <StrictMode>
-    <FoundryTheme>
+    <KiraTheme>
       <Suspense
         fallback={
           <div className="waiting">
-            <Spinner label="Opening Foundry" />
+            <Spinner label="Opening Kira" />
           </div>
         }
       >
         <App opening={opening} />
       </Suspense>
-    </FoundryTheme>
+    </KiraTheme>
   </StrictMode>,
 );

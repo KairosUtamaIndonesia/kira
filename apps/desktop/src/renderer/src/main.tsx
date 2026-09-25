@@ -1,5 +1,5 @@
 import { LayerProvider } from '@astryxdesign/core/Layer';
-import { FoundryTheme } from '@foundry/theme';
+import { KiraTheme } from '@kira/theme';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
@@ -14,16 +14,16 @@ if (!root) {
 
 createRoot(root).render(
   <StrictMode>
-    <FoundryTheme>
+    <KiraTheme>
       {/*
        * Astryx's toasts (used to undo an archive) portal into a detached
        * container outside this tree; without a LayerProvider somewhere above
        * them they fall back to an unthemed viewport instead of reading
-       * Foundry's tokens. AppShell doesn't supply one yet, so this does.
+       * Kira's tokens. AppShell doesn't supply one yet, so this does.
        */}
       <LayerProvider>
         <App />
       </LayerProvider>
-    </FoundryTheme>
+    </KiraTheme>
   </StrictMode>,
 );

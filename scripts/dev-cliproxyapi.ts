@@ -1,5 +1,5 @@
 /**
- * Run the local CLIProxyAPI, the process Foundry's server sends model traffic
+ * Run the local CLIProxyAPI, the process Kira's server sends model traffic
  * through in development.
  *
  * Everything it needs lives outside the checkout: the binary, the provider
@@ -17,14 +17,14 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 /** Where the binary, its credentials and its working files live. */
-const ROOT = join(homedir(), '.local/share/foundry/cliproxyapi');
+const ROOT = join(homedir(), '.local/share/kira/cliproxyapi');
 const BINARY = join(ROOT, 'bin/cli-proxy-api');
 
 /** The config a human edits, kept apart from what the process writes. */
-const CONFIG = join(homedir(), '.config/foundry/cliproxyapi.yaml');
+const CONFIG = join(homedir(), '.config/kira/cliproxyapi.yaml');
 
-/** The caller key Foundry's server presents. A development value, nothing more. */
-const POOL_KEY = 'foundry-dev-pool-key';
+/** The caller key Kira's server presents. A development value, nothing more. */
+const POOL_KEY = 'kira-dev-pool-key';
 
 if (!existsSync(BINARY)) {
   console.error(`no CLIProxyAPI at ${BINARY}`);
@@ -58,13 +58,13 @@ process.exitCode = await child.exited;
  *
  * Two departures from the shipped example matter. `host` is loopback rather
  * than the example's empty string, which binds every interface — the proxy
- * holds the company's logins and only Foundry talks to it. And the management
+ * holds the company's logins and only Kira talks to it. And the management
  * API is left off, because its key can read and rewrite every credential in
  * the auth directory; switch it on deliberately when the usage cross-check is
  * wanted.
  */
 function config(authDir: string): string {
-  return `# Foundry's development CLIProxyAPI. Written by scripts/dev-cliproxyapi.ts
+  return `# Kira's development CLIProxyAPI. Written by scripts/dev-cliproxyapi.ts
 # when it was missing; edit it freely, or delete it to have it written again.
 #
 # Provider logins are written into auth-dir below by the login flags, for
@@ -76,13 +76,13 @@ port: 8317
 
 auth-dir: "${authDir}"
 
-# What Foundry's server presents as its caller key.
+# What Kira's server presents as its caller key.
 api-keys:
   - "${POOL_KEY}"
 
 # The management API is off: its key can read and rewrite every login above.
 # remote-management:
-#   secret-key: "foundry-dev-management-key"
+#   secret-key: "kira-dev-management-key"
 
 # A stand-in for a provider, so the chain can be exercised without spending
 # subscription quota. Start it with \`bun run dev:upstream\`, and delete this

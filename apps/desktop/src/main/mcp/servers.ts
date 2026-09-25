@@ -251,7 +251,7 @@ export function mcpManager({
 
     let client: Client;
     client = new Client(
-      { name: 'foundry', version: '0.1.0' },
+      { name: 'kira', version: '0.1.0' },
       {
         listChanged: {
           tools: {

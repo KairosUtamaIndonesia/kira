@@ -41,7 +41,7 @@ export interface UsageRecord {
 }
 
 /**
- * The words Foundry writes in a ledger row's `outcome`.
+ * The words Kira writes in a ledger row's `outcome`.
  *
  * One home for them, because a query branching on a word and the writer producing
  * it must not be able to disagree. A type would be tighter, but a read of a text
@@ -95,7 +95,7 @@ export async function usageFor(database: Database, userId: string): Promise<Usag
     // A column holding no reason reads as no reason, rather than as a null a
     // caller has to think about.
     reason: row.reason ?? undefined,
-    // An instant is stored as one; a record says it the way the rest of Foundry
+    // An instant is stored as one; a record says it the way the rest of Kira
     // says it, so a caller never has to think about the column's type.
     at: row.at.toISOString(),
   }));

@@ -40,10 +40,10 @@ const ticket = (gate: Ticket['gate']): Ticket => ({
 });
 
 test('tracker tools expose reads and draft-only writes without publication controls', async () => {
-  const path = join(mkdtempSync(join(tmpdir(), 'foundry-tracker-tool-store-')), 'threads.db');
+  const path = join(mkdtempSync(join(tmpdir(), 'kira-tracker-tool-store-')), 'threads.db');
   const store = new ThreadStore(path);
   const workspace = store.rememberWorkspace(
-    mkdtempSync(join(tmpdir(), 'foundry-tracker-tool-space-')),
+    mkdtempSync(join(tmpdir(), 'kira-tracker-tool-space-')),
   );
   const current = ticket('draft');
   // Use a real thread record so workspace resolution is exercised at the same
@@ -133,10 +133,10 @@ test('tracker tools expose reads and draft-only writes without publication contr
 
 test('Kira cannot create a ticket through the draft-writing tool', async () => {
   const store = new ThreadStore(
-    join(mkdtempSync(join(tmpdir(), 'foundry-tracker-tool-store-')), 'threads.db'),
+    join(mkdtempSync(join(tmpdir(), 'kira-tracker-tool-store-')), 'threads.db'),
   );
   const workspace = store.rememberWorkspace(
-    mkdtempSync(join(tmpdir(), 'foundry-tracker-tool-space-')),
+    mkdtempSync(join(tmpdir(), 'kira-tracker-tool-space-')),
   );
   const thread = createThread(store, workspace.folder, { workspaceId: workspace.id });
   let writes = 0;
@@ -311,10 +311,10 @@ test('breakdown proposals reject invalid kinds and dependencies before a card is
 
 test('editing a non-draft ticket is refused before the change seam is called', async () => {
   const store = new ThreadStore(
-    join(mkdtempSync(join(tmpdir(), 'foundry-tracker-tool-store-')), 'threads.db'),
+    join(mkdtempSync(join(tmpdir(), 'kira-tracker-tool-store-')), 'threads.db'),
   );
   const workspace = store.rememberWorkspace(
-    mkdtempSync(join(tmpdir(), 'foundry-tracker-tool-space-')),
+    mkdtempSync(join(tmpdir(), 'kira-tracker-tool-space-')),
   );
   const thread = createThread(store, workspace.folder, { workspaceId: workspace.id });
   const calls: string[] = [];

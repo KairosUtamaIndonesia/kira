@@ -164,7 +164,7 @@ export interface StoredObservation extends Omit<ObservationRecord, 'entryId'> {
  * `coversThrough` is the last turn the reflector was shown when it drew this —
  * the chat as it stood then, not the set of turns this conclusion needs. Which
  * observation supported which conclusion is deliberately not recorded: that is
- * what the reference workspace prunes on, and Foundry has no pruning. What the
+ * what the reference workspace prunes on, and Kira has no pruning. What the
  * number is for is going back — it is a turn `recall` accepts, so the material
  * the conclusion was drawn in front of can be read again. It is a turn number rather than an observation row
  * id, because observations are replaced whole and their ids are re-minted on
@@ -181,7 +181,7 @@ export interface StoredReflection extends ReflectionRecord {
 }
 
 /**
- * Foundry's thread storage. The conversation lives here, not in pi's JSONL files.
+ * Kira's thread storage. The conversation lives here, not in pi's JSONL files.
  *
  * The shape mirrors pi's own model instead of inventing one: a thread is an
  * ordered list of entries, header first. Entries are stored verbatim in `json`
@@ -531,7 +531,7 @@ export class ThreadStore {
     `);
   }
 
-  /** Give the desktop database a place for Foundry-owned MCP configuration. */
+  /** Give the desktop database a place for Kira-owned MCP configuration. */
   private addMcpServers(): void {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS mcp_servers (

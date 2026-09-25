@@ -1,4 +1,4 @@
-# CLIProxyAPI: the interface Foundry proxies against
+# CLIProxyAPI: the interface Kira proxies against
 
 Date: 2026-09-18
 Status: research for the server-side proxy. Everything below is read from source at the
@@ -17,12 +17,12 @@ live traffic to a running instance; that limit is called out per section.
 ## Bottom line
 
 CLIProxyAPI is a single Go HTTP server that fronts provider subscription logins behind an
-OpenAI-shaped API. For Foundry the implementable facts are: it listens on `:8317` by
+OpenAI-shaped API. For Kira the implementable facts are: it listens on `:8317` by
 default with **no loopback default** — `host: ""` binds every interface, so the VPS deploy
 must set `host: 127.0.0.1`; callers authenticate with a flat, unnamed list of secrets in
 `api-keys` presented as `Authorization: Bearer <key>`; provider logins live as JSON files
 under `auth-dir` (`~/.cli-proxy-api` by default) and there is **no file lock** on that
-directory; the routes Foundry needs are `POST /v1/chat/completions` and `GET /v1/models`,
+directory; the routes Kira needs are `POST /v1/chat/completions` and `GET /v1/models`,
 both faithful OpenAI shapes, with Anthropic (`/v1/messages`) and Gemini (`/v1beta/...`)
 surfaces alongside; streaming is SSE and the final usage chunk is an OpenAI-style
 usage-only chunk with `choices: []`; and an exhausted credential pool returns HTTP 429
@@ -77,7 +77,7 @@ Default is `host: ""` and `port: 8317`. The config keys are the top-level `host`
 IPv6). # Use "127.0.0.1" or "localhost" to restrict access to local machine only.`
 (`config.example.yaml:1-2`). There is no default-host constant that fills in `127.0.0.1`;
 with `host` unset the Go zero value `""` is used, so the listener is `:8317`. On a public
-VPS Foundry must set `host: "127.0.0.1"` explicitly.
+VPS Kira must set `host: "127.0.0.1"` explicitly.
 
 TLS is optional and off by default (`tls.enable: false`, `config.example.yaml:8-11`).
 
@@ -102,7 +102,7 @@ Accepted presentations, in the order the provider tries them
 | `?key=<key>`                  | query string                                                                                                             |
 | `?auth_token=<key>`           | query string                                                                                                             |
 
-For Foundry the header to use is `Authorization: Bearer <key>`. Additional access
+For Kira the header to use is `Authorization: Bearer <key>`. Additional access
 providers (per-provider `Name`, `APIKeys`, `Config`) exist as an SDK extension point in
 `sdk/access/types.go:5-46`, but the server's own `config.yaml` in v7.3.7 only drives the
 one `config-api-key` provider from `api-keys` (`internal/access/config_access/provider.go:14-31`);
@@ -110,7 +110,7 @@ no documented top-level YAML block for arbitrary providers was found. `Unverifie
 a plugin can register a caller-key provider with per-key model scoping; the SDK interface
 would allow it, no shipped plugin was inspected.
 
-Because keys are plain strings, Foundry must mint its own namespacing convention if it
+Because keys are plain strings, Kira must mint its own namespacing convention if it
 wants per-desktop attribution (e.g. one `api-keys` entry per install). CLIProxyAPI will
 not attribute traffic to a caller name for you.
 
@@ -172,7 +172,7 @@ stale data; I did not run two instances. There is a "Home" cluster mode
 contract implies multi-node coordination, but that is a hosted control-plane mode and was
 not explored.
 
-## 5. The HTTP surface Foundry needs
+## 5. The HTTP surface Kira needs
 
 Routes are registered in `internal/api/server_routes.go:50-128`. The ones that matter:
 
@@ -219,7 +219,7 @@ credential (`config.example.yaml:417,526,731`; the catalog half is
 unprefixed requests only use credentials that have no prefix
 (`config.example.yaml:156-157`, `internal/config/sdk_config.go:37-40`). There is also a
 separate thinking suffix of the form `model(<value>)`, stripped by
-`thinking.ParseSuffix` (`internal/thinking/.../ParseSuffix`) — relevant only if Foundry
+`thinking.ParseSuffix` (`internal/thinking/.../ParseSuffix`) — relevant only if Kira
 lets users type model names by hand.
 
 ## 6. Streaming
@@ -287,12 +287,12 @@ null, several already fixed):
 The recurring root cause in the closed issues is an upstream sending an early placeholder
 `usage` (zeros or `null`) that a naive "first usage wins" reader latches onto; the open PRs
 are fixes that have not merged as of v7.3.7. `Unverified:` whether any of the open PRs'
-defects affect the specific upstreams Foundry will use — the fixes are version-scoped, and
+defects affect the specific upstreams Kira will use — the fixes are version-scoped, and
 I did not reproduce them.
 
 ## 7. Errors
 
-The envelope depends on which layer fails, and the three cases are not uniform. Foundry's
+The envelope depends on which layer fails, and the three cases are not uniform. Kira's
 proxy must branch on HTTP status first, then on the body shape.
 
 **Bad caller key** — rejected by the `/v1` group's auth middleware before any handler, as
@@ -358,7 +358,7 @@ matches the model at all (`sdk/cliproxy/auth/selector.go:525,704`,
 `(providers=..., model=...)` detail and default to HTTP **503** when no status is set
 (`sdk/api/handlers/handlers_errors.go:92-96`). `model_not_found` also appears inside
 failed-home-dispatch paths mapping to 404 (`sdk/cliproxy/auth/home_concurrency.go:238-239`),
-but that is Home mode, not the direct deployment Foundry will run.
+but that is Home mode, not the direct deployment Kira will run.
 
 `Unverified:` the exact status/body when a _provider_ credential is valid but the upstream
 returns its own 429 — the upstream error is generally propagated, but I did not trace the
@@ -405,7 +405,7 @@ is `true` (`usage_toggle.go:7-9`) — the effective default for a configured ser
 The README also states that "Since v6.10.0, CLIProxyAPI and CPAMC no longer ship built-in
 usage statistics", directing operators to external tools (CPA Usage Keeper,
 CPA-Manager-Plus) (<https://github.com/router-for-me/CLIProxyAPI/blob/v7.3.7/README.md>).
-So per-key quota accounting for Foundry is Foundry's job: count tokens from the usage
+So per-key quota accounting for Kira is Kira's job: count tokens from the usage
 chunks, or meter the proxy itself. `Unverified:` whether the `api-key-usage` counters
 increment when `usage-statistics-enabled` is false; the endpoint reads per-`Auth` counters
 that appear to be tracked independently of the queue toggle, but I did not run it to
@@ -443,8 +443,8 @@ the same global registry for every authenticated caller
 `internal/registry/model_registry.go:1237-1310`). There is no per-key `models`,
 `allowed-models` or similar key anywhere in `config.example.yaml` or the config types.
 
-If Foundry needs per-release-group or per-user model restrictions, it must enforce them at
-the Foundry boundary and expose its own filtered `/v1/models`, rather than relying on
+If Kira needs per-release-group or per-user model restrictions, it must enforce them at
+the Kira boundary and expose its own filtered `/v1/models`, rather than relying on
 CLIProxyAPI. The only CLIProxyAPI-side lever is issuing different _upstream_ credentials
 under different `prefix`es and handing different prefixes to different callers — which
 still does not stop a caller from naming another prefix.
@@ -507,7 +507,7 @@ translation is per protocol: Gemini writes `thinkingConfig.thinkingBudget`, Clau
 unsupported level is an HTTP 400, while an unsupported model silently drops the suffix.
 There are no per-model mapping tables beyond
 `openai-compatibility.*.models.*.thinking.levels` (default `["low","medium","high"]`).
-This matters to Foundry because pi expresses reasoning as `reasoning_effort` plus a
+This matters to Kira because pi expresses reasoning as `reasoning_effort` plus a
 `thinkingLevelMap`, not as part of the model id.
 
 **Storage backends** (`/configuration/storage/{git,pgsql,s3}.html`) — `git`, `pgsql` and
@@ -523,12 +523,12 @@ env vars do drive storage selection and plugin credentials (`token-env`, `userna
 **Config keys the source sections above do not enumerate** — `routing.strategy`
 (`round-robin` default, or `fill-first`), `max-retry-credentials` (`0` = legacy try-all),
 `max-retry-interval` (30s), `quota-exceeded.{switch-project,switch-preview-model,antigravity-credits}`
-(all `true`, so an exhausted subscription is silently routed elsewhere before Foundry sees
+(all `true`, so an exhausted subscription is silently routed elsewhere before Kira sees
 a cooldown), `request-retry` (3, on 403/408/500/502/503/504), `force-model-prefix`,
 `disable-image-generation` (`false`/`true`/`"chat"`/`"passthrough"`), `ws-auth`, and
 `redis-usage-queue-retention-seconds`.
 
-**An `openai-compatibility` entry is the richest knob Foundry has**, and each of its fields
+**An `openai-compatibility` entry is the richest knob Kira has**, and each of its fields
 matters to something in this document: `prefix` requires calls shaped `prefix/model` to
 reach that provider; `api-key-entries[].weight` shares traffic between credentials;
 `headers` copies a downstream header when the value is written `"$HEADER-NAME"`;
@@ -577,7 +577,7 @@ credentials.
 Measured 2026-09-18 against the published `v7.3.7` `linux_amd64` release, checksum-verified
 from the tag's own `checksums.txt` (binary reports `7.3.7`, commit `b773607e`, matching the
 pin in section 1). The config is the dev chain in `docs/internal/server-development.md`:
-loopback, one caller key, one `openai-compatibility` provider pointed at Foundry's own
+loopback, one caller key, one `openai-compatibility` provider pointed at Kira's own
 OpenAI-shaped stand-in (`apps/server/src/test-support/fake-upstream.ts`), which records the
 bodies it receives. So the upstream here is a fake — everything below is about what
 **CLIProxyAPI** does between a caller and whatever is behind it, on the
@@ -653,5 +653,5 @@ one.
   suffix is stripped and translated, and the level is filtered either way.
 - **Cache-write tokens anywhere in the chain.** No provider page, no management endpoint
   and no usage-queue field reports cache _creation_; the queue's `tokens` object has only
-  `cached_tokens`. Expect Foundry's cache-write column to be zero except where an upstream
+  `cached_tokens`. Expect Kira's cache-write column to be zero except where an upstream
   genuinely exposes it.

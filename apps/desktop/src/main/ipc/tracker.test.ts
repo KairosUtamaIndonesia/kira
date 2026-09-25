@@ -34,7 +34,7 @@ interface Case {
 
 const ticket: Ticket = {
   id: 'ticket-1',
-  projectId: 'foundry-project',
+  projectId: 'kira-project',
   name: 'FND-1',
   number: 1,
   kind: 'feature',
@@ -57,7 +57,7 @@ const ticket: Ticket = {
 };
 
 const queue: TicketQueue = {
-  project: { id: 'foundry-project', name: 'Foundry', prefix: 'FND' },
+  project: { id: 'kira-project', name: 'Kira', prefix: 'FND' },
   tickets: [ticket],
   counts: { draft: 1, ready: 0, blocked: 0, running: 0, 'needs-you': 0, done: 0 },
 };

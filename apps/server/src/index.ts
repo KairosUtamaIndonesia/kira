@@ -14,4 +14,4 @@ const app = createApp({ auth, config, database });
 
 app.listen(config.port);
 
-console.log(`Foundry server listening on ${app.server?.url}`);
+console.log(`Kira server listening on ${app.server?.url}`);

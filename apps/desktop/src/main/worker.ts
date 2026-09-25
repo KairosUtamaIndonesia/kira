@@ -1,7 +1,7 @@
 /**
  * The desktop offering itself for work (docs/adr/0012).
  *
- * A worker is what a person's machine offers while Foundry is running and somebody
+ * A worker is what a person's machine offers while Kira is running and somebody
  * is signed in, and nothing about it is a decision: it does not pick up tickets, and
  * it does not decide what to run. Its own person starts a run on a ticket, and the
  * run is where the work happens. What this module does is the smaller half of that —
@@ -24,7 +24,7 @@ import type { WorkerStanding } from '../preload/bridge.ts';
 import type { StoredKey } from './auth/keys.ts';
 import type { TrackerAnswer } from './tracker.ts';
 
-/** The server's half of the worker, as `auth/foundry.ts` implements it. */
+/** The server's half of the worker, as `auth/kira.ts` implements it. */
 export interface WorkerWire {
   /** Offer this desktop: its id, what it is called, and the folders it can run in. */
   registerWorker(
@@ -224,9 +224,9 @@ function workerIdOf(held: StoredKey, device: string): string {
 /** Why there is no standing, in the words of whoever refused. */
 function troubleIn(answer: TrackerAnswer<unknown>): string {
   if (answer.kind === 'refused') return answer.message;
-  if (answer.kind === 'signed-out') return 'Foundry no longer recognises this desktop.';
+  if (answer.kind === 'signed-out') return 'Kira no longer recognises this desktop.';
 
-  return 'Foundry could not be reached.';
+  return 'Kira could not be reached.';
 }
 
 /**

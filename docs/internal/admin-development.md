@@ -1,14 +1,14 @@
 # Admin console development
 
-Scope: running `apps/admin`, the browser console for the people who run Foundry, and how it
+Scope: running `apps/admin`, the browser console for the people who run Kira, and how it
 reaches the API.
 
 ## What it is
 
-The administrator's half of Foundry: who has signed in, what they may do, and — as the routes
+The administrator's half of Kira: who has signed in, what they may do, and — as the routes
 arrive — what they may spend and what the pool holds. It is a plain React and Vite app: no
 Electron, no assistant-ui, no preload bridge. It draws with the same Astryx components and the
-same `@foundry/theme` as the desktop, which is the whole of why the two look alike. The theme
+same `@kira/theme` as the desktop, which is the whole of why the two look alike. The theme
 shares the palette and the typefaces and not the arrangement, so a screen built from different
 components would still read as a different product.
 
@@ -16,11 +16,11 @@ components would still read as a different product.
 
 ```sh
 docker compose up -d --wait # the database the API keeps its state in
-bun run dev:server   # the API, on the port named by FOUNDRY_BASE_URL
+bun run dev:server   # the API, on the port named by KIRA_BASE_URL
 bun run dev:admin    # the console, on http://localhost:4101/admin/
 ```
 
-Open `http://localhost:4101/admin/` — not the `127.0.0.1` spelling of it. Foundry trusts one
+Open `http://localhost:4101/admin/` — not the `127.0.0.1` spelling of it. Kira trusts one
 origin for a browser sign-in and it is the `localhost` one, so the other is refused as an
 invalid origin. They are genuinely different origins rather than two names for one address,
 and Vite binds whichever `localhost` resolves to first.
@@ -40,7 +40,7 @@ Every request the console makes is a relative `/api` path, in both environments:
 - **production** — the server serves the built console itself, on its own origin, so the
   session cookie is first-party.
 
-Nothing in the build knows Foundry's address, and the base path is `/admin/` because that is
+Nothing in the build knows Kira's address, and the base path is `/admin/` because that is
 where it will be served.
 
 **Not built yet:** the server does not serve `apps/admin/dist`. Production serving — and the
@@ -65,11 +65,11 @@ the server refuses every read without it (ADR 0007).
 
 The console reads the session once, when the page loads, and never polls. Signing in and signing
 out both leave the page and come back, so there is nothing a refresh would learn — but a role is
-granted out of band, by whoever runs Foundry, while the page is sitting open. So the refusal
+granted out of band, by whoever runs Kira, while the page is sitting open. So the refusal
 offers a way to look again, and it is the only refresh in the console.
 
 The refusal says who to ask and nothing else. It does not name the command that grants the role:
-that would tell everyone in the company who can sign in where Foundry's server is and how it is
+that would tell everyone in the company who can sign in where Kira's server is and how it is
 driven, and they could not run it anyway. The command is documented in
 [`server-development.md`](./server-development.md), which is where it is actionable.
 

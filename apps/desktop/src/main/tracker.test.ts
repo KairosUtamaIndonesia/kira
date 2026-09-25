@@ -29,7 +29,7 @@ import {
  * has stopped honouring the key this machine holds. Those three are apart on
  * purpose, and this is where that is checked.
  */
-const project: ProjectSummary = { id: 'foundry-project', name: 'Foundry', prefix: 'FND' };
+const project: ProjectSummary = { id: 'kira-project', name: 'Kira', prefix: 'FND' };
 
 const workspace: WorkspaceSummary = {
   id: 'api',
@@ -196,7 +196,7 @@ test('a queue is read for the project the folder works, with the key this machin
   const held = tracker(calls);
 
   assert.deepEqual(await held.held.queue(workspace.id), queue);
-  assert.deepEqual(calls, ['queue key foundry-project']);
+  assert.deepEqual(calls, ['queue key kira-project']);
 });
 
 test('a ticket is read through the same key-bearing tracker seam', async () => {
@@ -296,9 +296,9 @@ test('run context comes from the current queue, glossary and Decisions cited by 
     decisions: [cited],
   });
   assert.deepEqual(calls, [
-    'queue key foundry-project',
-    'glossary key foundry-project',
-    'decisions key foundry-project',
+    'queue key kira-project',
+    'glossary key kira-project',
+    'decisions key kira-project',
   ]);
 });
 
@@ -337,8 +337,8 @@ test('Decision reads and person approvals use the key-bearing tracker seam', asy
   assert.deepEqual(await held.held.decisions?.(workspace.id), [decision]);
   assert.deepEqual(await held.held.approveDecision(workspace.id, proposal, 'chat-1'), decision);
   assert.deepEqual(calls, [
-    'decisions key foundry-project',
-    'createDecision key foundry-project chat-1',
+    'decisions key kira-project',
+    'createDecision key kira-project chat-1',
   ]);
 });
 
@@ -374,7 +374,7 @@ test('map creation and destination approval use the person-owned tracker seam', 
     destination,
   );
   assert.deepEqual(calls, [
-    'createMap key foundry-project map-chat',
+    'createMap key kira-project map-chat',
     'approveDestinationSpec key map-1 Destination',
   ]);
 });
@@ -435,7 +435,7 @@ test('project glossary reads include current terms and their history', async () 
 
   assert.deepEqual(await held.held.glossary?.(workspace.id), glossary);
   assert.deepEqual((await held.held.decisions?.(workspace.id))?.[0]?.choice, 'Use the tracker');
-  assert.deepEqual(calls, ['glossary key foundry-project', 'decisions key foundry-project']);
+  assert.deepEqual(calls, ['glossary key kira-project', 'decisions key kira-project']);
 });
 
 test('glossary edits and stale-aware Undo use the same key-bearing seam', async () => {
@@ -478,8 +478,8 @@ test('glossary edits and stale-aware Undo use the same key-bearing seam', async 
     message: 'That glossary change is no longer current.',
   });
   assert.deepEqual(calls, [
-    'updateGlossary key foundry-project ticket chat-1',
-    'undoGlossary key foundry-project term-1 2 chat-1',
+    'updateGlossary key kira-project ticket chat-1',
+    'undoGlossary key kira-project term-1 2 chat-1',
   ]);
 });
 
@@ -569,10 +569,10 @@ test('starting a project makes it on the server, then remembers it with the fold
   const held = tracker(calls);
 
   assert.deepEqual(
-    await held.held.join(workspace.id, { kind: 'new', name: 'Foundry', prefix: 'FND' }),
+    await held.held.join(workspace.id, { kind: 'new', name: 'Kira', prefix: 'FND' }),
     { ...workspace, projectId: project.id },
   );
-  assert.deepEqual(calls, ['createProject key Foundry FND']);
+  assert.deepEqual(calls, ['createProject key Kira FND']);
 });
 
 test('a prefix another project holds is refused, and the folder is left as it was', async () => {
@@ -586,7 +586,7 @@ test('a prefix another project holds is refused, and the folder is left as it wa
 
   assert.equal(
     await tried(() =>
-      held.held.join(workspace.id, { kind: 'new', name: 'Foundry', prefix: 'FND' }),
+      held.held.join(workspace.id, { kind: 'new', name: 'Kira', prefix: 'FND' }),
     ),
     'refused Another project already holds FND.',
   );
@@ -610,7 +610,7 @@ test('a ticket is written into the project the folder works', async () => {
   const held = tracker(calls);
 
   assert.deepEqual(await held.held.write(workspace.id, draft), ticket);
-  assert.deepEqual(calls, ['writeTicket key foundry-project A ticket']);
+  assert.deepEqual(calls, ['writeTicket key kira-project A ticket']);
 });
 
 test('a gate is named by whatever a person would say', async () => {

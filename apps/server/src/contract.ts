@@ -15,15 +15,15 @@
  */
 import type { createApp } from './app';
 
-/** What every Foundry client is typed against. */
+/** What every Kira client is typed against. */
 export type App = ReturnType<typeof createApp>;
 
 /**
  * One model, as `GET /api/models` offers it.
  *
- * Foundry's own shape rather than pi's. The two would look alike, but pi's model
+ * Kira's own shape rather than pi's. The two would look alike, but pi's model
  * entry is a third-party library's internal type, and serving it would make a pi
- * upgrade into a Foundry release: a client maps these onto whatever its own
+ * upgrade into a Kira release: a client maps these onto whatever its own
  * entry requires, and fills what the pool did not state from its own defaults.
  *
  * Only what the pool stated is carried, so every field but the id may be absent.

@@ -8,11 +8,11 @@ import { mcpManager } from '../mcp/servers.ts';
 import { tempDir } from '../test-support/temp.ts';
 import { startConversation } from './conversations.ts';
 import { openChats } from './openChats.ts';
-import { foundryModels } from './models.ts';
+import { kiraModels } from './models.ts';
 
 // Hermetic: booting pi must never read the developer's real credentials or config.
-process.env['HOME'] = tempDir('foundry-mcp-chat-home-');
-process.env['PI_CODING_AGENT_DIR'] = tempDir('foundry-mcp-chat-agent-');
+process.env['HOME'] = tempDir('kira-mcp-chat-home-');
+process.env['PI_CODING_AGENT_DIR'] = tempDir('kira-mcp-chat-agent-');
 
 function fixturePath({ waitForCall = false } = {}): {
   path: string;
@@ -21,7 +21,7 @@ function fixturePath({ waitForCall = false } = {}): {
   calling?: string;
   release?: string;
 } {
-  const folder = tempDir('foundry-mcp-chat-server-');
+  const folder = tempDir('kira-mcp-chat-server-');
   const stopped = join(folder, 'stopped');
   const started = `${stopped}.started`;
   const calling = join(folder, 'calling');
@@ -136,7 +136,7 @@ test('a real conversation calls a real stdio MCP tool and reads its result', asy
   const address = provider.address();
   if (address === null || typeof address === 'string') throw new Error('the provider has no port');
 
-  const store = new ThreadStore(join(tempDir('foundry-mcp-chat-store-'), 'threads.db'));
+  const store = new ThreadStore(join(tempDir('kira-mcp-chat-store-'), 'threads.db'));
   const saved = store.createMcpServer({
     name: 'fixture',
     command: process.execPath,
@@ -144,12 +144,12 @@ test('a real conversation calls a real stdio MCP tool and reads its result', asy
     cwd: null,
   });
   const manager = mcpManager({ store });
-  const cachePath = join(tempDir('foundry-mcp-chat-models-'), 'models.json');
+  const cachePath = join(tempDir('kira-mcp-chat-models-'), 'models.json');
   writeFileSync(
     cachePath,
     JSON.stringify({ models: [{ id: 'served-model', name: 'Served Model' }] }),
   );
-  const models = foundryModels({
+  const models = kiraModels({
     server: `http://127.0.0.1:${address.port}`,
     cachePath,
     token: async () => 'device-key',
@@ -162,7 +162,7 @@ test('a real conversation calls a real stdio MCP tool and reads its result', asy
     await waitFor(() => manager.snapshot(saved.id)?.status === 'connected', 'the MCP fixture');
     conversation = await startConversation(
       store,
-      tempDir('foundry-mcp-chat-space-'),
+      tempDir('kira-mcp-chat-space-'),
       models,
       {},
       undefined,
@@ -266,9 +266,9 @@ test('two real workspace chats receive only their own MCP tools', async () => {
   const address = provider.address();
   if (address === null || typeof address === 'string') throw new Error('the provider has no port');
 
-  const store = new ThreadStore(join(tempDir('foundry-mcp-workspaces-store-'), 'threads.db'));
-  const alpha = store.rememberWorkspace(tempDir('foundry-mcp-workspace-alpha-'));
-  const beta = store.rememberWorkspace(tempDir('foundry-mcp-workspace-beta-'));
+  const store = new ThreadStore(join(tempDir('kira-mcp-workspaces-store-'), 'threads.db'));
+  const alpha = store.rememberWorkspace(tempDir('kira-mcp-workspace-alpha-'));
+  const beta = store.rememberWorkspace(tempDir('kira-mcp-workspace-beta-'));
   const alphaSaved = store.createMcpServer({
     scope: 'workspace',
     workspaceId: alpha.id,
@@ -286,12 +286,12 @@ test('two real workspace chats receive only their own MCP tools', async () => {
     cwd: null,
   });
   const manager = mcpManager({ store });
-  const cachePath = join(tempDir('foundry-mcp-workspaces-models-'), 'models.json');
+  const cachePath = join(tempDir('kira-mcp-workspaces-models-'), 'models.json');
   writeFileSync(
     cachePath,
     JSON.stringify({ models: [{ id: 'served-model', name: 'Served Model' }] }),
   );
-  const models = foundryModels({
+  const models = kiraModels({
     server: `http://127.0.0.1:${address.port}`,
     cachePath,
     token: async () => 'device-key',
@@ -326,7 +326,7 @@ test('two real workspace chats receive only their own MCP tools', async () => {
     const chats = openChats(
       store,
       () => {},
-      () => tempDir('foundry-mcp-workspace-new-'),
+      () => tempDir('kira-mcp-workspace-new-'),
       models,
       undefined,
       undefined,
@@ -433,7 +433,7 @@ test('a deselected MCP tool is absent on the next request', async () => {
   const address = provider.address();
   if (address === null || typeof address === 'string') throw new Error('the provider has no port');
 
-  const store = new ThreadStore(join(tempDir('foundry-mcp-chat-stale-store-'), 'threads.db'));
+  const store = new ThreadStore(join(tempDir('kira-mcp-chat-stale-store-'), 'threads.db'));
   const saved = store.createMcpServer({
     name: 'fixture',
     command: process.execPath,
@@ -441,12 +441,12 @@ test('a deselected MCP tool is absent on the next request', async () => {
     cwd: null,
   });
   const manager = mcpManager({ store });
-  const cachePath = join(tempDir('foundry-mcp-chat-stale-models-'), 'models.json');
+  const cachePath = join(tempDir('kira-mcp-chat-stale-models-'), 'models.json');
   writeFileSync(
     cachePath,
     JSON.stringify({ models: [{ id: 'served-model', name: 'Served Model' }] }),
   );
-  const models = foundryModels({
+  const models = kiraModels({
     server: `http://127.0.0.1:${address.port}`,
     cachePath,
     token: async () => 'device-key',
@@ -462,7 +462,7 @@ test('a deselected MCP tool is absent on the next request', async () => {
     );
     conversation = await startConversation(
       store,
-      tempDir('foundry-mcp-chat-stale-space-'),
+      tempDir('kira-mcp-chat-stale-space-'),
       models,
       {},
       undefined,
@@ -547,7 +547,7 @@ test('a stale in-flight MCP call answers server disconnected after deselecting i
   const address = provider.address();
   if (address === null || typeof address === 'string') throw new Error('the provider has no port');
 
-  const store = new ThreadStore(join(tempDir('foundry-mcp-chat-in-flight-store-'), 'threads.db'));
+  const store = new ThreadStore(join(tempDir('kira-mcp-chat-in-flight-store-'), 'threads.db'));
   const saved = store.createMcpServer({
     name: 'fixture',
     command: process.execPath,
@@ -555,12 +555,12 @@ test('a stale in-flight MCP call answers server disconnected after deselecting i
     cwd: null,
   });
   const manager = mcpManager({ store });
-  const cachePath = join(tempDir('foundry-mcp-chat-in-flight-models-'), 'models.json');
+  const cachePath = join(tempDir('kira-mcp-chat-in-flight-models-'), 'models.json');
   writeFileSync(
     cachePath,
     JSON.stringify({ models: [{ id: 'served-model', name: 'Served Model' }] }),
   );
-  const models = foundryModels({
+  const models = kiraModels({
     server: `http://127.0.0.1:${address.port}`,
     cachePath,
     token: async () => 'device-key',
@@ -576,7 +576,7 @@ test('a stale in-flight MCP call answers server disconnected after deselecting i
     );
     conversation = await startConversation(
       store,
-      tempDir('foundry-mcp-chat-in-flight-space-'),
+      tempDir('kira-mcp-chat-in-flight-space-'),
       models,
       {},
       undefined,

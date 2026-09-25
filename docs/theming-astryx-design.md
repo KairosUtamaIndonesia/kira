@@ -1,10 +1,10 @@
-# Theming Astryx for Foundry
+# Theming Astryx for Kira
 
-Foundry currently consumes Astryx's `neutralTheme` unmodified through `packages/theme`, with
+Kira currently consumes Astryx's `neutralTheme` unmodified through `packages/theme`, with
 one manual escape hatch: `packages/theme/src/theme.css` overrides Astryx's font tokens
 (`--font-family-body`, `--font-family-heading`, `--font-family-code`) directly in CSS, outside
 Astryx's own typography system. This design closes both gaps with a single **derived theme** —
-a `defineTheme({ extends: neutralTheme, ... })` call that gives Foundry a real brand accent
+a `defineTheme({ extends: neutralTheme, ... })` call that gives Kira a real brand accent
 (`#ff3859`), folds the existing Satoshi/Inter/Geist Mono choice into Astryx's `typography`
 config where it belongs, and sets a near-zero `radius` for a sleek, sharp-cornered,
 developer-centric look. It ships as a **built theme** (`astryx theme build`), matching how
@@ -17,7 +17,7 @@ No visual was generated for this grill.
 ## Terms
 
 - **derived theme** — a `defineTheme()` call with `extends: neutralTheme` that layers
-  Foundry-specific tokens, typography, and component overrides on top of Neutral's resolved
+  Kira-specific tokens, typography, and component overrides on top of Neutral's resolved
   output. Avoid: "custom theme", "override theme".
 - **built theme** — the output of `astryx theme build`: a pre-compiled CSS file plus a built
   theme object, used in production instead of runtime style injection. Avoid: "compiled
@@ -28,12 +28,12 @@ No visual was generated for this grill.
 Two loose ends motivated this pass (Q1):
 
 1. `packages/theme/src/index.tsx` wraps children in Astryx's `Theme` using the raw
-   `neutralTheme` import — Foundry has no accent color of its own. `--color-accent` today is
+   `neutralTheme` import — Kira has no accent color of its own. `--color-accent` today is
    just tied to the neutral ramp (`neutral.light[10]` / `neutral.dark[95]`), i.e.
    near-black/near-white, not a brand color.
 2. `packages/theme/src/theme.css` hand-overrides Astryx's font CSS variables to load
    Satoshi/Inter/Geist Mono, bypassing Astryx's `typography` config entirely — Astryx's type
-   scale (Neutral ships base 14, ratio 1.2 via Figtree) never actually reflects Foundry's real
+   scale (Neutral ships base 14, ratio 1.2 via Figtree) never actually reflects Kira's real
    fonts today.
 
 The chosen scope (Q1, option D) was a full derived-theme pass — accent, typography, and
@@ -46,7 +46,7 @@ could be named.
 
 **Distribution: built theme, not runtime `defineTheme()` (Q2 — durable).**
 Astryx supports two modes: runtime `defineTheme()`, which injects a `<style>` tag on mount,
-and `astryx theme build`, which pre-compiles CSS plus a built theme object. Foundry already
+and `astryx theme build`, which pre-compiles CSS plus a built theme object. Kira already
 consumes Neutral through its pre-built `/built` + `theme.css` split rather than runtime
 injection, and both desktop and admin are shipped apps, not prototypes. Staying consistent
 with the existing pattern avoids Astryx's default runtime-injection warning and keeps first
@@ -54,7 +54,7 @@ paint fast — the cost is one added build step in `packages/theme`.
 
 - Rejected: **runtime `defineTheme()`** — simplest to iterate on, no new build step, but it
   is Astryx's own guidance for prototypes/theme editors, not shipped apps, and it costs a
-  flash-of-wrong-theme risk before hydration that Foundry doesn't have today.
+  flash-of-wrong-theme risk before hydration that Kira doesn't have today.
 
 This was the interview's only question meeting all three durability gates (hard to reverse,
 surprising without context, a real trade-off) — switching distribution modes later means
@@ -65,8 +65,8 @@ restructuring how both apps import the theme, not just editing a config value.
 - **Goal / scope (Q1):** a full derived-theme pass — accent, typography, and motion/radius all
   in scope for this round (component overrides were in scope initially, then deferred — see
   Deferred below).
-- **Where the theme definition lives (Q3):** `packages/theme/src/foundryTheme.ts`, exported
-  alongside the existing `FoundryTheme` provider. `packages/theme` is already Foundry's single
+- **Where the theme definition lives (Q3):** `packages/theme/src/kiraTheme.ts`, exported
+  alongside the existing `KiraTheme` provider. `packages/theme` is already Kira's single
   home for "how the product looks," and both apps already import from it; a second package
   would split that home for no benefit, and inlining per app would let desktop and admin drift.
 - **Accent seed shape (Q4):** one hex seed for both light and dark — Astryx derives the light
@@ -115,14 +115,14 @@ Established by reading Astryx's source rather than by asking:
   before the built-theme workflow can run.
 - Neutral's base theme artifacts (`palette.config.json`, the generated palette) are documented
   as reviewed, non-hand-edited artifacts, since CLI-driven regeneration of Neutral itself is not
-  yet a supported release workflow — Foundry's derived theme should never edit these directly.
+  yet a supported release workflow — Kira's derived theme should never edit these directly.
 
 ## Implementation
 
 Implemented as designed: `@astryxdesign/cli` is now a `packages/theme` devDependency;
-`packages/theme/src/foundryTheme.ts` is the `defineTheme({ extends: neutralTheme, ... })` source
+`packages/theme/src/kiraTheme.ts` is the `defineTheme({ extends: neutralTheme, ... })` source
 (accent `#ff3859`, typography folded in unchanged, `radius: { base: 4, multiplier: 0 }` for the
-sharp-cornered look); `packages/theme/src/built/foundry.{css,js,d.ts,variants.d.ts}` are the
+sharp-cornered look); `packages/theme/src/built/kira.{css,js,d.ts,variants.d.ts}` are the
 committed, reviewed build output (`bun run theme:build` regenerates them, `bun run theme:check`
 verifies they're current); `index.tsx` and `theme.css` import the built theme instead of the raw
 `neutralTheme` import. Both apps typecheck and build against it.
@@ -136,7 +136,7 @@ explicit `tokens: { '--radius-full': '0px' }` override alongside `radius`.
 
 Before locking this in, `packages/theme/prototype/` (throwaway, deleted once the decision was
 made) rendered Astryx's own `theme-showcase` template three ways, switchable via `?variant=` on
-a local Vite dev server: stock Neutral, the shipped Foundry theme, and a softer-radius
+a local Vite dev server: stock Neutral, the shipped Kira theme, and a softer-radius
 alternative. This is what surfaced the `--radius-full` gap above. The shipped direction —
 `#ff3859` accent, zero radius everywhere including pills — was confirmed against that
 comparison and is now what both apps render.

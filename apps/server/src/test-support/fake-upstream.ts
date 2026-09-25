@@ -2,12 +2,12 @@ import { createServer } from 'node:http';
 
 /**
  * How this upstream reports token counts. The shapes differ in the wild and
- * Foundry has to read all of them, so a test can ask for either.
+ * Kira has to read all of them, so a test can ask for either.
  *
  * `final-chunk` is OpenAI's: a usage-only chunk after the content, carrying
  * `choices: []`. `inline` folds the same object into the last content chunk,
  * the way some providers do. `silent` is a provider that never mentions usage at
- * all, which leaves Foundry counting the reply for itself.
+ * all, which leaves Kira counting the reply for itself.
  */
 export type UsageMode = 'final-chunk' | 'inline' | 'silent';
 
@@ -68,7 +68,7 @@ export interface FakeUpstream {
  * A stand-in for whatever provider sits behind CLIProxyAPI, so the chain can be
  * exercised without a subscription.
  *
- * It answers the two calls Foundry's traffic makes — the model list and a chat
+ * It answers the two calls Kira's traffic makes — the model list and a chat
  * completion — and it echoes what it was asked for in the reply text, because
  * the interesting question about a proxy is never "did it answer" but "what did
  * it forward". `requests` keeps the bodies verbatim, so a probe can read the

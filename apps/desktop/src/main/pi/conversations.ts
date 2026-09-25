@@ -6,7 +6,7 @@
  * keeps provider connections and timers alive, so an open session has to be
  * disposed — that is the job that lives here.
  *
- * Foundry's words stop at this boundary in both directions: pi's entries are
+ * Kira's words stop at this boundary in both directions: pi's entries are
  * turned into transcript lines here, so nothing above has to know what a
  * session entry is.
  */
@@ -125,14 +125,14 @@ export interface Conversation {
    *
    * This is pi's manual compaction, the path `/compact` takes: it runs the same
    * `session_before_compact` hook a threshold compaction does, so what a chat
-   * compacted by hand carries is Foundry's own reconstruction rather than a
+   * compacted by hand carries is Kira's own reconstruction rather than a
    * model's summary. pi aborts a turn in flight first and starts nothing
    * afterwards, so compacting mid-answer ends that answer where it stands.
    *
    * Nothing has to be said for this to be visible: the boundary is left standing
    * at the end of the chat, and the transcript carries it there.
    *
-   * A chat with nothing to summarise is refused, in Foundry's words rather than
+   * A chat with nothing to summarise is refused, in Kira's words rather than
    * pi's: see {@link compactionRefusal} for which refusals those are and why only
    * those are translated.
    */
@@ -190,7 +190,7 @@ export interface Conversation {
 }
 
 /**
- * pi's refusal to compact, said in Foundry's words.
+ * pi's refusal to compact, said in Kira's words.
  *
  * pi answers "Nothing to compact (session too small)" and "Already compacted",
  * and neither is a sentence for a person: no pi words cross the seam to the
@@ -199,7 +199,7 @@ export interface Conversation {
  * reading one of those as an empty chat would hide it.
  *
  * The two are recognised by pi's wording because that is all pi offers; a pi that
- * rewords them shows its own sentence instead, which reads worse than Foundry
+ * rewords them shows its own sentence instead, which reads worse than Kira
  * would have put it but is not wrong.
  */
 function compactionRefusal(failure: unknown): string {
@@ -479,7 +479,7 @@ function conversationOf(
 
       store.recordObservations(kira.threadId, observationsIn(branch, kira.cwd));
     } catch (error) {
-      console.error('[foundry] what Kira was holding was not written down:', error);
+      console.error('[kira] what Kira was holding was not written down:', error);
     }
   };
 
@@ -908,7 +908,7 @@ function compactionOf(
  *
  * Read structurally and checked rather than trusted: the entry is whatever an
  * earlier launch of this app put in the database, and a compaction pi wrote
- * itself — the fallback when Foundry's extension cannot answer — carries no
+ * itself — the fallback when Kira's extension cannot answer — carries no
  * `details` at all. Either way the boundary gets a count and no quote, which it
  * can say, rather than a value of the wrong shape drawn as words.
  */

@@ -58,7 +58,7 @@ test('ticketsFor starts with the exact approved ticket and then its child slices
     children: [{ id: child.id, name: 'FND-2', closed: false, closure: null }],
   };
   const queue = {
-    project: { id: 'project-1', name: 'Foundry', prefix: 'FND' },
+    project: { id: 'project-1', name: 'Kira', prefix: 'FND' },
     tickets: [spec, child],
     counts: { draft: 0, ready: 0, blocked: 2, running: 0, 'needs-you': 0, done: 0 },
   } satisfies TicketQueue;

@@ -116,7 +116,7 @@ export function ProposalCard({
           />
         )}
         {refusal !== null && (
-          <Banner status="error" title="Foundry would not take that" description={refusal} />
+          <Banner status="error" title="Kira would not take that" description={refusal} />
         )}
         {proposal.status === 'proposed' && (
           <HStack gap={2} wrap="wrap">

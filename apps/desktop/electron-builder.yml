@@ -1,14 +1,14 @@
-appId: ai.foundry.kairos
-productName: Foundry
+appId: ai.kira.kairos
+productName: Kira
 
 # The custom protocol sign-in is returned to by. A packaged build is what
 # registers it: a development build is Electron running a script, with no
 # desktop entry for the application, so the operating system has nothing to hand
 # the link to (docs/adr/0004-sign-in.md).
 protocols:
-  - name: Foundry
+  - name: Kira
     schemes:
-      - ai.foundry.kairos
+      - ai.kira.kairos
 
 directories:
   output: release

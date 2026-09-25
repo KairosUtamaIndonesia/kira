@@ -57,8 +57,8 @@ export function handoffToken(link: string, scheme: string): string | null {
   return decodeURIComponent(url.hash.slice('#token='.length));
 }
 
-/** The Foundry server, as the desktop uses it. */
-export interface Foundry extends TrackerWire, WorkerWire {
+/** The Kira server, as the desktop uses it. */
+export interface Kira extends TrackerWire, WorkerWire {
   /** Open the system browser at the server's sign-in entry point. */
   openSignIn(): Promise<void>;
   /** Trade a deep link's token for a session, answering who signed in. */
@@ -82,7 +82,7 @@ export interface Foundry extends TrackerWire, WorkerWire {
 }
 export interface SignInDeps {
   keys: KeyStore;
-  foundry: Foundry;
+  kira: Kira;
   /** What this machine is called, which is what its key is named for. */
   device: string;
   /** Told whenever who is signed in changes, so the window can be told too. */
@@ -100,13 +100,13 @@ export interface SignIn {
   signOut(): Promise<AuthState>;
 }
 
-export function signIn({ keys, foundry, device, onChange }: SignInDeps): SignIn {
+export function signIn({ keys, kira, device, onChange }: SignInDeps): SignIn {
   return {
     async current() {
       const stored = await keys.read();
       if (stored === null) return signedOut();
 
-      const verdict = await foundry.check(stored.key);
+      const verdict = await kira.check(stored.key);
       if (verdict.kind === 'refused') {
         // The server has stopped honouring this key, so the machine should stop
         // holding it: asking again on the next launch would only fail again.
@@ -121,19 +121,19 @@ export function signIn({ keys, foundry, device, onChange }: SignInDeps): SignIn 
     },
 
     async begin() {
-      await foundry.openSignIn();
+      await kira.openSignIn();
     },
 
     async finish(token) {
-      const user = await foundry.claim(token);
+      const user = await kira.claim(token);
 
       // One key per install (docs/adr/0006-key-storage.md): signing in again
       // replaces the key this machine already had rather than leaving another
       // live one beside it. It matters most where the key cannot be kept — a
       // machine with no keyring signs in on every launch, and would otherwise
       // mint a key each time.
-      await foundry.retireDeviceKeys(device);
-      const key = await foundry.mintKey(device);
+      await kira.retireDeviceKeys(device);
+      const key = await kira.mintKey(device);
       await keys.write({ key, user });
 
       // The key is what this machine proves itself with, and the session was
@@ -142,7 +142,7 @@ export function signIn({ keys, foundry, device, onChange }: SignInDeps): SignIn 
       //
       // A session that cannot be ended does not undo a key that has already been
       // issued, so it is not an error here — and the key is announced either way.
-      await foundry.endSession().catch(() => {});
+      await kira.endSession().catch(() => {});
 
       onChange(signedIn(user));
     },
@@ -157,7 +157,7 @@ export function signIn({ keys, foundry, device, onChange }: SignInDeps): SignIn 
       // The server session is ended too, so a later sign-in does not carry this
       // one's cookie. Not reaching the server does not undo the key being gone,
       // so it is not an error here.
-      await foundry.endSession().catch(() => {});
+      await kira.endSession().catch(() => {});
 
       return state;
     },

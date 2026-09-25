@@ -1,4 +1,4 @@
-# An admin is a Foundry role, granted out of band once and changed in the console
+# An admin is a Kira role, granted out of band once and changed in the console
 
 Date: 2026-09-18
 
@@ -15,15 +15,15 @@ assumes such a person exists — "a per-user row overrides it", "the operator's 
 the same number that caused it" — without ever giving them a shape. Nothing in the codebase
 does either: there is no role, no flag, and no allowlist.
 
-This adds a check of Foundry's own, which ADR 0004 said it had none of. The distinction
+This adds a check of Kira's own, which ADR 0004 said it had none of. The distinction
 that keeps both true: ADR 0004's rule is about **identity** — no claim from the identity
 provider decides access, and tenant pinning is the whole of "may this person in". A role is
-about **authority** — how much of Foundry a person who is already in may touch. Sign-in is
+about **authority** — how much of Kira a person who is already in may touch. Sign-in is
 unchanged; the check happens after it, and only for the console.
 
 ## Decision
 
-**An admin is a `role` on the Foundry user**, from Better Auth's `admin` plugin. It is a
+**An admin is a `role` on the Kira user**, from Better Auth's `admin` plugin. It is a
 second question asked of a row that already exists, not a second identity: there is no
 admin account, no admin password, and no second sign-in. Everyone arrives the same way, and
 the role decides what the console will do for them.
@@ -66,7 +66,7 @@ only way back.
 
 The server gains the plugin's own surface at `/api/auth/admin/*` — list users, set a role,
 ban, revoke sessions, impersonate — gated by the same role. It shares the prefix with
-Better Auth's other routes because it is the library's surface; Foundry's own administrative
+Better Auth's other routes because it is the library's surface; Kira's own administrative
 routes are a separate thing at `/api/admin/*`.
 
 The role is one column, so it holds one word at a time. The plugin also accepts several,

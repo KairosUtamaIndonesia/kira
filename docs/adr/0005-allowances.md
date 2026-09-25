@@ -1,11 +1,11 @@
-# A user's allowance is tokens per month, counted by Foundry
+# A user's allowance is tokens per month, counted by Kira
 
 Date: 2026-09-17
 Amended: 2026-09-20, 2026-09-21
 
 ## Context
 
-Foundry's model access is a shared **pool**: credentials the company owns, used
+Kira's model access is a shared **pool**: credentials the company owns, used
 by everyone. That makes one question load-bearing — how does one person's usage
 stop being everyone's problem? — and it makes a second one unavoidable, since
 the pool is finite: what does a user see when the pool, not their own budget, is
@@ -18,8 +18,8 @@ curates models per credential, not per caller, so even model restriction is not
 its job. Its own records are useful as a cross-check against ours and nothing
 more.
 
-What makes this tractable is that the Foundry server is _in the path_. pi points
-its provider `baseUrl` at Foundry, so every request body and every response frame
+What makes this tractable is that the Kira server is _in the path_. pi points
+its provider `baseUrl` at Kira, so every request body and every response frame
 passes through code we own. Counting is not a matter of asking anyone: it is a
 matter of counting the bytes already in hand.
 
@@ -31,7 +31,7 @@ Windows, totals and any future cost estimate are queries over those rows. A
 counter would commit us to one window and one unit before we know which we want,
 and there is no way to un-roll a sum.
 
-**A refusal is a fact too.** A request Foundry turns away — for the allowance, or
+**A refusal is a fact too.** A request Kira turns away — for the allowance, or
 because the pool refused it — is written as a row with zero tokens and the reason
 it was turned away, so "who is being refused, and why" is one query. It is also
 the only durable record of a pool refusal: the proxy keeps its own usage in
@@ -49,7 +49,7 @@ person get" is one editable number — the default from config beside the bounda
 the override a row, and clearing the row is how someone returns to the default.
 Not dollars: inside a subscription pool no unit price is real, so a dollar figure
 would be an invented exchange rate. Not a share of the pool either, because the
-pool's remaining capacity is not something Foundry can see reliably — absolute
+pool's remaining capacity is not something Kira can see reliably — absolute
 numbers are the honest shape.
 
 **Fair share needs a second, faster guard, and it is owed.** A monthly ceiling
@@ -86,9 +86,9 @@ it carries the provider's own cooldown, so the honest answer can be "the shared
 subscription resets at 2pm". A user who cannot distinguish them will report the
 tool as broken. Both are carried in OpenAI's error envelope
 (`{"error":{"message","type","code"}}`), because `/v1/*` is an OpenAI-compatible
-surface and pi parses those shapes — with Foundry's codes inside it.
+surface and pi parses those shapes — with Kira's codes inside it.
 
-**One Foundry key to CLIProxyAPI.** Foundry already knows the caller from the key
+**One Kira key to CLIProxyAPI.** Kira already knows the caller from the key
 presented, so minting a proxy key per user would couple a user's lifecycle to
 CLIProxyAPI's config file in exchange for attribution we already hold.
 
@@ -103,14 +103,14 @@ refusal taking that line when one arrives, because the refusal is what the reade
 to act on — and the console shows an operator the same reading for a person, with
 their override beside it.
 
-**An operator sees anyone's, and sets the overrides.** Foundry's own admin routes
+**An operator sees anyone's, and sets the overrides.** Kira's own admin routes
 answer a person's usage and their refusals and set or clear an override,
 authorized by the console's Better Auth session carrying the `admin` role — the
 credential the console already holds, where the desktop holds a key. Two kinds of
 credential on one server is honest: they are different callers.
 
 **One database, two owners.** Better Auth reads and writes the user, session,
-account and verification tables; Foundry writes the ledger. They share one
+account and verification tables; Kira writes the ledger. They share one
 database rather than living in two, because that is what lets a usage row carry a
 real reference to a user at all — a foreign key cannot point from one database
 into another ([0009](0009-postgres.md)). One store is the whole of the
