@@ -113,8 +113,10 @@ import type {
   TicketQueue,
   TicketRun,
   TicketSaid,
+  ExecutionWorkspace,
   WorkspaceSummary,
 } from '../../preload/bridge.ts';
+import { ExecutionWorkspacePanel } from './executionWorkspace.tsx';
 
 /** The three readings of one queue. Which ticket is open belongs to the surface. */
 type View = 'queue' | 'board' | 'split';
@@ -643,6 +645,9 @@ export function WorkSurface({
    */
   const [said, setSaid] = useState('');
   const [miss, setMiss] = useState<string | null>(null);
+  const [executionWorkspaces, setExecutionWorkspaces] = useState<
+    Record<string, ExecutionWorkspace[]>
+  >({});
 
   function updateDisplay(change: WorkDisplay | ((current: WorkDisplay) => WorkDisplay)): void {
     setDisplay((current: WorkDisplay) => {
@@ -690,7 +695,13 @@ export function WorkSurface({
 
     setTrouble(null);
     setQueue(answer.value);
-  }, [workspace, projectId]);
+    if (openId !== null) {
+      const workspaces = await window.kira.listExecutionWorkspaces(openId);
+      if (workspaces.ok) {
+        setExecutionWorkspaces((current) => ({ ...current, [openId]: workspaces.value }));
+      }
+    }
+  }, [workspace, projectId, openId]);
 
   useMountEffect(() => {
     void read();
@@ -894,6 +905,7 @@ export function WorkSurface({
   ) : open === null ? null : (
     <TicketReading
       ticket={open}
+      executionWorkspaces={executionWorkspaces[open.id] ?? []}
       placement={placement}
       refusal={refusal}
       chatIds={chatIds}
@@ -1814,6 +1826,7 @@ function TicketPanel({
 /** One ticket in full, with everything that can be done to it. */
 function TicketReading({
   ticket,
+  executionWorkspaces,
   placement,
   refusal,
   chatIds,
@@ -1832,6 +1845,7 @@ function TicketReading({
   onResolve,
 }: {
   ticket: Ticket;
+  executionWorkspaces: ExecutionWorkspace[];
   placement: 'inline' | 'over' | 'beside';
   refusal: string | null;
   chatIds: string[];
@@ -2110,6 +2124,10 @@ function TicketReading({
           {/* What a run made of it, above the queue's own facts: on a ticket somebody or
               something has worked, this is what the ticket is waiting on. */}
           <RunHistory ticket={ticket} chatIds={chatIds} onOpenChat={onOpenChat} />
+
+          {executionWorkspaces.length > 0 && (
+            <ExecutionWorkspacePanel ticket={ticket} workspaces={executionWorkspaces} />
+          )}
 
           <section {...stylex.props(styles.section)}>
             <Text type="label" weight="medium">
