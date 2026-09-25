@@ -41,6 +41,21 @@ import {
   spacingVars,
 } from '@astryxdesign/core/theme/tokens.stylex';
 import * as stylex from '@stylexjs/stylex';
+import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
   ArrowLeft,
@@ -51,6 +66,7 @@ import {
   Copy,
   FileText,
   FolderOpen,
+  GripVertical,
   LayoutGrid,
   Play,
   Plus,
@@ -73,6 +89,14 @@ import {
   suggestPrefix,
   when,
 } from './workRows.ts';
+import {
+  DEFAULT_WORK_DISPLAY,
+  displayWork,
+  groupedWork,
+  type WorkDisplay,
+  type WorkGroup,
+  reorderReady,
+} from './workDisplay.ts';
 import type {
   AuthState,
   Band,
@@ -96,21 +120,21 @@ type View = 'queue' | 'board' | 'split';
 const VIEWS: { id: View; label: string; icon: LucideIcon; note: string }[] = [
   {
     id: 'queue',
-    label: 'Queue',
+    label: 'List',
     icon: Rows3,
-    note: 'the bands, one under the other',
+    note: 'scan and prioritize the work',
   },
   {
     id: 'board',
     label: 'Board',
     icon: SquareKanban,
-    note: 'a column a band, ranked inside it',
+    note: 'see work by its current state',
   },
   {
     id: 'split',
     label: 'Split',
     icon: LayoutGrid,
-    note: 'the list and the ticket, side by side',
+    note: 'work on one ticket beside the list',
   },
 ];
 
@@ -124,20 +148,20 @@ const VIEWS: { id: View; label: string; icon: LucideIcon; note: string }[] = [
  * here yet.
  */
 const BANDS: { id: Band; label: string; note: string }[] = [
-  { id: 'running', label: 'Running', note: 'somebody is working it right now' },
+  { id: 'running', label: 'Running', note: 'a worker is on it now' },
   {
     id: 'needs-you',
-    label: 'Needs you',
-    note: 'a run left something for a person to answer',
+    label: 'Needs review',
+    note: 'a run left a result for you to review',
   },
   {
     id: 'ready',
     label: 'Ready',
-    note: 'nothing gates it, and it is marked ready',
+    note: 'ready to start when you are',
   },
-  { id: 'blocked', label: 'Blocked', note: 'a ticket it names is still open' },
-  { id: 'done', label: 'Done', note: 'closed, with a reason' },
-  { id: 'draft', label: 'Drafts', note: 'written down, not asked for yet' },
+  { id: 'blocked', label: 'Blocked', note: 'waiting on another ticket' },
+  { id: 'done', label: 'Done', note: 'closed with a recorded outcome' },
+  { id: 'draft', label: 'Drafts', note: 'captured, but not ready to run' },
 ];
 
 /**
@@ -214,6 +238,8 @@ const styles = stylex.create({
     alignItems: 'center',
     gap: spacingVars['--spacing-2'],
     flexShrink: 0,
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
   },
   scroll: {
     flex: 1,
@@ -306,6 +332,28 @@ const styles = stylex.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacingVars['--spacing-2'],
+  },
+  dragHandle: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 24,
+    height: 24,
+    padding: 0,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    color: colorVars['--color-text-secondary'],
+    cursor: 'grab',
+    ':active': { cursor: 'grabbing' },
+    ':focus-visible': {
+      outlineWidth: focusVars['--focus-outline-width'],
+      outlineStyle: focusVars['--focus-outline-style'],
+      outlineColor: focusVars['--focus-outline-color'],
+      outlineOffset: focusVars['--focus-outline-offset'],
+    },
+  },
+  cardDragging: {
+    opacity: 0.55,
   },
   scrim: {
     position: 'absolute',
@@ -580,7 +628,7 @@ export function WorkSurface({
   const [trouble, setTrouble] = useState<string | null>(null);
   const [view, setView] = useState<View>(readView);
   const [openId, setOpenId] = useState<string | null>(initialTicketId ?? null);
-  const [band, setBand] = useState<Band | 'all'>('all');
+  const [display, setDisplay] = useState<WorkDisplay>(readDisplay);
   const [isWriting, setIsWriting] = useState(false);
   /** What the server last refused, in its own words. */
   const [refusal, setRefusal] = useState<string | null>(null);
@@ -591,6 +639,33 @@ export function WorkSurface({
    */
   const [said, setSaid] = useState('');
   const [miss, setMiss] = useState<string | null>(null);
+
+  function updateDisplay(change: WorkDisplay | ((current: WorkDisplay) => WorkDisplay)): void {
+    setDisplay((current: WorkDisplay) => {
+      const next = typeof change === 'function' ? change(current) : change;
+      const params = new URLSearchParams(window.location.search);
+      const values: [string, string | null][] = [
+        ['search', next.search.trim() || null],
+        ['band', next.band === 'all' ? null : next.band],
+        ['kind', next.kind === 'all' ? null : next.kind],
+        ['claim', next.claim === 'all' ? null : next.claim],
+        ['order', next.order === 'rank' ? null : next.order],
+        ['group', next.group === 'status' ? null : next.group],
+        ['done', next.showDone ? '1' : null],
+      ];
+      for (const [key, value] of values) {
+        if (value === null) params.delete(key);
+        else params.set(key, value);
+      }
+      const query = params.toString();
+      window.history.replaceState(
+        null,
+        '',
+        query ? `${window.location.pathname}?${query}` : window.location.pathname,
+      );
+      return next;
+    });
+  }
 
   const projectId = workspace?.projectId ?? null;
 
@@ -699,12 +774,29 @@ export function WorkSurface({
     );
   }
 
+  async function reorder(activeId: string, overId: string): Promise<void> {
+    const ordered = reorderReady(tickets, activeId, overId);
+    if (ordered.length < 2 || ordered.findIndex((each) => each.id === activeId) < 0) return;
+
+    for (const [rank, ticket] of ordered.entries()) {
+      const answer = await window.kira.changeTicket(ticket.id, { rank });
+      if (!answer.ok) {
+        setRefusal(answer.error);
+        await read();
+        return;
+      }
+    }
+
+    setRefusal(null);
+    await read();
+  }
+
   if (workspace === null) {
     return (
       <div {...stylex.props(styles.root)}>
         <div {...stylex.props(styles.scroll)}>
           <EmptyState
-            title="No folder to work in yet"
+            title="No workspace selected"
             description="Open a folder from the sidebar. A folder is a workspace, and a workspace is where a project's work runs."
             icon={<Icon icon={FolderOpen} size="lg" />}
             headingLevel={2}
@@ -719,6 +811,14 @@ export function WorkSurface({
   }
 
   const tickets = queue?.tickets ?? [];
+  const visibleTickets = displayWork(tickets, display);
+  const visibleBands = display.showDone ? BANDS : BANDS.filter((each) => each.id !== 'done');
+  const canReorderReady =
+    display.order === 'rank' &&
+    display.search.trim() === '' &&
+    display.band === 'all' &&
+    display.kind === 'all' &&
+    display.claim === 'all';
   const counts = queue?.counts ?? {
     draft: 0,
     ready: 0,
@@ -735,7 +835,8 @@ export function WorkSurface({
    * click, because a list with nothing beside it is the one thing the reading is
    * for. The other two views open nothing until something is chosen.
    */
-  const shownId = view === 'split' ? (openId ?? firstIn(tickets, band)?.id ?? null) : openId;
+  const shownId =
+    view === 'split' ? (openId ?? firstIn(visibleTickets, 'all')?.id ?? null) : openId;
   const open = tickets.find((each) => each.id === shownId) ?? null;
   /** Where a ticket opens, which is the one thing the views disagree about. */
   const placement = view === 'board' ? 'over' : view === 'split' ? 'beside' : 'inline';
@@ -856,7 +957,14 @@ export function WorkSurface({
               if (!isView(next)) return;
               setView(next);
               setRefusal(null);
-              window.history.replaceState(null, '', `?view=${next}`);
+              const params = new URLSearchParams(window.location.search);
+              params.set('view', next);
+              const query = params.toString();
+              window.history.replaceState(
+                null,
+                '',
+                query ? `${window.location.pathname}?${query}` : window.location.pathname,
+              );
             }}
             label="How to read this queue"
             size="sm"
@@ -870,18 +978,104 @@ export function WorkSurface({
               />
             ))}
           </SegmentedControl>
-          {/* A name is what somebody has in hand when they have nothing else — a
-              chat message, a commit, a colleague talking — so it is asked for
-              where the queue's own controls are. */}
           <TextInput
-            label="Open a ticket by its name"
+            label="Search tickets"
+            isLabelHidden
+            size="sm"
+            width={190}
+            value={display.search}
+            placeholder="Search tickets"
+            isDisabled={queue === null}
+            disabledMessage={trouble === null ? 'Work is loading.' : undefined}
+            onChange={(next) => updateDisplay((current) => ({ ...current, search: next }))}
+          />
+          <Button
+            label={`Status: ${display.band === 'all' ? 'all' : BANDS.find((each) => each.id === display.band)?.label}`}
+            size="sm"
+            variant="ghost"
+            onClick={() =>
+              updateDisplay((current) => {
+                const index =
+                  current.band === 'all' ? -1 : BANDS.findIndex((each) => each.id === current.band);
+                const next = index >= BANDS.length - 1 ? 'all' : (BANDS[index + 1]?.id ?? 'all');
+                return { ...current, band: next };
+              })
+            }
+          />
+          <Button
+            label={`Kind: ${display.kind === 'all' ? 'all' : display.kind}`}
+            size="sm"
+            variant="ghost"
+            onClick={() =>
+              updateDisplay((current) => {
+                const index = current.kind === 'all' ? -1 : KINDS.indexOf(current.kind);
+                return {
+                  ...current,
+                  kind: index >= KINDS.length - 1 ? 'all' : (KINDS[index + 1] ?? 'all'),
+                };
+              })
+            }
+          />
+          <Button
+            label={`Claim: ${display.claim}`}
+            size="sm"
+            variant="ghost"
+            onClick={() =>
+              updateDisplay((current) => ({
+                ...current,
+                claim:
+                  current.claim === 'all'
+                    ? 'claimed'
+                    : current.claim === 'claimed'
+                      ? 'unclaimed'
+                      : 'all',
+              }))
+            }
+          />
+          <Button
+            label={display.group === 'status' ? 'Group: status' : 'Group: kind'}
+            size="sm"
+            variant="ghost"
+            onClick={() =>
+              updateDisplay((current) => ({
+                ...current,
+                group: current.group === 'status' ? 'kind' : 'status',
+              }))
+            }
+          />
+          <Button
+            label={display.order === 'rank' ? 'Order: priority' : `Order: ${display.order}`}
+            size="sm"
+            variant="ghost"
+            onClick={() =>
+              updateDisplay((current) => ({
+                ...current,
+                order:
+                  current.order === 'rank'
+                    ? 'updated'
+                    : current.order === 'updated'
+                      ? 'created'
+                      : 'rank',
+              }))
+            }
+          />
+          <Button
+            label={display.showDone ? 'Hide done' : 'Show done'}
+            size="sm"
+            variant="ghost"
+            onClick={() =>
+              updateDisplay((current) => ({ ...current, showDone: !current.showDone }))
+            }
+          />
+          <TextInput
+            label="Open a ticket by name"
             isLabelHidden
             size="sm"
             width={150}
             value={said}
-            placeholder="Say its name"
+            placeholder="Open by name"
             isDisabled={queue === null}
-            disabledMessage={trouble === null ? 'The queue is still being read.' : undefined}
+            disabledMessage={trouble === null ? 'Work is loading.' : undefined}
             status={miss === null || queue === null ? undefined : { type: 'error', message: miss }}
             onChange={(next) => {
               setSaid(next);
@@ -891,7 +1085,7 @@ export function WorkSurface({
           />
           <Button label="Open" size="sm" variant="ghost" isDisabled={!canOpen} onClick={openSaid} />
           <Button
-            label="New ticket"
+            label="New"
             icon={<Icon icon={Plus} size="sm" />}
             variant="secondary"
             size="sm"
@@ -920,7 +1114,7 @@ export function WorkSurface({
       ) : tickets.length === 0 && !isWriting ? (
         <div {...stylex.props(styles.scroll)}>
           <EmptyState
-            title="Nothing written down yet"
+            title="No tickets yet"
             description="A ticket says what to build and how it is known to be done. Write the first one and it lands among the drafts."
             icon={<Icon icon={FileText} size="lg" />}
             headingLevel={2}
@@ -934,27 +1128,53 @@ export function WorkSurface({
             }
           />
         </div>
+      ) : visibleTickets.length === 0 && !isWriting ? (
+        <div {...stylex.props(styles.scroll)}>
+          <EmptyState
+            title="No matching tickets"
+            description="Try a different search or clear the current filters."
+            icon={<Icon icon={FileText} size="lg" />}
+            headingLevel={2}
+            actions={
+              <Button
+                label="Clear filters"
+                variant="primary"
+                onClick={() => updateDisplay(DEFAULT_WORK_DISPLAY)}
+              />
+            }
+          />
+        </div>
       ) : view === 'board' ? (
         <BoardView
-          tickets={tickets}
+          tickets={visibleTickets}
+          bands={visibleBands}
           selected={openId}
           onOpen={openTicket}
           onPromote={(id) => void promote(id)}
+          canReorder={canReorderReady}
+          onReorder={(activeId, overId) => void reorder(activeId, overId)}
           panel={panel}
           onLeave={closePanel}
         />
       ) : view === 'split' ? (
         <SplitView
-          tickets={tickets}
+          tickets={visibleTickets}
           counts={counts}
-          band={band}
-          onBand={setBand}
+          band={display.band}
+          onBand={(next) => updateDisplay((current) => ({ ...current, band: next }))}
           selected={shownId ?? null}
           onOpen={openTicket}
           panel={panel}
         />
       ) : (
-        <QueueView tickets={tickets} selected={openId} onOpen={openTicket} panel={panel} />
+        <QueueView
+          tickets={visibleTickets}
+          bands={visibleBands}
+          group={display.group}
+          selected={openId}
+          onOpen={openTicket}
+          panel={panel}
+        />
       )}
     </div>
   );
@@ -965,7 +1185,7 @@ function QueueReadFailure({ trouble, onRetry }: { trouble: string; onRetry: () =
     <div {...stylex.props(styles.refusal)}>
       <Banner
         status="error"
-        title="The queue could not be read"
+        title="Could not load work"
         description={trouble}
         endContent={<Button label="Try again" size="sm" variant="secondary" onClick={onRetry} />}
       />
@@ -1165,15 +1385,58 @@ interface ViewProps {
   panel: ReactNode;
 }
 
-function QueueView({ tickets, onOpen, panel }: ViewProps) {
+function QueueView({
+  tickets,
+  bands,
+  group,
+  onOpen,
+  panel,
+}: ViewProps & { bands: typeof BANDS; group: WorkGroup }) {
   // The panel takes the queue's place whenever there is one — a ticket being read,
   // or one being written — because that is what `inline` means here. The queue is
   // what is left when there is nothing to read.
   if (panel !== null) return <div {...stylex.props(styles.scroll)}>{panel}</div>;
 
+  if (group === 'kind') {
+    return (
+      <div {...stylex.props(styles.scroll)}>
+        {groupedWork(tickets, 'kind').map((section) => (
+          <div key={section.key}>
+            <div {...stylex.props(styles.bandHead)}>
+              <Text type="label" weight="medium">
+                {section.label}{' '}
+                <span {...stylex.props(styles.count)}>{section.tickets.length}</span>
+              </Text>
+            </div>
+            <List density="compact" hasDividers>
+              {section.tickets.map((ticket) => (
+                <Item
+                  key={ticket.id}
+                  as="li"
+                  startContent={<StateGlyph ticket={ticket} />}
+                  label={ticket.title || 'Untitled'}
+                  labelLines={1}
+                  description={
+                    <span {...stylex.props(styles.meta)}>
+                      <Text type="supporting" color="secondary">
+                        {ticket.name}
+                      </Text>
+                      <Holding ticket={ticket} />
+                    </span>
+                  }
+                  onClick={() => onOpen(ticket.id)}
+                />
+              ))}
+            </List>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div {...stylex.props(styles.scroll)}>
-      {BANDS.map((band) => (
+      {bands.map((band) => (
         <Band key={band.id} band={band} tickets={inBand(tickets, band.id)} onOpen={onOpen} />
       ))}
     </div>
@@ -1182,76 +1445,160 @@ function QueueView({ tickets, onOpen, panel }: ViewProps) {
 
 function BoardView({
   tickets,
+  bands,
   selected,
   onOpen,
   onPromote,
+  canReorder,
+  onReorder,
   panel,
   onLeave,
-}: ViewProps & { onPromote: (id: string) => void; onLeave: () => void }) {
-  return (
-    <div {...stylex.props(styles.board)}>
-      {BANDS.map((band) => (
-        <div key={band.id} {...stylex.props(styles.column)}>
-          <div {...stylex.props(styles.bandHead, styles.columnHead)}>
-            <BandHead band={band} count={inBand(tickets, band.id).length} />
-          </div>
-          <div {...stylex.props(styles.cards)}>
-            {inBand(tickets, band.id).map((ticket) => (
-              <ClickableCard
-                key={ticket.id}
-                label={`Open ${ticket.name}`}
-                padding={2}
-                variant={ticket.id === selected ? 'muted' : 'default'}
-                onClick={() => onOpen(ticket.id)}
-              >
-                <span {...stylex.props(styles.cardBody)}>
-                  <Text type="label" weight="medium" maxLines={2}>
-                    {ticket.title || 'Untitled'}
-                  </Text>
-                  <span {...stylex.props(styles.meta)}>
-                    <Text type="supporting" color="secondary">
-                      {ticket.name}
-                    </Text>
-                    <KindTag kind={ticket.kind} />
-                  </span>
-                  <span {...stylex.props(styles.cardFoot)}>
-                    <Holding ticket={ticket} />
-                    {band.id === 'ready' && (
-                      <IconButton
-                        label={`Move ${ticket.name} to the front of Ready`}
-                        icon={<Icon icon={ArrowUp} size="sm" />}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onPromote(ticket.id);
-                        }}
-                      />
-                    )}
-                  </span>
-                </span>
-              </ClickableCard>
-            ))}
-            {inBand(tickets, band.id).length === 0 && (
-              <Text type="supporting" color="secondary">
-                Nothing here.
-              </Text>
-            )}
-          </div>
-        </div>
-      ))}
+}: ViewProps & {
+  bands: typeof BANDS;
+  onPromote: (id: string) => void;
+  canReorder: boolean;
+  onReorder: (activeId: string, overId: string) => void;
+  onLeave: () => void;
+}) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  const handleDragEnd = ({ active, over }: DragEndEvent): void => {
+    if (!canReorder || over === null || active.id === over.id) return;
+    const activeTicket = tickets.find((ticket) => ticket.id === active.id);
+    const overTicket = tickets.find((ticket) => ticket.id === over.id);
+    if (activeTicket?.band !== 'ready' || overTicket?.band !== 'ready') return;
+    onReorder(String(active.id), String(over.id));
+  };
 
-      {panel !== null && (
-        <>
-          {/* The scrim is a button rather than a decorated div: leaving by clicking
-              outside the ticket is an action, and one the keyboard can take too. */}
-          <button
-            type="button"
-            aria-label="Close the ticket"
-            {...stylex.props(styles.scrim)}
-            onClick={onLeave}
-          />
-          <div {...stylex.props(styles.drawer)}>{panel}</div>
-        </>
-      )}
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <div {...stylex.props(styles.board)}>
+        {bands.map((band) => {
+          const held = inBand(tickets, band.id);
+          return (
+            <div key={band.id} {...stylex.props(styles.column)}>
+              <div {...stylex.props(styles.bandHead, styles.columnHead)}>
+                <BandHead band={band} count={held.length} />
+              </div>
+              <div {...stylex.props(styles.cards)}>
+                <SortableContext
+                  items={held.map((ticket) => ticket.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {held.map((ticket) => (
+                    <SortableTicketCard
+                      key={ticket.id}
+                      ticket={ticket}
+                      selected={ticket.id === selected}
+                      canReorder={canReorder && band.id === 'ready'}
+                      onOpen={onOpen}
+                      onPromote={onPromote}
+                    />
+                  ))}
+                </SortableContext>
+                {held.length === 0 && (
+                  <Text type="supporting" color="secondary">
+                    No tickets in this state.
+                  </Text>
+                )}
+              </div>
+            </div>
+          );
+        })}
+
+        {panel !== null && (
+          <>
+            {/* The scrim is a button rather than a decorated div: leaving by clicking
+                outside the ticket is an action, and one the keyboard can take too. */}
+            <button
+              type="button"
+              aria-label="Close the ticket"
+              {...stylex.props(styles.scrim)}
+              onClick={onLeave}
+            />
+            <div {...stylex.props(styles.drawer)}>{panel}</div>
+          </>
+        )}
+      </div>
+    </DndContext>
+  );
+}
+
+function SortableTicketCard({
+  ticket,
+  selected,
+  canReorder,
+  onOpen,
+  onPromote,
+}: {
+  ticket: Ticket;
+  selected: boolean;
+  canReorder: boolean;
+  onOpen: (id: string) => void;
+  onPromote: (id: string) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: ticket.id,
+    disabled: !canReorder,
+  });
+  const transformStyle =
+    transform === null
+      ? undefined
+      : `translate3d(${transform.x}px, ${transform.y}px, 0) scaleX(${transform.scaleX}) scaleY(${transform.scaleY})`;
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: transformStyle, transition }}
+      {...stylex.props(isDragging && styles.cardDragging)}
+    >
+      <ClickableCard
+        label={`Open ${ticket.name}`}
+        padding={2}
+        variant={selected ? 'muted' : 'default'}
+        onClick={() => onOpen(ticket.id)}
+      >
+        <span {...stylex.props(styles.cardBody)}>
+          <Text type="label" weight="medium" maxLines={2}>
+            {ticket.title || 'Untitled'}
+          </Text>
+          <span {...stylex.props(styles.meta)}>
+            <Text type="supporting" color="secondary">
+              {ticket.name}
+            </Text>
+            <KindTag kind={ticket.kind} />
+          </span>
+          <span {...stylex.props(styles.cardFoot)}>
+            <Holding ticket={ticket} />
+            <span {...stylex.props(styles.meta)}>
+              {canReorder && (
+                <button
+                  type="button"
+                  aria-label={`Reorder ${ticket.name}`}
+                  {...stylex.props(styles.dragHandle)}
+                  {...attributes}
+                  {...listeners}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <Icon icon={GripVertical} size="sm" />
+                </button>
+              )}
+              {ticket.band === 'ready' && (
+                <IconButton
+                  label={`Move ${ticket.name} to the front of Ready`}
+                  icon={<Icon icon={ArrowUp} size="sm" />}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onPromote(ticket.id);
+                  }}
+                />
+              )}
+            </span>
+          </span>
+        </span>
+      </ClickableCard>
     </div>
   );
 }
@@ -1456,7 +1803,7 @@ function TicketPanel({
       </div>
       {refusal !== null && (
         <div {...stylex.props(styles.refusal)}>
-          <Banner status="error" title="Kira would not take that" description={refusal} />
+          <Banner status="error" title="Action could not be completed" description={refusal} />
         </div>
       )}
       <div {...stylex.props(styles.panelBody)}>{children}</div>
@@ -1560,7 +1907,7 @@ function TicketReading({
               }
             />
             <Button
-              label="Won’t do it"
+              label="Close as not doing"
               size="sm"
               variant="secondary"
               isDisabled={isBusy}
@@ -1580,7 +1927,7 @@ function TicketReading({
                 when it says no. */}
             {ticket.band === 'ready' && (
               <Button
-                label="Run it"
+                label="Start run"
                 size="sm"
                 variant="primary"
                 isDisabled={isBusy}
@@ -1590,7 +1937,7 @@ function TicketReading({
             {ticket.kind === 'question' &&
               (ticket.band === 'ready' || ticket.band === 'needs-you') && (
                 <Button
-                  label={ticket.band === 'needs-you' ? 'Resume with Kira' : 'Work with Kira'}
+                  label={ticket.band === 'needs-you' ? 'Resume question' : 'Start question'}
                   size="sm"
                   variant="primary"
                   isDisabled={isBusy}
@@ -1620,14 +1967,14 @@ function TicketReading({
                   />
                 )}
                 <Button
-                  label="Accept it"
+                  label="Accept result"
                   size="sm"
                   variant="primary"
                   isDisabled={isBusy}
                   onClick={() => void run(() => onJudge('accepted'))}
                 />
                 <Button
-                  label="Send it back"
+                  label="Send back"
                   size="sm"
                   variant="secondary"
                   isDisabled={isBusy}
@@ -1639,7 +1986,7 @@ function TicketReading({
                 without this a ticket taken over would sit in Running for good. */}
             {ticket.claim !== null && ticket.claim.workerId === null && (
               <Button
-                label="Let it go"
+                label="Release claim"
                 size="sm"
                 variant="ghost"
                 isDisabled={isBusy}
@@ -1649,14 +1996,14 @@ function TicketReading({
             {ticket.gate === 'draft' ? (
               <>
                 <Button
-                  label="Ready for an agent"
+                  label="Mark ready for an agent"
                   size="sm"
                   variant="primary"
                   isDisabled={isBusy}
                   onClick={() => void run(() => onWrite({ gate: 'ready-for-agent' }))}
                 />
                 <Button
-                  label="Ready for a person"
+                  label="Mark ready for a person"
                   size="sm"
                   variant="secondary"
                   isDisabled={isBusy}
@@ -1665,7 +2012,7 @@ function TicketReading({
               </>
             ) : (
               <Button
-                label="Back to a draft"
+                label="Return to draft"
                 size="sm"
                 variant="secondary"
                 isDisabled={isBusy}
@@ -1719,7 +2066,7 @@ function TicketReading({
         <>
           <section {...stylex.props(styles.section)}>
             <Text type="label" weight="medium">
-              What to build
+              Description
             </Text>
             <Text type="body">{ticket.body === '' ? 'Nothing written yet.' : ticket.body}</Text>
           </section>
@@ -2186,17 +2533,17 @@ function TicketForm({
       head={
         <>
           <Text type="label" weight="medium">
-            A new ticket
+            New ticket
           </Text>
           <Text type="supporting" color="secondary">
-            It lands among the drafts. Nothing is asked of an agent until you mark it ready.
+            New tickets start as drafts. Mark one ready when it is clear enough to run.
           </Text>
         </>
       }
       foot={
         <>
           <Button
-            label={isBusy ? 'Writing it down' : 'Write it down'}
+            label={isBusy ? 'Creating ticket' : 'Create ticket'}
             size="sm"
             variant="primary"
             isDisabled={isBusy}
@@ -2242,7 +2589,7 @@ function TicketForm({
           description="What it is called, in one line. A ticket's branch is named from it."
         />
         <TextArea
-          label="What to build"
+          label="Description"
           value={body}
           onChange={setBody}
           description="Enough that whoever runs it needs nothing else to hand."
@@ -2284,7 +2631,7 @@ function TicketEdit({
   return (
     <div {...stylex.props(styles.formFields)}>
       <TextInput label="Title" value={title} onChange={setTitle} size="sm" />
-      <TextArea label="What to build" value={body} onChange={setBody} rows={6} />
+      <TextArea label="Description" value={body} onChange={setBody} rows={6} />
       <Text type="label" weight="medium">
         Acceptance criteria
       </Text>
@@ -2357,7 +2704,31 @@ function isKind(value: string): value is TicketKind {
   return KINDS.some((each) => each === value);
 }
 
-/** Which reading the window opens on, from `?view=` — Queue, because it explains itself. */
+function isBand(value: string): value is Band {
+  return BANDS.some((each) => each.id === value);
+}
+
+function readDisplay(): WorkDisplay {
+  const params = new URLSearchParams(window.location.search);
+  const band = params.get('band');
+  const kind = params.get('kind');
+  const claim = params.get('claim');
+  const order = params.get('order');
+  const group = params.get('group');
+
+  return {
+    ...DEFAULT_WORK_DISPLAY,
+    search: params.get('search') ?? '',
+    band: band !== null && isBand(band) ? band : DEFAULT_WORK_DISPLAY.band,
+    kind: kind !== null && isKind(kind) ? kind : DEFAULT_WORK_DISPLAY.kind,
+    claim: claim === 'claimed' || claim === 'unclaimed' ? claim : DEFAULT_WORK_DISPLAY.claim,
+    order: order === 'updated' || order === 'created' ? order : DEFAULT_WORK_DISPLAY.order,
+    group: group === 'kind' ? 'kind' : DEFAULT_WORK_DISPLAY.group,
+    showDone: params.get('done') === '1',
+  };
+}
+
+/** Which reading the window opens on, from `?view=` — List is the default. */
 function readView(): View {
   const asked = new URLSearchParams(window.location.search).get('view') ?? '';
 

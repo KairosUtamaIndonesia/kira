@@ -120,7 +120,7 @@ export function WorkHome({
           Work
         </Text>
         <Text type="supporting" color="secondary">
-          Projects and the local folders available to run their tickets.
+          Projects and the workspaces where you run their tickets.
         </Text>
       </header>
 
@@ -156,7 +156,7 @@ export function WorkHome({
           {projects !== null && projects.length === 0 && (
             <EmptyState
               title="No projects yet"
-              description="Projects available to your account will appear here. Open a workspace to start or join a project."
+              description="Projects shared with your account appear here. Link a workspace to open its ticket queue."
               icon={<Icon icon={Ticket} size="lg" />}
               headingLevel={2}
             />
@@ -177,18 +177,18 @@ export function WorkHome({
                       label={project.name}
                       description={`${project.prefix} · ${
                         linked.length === 0
-                          ? 'No local workspace'
-                          : `${linked.length} local ${linked.length === 1 ? 'workspace' : 'workspaces'}`
+                          ? 'No workspace linked'
+                          : `${linked.length} linked ${linked.length === 1 ? 'workspace' : 'workspaces'}`
                       }`}
                       startContent={<Icon icon={Ticket} size="sm" />}
                       endContent={
                         <Text type="supporting" color="secondary">
                           {linked.length > 1
                             ? selected
-                              ? 'Hide folders'
-                              : 'Choose folder'
+                              ? 'Hide workspaces'
+                              : 'Choose workspace'
                             : linked.length === 0
-                              ? 'Choose folder'
+                              ? 'Link workspace'
                               : 'Open'}
                         </Text>
                       }
@@ -201,7 +201,7 @@ export function WorkHome({
               {selectedProject !== null && selectedWorkspaces.length > 1 && (
                 <section {...stylex.props(styles.workspaceList)}>
                   <Text type="label" weight="medium">
-                    Choose a folder for {selectedProject.name}
+                    Choose a workspace for {selectedProject.name}
                   </Text>
                   <List density="compact">
                     {selectedWorkspaces.map((workspace) => (
