@@ -1,7 +1,14 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import type { Ticket } from '../../preload/bridge.ts';
-import { DEFAULT_WORK_DISPLAY, displayWork, groupedWork, reorderReady } from './workDisplay.ts';
+import {
+  canReorderReady,
+  DEFAULT_WORK_DISPLAY,
+  displayWork,
+  groupedWork,
+  readWorkDisplay,
+  reorderReady,
+} from './workDisplay.ts';
 
 function ticket(overrides: Partial<Ticket> = {}): Ticket {
   return {
@@ -29,6 +36,32 @@ function ticket(overrides: Partial<Ticket> = {}): Ticket {
     ...overrides,
   };
 }
+
+test('readWorkDisplay restores persisted filters and rejects invalid values', () => {
+  assert.deepEqual(
+    readWorkDisplay(
+      '?search=bug&band=ready&kind=bug&claim=unclaimed&order=updated&group=kind&done=1',
+    ),
+    {
+      ...DEFAULT_WORK_DISPLAY,
+      search: 'bug',
+      band: 'ready',
+      kind: 'bug',
+      claim: 'unclaimed',
+      order: 'updated',
+      group: 'kind',
+      showDone: true,
+    },
+  );
+  assert.deepEqual(readWorkDisplay('?claim=invalid&band=unknown'), DEFAULT_WORK_DISPLAY);
+});
+
+test('canReorderReady only allows the unfiltered priority order', () => {
+  assert.equal(canReorderReady(DEFAULT_WORK_DISPLAY), true);
+  assert.equal(canReorderReady({ ...DEFAULT_WORK_DISPLAY, search: 'bug' }), false);
+  assert.equal(canReorderReady({ ...DEFAULT_WORK_DISPLAY, order: 'updated' }), false);
+  assert.equal(canReorderReady({ ...DEFAULT_WORK_DISPLAY, claim: 'claimed' }), false);
+});
 
 test('displayWork searches, filters, hides done by default, and orders the result', () => {
   const tickets = [

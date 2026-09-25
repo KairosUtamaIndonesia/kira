@@ -24,6 +24,53 @@ export const DEFAULT_WORK_DISPLAY: WorkDisplay = {
   showDone: false,
 };
 
+export function readWorkDisplay(search: string): WorkDisplay {
+  const params = new URLSearchParams(search);
+  const band = params.get('band');
+  const kind = params.get('kind');
+  const claim = params.get('claim');
+  const order = params.get('order');
+  const group = params.get('group');
+
+  return {
+    ...DEFAULT_WORK_DISPLAY,
+    search: params.get('search') ?? '',
+    band: band !== null && isBand(band) ? band : DEFAULT_WORK_DISPLAY.band,
+    kind: kind !== null && isKind(kind) ? kind : DEFAULT_WORK_DISPLAY.kind,
+    claim: claim === 'claimed' || claim === 'unclaimed' ? claim : DEFAULT_WORK_DISPLAY.claim,
+    order: order === 'updated' || order === 'created' ? order : DEFAULT_WORK_DISPLAY.order,
+    group: group === 'kind' ? 'kind' : DEFAULT_WORK_DISPLAY.group,
+    showDone: params.get('done') === '1',
+  };
+}
+
+export function canReorderReady(display: WorkDisplay): boolean {
+  return (
+    display.order === 'rank' &&
+    display.search.trim() === '' &&
+    display.band === 'all' &&
+    display.kind === 'all' &&
+    display.claim === 'all'
+  );
+}
+
+function isKind(value: string): value is TicketKind {
+  return [
+    'prototype',
+    'bug',
+    'feature',
+    'refactor',
+    'question',
+    'research',
+    'spec',
+    'map',
+  ].includes(value);
+}
+
+function isBand(value: string): value is Band {
+  return ['draft', 'ready', 'blocked', 'running', 'needs-you', 'done'].includes(value);
+}
+
 const BAND_LABELS: Record<Band, string> = {
   draft: 'Drafts',
   ready: 'Ready',

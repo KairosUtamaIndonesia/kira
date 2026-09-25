@@ -90,9 +90,11 @@ import {
   when,
 } from './workRows.ts';
 import {
+  canReorderReady,
   DEFAULT_WORK_DISPLAY,
   displayWork,
   groupedWork,
+  readWorkDisplay,
   type WorkDisplay,
   type WorkGroup,
   reorderReady,
@@ -628,7 +630,9 @@ export function WorkSurface({
   const [trouble, setTrouble] = useState<string | null>(null);
   const [view, setView] = useState<View>(readView);
   const [openId, setOpenId] = useState<string | null>(initialTicketId ?? null);
-  const [display, setDisplay] = useState<WorkDisplay>(readDisplay);
+  const [display, setDisplay] = useState<WorkDisplay>(() =>
+    readWorkDisplay(window.location.search),
+  );
   const [isWriting, setIsWriting] = useState(false);
   /** What the server last refused, in its own words. */
   const [refusal, setRefusal] = useState<string | null>(null);
@@ -813,12 +817,7 @@ export function WorkSurface({
   const tickets = queue?.tickets ?? [];
   const visibleTickets = displayWork(tickets, display);
   const visibleBands = display.showDone ? BANDS : BANDS.filter((each) => each.id !== 'done');
-  const canReorderReady =
-    display.order === 'rank' &&
-    display.search.trim() === '' &&
-    display.band === 'all' &&
-    display.kind === 'all' &&
-    display.claim === 'all';
+  const readyCanReorder = canReorderReady(display);
   const counts = queue?.counts ?? {
     draft: 0,
     ready: 0,
@@ -1151,7 +1150,7 @@ export function WorkSurface({
           selected={openId}
           onOpen={openTicket}
           onPromote={(id) => void promote(id)}
-          canReorder={canReorderReady}
+          canReorder={readyCanReorder}
           onReorder={(activeId, overId) => void reorder(activeId, overId)}
           panel={panel}
           onLeave={closePanel}
@@ -2565,7 +2564,7 @@ function TicketForm({
           <SegmentedControl
             value={kind}
             onChange={(next) => {
-              if (isKind(next)) setKind(next);
+              if (KINDS.some((each) => each === next)) setKind(next as TicketKind);
             }}
             label="What kind of work this is"
             size="sm"
@@ -2698,34 +2697,6 @@ function CriteriaFields({
 
 function isView(value: string): value is View {
   return VIEWS.some((each) => each.id === value);
-}
-
-function isKind(value: string): value is TicketKind {
-  return KINDS.some((each) => each === value);
-}
-
-function isBand(value: string): value is Band {
-  return BANDS.some((each) => each.id === value);
-}
-
-function readDisplay(): WorkDisplay {
-  const params = new URLSearchParams(window.location.search);
-  const band = params.get('band');
-  const kind = params.get('kind');
-  const claim = params.get('claim');
-  const order = params.get('order');
-  const group = params.get('group');
-
-  return {
-    ...DEFAULT_WORK_DISPLAY,
-    search: params.get('search') ?? '',
-    band: band !== null && isBand(band) ? band : DEFAULT_WORK_DISPLAY.band,
-    kind: kind !== null && isKind(kind) ? kind : DEFAULT_WORK_DISPLAY.kind,
-    claim: claim === 'claimed' || claim === 'unclaimed' ? claim : DEFAULT_WORK_DISPLAY.claim,
-    order: order === 'updated' || order === 'created' ? order : DEFAULT_WORK_DISPLAY.order,
-    group: group === 'kind' ? 'kind' : DEFAULT_WORK_DISPLAY.group,
-    showDone: params.get('done') === '1',
-  };
 }
 
 /** Which reading the window opens on, from `?view=` — List is the default. */
