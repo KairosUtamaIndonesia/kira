@@ -71,9 +71,21 @@ const child = (closed: boolean, closure: 'done' | 'wontfix' | null = null) => ({
 
 test('only a childless spec is waiting to be broken into tickets', () => {
   const cases = [
-    { name: 'a blocked spec with no children', held: ticket({ kind: 'spec', band: 'blocked' }), want: true },
-    { name: 'a spec with children', held: ticket({ kind: 'spec', children: [child(false)] }), want: false },
-    { name: 'an empty feature ticket', held: ticket({ kind: 'feature', band: 'blocked' }), want: false },
+    {
+      name: 'a blocked spec with no children',
+      held: ticket({ kind: 'spec', band: 'blocked' }),
+      want: true,
+    },
+    {
+      name: 'a spec with children',
+      held: ticket({ kind: 'spec', children: [child(false)] }),
+      want: false,
+    },
+    {
+      name: 'an empty feature ticket',
+      held: ticket({ kind: 'feature', band: 'blocked' }),
+      want: false,
+    },
   ];
 
   for (const testCase of cases) {
@@ -271,7 +283,7 @@ test('a prefix is suggested from the folder, and is always one the server takes'
   const cases: { name: string; folder: string; want: string }[] = [
     { name: 'a plain name', folder: 'kira', want: 'KIRA' },
     { name: 'a name with a dash', folder: 'my-project', want: 'MYPROJ' },
-    { name: 'a name with a space', folder: 'Kira Desktop', want: 'FOUNDR' },
+    { name: 'a name with a space', folder: 'Kira Desktop', want: 'KIRADE' },
     { name: 'a name that starts with a digit', folder: '123', want: 'F123' },
     { name: 'a name with nothing usable in it', folder: '—', want: 'PROJ' },
     { name: 'an empty name', folder: '', want: 'PROJ' },

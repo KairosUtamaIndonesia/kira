@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import {
   discoverOAuthServerInfo,
   exchangeAuthorization,
@@ -53,7 +53,9 @@ export function mcpOAuth({
     const generation = generations.get(serverId) ?? 0;
     const current = (): boolean => (generations.get(serverId) ?? 0) === generation;
 
-    function clientInformation(ctx?: OAuthClientInformationContext): StoredOAuthClientInformation | undefined {
+    function clientInformation(
+      ctx?: OAuthClientInformationContext,
+    ): StoredOAuthClientInformation | undefined {
       if (!current()) return undefined;
       const value = secrets.readOAuth(serverId)?.clientInformation;
       if (ctx?.issuer !== undefined && value?.issuer !== undefined && value.issuer !== ctx.issuer) {
@@ -106,12 +108,13 @@ export function mcpOAuth({
         if (!current()) return;
         await secrets.updateOAuth(serverId, { codeVerifier });
       },
-      codeVerifier: async () => current() ? secrets.readOAuth(serverId)?.codeVerifier ?? '' : '',
+      codeVerifier: async () =>
+        current() ? (secrets.readOAuth(serverId)?.codeVerifier ?? '') : '',
       saveDiscoveryState: async (state) => {
         if (!current()) return;
         await secrets.updateOAuth(serverId, { discoveryState: state });
       },
-      discoveryState: () => current() ? secrets.readOAuth(serverId)?.discoveryState : undefined,
+      discoveryState: () => (current() ? secrets.readOAuth(serverId)?.discoveryState : undefined),
       async invalidateCredentials(scope) {
         if (!current()) return;
         if (scope === 'all') {
@@ -171,9 +174,10 @@ export function mcpOAuth({
       await secrets.updateOAuth(serverId, { clientInformation, discoveryState });
       ensureCurrent();
 
-      const resource = serverInfo.resourceMetadata?.resource === undefined
-        ? undefined
-        : new URL(serverInfo.resourceMetadata.resource);
+      const resource =
+        serverInfo.resourceMetadata?.resource === undefined
+          ? undefined
+          : new URL(serverInfo.resourceMetadata.resource);
       const authorization = await startAuthorization(serverInfo.authorizationServerUrl, {
         metadata,
         clientInformation,
@@ -204,7 +208,8 @@ export function mcpOAuth({
       if (callbackState !== state) throw new Error('MCP sign-in callback state did not match.');
       if (one(values, 'error') !== undefined) throw new Error('MCP server sign-in was declined.');
       const code = one(values, 'code');
-      if (code === undefined || code === '') throw new Error('MCP sign-in callback did not include an authorization code.');
+      if (code === undefined || code === '')
+        throw new Error('MCP sign-in callback did not include an authorization code.');
       const iss = one(values, 'iss');
       const tokens = await exchangeAuthorization(serverInfo.authorizationServerUrl, {
         metadata,
@@ -222,17 +227,20 @@ export function mcpOAuth({
       });
     } catch (error) {
       await secrets.updateOAuth(serverId, { codeVerifier: null }).catch(() => undefined);
-      if (error instanceof Error && (
-        error.message === SIGN_IN_CANCELLED
-        || error.message === 'MCP sign-in callback state did not match.'
-        || error.message === 'MCP server sign-in was declined.'
-        || error.message === 'MCP sign-in callback did not include an authorization code.'
-        || error.message === 'Could not open the system browser for MCP sign-in.'
-        || error.message === 'The MCP server did not provide usable OAuth authorization metadata.'
-        || error.message === 'MCP sign-in is already in progress.'
-        || error.message === 'OAuth credentials require OS-backed encrypted storage.'
-        || error.message === 'Saved MCP OAuth credentials are unavailable; clear them before replacing.'
-      )) throw error;
+      if (
+        error instanceof Error &&
+        (error.message === SIGN_IN_CANCELLED ||
+          error.message === 'MCP sign-in callback state did not match.' ||
+          error.message === 'MCP server sign-in was declined.' ||
+          error.message === 'MCP sign-in callback did not include an authorization code.' ||
+          error.message === 'Could not open the system browser for MCP sign-in.' ||
+          error.message === 'The MCP server did not provide usable OAuth authorization metadata.' ||
+          error.message === 'MCP sign-in is already in progress.' ||
+          error.message === 'OAuth credentials require OS-backed encrypted storage.' ||
+          error.message ===
+            'Saved MCP OAuth credentials are unavailable; clear them before replacing.')
+      )
+        throw error;
       throw new Error('Could not complete MCP sign-in. Check the server URL and try again.');
     } finally {
       await callback?.close();
@@ -271,7 +279,7 @@ function clientMetadata(redirectUri: string): OAuthClientMetadata {
 }
 
 function withIssuer<T extends object>(value: T, issuer?: string): T & { issuer?: string } {
-  return issuer === undefined ? value as T & { issuer?: string } : { ...value, issuer };
+  return issuer === undefined ? (value as T & { issuer?: string }) : { ...value, issuer };
 }
 
 function one(values: URLSearchParams, key: string): string | undefined {
@@ -341,10 +349,10 @@ function handleCallback(
   reject: (reason: Error) => void,
 ): void {
   if (
-    request.method !== 'GET'
-    || request.url === undefined
-    || request.headers.host !== redirectUrl.host
-    || !request.url.startsWith('/')
+    request.method !== 'GET' ||
+    request.url === undefined ||
+    request.headers.host !== redirectUrl.host ||
+    !request.url.startsWith('/')
   ) {
     response.writeHead(404).end();
     return;
@@ -357,7 +365,9 @@ function handleCallback(
   }
   const values = callback.searchParams;
   if (one(values, 'state') !== expectedState) {
-    response.writeHead(400, { 'content-type': 'text/plain' }).end('This sign-in link is not valid.');
+    response
+      .writeHead(400, { 'content-type': 'text/plain' })
+      .end('This sign-in link is not valid.');
     return;
   }
   if (values.has('error')) {
@@ -366,7 +376,9 @@ function handleCallback(
     return;
   }
   if (one(values, 'code') === undefined) {
-    response.writeHead(400, { 'content-type': 'text/plain' }).end('This sign-in link is incomplete.');
+    response
+      .writeHead(400, { 'content-type': 'text/plain' })
+      .end('This sign-in link is incomplete.');
     reject(new Error('MCP sign-in callback did not include an authorization code.'));
     return;
   }

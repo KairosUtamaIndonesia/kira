@@ -11,7 +11,8 @@
  * covers that — but what this desktop does with an answer, including the ones that
  * never arrive.
  */
-import { describe, expect, test } from 'bun:test';
+import { strict as assert } from 'node:assert';
+import { describe, test } from 'node:test';
 import type { StoredKey } from './auth/keys.ts';
 import type { TrackerAnswer } from './tracker.ts';
 import { workerFor, type WorkerWire } from './worker.ts';
@@ -98,8 +99,8 @@ describe('a desktop offering itself', () => {
 
     const standing = await worker.offer();
 
-    expect(made.asked).toEqual([]);
-    expect(standing).toEqual({ name: 'brandon-laptop', here: false, trouble: null });
+    assert.deepEqual(made.asked, []);
+    assert.deepEqual(standing, { name: 'brandon-laptop', here: false, trouble: null });
   });
 
   test('offers its name, its machine, and the folders it can run in', async () => {
@@ -109,12 +110,12 @@ describe('a desktop offering itself', () => {
 
     const standing = await worker.offer();
 
-    expect(standing).toEqual({ name: 'brandon-laptop', here: true, trouble: null });
-    expect(made.asked).toHaveLength(1);
-    expect(made.asked[0]?.what).toBe('offer');
-    expect(made.asked[0]?.key).toBe('key-ada');
-    expect(made.asked[0]?.name).toBe('brandon-laptop');
-    expect(made.asked[0]?.workspaces).toEqual([
+    assert.deepEqual(standing, { name: 'brandon-laptop', here: true, trouble: null });
+    assert.equal(made.asked.length, 1);
+    assert.equal(made.asked[0]?.what, 'offer');
+    assert.equal(made.asked[0]?.key, 'key-ada');
+    assert.equal(made.asked[0]?.name, 'brandon-laptop');
+    assert.deepEqual(made.asked[0]?.workspaces, [
       '/home/brandon/Workspace/kira',
       '/home/brandon/Workspace/kira',
     ]);
@@ -126,11 +127,14 @@ describe('a desktop offering itself', () => {
     await worker.offer();
     await worker.offer();
 
-    expect(made.asked.map((each) => each.what)).toEqual(['offer', 'beat']);
+    assert.deepEqual(
+      made.asked.map((each) => each.what),
+      ['offer', 'beat'],
+    );
     // The same worker both times: a heartbeat for anybody else's id would be a
     // desktop claiming to be a machine it is not.
-    expect(made.asked[1]?.id).toBe(made.asked[0]?.id);
-    expect(made.asked[1]?.workspaces).toEqual(['/home/brandon/Workspace/kira']);
+    assert.equal(made.asked[1]?.id, made.asked[0]?.id);
+    assert.deepEqual(made.asked[1]?.workspaces, ['/home/brandon/Workspace/kira']);
   });
 
   test('is the same worker after a restart, and a different one for a different person', async () => {
@@ -140,34 +144,34 @@ describe('a desktop offering itself', () => {
     // A restart: the same key on the same machine, a new keeper.
     const again = workerOn(ADA);
     await again.worker.offer();
-    expect(again.made.asked[0]?.id).toBe(first.made.asked[0]?.id);
+    assert.equal(again.made.asked[0]?.id, first.made.asked[0]?.id);
 
     // Somebody else on the same machine is somebody else's worker, so neither can
     // hold the other's claims.
     const other = workerOn(GRACE);
     await other.worker.offer();
-    expect(other.made.asked[0]?.id).not.toBe(first.made.asked[0]?.id);
+    assert.notEqual(other.made.asked[0]?.id, first.made.asked[0]?.id);
 
     // And the same person somewhere else is a different machine.
     const elsewhere = workerOn(ADA, wire(), { device: 'brandon-desktop' });
     await elsewhere.worker.offer();
-    expect(elsewhere.made.asked[0]?.id).not.toBe(first.made.asked[0]?.id);
+    assert.notEqual(elsewhere.made.asked[0]?.id, first.made.asked[0]?.id);
 
     // Nothing about it says who it is: it is an identifier, not an address.
-    expect(first.made.asked[0]?.id).not.toInclude('ada');
-    expect(first.made.asked[0]?.id).not.toInclude('brandon-laptop');
+    assert.equal(first.made.asked[0]?.id?.includes('ada'), false);
+    assert.equal(first.made.asked[0]?.id?.includes('brandon-laptop'), false);
   });
 
   test('keeps what went wrong rather than failing quietly', async () => {
     const unreachable = workerOn(ADA, wire({ kind: 'unavailable' }));
     const standing = await unreachable.worker.offer();
 
-    expect(standing.here).toBe(false);
-    expect(standing.trouble).toBe('Kira could not be reached.');
+    assert.equal(standing.here, false);
+    assert.equal(standing.trouble, 'Kira could not be reached.');
 
     const refused = workerOn(ADA, wire({ kind: 'refused', message: 'No such prefix.' }));
     const refusedStanding = await refused.worker.offer();
-    expect(refusedStanding).toEqual({
+    assert.deepEqual(refusedStanding, {
       name: 'brandon-laptop',
       here: false,
       trouble: 'No such prefix.',
@@ -175,8 +179,8 @@ describe('a desktop offering itself', () => {
 
     const stale = workerOn(ADA, wire({ kind: 'signed-out' }));
     const staleStanding = await stale.worker.offer();
-    expect(staleStanding.here).toBe(false);
-    expect(staleStanding.trouble).toBe('Kira no longer recognises this desktop.');
+    assert.equal(staleStanding.here, false);
+    assert.equal(staleStanding.trouble, 'Kira no longer recognises this desktop.');
   });
 
   test('offers again from scratch after a refused offering, rather than heartbeating it', async () => {
@@ -188,7 +192,10 @@ describe('a desktop offering itself', () => {
 
     // Nothing was written the first time, so the second attempt is an offering and not
     // a heartbeat for a worker the server has never met.
-    expect(made.asked.map((each) => each.what)).toEqual(['offer', 'offer']);
+    assert.deepEqual(
+      made.asked.map((each) => each.what),
+      ['offer', 'offer'],
+    );
   });
 
   test('says goodbye when it stops, and again is not another goodbye', async () => {
@@ -197,12 +204,15 @@ describe('a desktop offering itself', () => {
     await worker.offer();
     await worker.stop();
 
-    expect(made.asked.map((each) => each.what)).toEqual(['offer', 'gone']);
-    expect(made.asked[1]?.id).toBe(made.asked[0]?.id);
-    expect(worker.standing()).toEqual({ name: 'brandon-laptop', here: false, trouble: null });
+    assert.deepEqual(
+      made.asked.map((each) => each.what),
+      ['offer', 'gone'],
+    );
+    assert.equal(made.asked[1]?.id, made.asked[0]?.id);
+    assert.deepEqual(worker.standing(), { name: 'brandon-laptop', here: false, trouble: null });
 
     await worker.stop();
-    expect(made.asked).toHaveLength(2);
+    assert.equal(made.asked.length, 2);
   });
 
   test('cannot say goodbye when the server never heard from it', async () => {
@@ -211,7 +221,10 @@ describe('a desktop offering itself', () => {
     await worker.offer();
     await worker.stop();
 
-    expect(made.asked.map((each) => each.what)).toEqual(['offer']);
+    assert.deepEqual(
+      made.asked.map((each) => each.what),
+      ['offer'],
+    );
   });
 
   test('says which runs it is driving, so a run it is not driving goes stale', async () => {
@@ -225,22 +238,17 @@ describe('a desktop offering itself', () => {
     await worker.offer();
     await worker.offer();
 
-    expect(made.asked).toEqual([
-      {
-        what: 'offer',
-        key: 'key-ada',
-        id: expect.any(String),
-        name: 'brandon-laptop',
-        workspaces: ['/home/brandon/Workspace/kira'],
-      },
-      {
-        what: 'beat',
-        key: 'key-ada',
-        id: expect.any(String),
-        workspaces: ['/home/brandon/Workspace/kira'],
-        driving: ['ticket-1', 'ticket-2'],
-      },
-    ]);
+    const [offer, beat] = made.asked;
+    assert.equal(offer?.what, 'offer');
+    assert.equal(offer?.key, 'key-ada');
+    assert.match(offer?.id ?? '', /\S+/);
+    assert.equal(offer?.name, 'brandon-laptop');
+    assert.deepEqual(offer?.workspaces, ['/home/brandon/Workspace/kira']);
+    assert.equal(beat?.what, 'beat');
+    assert.equal(beat?.key, 'key-ada');
+    assert.equal(beat?.id, offer?.id);
+    assert.deepEqual(beat?.workspaces, ['/home/brandon/Workspace/kira']);
+    assert.deepEqual(beat?.driving, ['ticket-1', 'ticket-2']);
   });
 
   test('goes quiet with a run in flight rather than saying goodbye for it', async () => {
@@ -253,8 +261,11 @@ describe('a desktop offering itself', () => {
     // — with its claim still its claim. Saying goodbye would delete the worker and release
     // the claim, which would take the ticket out of Running and leave an open run nobody
     // could account for (GH #74).
-    expect(made.asked.map((each) => each.what)).toEqual(['offer']);
-    expect(worker.standing()).toEqual({ name: 'brandon-laptop', here: false, trouble: null });
+    assert.deepEqual(
+      made.asked.map((each) => each.what),
+      ['offer'],
+    );
+    assert.deepEqual(worker.standing(), { name: 'brandon-laptop', here: false, trouble: null });
   });
 
   test('does not hang the quit on a server that answers nothing', async () => {
@@ -266,8 +277,8 @@ describe('a desktop offering itself', () => {
     // The goodbye is given a few seconds and no more: closing the window must not wait
     // on a machine that is not there, and a goodbye that never lands costs only what a
     // crash costs.
-    expect(Date.now() - started).toBeLessThan(5_000);
-    expect(worker.standing().here).toBe(false);
+    assert.ok(Date.now() - started < 5_000);
+    assert.equal(worker.standing().here, false);
   });
 
   test('keeps offering until it is stopped, and stops offering after', async () => {
@@ -275,16 +286,16 @@ describe('a desktop offering itself', () => {
 
     worker.start();
     await until(() => made.asked.filter((each) => each.what === 'beat').length >= 2);
-    expect(made.asked[0]?.what).toBe('offer');
+    assert.equal(made.asked[0]?.what, 'offer');
 
     await worker.stop();
     const after = made.asked.length;
-    await Bun.sleep(100);
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     // Nothing more after the goodbye, whatever the beat's own rhythm was — and the
     // goodbye is the last thing asked, so the run of beats ended with it.
-    expect(made.asked.length).toBe(after);
-    expect(made.asked.at(-1)?.what).toBe('gone');
+    assert.equal(made.asked.length, after);
+    assert.equal(made.asked.at(-1)?.what, 'gone');
   });
 
   test('asks for one heartbeat at a time, however long the server takes', async () => {
@@ -295,9 +306,12 @@ describe('a desktop offering itself', () => {
     const { worker } = workerOn(ADA, made, { everyMs: 20 });
 
     worker.start();
-    await Bun.sleep(120);
+    await new Promise((resolve) => setTimeout(resolve, 120));
 
-    expect(made.asked.map((each) => each.what)).toEqual(['offer', 'beat']);
+    assert.deepEqual(
+      made.asked.map((each) => each.what),
+      ['offer', 'beat'],
+    );
 
     // Stopped even though the beat is still hanging: a check that leaves a clock
     // running keeps ticking through every test after it.
@@ -321,8 +335,11 @@ describe('a desktop offering itself', () => {
 
     // Signed out, there is no key to say goodbye with, so there is no goodbye — and the
     // desktop is not here any more either.
-    expect(made.asked.map((each) => each.what)).toEqual(['offer']);
-    expect(worker.standing()).toEqual({ name: 'brandon-laptop', here: false, trouble: null });
+    assert.deepEqual(
+      made.asked.map((each) => each.what),
+      ['offer'],
+    );
+    assert.deepEqual(worker.standing(), { name: 'brandon-laptop', here: false, trouble: null });
   });
 });
 
@@ -331,6 +348,6 @@ async function until(ready: () => boolean, within = 2_000): Promise<void> {
   const deadline = Date.now() + within;
   while (!ready()) {
     if (Date.now() > deadline) throw new Error('it never happened');
-    await Bun.sleep(5);
+    await new Promise((resolve) => setTimeout(resolve, 5));
   }
 }

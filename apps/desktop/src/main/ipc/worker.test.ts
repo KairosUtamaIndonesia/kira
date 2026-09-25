@@ -1,4 +1,5 @@
-import { describe, expect, test } from 'bun:test';
+import { strict as assert } from 'node:assert';
+import { describe, test } from 'node:test';
 import { workerHandlers } from './worker.ts';
 
 describe('the worker channel', () => {
@@ -6,7 +7,7 @@ describe('the worker channel', () => {
     const standing = { name: 'brandon-laptop', here: true, trouble: null };
     const handlers = workerHandlers({ standing: () => standing });
 
-    expect(await handlers.standing()).toEqual({ ok: true, value: standing });
+    assert.deepEqual(await handlers.standing(), { ok: true, value: standing });
   });
 
   test('answers a failure as a value rather than throwing it across the boundary', async () => {
@@ -16,6 +17,6 @@ describe('the worker channel', () => {
       },
     });
 
-    expect(await handlers.standing()).toEqual({ ok: false, error: 'the keeper is not there' });
+    assert.deepEqual(await handlers.standing(), { ok: false, error: 'the keeper is not there' });
   });
 });

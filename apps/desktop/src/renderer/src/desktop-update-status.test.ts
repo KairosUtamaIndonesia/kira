@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import type { DesktopUpdateSnapshot } from '../../../preload/bridge.ts';
+import type { DesktopUpdateSnapshot } from '../../preload/bridge';
 import { canCheckDesktopUpdate, desktopUpdateStatusText } from './desktop-update-status.ts';
 
 const STATUS_CASES: Array<{

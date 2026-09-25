@@ -1,4 +1,4 @@
-import type { DesktopUpdateSnapshot } from '../../../preload/bridge';
+import type { DesktopUpdateSnapshot } from '../../preload/bridge';
 
 export function desktopUpdateStatusText(snapshot: DesktopUpdateSnapshot | null): string {
   if (snapshot === null || snapshot.status === 'checking') return 'Checking for updates…';

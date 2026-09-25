@@ -12,7 +12,6 @@ import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import type {
   McpServerDraft,
   McpServerRecord,
-  McpServerTransport,
   McpToolSelection,
   ThreadStore,
 } from '../db/threads.ts';
@@ -22,7 +21,13 @@ import { resolveCommand } from './command.ts';
 
 export type CommandResolver = (command: string) => string;
 
-export type McpServerStatus = 'not-started' | 'connecting' | 'connected' | 'failed' | 'disabled' | 'needs-sign-in';
+export type McpServerStatus =
+  | 'not-started'
+  | 'connecting'
+  | 'connected'
+  | 'failed'
+  | 'disabled'
+  | 'needs-sign-in';
 
 export interface McpToolBinding {
   name: string;
@@ -166,10 +171,7 @@ export function mcpManager({
     }
     if (workspaceId !== null) {
       for (const state of servers.values()) {
-        if (
-          state.snapshot.scope === 'workspace'
-          && state.snapshot.workspaceId === workspaceId
-        ) {
+        if (state.snapshot.scope === 'workspace' && state.snapshot.workspaceId === workspaceId) {
           chosen.set(state.snapshot.name, state);
         }
       }
@@ -232,9 +234,10 @@ export function mcpManager({
     const failed = (error: unknown): void => {
       if (closing || state.removing || servers.get(id) !== state) return;
       if (
-        state.snapshot.status === 'needs-sign-in'
-        || (state.snapshot.status === 'failed' && state.snapshot.error !== null)
-      ) return;
+        state.snapshot.status === 'needs-sign-in' ||
+        (state.snapshot.status === 'failed' && state.snapshot.error !== null)
+      )
+        return;
       if (error instanceof UnauthorizedError && record.transport === 'streamable-http') {
         state.snapshot.status = 'needs-sign-in';
         state.snapshot.error = null;
@@ -277,14 +280,17 @@ export function mcpManager({
         if (serverCredentials?.bearerToken !== undefined) {
           headers.set('Authorization', `Bearer ${serverCredentials.bearerToken}`);
         }
-        const authProvider: AuthProvider | OAuthClientProvider | undefined = oauth === undefined
-          ? undefined
-          : secrets?.hasOAuth(id) === true
-            ? oauth.provider(id)
-            : {
-                token: async () => undefined,
-                onUnauthorized: async () => { throw new UnauthorizedError(); },
-              };
+        const authProvider: AuthProvider | OAuthClientProvider | undefined =
+          oauth === undefined
+            ? undefined
+            : secrets?.hasOAuth(id) === true
+              ? oauth.provider(id)
+              : {
+                  token: async () => undefined,
+                  onUnauthorized: async () => {
+                    throw new UnauthorizedError();
+                  },
+                };
         transport = new StreamableHTTPClientTransport(new URL(record.url), {
           requestInit: { headers },
           ...(authProvider === undefined ? {} : { authProvider }),
@@ -297,7 +303,9 @@ export function mcpManager({
           cwd: record.cwd ?? undefined,
           env: {
             ...Object.fromEntries(
-              Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+              Object.entries(process.env).filter(
+                (entry): entry is [string, string] => entry[1] !== undefined,
+              ),
             ),
             ...serverCredentials?.env,
           },
@@ -344,9 +352,10 @@ export function mcpManager({
   }
 
   function shouldConnect(record: McpServerRecord): boolean {
-    return record.enabled && (
-      record.scope === 'global'
-      || (record.workspaceId !== null && activeWorkspaces.has(record.workspaceId))
+    return (
+      record.enabled &&
+      (record.scope === 'global' ||
+        (record.workspaceId !== null && activeWorkspaces.has(record.workspaceId)))
     );
   }
 
@@ -417,16 +426,17 @@ export function mcpManager({
       const transport = draft.transport ?? 'stdio';
       // Mirrors pi-mcp-adapter's endpoint-bound credential invalidation rule
       // (MIT, Copyright (c) 2026 Nico Bailon; full notice in command.ts).
-      const identityChanged = previous.transport !== transport
-        || (transport === 'stdio' && (
-          previous.command !== draft.command
-          || JSON.stringify(previous.args) !== JSON.stringify(draft.args)
-          || previous.cwd !== draft.cwd
-        ))
-        || (transport === 'streamable-http' && previous.url !== draft.url);
-      const previousSecrets: McpSecretSnapshot | undefined = identityChanged || draft.credentials !== undefined
-        ? await secrets?.snapshot(id)
-        : undefined;
+      const identityChanged =
+        previous.transport !== transport ||
+        (transport === 'stdio' &&
+          (previous.command !== draft.command ||
+            JSON.stringify(previous.args) !== JSON.stringify(draft.args) ||
+            previous.cwd !== draft.cwd)) ||
+        (transport === 'streamable-http' && previous.url !== draft.url);
+      const previousSecrets: McpSecretSnapshot | undefined =
+        identityChanged || draft.credentials !== undefined
+          ? await secrets?.snapshot(id)
+          : undefined;
       const previousState = identityChanged ? servers.get(id) : undefined;
       if (identityChanged) {
         oauth?.invalidate(id);
@@ -533,10 +543,12 @@ export function mcpManager({
       const url = record.url;
       await oauth.authorize(id, url, () => {
         const current = store.findMcpServer(id);
-        return !closing
-          && current?.enabled === true
-          && current.transport === 'streamable-http'
-          && current.url === url;
+        return (
+          !closing &&
+          current?.enabled === true &&
+          current.transport === 'streamable-http' &&
+          current.url === url
+        );
       });
       await reconnect(id);
     },
@@ -590,8 +602,8 @@ export function mcpManager({
       await Promise.all(
         [...servers.values()]
           .filter(
-            (state) => state.snapshot.scope === 'workspace'
-              && state.snapshot.workspaceId === workspaceId,
+            (state) =>
+              state.snapshot.scope === 'workspace' && state.snapshot.workspaceId === workspaceId,
           )
           .map((state) => connect(state.snapshot.id)),
       );
@@ -601,14 +613,16 @@ export function mcpManager({
       if (started) await registered;
       activeWorkspaces.delete(workspaceId);
       const forgotten = [...servers.values()].filter(
-        (state) => state.snapshot.scope === 'workspace'
-          && state.snapshot.workspaceId === workspaceId,
+        (state) =>
+          state.snapshot.scope === 'workspace' && state.snapshot.workspaceId === workspaceId,
       );
-      await Promise.all(forgotten.map(async (state) => {
-        oauth?.invalidate(state.snapshot.id);
-        await closeState(state);
-        await secrets?.forget(state.snapshot.id);
-      }));
+      await Promise.all(
+        forgotten.map(async (state) => {
+          oauth?.invalidate(state.snapshot.id);
+          await closeState(state);
+          await secrets?.forget(state.snapshot.id);
+        }),
+      );
       for (const state of forgotten) servers.delete(state.snapshot.id);
       if (forgotten.length > 0) notify();
     },
@@ -644,18 +658,18 @@ export function mcpManager({
           signal === undefined ? undefined : { signal },
         );
         if (
-          state.client !== client
-          || state.snapshot.status !== 'connected'
-          || !state.snapshot.tools.some((candidate) => candidate.name === name && candidate.selected)
+          state.client !== client ||
+          state.snapshot.status !== 'connected' ||
+          !state.snapshot.tools.some((candidate) => candidate.name === name && candidate.selected)
         ) {
           throw new Error('server disconnected');
         }
         return result;
       } catch (error) {
         if (
-          state.client !== client
-          || state.snapshot.status !== 'connected'
-          || !state.snapshot.tools.some((candidate) => candidate.name === name && candidate.selected)
+          state.client !== client ||
+          state.snapshot.status !== 'connected' ||
+          !state.snapshot.tools.some((candidate) => candidate.name === name && candidate.selected)
         ) {
           throw new Error('server disconnected');
         }
