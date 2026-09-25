@@ -4,6 +4,7 @@
 
 ### Added
 
+- Kira's desktop now runs on Electron, with its own Bun-powered platform API and administration console.
 - Packaged desktop builds check for updates automatically, download them in the background, and offer a restart to install from Settings. macOS, Windows, and Linux AppImage are supported.
 
 - Users on Windows, macOS, and Linux can choose and test Kira's Bash-compatible executable from Settings. The saved device-local preference takes effect in open chats on their next command, and `$SHELL` in those commands matches the selected executable without changing the login shell. See [the shell setup guide](docs/custom-shell.md).
