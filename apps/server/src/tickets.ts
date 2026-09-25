@@ -26,6 +26,7 @@ import { keyHolder, type HeldUser } from './keys';
 import { refusal, REFUSAL } from './refusals';
 import {
   claim,
+  executionWorkspace,
   gate,
   outcome,
   project,
@@ -133,6 +134,17 @@ const RUN = t.Object({
   verdictAt: t.Union([t.String(), t.Null()]),
 });
 
+const EXECUTION_WORKSPACE = t.Object({
+  id: t.String(),
+  ticketId: t.String(),
+  repository: t.String(),
+  baseBranch: t.String(),
+  branch: t.String(),
+  agentConfig: t.String(),
+  createdAt: t.String(),
+});
+const WORKSPACES = t.Object({ workspaces: t.Array(EXECUTION_WORKSPACE) });
+
 const OUTCOME_DECISION = t.Object({
   context: t.String(),
   choice: t.String(),
@@ -211,6 +223,7 @@ const TICKET = t.Object({
   sourceChatId: t.Union([t.String(), t.Null()]),
   claim: t.Union([CLAIM, t.Null()]),
   runs: t.Array(RUN),
+  workspaces: t.Array(EXECUTION_WORKSPACE),
   outcome: t.Union([OUTCOME, t.Null()]),
   /** Approved Outcomes from this map's closed question/research children. */
   decisionsSoFar: t.Array(OUTCOME),
@@ -274,6 +287,7 @@ interface Context {
   runs: RunRow[];
   outcome: OutcomeView | null;
   decisionsSoFar: OutcomeView[];
+  workspaces: (typeof executionWorkspace.$inferSelect)[];
 }
 
 interface OutcomeView {
@@ -459,6 +473,88 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
         }),
         response: { 200: ONE_TICKET, 400: REFUSAL, 401: REFUSAL, 404: REFUSAL },
         detail: { summary: 'Write a ticket down in a project, as a draft' },
+      },
+    )
+    .get(
+      '/api/tickets/:ref/workspaces',
+      async ({ request, params, status }) => {
+        const held = await asking(auth, request);
+        if ('refused' in held) return status(401, held.refused);
+        const found = await resolve(database, params.ref);
+        if (!found) return status(404, refusal('TICKET_NOT_FOUND', 'No such ticket.'));
+
+        const workspaces = await database
+          .select()
+          .from(executionWorkspace)
+          .where(eq(executionWorkspace.ticketId, found.ticket.id))
+          .orderBy(asc(executionWorkspace.createdAt), asc(executionWorkspace.id));
+        return { workspaces: workspaces.map(asExecutionWorkspace) };
+      },
+      {
+        params: t.Object({ ref: t.String() }),
+        response: { 200: WORKSPACES, 401: REFUSAL, 404: REFUSAL },
+        detail: { summary: 'List the execution workspaces linked to an issue' },
+      },
+    )
+    .post(
+      '/api/tickets/:ref/workspaces',
+      async ({ request, params, body, status }) => {
+        const held = await asking(auth, request);
+        if ('refused' in held) return status(401, held.refused);
+        const found = await resolve(database, params.ref);
+        if (!found) return status(404, refusal('TICKET_NOT_FOUND', 'No such ticket.'));
+
+        const values = {
+          id: randomUUID(),
+          ticketId: found.ticket.id,
+          repository: body.repository.trim(),
+          baseBranch: body.baseBranch.trim(),
+          branch: body.branch.trim(),
+          agentConfig: body.agentConfig.trim(),
+          creatorId: held.user.id,
+        };
+        if (Object.values(values).some((value) => typeof value === 'string' && value.trim() === '')) {
+          return status(400, refusal('WORKSPACE_INVALID', 'An execution workspace needs repository, branches, and an agent configuration.'));
+        }
+
+        const [made] = await database.insert(executionWorkspace).values(values).returning();
+        return { workspace: asExecutionWorkspace(made!) };
+      },
+      {
+        params: t.Object({ ref: t.String() }),
+        body: t.Object({
+          repository: t.String(),
+          baseBranch: t.String(),
+          branch: t.String(),
+          agentConfig: t.String(),
+        }),
+        response: { 200: t.Object({ workspace: EXECUTION_WORKSPACE }), 400: REFUSAL, 401: REFUSAL, 404: REFUSAL },
+        detail: { summary: 'Link an execution workspace to an issue' },
+      },
+    )
+    .delete(
+      '/api/tickets/:ref/workspaces/:workspaceId',
+      async ({ request, params, status }) => {
+        const held = await asking(auth, request);
+        if ('refused' in held) return status(401, held.refused);
+        const found = await resolve(database, params.ref);
+        if (!found) return status(404, refusal('TICKET_NOT_FOUND', 'No such ticket.'));
+        const [removed] = await database
+          .delete(executionWorkspace)
+          .where(
+            and(
+              eq(executionWorkspace.id, params.workspaceId),
+              eq(executionWorkspace.ticketId, found.ticket.id),
+            ),
+          )
+          .returning({ id: executionWorkspace.id });
+        if (!removed) return status(404, refusal('WORKSPACE_NOT_FOUND', 'No such execution workspace.'));
+        return { workspace: null };
+      },
+      {
+        params: t.Object({ ref: t.String(), workspaceId: t.String() }),
+        response: { 200: t.Object({ workspace: t.Null() }), 401: REFUSAL, 404: REFUSAL },
+        detail: { summary: 'Unlink an execution workspace from an issue' },
       },
     )
     .post(
@@ -1799,6 +1895,7 @@ async function queue(database: Database, held: typeof project.$inferSelect) {
     database,
     rows.map((each) => each.id),
   );
+  const workspaces = await workspacesFor(database, rows.map((each) => each.id));
   const named = new Map<string, Named>(rows.map((row) => [row.id, asNamed(row, held.prefix)]));
 
   const tickets = rows.map((row) =>
@@ -1815,6 +1912,7 @@ async function queue(database: Database, held: typeof project.$inferSelect) {
               .map((each) => outcomes.get(each.gatedById))
               .filter(isThere)
           : [],
+      workspaces: workspaces.get(row.id) ?? [],
       gates: edges
         .filter((each) => each.gatedById === row.id)
         .map((each) => named.get(each.ticketId))
@@ -1866,6 +1964,7 @@ async function one(database: Database, held: typeof project.$inferSelect, row: R
           edges.filter((each) => each.ticketId === row.id).map((each) => each.gatedById),
         )
       : new Map<string, OutcomeView>();
+  const workspaces = (await workspacesFor(database, [row.id])).get(row.id) ?? [];
 
   return asTicket(row, held.prefix, {
     author: row.authorId === null ? null : (authors.get(row.authorId) ?? null),
@@ -1880,6 +1979,7 @@ async function one(database: Database, held: typeof project.$inferSelect, row: R
             .map((each) => childOutcomes.get(each.gatedById))
             .filter(isThere)
         : [],
+    workspaces,
     gates: edges
       .filter((each) => each.gatedById === row.id)
       .map((each) => named.get(each.ticketId))
@@ -2479,6 +2579,33 @@ function asRun(row: RunRow) {
   };
 }
 
+function asExecutionWorkspace(row: typeof executionWorkspace.$inferSelect) {
+  return {
+    id: row.id,
+    ticketId: row.ticketId,
+    repository: row.repository,
+    baseBranch: row.baseBranch,
+    branch: row.branch,
+    agentConfig: row.agentConfig,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+async function workspacesFor(
+  database: Database,
+  ids: string[],
+): Promise<Map<string, (typeof executionWorkspace.$inferSelect)[]>> {
+  if (ids.length === 0) return new Map();
+  const rows = await database
+    .select()
+    .from(executionWorkspace)
+    .where(inArray(executionWorkspace.ticketId, ids))
+    .orderBy(asc(executionWorkspace.createdAt), asc(executionWorkspace.id));
+  const grouped = new Map<string, (typeof executionWorkspace.$inferSelect)[]>();
+  for (const row of rows) grouped.set(row.ticketId, [...(grouped.get(row.ticketId) ?? []), row]);
+  return grouped;
+}
+
 /** A run's transcript, oldest first, which is the order it was said in. */
 async function saidIn(database: Database, runId: string) {
   const rows = await database
@@ -2606,6 +2733,7 @@ function asTicket(row: Row, prefix: string, context: Context) {
     sourceChatId: row.sourceChatId,
     outcome: context.outcome === null ? null : asOutcomeValue(context.outcome),
     decisionsSoFar: context.decisionsSoFar.map(asOutcomeValue),
+    workspaces: context.workspaces.map(asExecutionWorkspace),
   };
 }
 

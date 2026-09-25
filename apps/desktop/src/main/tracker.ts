@@ -35,6 +35,7 @@ import type {
   OutcomeProposal,
   MapProposal,
   WorkspaceSummary,
+  ExecutionWorkspace,
 } from '../preload/bridge.ts';
 
 /**
@@ -54,6 +55,13 @@ export type TrackerAnswer<T> =
 
 /** The server's half of the tracker, as `auth/kira.ts` implements it. */
 export interface TrackerWire {
+  executionWorkspaces?: ((key: string, ticketId: string) => Promise<TrackerAnswer<ExecutionWorkspace[]>>) | undefined;
+  createExecutionWorkspace?: (
+    key: string,
+    ticketId: string,
+    draft: Omit<ExecutionWorkspace, 'id' | 'ticketId' | 'createdAt'>,
+  ) => Promise<TrackerAnswer<ExecutionWorkspace>>;
+  removeExecutionWorkspace?: ((key: string, ticketId: string, workspaceId: string) => Promise<TrackerAnswer<unknown>>) | undefined;
   /** The projects anyone signed in may work in. */
   projects(key: string): Promise<TrackerAnswer<ProjectSummary[]>>;
   /** Make a project, refused when its prefix is taken. */
@@ -237,6 +245,12 @@ export interface RunContext {
 }
 
 export interface Tracker {
+  executionWorkspaces(ticketId: string): Promise<ExecutionWorkspace[]>;
+  createExecutionWorkspace(
+    ticketId: string,
+    draft: Omit<ExecutionWorkspace, 'id' | 'ticketId' | 'createdAt'>,
+  ): Promise<ExecutionWorkspace>;
+  removeExecutionWorkspace(ticketId: string, workspaceId: string): Promise<void>;
   queue(workspaceId: string): Promise<TicketQueue>;
   /** Read the current project context for a run from the tracker seam. */
   runContext(workspaceId: string, ticketId: string): Promise<RunContext>;
@@ -335,6 +349,21 @@ export function trackerFor({
   }
 
   return {
+    async executionWorkspaces(ticketId) {
+      if (wire.executionWorkspaces === undefined) throw new Error('Execution workspaces are unavailable.');
+      const held = await key();
+      return await asked(() => wire.executionWorkspaces!(held, ticketId));
+    },
+    async createExecutionWorkspace(ticketId, draft) {
+      if (wire.createExecutionWorkspace === undefined) throw new Error('Execution workspaces are unavailable.');
+      const held = await key();
+      return await asked(() => wire.createExecutionWorkspace!(held, ticketId, draft));
+    },
+    async removeExecutionWorkspace(ticketId, workspaceId) {
+      if (wire.removeExecutionWorkspace === undefined) throw new Error('Execution workspaces are unavailable.');
+      const held = await key();
+      await asked(() => wire.removeExecutionWorkspace!(held, ticketId, workspaceId));
+    },
     async queue(workspaceId) {
       const held = await key();
       const projectId = projectIn(workspaceId);

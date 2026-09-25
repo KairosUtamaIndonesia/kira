@@ -674,6 +674,9 @@ export const TRACKER_CHANNELS = {
   gate: 'tracker:gate',
   ungate: 'tracker:ungate',
   undoGlossary: 'tracker:glossary:undo',
+  executionWorkspaces: 'tracker:execution-workspaces',
+  createExecutionWorkspace: 'tracker:execution-workspace:create',
+  removeExecutionWorkspace: 'tracker:execution-workspace:remove',
 } as const;
 
 /**
@@ -878,6 +881,17 @@ export interface Ticket {
   claim: TicketClaim | null;
   /** What runs of it have done, newest first. */
   runs: TicketRun[];
+  workspaces?: ExecutionWorkspace[];
+}
+
+export interface ExecutionWorkspace {
+  id: string;
+  ticketId: string;
+  repository: string;
+  baseBranch: string;
+  branch: string;
+  agentConfig: string;
+  createdAt: string;
 }
 
 /**
@@ -1372,6 +1386,12 @@ export interface KiraBridge {
     version: number,
     chatId: string,
   ): Promise<Result<GlossaryEntry>>;
+  listExecutionWorkspaces(ticketId: string): Promise<Result<ExecutionWorkspace[]>>;
+  createExecutionWorkspace(
+    ticketId: string,
+    draft: Omit<ExecutionWorkspace, 'id' | 'ticketId' | 'createdAt'>,
+  ): Promise<Result<ExecutionWorkspace>>;
+  removeExecutionWorkspace(ticketId: string, workspaceId: string): Promise<Result<null>>;
   /** Write a ticket down in the workspace's project, as a draft. */
   writeTicket(workspaceId: string, draft: TicketDraft): Promise<Result<Ticket>>;
   /**

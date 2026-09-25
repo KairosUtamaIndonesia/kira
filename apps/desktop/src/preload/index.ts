@@ -37,6 +37,7 @@ import {
   type QueuedLine,
   type Usage,
   type DesktopUpdateSnapshot,
+  type ExecutionWorkspace,
   type ShellSettingsSnapshot,
   type ShellTestResult,
   type Result,
@@ -132,6 +133,15 @@ const bridge: KiraBridge = {
 
   undoGlossary: (workspaceId, entryId, version, chatId) =>
     ask<GlossaryEntry>(TRACKER_CHANNELS.undoGlossary, workspaceId, entryId, version, chatId),
+
+  listExecutionWorkspaces: (ticketId) =>
+    ask<ExecutionWorkspace[]>(TRACKER_CHANNELS.executionWorkspaces, ticketId),
+
+  createExecutionWorkspace: (ticketId, draft) =>
+    ask<ExecutionWorkspace>(TRACKER_CHANNELS.createExecutionWorkspace, ticketId, draft),
+
+  removeExecutionWorkspace: (ticketId, workspaceId) =>
+    ask<null>(TRACKER_CHANNELS.removeExecutionWorkspace, ticketId, workspaceId),
 
   worker: () => ask<WorkerStanding>(WORKER_CHANNELS.standing),
 

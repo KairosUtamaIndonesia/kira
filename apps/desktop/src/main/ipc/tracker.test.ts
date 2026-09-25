@@ -339,6 +339,9 @@ for (const testCase of CASES) {
       gate: () => handlers.gate(first, second),
       ungate: () => handlers.ungate(first, second),
       undoGlossary: () => handlers.undoGlossary(first, second, undefined, undefined),
+      executionWorkspaces: () => handlers.executionWorkspaces(first),
+      createExecutionWorkspace: () => handlers.createExecutionWorkspace(first, second),
+      removeExecutionWorkspace: () => handlers.removeExecutionWorkspace(first, second),
     } as const;
 
     assert.deepEqual(await run[testCase.call](), testCase.want);

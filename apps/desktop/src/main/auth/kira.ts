@@ -30,6 +30,7 @@ import {
   type TicketRun,
   type TicketSaid,
   type WorkerStanding,
+  type ExecutionWorkspace,
 } from '../../preload/bridge.ts';
 import type { TrackerAnswer } from '../tracker.ts';
 import { type Kira, RETURN_PATH } from './signIn.ts';
@@ -245,6 +246,24 @@ export function kiraFor({ server, scheme }: { server: string; scheme: string }):
       asked(
         () => kira.api.projects({ ref: projectId }).get({ headers: bearerFor(key) }),
         asQueue,
+      ),
+
+    executionWorkspaces: async (key, ticketId) =>
+      asked(
+        () => kira.api.tickets({ ref: ticketId }).workspaces.get({ headers: bearerFor(key) }),
+        (data) => (data as { workspaces: ExecutionWorkspace[] }).workspaces,
+      ),
+
+    createExecutionWorkspace: async (key, ticketId, draft) =>
+      asked(
+        () => kira.api.tickets({ ref: ticketId }).workspaces.post(draft, { headers: bearerFor(key) }),
+        (data) => (data as { workspace: ExecutionWorkspace }).workspace,
+      ),
+
+    removeExecutionWorkspace: async (key, ticketId, workspaceId) =>
+      asked(
+        () => kira.api.tickets({ ref: ticketId }).workspaces({ workspaceId }).delete(undefined, { headers: bearerFor(key) }),
+        (data) => data,
       ),
 
     decisions: async (key, projectId) =>

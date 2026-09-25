@@ -171,6 +171,15 @@ test('a folder that is not a checkout has no run to give', async () => {
   assert.equal(await runWorktrees().make(nowhere, 'kira-7', runPath()), null);
 });
 
+test('an invalid base branch leaves no partial checkout behind', async () => {
+  const project = checkout();
+  const into = runPath();
+
+  assert.equal(await runWorktrees().make(project, 'kira-invalid-base', into, 'does-not-exist'), null);
+  assert.equal(existsSync(into), false);
+  assert.deepEqual(branchNames(project), ['main']);
+});
+
 test('a folder that is gone has no run to give either', async () => {
   assert.equal(
     await runWorktrees().make(join(tmpdir(), 'kira-gone-nowhere'), 'kira-8', runPath()),

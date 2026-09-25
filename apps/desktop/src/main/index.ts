@@ -298,6 +298,9 @@ function registerRunChannel(): void {
 
 function registerTrackerChannels(): void {
   const handlers = trackerHandlers({
+    executionWorkspaces: (ticketId) => tracker.executionWorkspaces(ticketId),
+    createExecutionWorkspace: (ticketId, draft) => tracker.createExecutionWorkspace(ticketId, draft),
+    removeExecutionWorkspace: (ticketId, workspaceId) => tracker.removeExecutionWorkspace(ticketId, workspaceId),
     queue: (workspaceId) => tracker.queue(workspaceId),
     openQuestion: async (workspaceId, ticketId) => {
       await chats.startQuestion(workspaceId, ticketId);
@@ -333,6 +336,18 @@ function registerTrackerChannels(): void {
     TRACKER_CHANNELS.undoGlossary,
     (_event, workspaceId: unknown, entryId: unknown, version: unknown, chatId: unknown) =>
       handlers.undoGlossary(workspaceId, entryId, version, chatId),
+  );
+  ipcMain.handle(TRACKER_CHANNELS.executionWorkspaces, (_event, ticketId: unknown) =>
+    handlers.executionWorkspaces(ticketId),
+  );
+  ipcMain.handle(
+    TRACKER_CHANNELS.createExecutionWorkspace,
+    (_event, ticketId: unknown, draft: unknown) => handlers.createExecutionWorkspace(ticketId, draft),
+  );
+  ipcMain.handle(
+    TRACKER_CHANNELS.removeExecutionWorkspace,
+    (_event, ticketId: unknown, workspaceId: unknown) =>
+      handlers.removeExecutionWorkspace(ticketId, workspaceId),
   );
 }
 

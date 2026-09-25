@@ -473,6 +473,26 @@ export const ticketRelationship = pgTable(
   ],
 );
 
+/** A local execution workspace linked to one issue (docs/adr/0023). */
+export const executionWorkspace = pgTable(
+  'execution_workspace',
+  {
+    id: text('id').primaryKey(),
+    ticketId: text('ticketId')
+      .notNull()
+      .references(() => ticket.id, { onDelete: 'cascade' }),
+    repository: text('repository').notNull(),
+    baseBranch: text('baseBranch').notNull(),
+    branch: text('branch').notNull(),
+    agentConfig: text('agentConfig').notNull(),
+    creatorId: text('creatorId').references(() => user.id, { onDelete: 'set null' }),
+    createdAt: timestamp('createdAt', { withTimezone: true })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [index('execution_workspace_by_ticket').on(table.ticketId, table.createdAt)],
+);
+
 /**
  * A ticket held while somebody works it (docs/adr/0012).
  *
@@ -620,6 +640,7 @@ export const schema = {
   glossaryHistory,
   gate,
   ticketRelationship,
+  executionWorkspace,
   claim,
   run,
   transcript,

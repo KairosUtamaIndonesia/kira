@@ -76,6 +76,7 @@ interface Ticket {
   author: { id: string; name: string } | null;
   gates: { id: string; name: string; closed: boolean; closure: string | null }[];
   children: { id: string; name: string; closed: boolean; closure: string | null }[];
+  subIssues: { id: string }[];
   closedAt: string | null;
   closure: string | null;
   sourceChatId: string | null;
@@ -582,6 +583,37 @@ describe('a ticket', () => {
     expect((await (await read(app, key, ticket.id)).json()).ticket.status).toBe('backlog');
   });
 
+  test('links multiple execution workspaces to one issue and lists them in order', async () => {
+    const { app, key } = await signedIn();
+    const made = await project(app, key);
+    const ticket = await drafted(app, key, made.id);
+    const workspace = {
+      repository: '/home/ada/src/kira',
+      baseBranch: 'main',
+      branch: ticket.branch,
+      agentConfig: 'gpt-5',
+    };
+
+    const first = await send(
+      app,
+      `/api/tickets/${ticket.id}/workspaces`,
+      body('POST', bearer(key), workspace),
+    );
+    const second = await send(
+      app,
+      `/api/tickets/${ticket.id}/workspaces`,
+      body('POST', bearer(key), { ...workspace, repository: '/home/ada/src/kira-copy' }),
+    );
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    const listed = await send(app, `/api/tickets/${ticket.id}/workspaces`, {
+      headers: bearer(key),
+    });
+    expect(listed.status).toBe(200);
+    expect((await listed.json()).workspaces).toHaveLength(2);
+  });
+
   test('migrates decision tickets to questions without changing their fields or links', async () => {
     const { app, key, database } = await signedIn();
     const made = await project(app, key);
@@ -613,12 +645,13 @@ describe('a ticket', () => {
     await database.$client.query('ALTER TABLE "ticket" DROP COLUMN IF EXISTS "assigneeId"');
     await database.$client.query('ALTER TABLE "ticket" DROP COLUMN IF EXISTS "tags"');
     await database.$client.query('DROP TABLE IF EXISTS ticket_relationship CASCADE');
+    await database.$client.query('DROP TABLE IF EXISTS execution_workspace CASCADE');
     await database.$client.query('DROP TABLE IF EXISTS glossary_history CASCADE');
     await database.$client.query('DROP TABLE IF EXISTS glossary_entry CASCADE');
     await database.$client.query('DROP TABLE IF EXISTS outcome CASCADE');
     await database.$client.query('DROP TABLE IF EXISTS decision CASCADE');
     await database.$client.query(
-      'DELETE FROM drizzle.__drizzle_migrations WHERE hash IN ($1, $2, $3, $4, $5, $6)',
+      'DELETE FROM drizzle.__drizzle_migrations WHERE hash IN ($1, $2, $3, $4, $5, $6, $7)',
       [
         '7b218fb9233736fb51d9dd946e2551cc909b394db2c4edcae73e8a8ff78e12dd',
         'b6b9616c92307a15412fbd0d2fed91b52594cbf315cdf69ece366005b96b3545',
@@ -626,6 +659,7 @@ describe('a ticket', () => {
         'dba709b6c7143f78c2334a33a657c57f56936ce2914ea88a6723536ffe14187f',
         '7ae2c56e8448cbe9725084311bf1b257542801b652a98dea042d1dc15a316e0a',
         'eaccfc7612ebfc4421c254028b8f3f174f3360fe18b19d8a7b34adae70f23711',
+        '1794627f1b29c2e5f55eb9df0ec8e9c023bdcbd954e33bd68d3023f46a9fee93',
       ],
     );
     await migrate(database);

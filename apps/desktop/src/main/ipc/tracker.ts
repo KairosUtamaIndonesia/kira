@@ -26,6 +26,7 @@ import {
   type TicketDraft,
   type TicketKind,
   type TicketQueue,
+  type ExecutionWorkspace,
 } from '../../preload/bridge.ts';
 import { envelope, isId } from './result.ts';
 
@@ -33,6 +34,9 @@ export { TRACKER_CHANNELS };
 
 /** What the handlers need from the main process. */
 export interface TrackerDeps {
+  executionWorkspaces?: ((ticketId: string) => Promise<ExecutionWorkspace[]>) | undefined;
+  createExecutionWorkspace?: ((ticketId: string, draft: Omit<ExecutionWorkspace, 'id' | 'ticketId' | 'createdAt'>) => Promise<ExecutionWorkspace>) | undefined;
+  removeExecutionWorkspace?: ((ticketId: string, workspaceId: string) => Promise<void>) | undefined;
   /** The queue of the project this workspace works, or a throw saying why not. */
   queue(workspaceId: string): Promise<TicketQueue>;
   /** Open or resume the author-owned linked question chat. */
@@ -55,6 +59,9 @@ export interface TrackerDeps {
 }
 
 export interface TrackerHandlers {
+  executionWorkspaces(ticketId: unknown): Promise<Result<ExecutionWorkspace[]>>;
+  createExecutionWorkspace(ticketId: unknown, draft: unknown): Promise<Result<ExecutionWorkspace>>;
+  removeExecutionWorkspace(ticketId: unknown, workspaceId: unknown): Promise<Result<null>>;
   queue(workspaceId: unknown): Promise<Result<TicketQueue>>;
   write(workspaceId: unknown, draft: unknown): Promise<Result<Ticket>>;
   change(ticketId: unknown, change: unknown): Promise<Result<Ticket>>;
@@ -73,6 +80,9 @@ export interface QuestionTrackerHandlers {
 }
 
 export function trackerHandlers({
+  executionWorkspaces,
+  createExecutionWorkspace,
+  removeExecutionWorkspace,
   queue,
   openQuestion,
   write,
@@ -82,6 +92,30 @@ export function trackerHandlers({
   undoGlossary,
 }: TrackerDeps): TrackerHandlers & QuestionTrackerHandlers {
   return {
+    executionWorkspaces: (ticketId) => {
+      if (!isId(ticketId)) return Promise.resolve({ ok: false, error: 'A workspace needs a ticket.' });
+      if (executionWorkspaces === undefined) return Promise.resolve({ ok: false, error: 'Execution workspaces are unavailable.' });
+      return envelope(() => executionWorkspaces(ticketId));
+    },
+    createExecutionWorkspace: (ticketId, draft) => {
+      if (!isId(ticketId) || typeof draft !== 'object' || draft === null)
+        return Promise.resolve({ ok: false, error: 'An execution workspace needs a ticket and configuration.' });
+      const value = draft as Record<string, unknown>;
+      const fields = ['repository', 'baseBranch', 'branch', 'agentConfig'];
+      if (!fields.every((field) => typeof value[field] === 'string' && value[field].trim() !== ''))
+        return Promise.resolve({ ok: false, error: 'An execution workspace needs repository, branches, and an agent configuration.' });
+      if (createExecutionWorkspace === undefined) return Promise.resolve({ ok: false, error: 'Execution workspaces are unavailable.' });
+      return envelope(() => createExecutionWorkspace(ticketId, value as never));
+    },
+    removeExecutionWorkspace: (ticketId, workspaceId) => {
+      if (!isId(ticketId) || !isId(workspaceId))
+        return Promise.resolve({ ok: false, error: 'An execution workspace needs a ticket and id.' });
+      if (removeExecutionWorkspace === undefined) return Promise.resolve({ ok: false, error: 'Execution workspaces are unavailable.' });
+      return envelope(async () => {
+        await removeExecutionWorkspace(ticketId, workspaceId);
+        return null;
+      });
+    },
     queue: (workspaceId) => {
       if (!isId(workspaceId)) {
         return Promise.resolve({ ok: false, error: 'A queue is read for a workspace.' });
