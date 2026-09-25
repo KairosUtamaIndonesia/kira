@@ -86,8 +86,7 @@ workbench is showing)
 **Subagent**:
 A separate agent Kira delegates a bounded piece of work from one chat. It belongs to that chat: its
 activity and conversation are shown in that chat's Workbench, and Kira receives its outcome there.
-_Avoid_: Worker (the desktop app that offers itself for ticket work), Run (an agent's attempt at a
-ticket)
+_Avoid_: Worker (the desktop app that offers itself for ticket work), Run (an agent's attempt at a ticket)
 
 **Context**:
 What Kira is holding for one chat: the goal, the files she touched, the commits, and what the
@@ -100,8 +99,8 @@ _Avoid_: Memory (what the code says for now), history, transcript, prompt
 **Conclusion**:
 Something Kira worked out from what a chat told her. Drawn once per compaction by a model rather
 than observed from the turns, and kept after the turns behind it have gone, which is why it reads
-as something she knows rather than something she can check. It carries the last turn it had read
-when it was drawn, so how far back it reaches is visible; the same conclusion drawn again is not
+as something she knows rather than something she can check. It carries the last turn it had
+read when it was drawn, so how far back it reaches is visible; the same conclusion drawn again is not
 drawn twice, so that reach is where it was first worked out.
 _Avoid_: Reflection (what the code says), insight, summary (that is the compaction's own)
 
@@ -144,9 +143,8 @@ _Avoid_: PRD, epic, plan, parent ticket
 **Map**:
 A ticket of kind map: an effort too big for one spec, charted as the decisions standing between
 here and a destination. Its children are the questions standing in the way, and the destination
-is a spec. What
-cannot be asked precisely yet is written into the map as not yet specified; what was ruled out
-is written as out of scope. The way is clear when no question under it is open.
+is a spec. What cannot be asked precisely yet is written into the map as not yet specified; what
+was ruled out is written as out of scope. The way is clear when no question under it is open.
 _Avoid_: Roadmap, initiative, epic
 
 **Outcome**:
@@ -178,3 +176,48 @@ merges the run's work into the spec's branch, and nothing lands on the project's
 without a person. Its transcript belongs to the ticket, while the driver keeps it in their own
 chat list until it ends (ADR 0012).
 _Avoid_: Attempt, job, execution, task
+
+## Project Work vocabulary
+
+Project Work is Kira's focused flow for turning a planned piece of work into a reviewable coding-agent result.
+
+**Organization**:
+The shared account boundary for people, projects, and permissions. It is not the place where code runs.
+_Avoid_: Execution Workspace, repository, project
+
+**Issue**:
+A piece of work to be planned, assigned, executed, reviewed, and completed. The existing server may continue to call this object a ticket, but the user-facing model follows Issue vocabulary.
+_Avoid_: Run, Workspace, task attempt
+
+**Status**:
+The human-facing column an issue appears in on the kanban board.
+_Avoid_: Readiness, execution state, claim
+
+**Execution Workspace**:
+A space attached to an issue with the repository checkout, branch, agent session, tools, and review surface needed to do the work. One issue may have multiple execution workspaces.
+_Avoid_: Organization, Project, folder when referring to the shared planning scope
+
+**Session**:
+One coding-agent conversation running inside an execution workspace.
+_Avoid_: Run, Worker
+
+**Review**:
+The human inspection and feedback loop over an execution workspace's changes.
+_Avoid_: Acceptance, status
+
+**Pull request**:
+The optional external delivery record created from an execution workspace branch.
+_Avoid_: Run, merge
+
+The central relationship is:
+
+```text
+Issue = what should be done
+Execution Workspace = where an agent does it
+```
+
+The product optimizes for:
+
+```text
+plan → execute → inspect → feedback → execute again → merge
+```
