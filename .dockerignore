@@ -1,0 +1,13 @@
+.git
+.github
+.agents
+.vscode
+.zed
+node_modules
+**/node_modules
+apps/admin
+apps/desktop
+docs
+graft
+packages
+*.log

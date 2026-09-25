@@ -9,21 +9,23 @@ on:
 permissions:
   contents: write
 
+env:
+  BUN_VERSION: 1.4.2
+
 jobs:
   build:
     name: Build ${{ matrix.platform }}
     runs-on: ${{ matrix.platform }}
-
     strategy:
       fail-fast: false
       matrix:
         include:
           - platform: windows-latest
-            args: ""
+            args: '--win nsis --x64'
           - platform: macos-latest
-            args: "--target aarch64-apple-darwin"
+            args: '--mac dmg zip'
           - platform: ubuntu-latest
-            args: ""
+            args: '--linux AppImage --x64'
 
     steps:
       - name: Checkout
@@ -32,30 +34,8 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.12
+          bun-version: ${{ env.BUN_VERSION }}
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin' || '' }}
-
-      - name: Set up sccache (distributed Rust compilation cache)
-        uses: mozilla-actions/sccache-action@v0.0.10
-
-      - name: Configure sccache
-        run: |
-          echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
-          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
-
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: apps/desktop/src-tauri
-
-      # Cache Bun's global download cache, NOT node_modules: the .bun store
-      # relies on symlinks/junctions that actions/cache (tar) does not
-      # round-trip reliably on Windows. bun install is fast with a warm
-      # global cache and rebuilds the link farm correctly on every OS.
       - name: Cache Bun global cache
         uses: actions/cache@v4
         with:
@@ -64,40 +44,70 @@ jobs:
           restore-keys: |
             bun-cache-${{ runner.os }}-
 
-      - name: Install system dependencies (Linux)
-        if: matrix.platform == 'ubuntu-latest'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            patchelf
-
-      - name: Install lld-link (Windows)
-        if: matrix.platform == 'windows-latest'
-        run: choco install llvm --no-progress -y
-      - name: Use lld-link (Windows)
-        if: matrix.platform == 'windows-latest'
-        run: echo "CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER=lld-link" >> "$GITHUB_ENV"
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build and release Tauri app
-        uses: tauri-apps/tauri-action@v0
+      - name: Build installer
+        run: bun run --cwd apps/desktop dist -- --publish never ${{ matrix.args }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Updater signing — set these secrets before enabling the updater.
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # Cloud admin URL baked into the desktop binary. Set the
-          # KIRA_CLOUD_URL repository variable to override the default
-          # (https://cloud.kira.localhost).
-          KIRA_CLOUD_URL: ${{ vars.KIRA_CLOUD_URL }}
+          CSC_LINK: >-
+            ${{ matrix.platform == 'windows-latest' && secrets.WINDOWS_CSC_LINK ||
+            matrix.platform == 'macos-latest' && secrets.MACOS_CSC_LINK || '' }}
+          CSC_KEY_PASSWORD: >-
+            ${{ matrix.platform == 'windows-latest' && secrets.WINDOWS_CSC_KEY_PASSWORD ||
+            matrix.platform == 'macos-latest' && secrets.MACOS_CSC_KEY_PASSWORD || '' }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Upload platform artifacts
+        uses: actions/upload-artifact@v4
         with:
-          projectPath: apps/desktop
-          # Attach installers to the release-please release when present;
-          # fall back to the tag/branch name for manual workflow_dispatch runs.
-          releaseId: ${{ github.event.release.id }}
-          tagName: ${{ github.event.release.tag_name || github.ref_name }}
-          args: ${{ matrix.args }}
+          name: desktop-${{ matrix.platform }}
+          path: apps/desktop/release
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish release and update feed
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'release'
+    steps:
+      - name: Download platform artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-*
+          path: feed
+          merge-multiple: true
+
+      - name: Upload installers to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: feed/**
+          fail_on_unmatched_files: true
+
+      - name: Checkout public update feed
+        uses: actions/checkout@v4
+        with:
+          repository: KairosUtamaIndonesia/kira-updates
+          ref: gh-pages
+          token: ${{ secrets.KIRA_UPDATES_TOKEN }}
+          path: update-site
+
+      - name: Publish update feed
+        run: |
+          find update-site -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -R feed/. update-site/
+          touch update-site/.nojekyll
+          cd update-site
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add --all
+          if git diff --cached --quiet; then
+            echo "Update feed is already current."
+          else
+            git commit -m "Publish Kira ${{ github.event.release.tag_name }} update feed"
+            git push origin HEAD:gh-pages
+          fi

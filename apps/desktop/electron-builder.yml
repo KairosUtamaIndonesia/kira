@@ -1,5 +1,6 @@
 appId: ai.kira.kairos
 productName: Kira
+executableName: Kira
 
 # The custom protocol sign-in is returned to by. A packaged build is what
 # registers it: a development build is Electron running a script, with no
@@ -41,4 +42,4 @@ linux:
 
 publish:
   provider: generic
-  url: https://kira.kairos-it.com/updates/desktop/
+  url: https://kairosutamindonesia.github.io/kira-updates/

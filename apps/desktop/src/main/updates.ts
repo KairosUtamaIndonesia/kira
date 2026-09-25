@@ -32,7 +32,7 @@ export interface DesktopUpdatesInput {
   currentVersion: string;
 }
 
-export const UPDATE_FEED_URL = 'https://kira.kairos-it.com/updates/desktop/';
+export const UPDATE_FEED_URL = 'https://kairosutamindonesia.github.io/kira-updates/';
 
 export function createDesktopUpdates(input: DesktopUpdatesInput): DesktopUpdates {
   const supported =

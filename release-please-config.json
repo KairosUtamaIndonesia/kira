@@ -22,9 +22,10 @@
       ],
       "extra-files": [
         { "type": "json", "path": "package.json", "jsonpath": "$.version" },
-        { "type": "json", "path": "apps/cloud/package.json", "jsonpath": "$.version" },
         { "type": "json", "path": "apps/desktop/package.json", "jsonpath": "$.version" },
-        "apps/desktop/src-tauri/Cargo.toml"
+        { "type": "json", "path": "apps/admin/package.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "apps/server/package.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "packages/theme/package.json", "jsonpath": "$.version" }
       ]
     }
   }

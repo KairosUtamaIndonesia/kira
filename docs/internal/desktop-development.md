@@ -96,12 +96,19 @@ means editing it, or adding a second entry.
 
 ## Desktop updates
 
-Packaged desktop builds check `https://kira.kairos-it.com/updates/desktop/` for
-electron-updater metadata. The endpoint must serve `latest-mac.yml`,
-`latest.yml`, or `latest-linux.yml` as appropriate, and the metadata must give
-absolute GitHub Release URLs for the matching installer artifacts. Keep metadata
-and assets on the same release: a manifest pointing at an older or incomplete
-release can make the updater download an unusable build.
+Packaged desktop builds check
+`https://kairosutamindonesia.github.io/kira-updates/` for electron-updater
+metadata. The public `KairosUtamaIndonesia/kira-updates` repository's `gh-pages`
+branch is updated by the private Kira release workflow. It serves
+`latest-mac.yml`, `latest.yml`, or `latest-linux.yml` as appropriate, together
+with the matching installer and blockmap files. The source repository and its
+GitHub Releases remain private; only the update feed is public.
+
+Keep metadata and assets from one release together: a manifest pointing at an
+older or incomplete release can make the updater download an unusable build.
+The feed repository must have GitHub Pages enabled for its `gh-pages` branch,
+and the private Kira repository needs a `KIRA_UPDATES_TOKEN` secret that can
+write to that repository.
 
 The app auto-downloads updates and offers an explicit restart in Settings.
 Development builds and Linux packages other than AppImage do not update through
