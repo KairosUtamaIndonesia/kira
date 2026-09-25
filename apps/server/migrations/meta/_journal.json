@@ -99,6 +99,13 @@
       "when": 1790200000000,
       "tag": "0013_project_glossary",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1790320000000,
+      "tag": "0014_project_work_issue_board",
+      "breakpoints": true
     }
   ]
 }

@@ -18,7 +18,7 @@
  * one place these tables diverge from the shape `usage` uses.
  */
 import { randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { Elysia, t } from 'elysia';
 import type { Auth } from './auth';
 import type { Database } from './database';
@@ -32,6 +32,7 @@ import {
   run,
   ticket,
   transcript,
+  ticketRelationship,
   user,
   worker,
   type OutcomeDecisionProposal,
@@ -57,6 +58,15 @@ const GATES = ['draft', 'ready-for-agent', 'ready-for-human'] as const;
 
 /** Why a ticket was closed. */
 const CLOSURES = ['done', 'wontfix'] as const;
+
+/** Human-facing columns on the Project Work board. */
+const STATUSES = ['backlog', 'todo', 'in-progress', 'in-review', 'done', 'cancelled'] as const;
+
+/** Person-owned urgency, from highest to lowest. */
+const PRIORITIES = ['urgent', 'high', 'medium', 'low', 'none'] as const;
+
+/** Planning relationships are deliberately separate from execution gates. */
+const RELATIONSHIPS = ['parent', 'blocks', 'related', 'duplicate'] as const;
 
 /** Who a line in a run's transcript came from. */
 const SAID_BY = ['person', 'agent', 'note'] as const;
@@ -85,6 +95,11 @@ const NAMED = t.Object({
   name: t.String(),
   closed: t.Boolean(),
   closure: t.Union([t.String(), t.Null()]),
+});
+const ASSIGNEE = t.Union([t.Object({ id: t.String(), name: t.String() }), t.Null()]);
+const RELATIONSHIP = t.Object({
+  type: t.String(),
+  ticket: NAMED,
 });
 
 /** A claim on a ticket, as a client reads one. */
@@ -178,10 +193,17 @@ const TICKET = t.Object({
   gate: t.String(),
   band: t.String(),
   rank: t.Integer(),
+  status: t.String(),
+  priority: t.String(),
+  assignee: ASSIGNEE,
+  tags: t.Array(t.String()),
   branch: t.String(),
   author: t.Union([t.Object({ id: t.String(), name: t.String() }), t.Null()]),
   gates: t.Array(NAMED),
   children: t.Array(NAMED),
+  parent: t.Union([NAMED, t.Null()]),
+  subIssues: t.Array(NAMED),
+  relationships: t.Array(RELATIONSHIP),
   createdAt: t.String(),
   updatedAt: t.String(),
   closedAt: t.Union([t.String(), t.Null()]),
@@ -242,8 +264,12 @@ interface Held {
 /** Everything the read of one ticket needs that is not on its own row. */
 interface Context {
   author: { id: string; name: string } | null;
+  assignee: { id: string; name: string } | null;
   gates: Named[];
   children: Named[];
+  parent: Named | null;
+  subIssues: Named[];
+  relationships: { type: string; ticket: Named }[];
   claim: Held | null;
   runs: RunRow[];
   outcome: OutcomeView | null;
@@ -378,17 +404,40 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
         const [found] = await database.select().from(project).where(eq(project.id, params.ref));
         if (!found) return status(404, refusal('PROJECT_NOT_FOUND', 'No such project.'));
 
-        if (!isOneOf(KINDS, body.kind)) {
+        if (!isOneOf(KINDS, body.kind ?? 'feature')) {
           return status(400, refusal('KIND_UNKNOWN', `A ticket is one of ${KINDS.join(', ')}.`));
+        }
+        if (!isOneOf(STATUSES, body.status ?? 'backlog')) {
+          return status(400, refusal('STATUS_UNKNOWN', `A status is one of ${STATUSES.join(', ')}.`));
+        }
+        if (!isOneOf(PRIORITIES, body.priority ?? 'none')) {
+          return status(
+            400,
+            refusal('PRIORITY_UNKNOWN', `A priority is one of ${PRIORITIES.join(', ')}.`),
+          );
+        }
+        if (body.tags?.some((tag) => tag.trim() === '')) {
+          return status(400, refusal('TAG_INVALID', 'Issue tags cannot be empty.'));
+        }
+        if (body.assigneeId !== undefined && body.assigneeId !== null) {
+          const [assignee] = await database
+            .select({ id: user.id })
+            .from(user)
+            .where(eq(user.id, body.assigneeId));
+          if (!assignee) return status(400, refusal('ASSIGNEE_NOT_FOUND', 'No such assignee.'));
         }
 
         const written = await allocate(database, {
           projectId: found.id,
-          kind: body.kind,
+          kind: body.kind ?? 'feature',
           title: body.title.trim(),
-          body: body.body,
-          criteria: body.criteria,
+          body: body.body ?? '',
+          criteria: body.criteria ?? [],
           gate: 'draft',
+          status: body.status ?? 'backlog',
+          priority: body.priority ?? 'none',
+          assigneeId: body.assigneeId ?? null,
+          tags: cleanTags(body.tags ?? []),
           authorId: held.user.id,
           sourceChatId: body.sourceChatId ?? null,
         });
@@ -398,10 +447,14 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
       {
         params: t.Object({ ref: t.String() }),
         body: t.Object({
-          kind: t.String(),
+          kind: t.Optional(t.String()),
           title: t.String(),
-          body: t.String(),
-          criteria: t.Array(t.String()),
+          body: t.Optional(t.String()),
+          criteria: t.Optional(t.Array(t.String())),
+          status: t.Optional(t.String()),
+          priority: t.Optional(t.String()),
+          assigneeId: t.Optional(t.Union([t.String(), t.Null()])),
+          tags: t.Optional(t.Array(t.String())),
           sourceChatId: t.Optional(t.String()),
         }),
         response: { 200: ONE_TICKET, 400: REFUSAL, 401: REFUSAL, 404: REFUSAL },
@@ -756,7 +809,7 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
       },
       {
         params: t.Object({ ref: t.String() }),
-        response: { 200: ONE_TICKET, 401: REFUSAL, 404: REFUSAL },
+        response: { 200: ONE_TICKET, 400: REFUSAL, 401: REFUSAL, 404: REFUSAL },
         detail: { summary: 'One ticket in full, by its id or by its name' },
       },
     )
@@ -1000,6 +1053,25 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
             refusal('CLOSURE_UNKNOWN', `A ticket is closed as ${CLOSURES.join(' or ')}.`),
           );
         }
+        if (body.status !== undefined && !isOneOf(STATUSES, body.status)) {
+          return status(400, refusal('STATUS_UNKNOWN', `A status is one of ${STATUSES.join(', ')}.`));
+        }
+        if (body.priority !== undefined && !isOneOf(PRIORITIES, body.priority)) {
+          return status(
+            400,
+            refusal('PRIORITY_UNKNOWN', `A priority is one of ${PRIORITIES.join(', ')}.`),
+          );
+        }
+        if (body.tags?.some((tag) => tag.trim() === '')) {
+          return status(400, refusal('TAG_INVALID', 'Issue tags cannot be empty.'));
+        }
+        if (body.assigneeId !== undefined && body.assigneeId !== null) {
+          const [assignee] = await database
+            .select({ id: user.id })
+            .from(user)
+            .where(eq(user.id, body.assigneeId));
+          if (!assignee) return status(400, refusal('ASSIGNEE_NOT_FOUND', 'No such assignee.'));
+        }
         if (body.closure !== undefined && found.ticket.kind === 'map') {
           return status(
             400,
@@ -1035,6 +1107,10 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
           criteria: body.criteria ?? found.ticket.criteria,
           gate: body.gate ?? found.ticket.gate,
           rank: body.rank ?? found.ticket.rank,
+          status: body.status ?? found.ticket.status,
+          priority: body.priority ?? found.ticket.priority,
+          assigneeId: body.assigneeId === undefined ? found.ticket.assigneeId : body.assigneeId,
+          tags: body.tags === undefined ? found.ticket.tags : cleanTags(body.tags),
         };
 
         if (after.gate === 'ready-for-agent' && liveCriteria(after.criteria) === 0) {
@@ -1053,6 +1129,10 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
           criteria: after.criteria,
           gate: after.gate,
           rank: after.rank,
+          status: after.status,
+          priority: after.priority,
+          assigneeId: after.assigneeId,
+          tags: after.tags,
           updatedAt: new Date(),
           ...(body.closure === undefined
             ? {}
@@ -1077,6 +1157,10 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
           gate: t.Optional(t.String()),
           rank: t.Optional(t.Integer()),
           closure: t.Optional(t.String()),
+          status: t.Optional(t.String()),
+          priority: t.Optional(t.String()),
+          assigneeId: t.Optional(t.Union([t.String(), t.Null()])),
+          tags: t.Optional(t.Array(t.String())),
         }),
         response: { 200: ONE_TICKET, 400: REFUSAL, 401: REFUSAL, 404: REFUSAL },
         detail: {
@@ -1138,6 +1222,95 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
         params: t.Object({ ref: t.String(), gatedBy: t.String() }),
         response: { 200: ONE_TICKET, 401: REFUSAL, 404: REFUSAL },
         detail: { summary: 'Take a gate off a ticket' },
+      },
+    )
+    .post(
+      '/api/tickets/:ref/relationships',
+      async ({ request, params, body, status }) => {
+        const held = await asking(auth, request);
+        if ('refused' in held) return status(401, held.refused);
+
+        const found = await resolve(database, params.ref);
+        if (!found) return status(404, refusal('TICKET_NOT_FOUND', 'No such ticket.'));
+        if (!isOneOf(RELATIONSHIPS, body.type)) {
+          return status(
+            400,
+            refusal('RELATIONSHIP_UNKNOWN', `A relationship is one of ${RELATIONSHIPS.join(', ')}.`),
+          );
+        }
+
+        const names = await resolve(database, body.ticket);
+        if (!names) return status(404, refusal('TICKET_NOT_FOUND', 'No such related issue.'));
+        if (names.project.id !== found.project.id) {
+          return status(
+            400,
+            refusal('RELATIONSHIP_OTHER_PROJECT', 'An issue relationship stays inside its project.'),
+          );
+        }
+        if (names.ticket.id === found.ticket.id) {
+          return status(400, refusal('RELATIONSHIP_SELF', 'An issue cannot relate to itself.'));
+        }
+        if (body.type === 'parent') {
+          const [existing] = await database
+            .select()
+            .from(ticketRelationship)
+            .where(
+              and(
+                eq(ticketRelationship.issueId, found.ticket.id),
+                eq(ticketRelationship.type, 'parent'),
+              ),
+            );
+          if (existing && existing.relatedIssueId !== names.ticket.id) {
+            return status(400, refusal('PARENT_EXISTS', 'An issue can have only one parent.'));
+          }
+        }
+
+        await database
+          .insert(ticketRelationship)
+          .values({ issueId: found.ticket.id, relatedIssueId: names.ticket.id, type: body.type })
+          .onConflictDoNothing();
+        await database
+          .update(ticket)
+          .set({ updatedAt: new Date() })
+          .where(eq(ticket.id, found.ticket.id));
+
+        return { ticket: await one(database, found.project, found.ticket) };
+      },
+      {
+        params: t.Object({ ref: t.String() }),
+        body: t.Object({ type: t.String(), ticket: t.String() }),
+        response: { 200: ONE_TICKET, 400: REFUSAL, 401: REFUSAL, 404: REFUSAL },
+        detail: { summary: 'Add parent, blocking, related or duplicate context to an issue' },
+      },
+    )
+    .delete(
+      '/api/tickets/:ref/relationships/:type/:ticket',
+      async ({ request, params, status }) => {
+        const held = await asking(auth, request);
+        if ('refused' in held) return status(401, held.refused);
+        const found = await resolve(database, params.ref);
+        if (!found) return status(404, refusal('TICKET_NOT_FOUND', 'No such ticket.'));
+        if (!isOneOf(RELATIONSHIPS, params.type)) {
+          return status(400, refusal('RELATIONSHIP_UNKNOWN', 'That relationship is not supported.'));
+        }
+        const names = await resolve(database, params.ticket);
+        if (names) {
+          await database
+            .delete(ticketRelationship)
+            .where(
+              and(
+                eq(ticketRelationship.issueId, found.ticket.id),
+                eq(ticketRelationship.relatedIssueId, names.ticket.id),
+                eq(ticketRelationship.type, params.type),
+              ),
+            );
+        }
+        return { ticket: await one(database, found.project, found.ticket) };
+      },
+      {
+        params: t.Object({ ref: t.String(), type: t.String(), ticket: t.String() }),
+        response: { 200: ONE_TICKET, 400: REFUSAL, 401: REFUSAL, 404: REFUSAL },
+        detail: { summary: 'Remove planning relationship context from an issue' },
       },
     )
     .post(
@@ -1612,6 +1785,8 @@ async function queue(database: Database, held: typeof project.$inferSelect) {
           rows.map((each) => each.id),
         );
   const authors = await authorsOf(database, rows);
+  const assignees = await assigneesOf(database, rows);
+  const planning = await planningFor(database, rows, held.prefix);
   const claims = await claimsFor(
     database,
     rows.map((each) => each.id),
@@ -1629,6 +1804,7 @@ async function queue(database: Database, held: typeof project.$inferSelect) {
   const tickets = rows.map((row) =>
     asTicket(row, held.prefix, {
       author: row.authorId === null ? null : (authors.get(row.authorId) ?? null),
+      assignee: row.assigneeId === null ? null : (assignees.get(row.assigneeId) ?? null),
       claim: claims.get(row.id) ?? null,
       runs: runs.get(row.id) ?? [],
       outcome: outcomes.get(row.id) ?? null,
@@ -1647,6 +1823,7 @@ async function queue(database: Database, held: typeof project.$inferSelect) {
         .filter((each) => each.ticketId === row.id)
         .map((each) => named.get(each.gatedById))
         .filter(isThere),
+      ...(planning.get(row.id) ?? emptyPlanning()),
     }),
   );
 
@@ -1680,6 +1857,8 @@ async function one(database: Database, held: typeof project.$inferSelect, row: R
     relates.map((each) => [each.id, asNamed(each, held.prefix)]),
   );
   const authors = await authorsOf(database, [row]);
+  const assignees = await assigneesOf(database, [row]);
+  const planning = await planningFor(database, [row], held.prefix);
   const childOutcomes =
     row.kind === 'map'
       ? await outcomesFor(
@@ -1690,6 +1869,7 @@ async function one(database: Database, held: typeof project.$inferSelect, row: R
 
   return asTicket(row, held.prefix, {
     author: row.authorId === null ? null : (authors.get(row.authorId) ?? null),
+    assignee: row.assigneeId === null ? null : (assignees.get(row.assigneeId) ?? null),
     claim: await claimOn(database, row.id),
     runs: (await runsFor(database, [row.id])).get(row.id) ?? [],
     outcome: await outcomeOn(database, row.id),
@@ -1708,6 +1888,7 @@ async function one(database: Database, held: typeof project.$inferSelect, row: R
       .filter((each) => each.ticketId === row.id)
       .map((each) => named.get(each.gatedById))
       .filter(isThere),
+    ...(planning.get(row.id) ?? emptyPlanning()),
   });
 }
 
@@ -1814,6 +1995,66 @@ async function authorsOf(database: Database, rows: Row[]) {
     .where(inArray(user.id, ids));
 
   return new Map(people.map((each) => [each.id, each]));
+}
+
+async function assigneesOf(database: Database, rows: Row[]) {
+  const ids = [...new Set(rows.map((each) => each.assigneeId).filter(isText))];
+  if (ids.length === 0) return new Map<string, { id: string; name: string }>();
+
+  const people = await database
+    .select({ id: user.id, name: user.name })
+    .from(user)
+    .where(inArray(user.id, ids));
+
+  return new Map(people.map((each) => [each.id, each]));
+}
+
+interface Planning {
+  parent: Named | null;
+  subIssues: Named[];
+  relationships: { type: string; ticket: Named }[];
+}
+
+function emptyPlanning(): Planning {
+  return { parent: null, subIssues: [], relationships: [] };
+}
+
+async function planningFor(database: Database, rows: Row[], prefix: string) {
+  const ids = rows.map((each) => each.id);
+  const answer = new Map<string, ReturnType<typeof emptyPlanning>>(
+    ids.map((id) => [id, emptyPlanning()]),
+  );
+  if (ids.length === 0) return answer;
+
+  const edges = await database
+    .select()
+    .from(ticketRelationship)
+    .where(
+      or(
+        inArray(ticketRelationship.issueId, ids),
+        inArray(ticketRelationship.relatedIssueId, ids),
+      ),
+    );
+  const touched = [...new Set(edges.flatMap((edge) => [edge.issueId, edge.relatedIssueId]))];
+  const related = await database.select().from(ticket).where(inArray(ticket.id, touched));
+  const named = new Map(related.map((each) => [each.id, asNamed(each, prefix)]));
+
+  for (const edge of edges) {
+    const issue = answer.get(edge.issueId);
+    const relatedIssue = named.get(edge.relatedIssueId);
+    if (issue !== undefined && relatedIssue !== undefined) {
+      if (edge.type === 'parent') issue.parent = relatedIssue;
+      else issue.relationships.push({ type: edge.type, ticket: relatedIssue });
+    }
+
+    const child = answer.get(edge.relatedIssueId);
+    const parent = named.get(edge.issueId);
+    if (edge.type === 'parent' && child !== undefined && parent !== undefined) {
+      child.subIssues.push(parent);
+    }
+  }
+
+  return answer;
 }
 
 type OutcomeRow = typeof outcome.$inferSelect;
@@ -1976,6 +2217,10 @@ async function allocate(
     body: string;
     criteria: string[];
     gate: string;
+    status?: string;
+    priority?: string;
+    assigneeId?: string | null;
+    tags?: string[];
     authorId: string;
     sourceChatId: string | null;
   },
@@ -1992,6 +2237,10 @@ async function allocate(
     const row: Row = {
       id: randomUUID(),
       ...written,
+      status: written.status ?? 'backlog',
+      priority: written.priority ?? 'none',
+      assigneeId: written.assigneeId ?? null,
+      tags: written.tags ?? [],
       number: Number(highest?.number ?? 0) + 1,
       rank: Number(highest?.rank ?? 0) + 1,
       createdAt: new Date(),
@@ -2335,12 +2584,19 @@ function asTicket(row: Row, prefix: string, context: Context) {
     body: row.body,
     criteria: row.criteria,
     gate: row.gate,
+    status: row.status,
+    priority: row.priority,
+    assignee: context.assignee,
+    tags: row.tags,
     band: bandOf(row, context.children, context.claim, context.runs),
     rank: row.rank,
     branch: branchOf(row, prefix, context.runs),
     author: context.author,
     gates: context.gates,
     children: context.children,
+    parent: context.parent,
+    subIssues: context.subIssues,
+    relationships: context.relationships,
     claim: context.claim === null ? null : asClaim(context.claim),
     runs: context.runs.map(asRun),
     createdAt: row.createdAt.toISOString(),
@@ -2461,6 +2717,10 @@ function asNamed(row: Row, prefix: string): Named {
 
 function asProject(row: typeof project.$inferSelect) {
   return { id: row.id, name: row.name, prefix: row.prefix };
+}
+
+function cleanTags(tags: string[]): string[] {
+  return [...new Set(tags.map((tag) => tag.trim()).filter((tag) => tag !== ''))];
 }
 
 /** How many criteria are really there, since a blank one is not a criterion. */

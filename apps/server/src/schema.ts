@@ -320,6 +320,14 @@ export const ticket = pgTable(
     criteria: text('criteria').array().notNull(),
     /** draft, ready-for-agent or ready-for-human. A value, not an absence. */
     gate: text('gate').notNull(),
+    /** Human-facing kanban column, separate from execution readiness. */
+    status: text('status').notNull().default('backlog'),
+    /** Person-owned urgency, ordered by the board rather than by the machine. */
+    priority: text('priority').notNull().default('none'),
+    /** The person responsible for the issue, when one has been chosen. */
+    assigneeId: text('assigneeId').references(() => user.id, { onDelete: 'set null' }),
+    /** Small user-facing labels used by board filtering. */
+    tags: text('tags').array().notNull().default(sql`ARRAY[]::text[]`),
     /** Orders it within a band. Ties are broken by the number, so the order is total. */
     rank: integer('rank').notNull(),
     /** Cleared rather than cascaded, for the same reason a project's is. */
@@ -444,6 +452,24 @@ export const gate = pgTable(
   (table) => [
     primaryKey({ columns: [table.ticketId, table.gatedById] }),
     index('gate_by_gated_by').on(table.gatedById),
+  ],
+);
+
+/** A planning relationship shown on the issue board, distinct from execution gates. */
+export const ticketRelationship = pgTable(
+  'ticket_relationship',
+  {
+    issueId: text('issueId')
+      .notNull()
+      .references(() => ticket.id, { onDelete: 'cascade' }),
+    relatedIssueId: text('relatedIssueId')
+      .notNull()
+      .references(() => ticket.id, { onDelete: 'cascade' }),
+    type: text('type').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.issueId, table.relatedIssueId, table.type] }),
+    index('ticket_relationship_by_related').on(table.relatedIssueId),
   ],
 );
 
@@ -593,6 +619,7 @@ export const schema = {
   glossaryEntry,
   glossaryHistory,
   gate,
+  ticketRelationship,
   claim,
   run,
   transcript,

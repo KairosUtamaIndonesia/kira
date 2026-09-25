@@ -547,7 +547,7 @@ describe('a ticket', () => {
     if (before === undefined) throw new Error('the ticket was not written');
 
     // Boot has already applied the current migrations. Rewind the schema and journal
-    // through 0013 so this test can exercise 0009 against a row shaped like an older
+    // through 0014 so this test can exercise 0009 against a row shaped like an older
     // installation, then restore every migration in the cumulative history. Removing
     // all later rows matters: Drizzle applies the entries after the newest recorded row,
     // so leaving 0010-0012 recorded would skip 0009 entirely.
@@ -557,13 +557,14 @@ describe('a ticket', () => {
     await database.$client.query('DROP TABLE IF EXISTS outcome CASCADE');
     await database.$client.query('DROP TABLE IF EXISTS decision CASCADE');
     await database.$client.query(
-      'DELETE FROM drizzle.__drizzle_migrations WHERE hash IN ($1, $2, $3, $4, $5)',
+      'DELETE FROM drizzle.__drizzle_migrations WHERE hash IN ($1, $2, $3, $4, $5, $6)',
       [
         '7b218fb9233736fb51d9dd946e2551cc909b394db2c4edcae73e8a8ff78e12dd',
         'b6b9616c92307a15412fbd0d2fed91b52594cbf315cdf69ece366005b96b3545',
         'efb0a60a30a3d368edfd3896cdfaedd7ed36c492ce34814ee12a8dda8064cd0e',
         'dba709b6c7143f78c2334a33a657c57f56936ce2914ea88a6723536ffe14187f',
         '7ae2c56e8448cbe9725084311bf1b257542801b652a98dea042d1dc15a316e0a',
+        'eaccfc7612ebfc4421c254028b8f3f174f3360fe18b19d8a7b34adae70f23711',
       ],
     );
     await migrate(database);
