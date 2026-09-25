@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { deliveriesFor, type DeliveryAudit, type PullRequests } from './delivery.ts';
+import { deliveriesFor, type DeliveryAudit, type PullRequests } from './delivery/delivery.ts';
 import type { Worktrees } from './workspace/worktrees.ts';
 
 const workspace = {

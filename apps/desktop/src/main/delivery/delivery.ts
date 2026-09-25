@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import type { Worktrees } from './workspace/worktrees.ts';
+import type { Worktrees } from '../workspace/worktrees.ts';
 
 const run = promisify(execFile);
 

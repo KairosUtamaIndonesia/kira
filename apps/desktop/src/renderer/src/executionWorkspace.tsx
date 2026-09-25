@@ -2,11 +2,18 @@ import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
 import { Divider } from '@astryxdesign/core/Divider';
 import { Icon } from '@astryxdesign/core/Icon';
+import { TextArea } from '@astryxdesign/core/TextArea';
+import { TextInput } from '@astryxdesign/core/TextInput';
 import { Text } from '@astryxdesign/core/Text';
 import * as stylex from '@stylexjs/stylex';
 import { ExternalLink, GitBranch, Laptop, Terminal } from 'lucide-react';
 import { useState } from 'react';
-import type { ExecutionWorkspace, Ticket, TicketSaid } from '../../preload/bridge.ts';
+import type {
+  ExecutionWorkspace,
+  ExecutionReview,
+  Ticket,
+  TicketSaid,
+} from '../../preload/bridge.ts';
 import {
   executionPreviewLabel,
   executionStatusLabel,
@@ -17,14 +24,29 @@ import {
 export function ExecutionWorkspacePanel({
   ticket,
   workspaces,
+  onChanged,
 }: {
   ticket: Ticket;
   workspaces: ExecutionWorkspace[];
+  onChanged: () => Promise<void>;
 }) {
   const [selectedId, setSelectedId] = useState(workspaces[0]?.id ?? null);
   const selected = workspaces.find((workspace) => workspace.id === selectedId) ?? workspaces[0];
+  const [creating, setCreating] = useState(workspaces.length === 0);
 
-  if (selected === undefined) return null;
+  if (selected === undefined) {
+    return (
+      <section {...stylex.props(styles.section)} aria-label="Execution workspaces">
+        <WorkspaceForm
+          ticket={ticket}
+          onCreated={async () => {
+            setCreating(false);
+            await onChanged();
+          }}
+        />
+      </section>
+    );
+  }
 
   const view = executionWorkspaceView(selected, ticket);
 
@@ -68,14 +90,88 @@ export function ExecutionWorkspacePanel({
         </div>
       )}
 
-      <WorkspaceDetails ticket={ticket} view={view} />
+      {creating ? (
+        <WorkspaceForm
+          ticket={ticket}
+          onCreated={async () => {
+            setCreating(false);
+            await onChanged();
+          }}
+        />
+      ) : (
+        <Button label="Add execution workspace" size="sm" variant="secondary" onClick={() => setCreating(true)} />
+      )}
+
+      <WorkspaceDetails ticket={ticket} view={view} workspaceId={selected.id} />
     </section>
   );
 }
 
-function WorkspaceDetails({ ticket, view }: { ticket: Ticket; view: ExecutionWorkspaceView }) {
+function WorkspaceForm({
+  ticket,
+  onCreated,
+}: {
+  ticket: Ticket;
+  onCreated: () => Promise<void>;
+}) {
+  const [repository, setRepository] = useState('');
+  const [baseBranch, setBaseBranch] = useState('main');
+  const [branch, setBranch] = useState(ticket.branch);
+  const [agentConfig, setAgentConfig] = useState('default');
+  const [trouble, setTrouble] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const create = async (): Promise<void> => {
+    setBusy(true);
+    const result = await window.kira.createExecutionWorkspace(ticket.id, {
+      repository,
+      baseBranch,
+      branch,
+      agentConfig,
+    });
+    setBusy(false);
+    if (!result.ok) {
+      setTrouble(result.error);
+      return;
+    }
+    setTrouble(null);
+    await onCreated();
+  };
+
+  return (
+    <div {...stylex.props(styles.form)}>
+      <Text type="label" weight="medium">
+        Create execution workspace
+      </Text>
+      <Text type="supporting" color="secondary">
+        Choose the repository, base branch, working branch, and agent configuration before starting work.
+      </Text>
+      <TextInput label="Repository" value={repository} onChange={setRepository} size="sm" />
+      <TextInput label="Base branch" value={baseBranch} onChange={setBaseBranch} size="sm" />
+      <TextInput label="Workspace branch" value={branch} onChange={setBranch} size="sm" />
+      <TextInput label="Agent configuration" value={agentConfig} onChange={setAgentConfig} size="sm" />
+      {trouble !== null && <Text type="supporting" color="secondary">{trouble}</Text>}
+      <Button label={busy ? 'Creating workspace' : 'Create workspace'} size="sm" variant="primary" isDisabled={busy} onClick={() => void create()} />
+    </div>
+  );
+}
+
+function WorkspaceDetails({
+  ticket,
+  view,
+  workspaceId,
+}: {
+  ticket: Ticket;
+  view: ExecutionWorkspaceView;
+  workspaceId: string;
+}) {
   const [said, setSaid] = useState<TicketSaid[] | null>(null);
   const [trouble, setTrouble] = useState<string | null>(null);
+  const [review, setReview] = useState<ExecutionReview | null>(null);
+  const [path, setPath] = useState('');
+  const [line, setLine] = useState('1');
+  const [comment, setComment] = useState('');
+  const [feedback, setFeedback] = useState('');
 
   const readOutput = async (): Promise<void> => {
     if (view.run === null) return;
@@ -86,6 +182,41 @@ function WorkspaceDetails({ ticket, view }: { ticket: Ticket; view: ExecutionWor
     }
     setTrouble(null);
     setSaid(answer.value);
+  };
+
+  const readReview = async (): Promise<void> => {
+    const answer = await window.kira.readExecutionReview(ticket.id, workspaceId);
+    if (!answer.ok) {
+      setTrouble(answer.error);
+      return;
+    }
+    setTrouble(null);
+    setReview(answer.value);
+  };
+
+  const addComment = async (): Promise<void> => {
+    const answer = await window.kira.addReviewComment(ticket.id, workspaceId, {
+      path,
+      line: Number(line),
+      side: 'right',
+      body: comment,
+    });
+    if (!answer.ok) {
+      setTrouble(answer.error);
+      return;
+    }
+    setComment('');
+    await readReview();
+  };
+
+  const sendFeedback = async (): Promise<void> => {
+    const answer = await window.kira.sendReviewFeedback(ticket.id, workspaceId, { body: feedback });
+    if (!answer.ok) {
+      setTrouble(answer.error);
+      return;
+    }
+    setFeedback('');
+    await readReview();
   };
 
   return (
@@ -163,6 +294,51 @@ function WorkspaceDetails({ ticket, view }: { ticket: Ticket; view: ExecutionWor
       </div>
 
       <div {...stylex.props(styles.block)}>
+        <div {...stylex.props(styles.blockHeading)}>
+          <Text type="label" weight="medium">Review and feedback</Text>
+          <Button label="Refresh review" size="sm" variant="ghost" onClick={() => void readReview()} />
+        </div>
+        {review === null ? (
+          <Text type="supporting" color="secondary">Refresh review to inspect comments and feedback for this workspace.</Text>
+        ) : (
+          <>
+            {review.comments.length === 0 && review.feedback.length === 0 && (
+              <Text type="supporting" color="secondary">No review comments or feedback yet.</Text>
+            )}
+            {review.comments.map((item) => (
+              <div key={item.id} {...stylex.props(styles.reviewItem)}>
+                <Text type="code">{item.path}:{item.line} · {item.status}</Text>
+                <Text type="supporting">{item.body}</Text>
+                {item.status === 'open' && (
+                  <Button
+                    label="Mark addressed"
+                    size="sm"
+                    variant="ghost"
+                    onClick={async () => {
+                      const answer = await window.kira.updateReviewComment(ticket.id, workspaceId, item.id, 'addressed');
+                      if (!answer.ok) setTrouble(answer.error);
+                      else await readReview();
+                    }}
+                  />
+                )}
+              </div>
+            ))}
+            {review.feedback.map((item) => (
+              <div key={item.id} {...stylex.props(styles.reviewItem)}>
+                <Text type="supporting">Feedback: {item.body}</Text>
+              </div>
+            ))}
+          </>
+        )}
+        <TextInput label="Changed file" value={path} onChange={setPath} size="sm" />
+        <TextInput label="Line" value={line} onChange={setLine} size="sm" />
+        <TextArea label="Inline comment" value={comment} onChange={setComment} rows={3} />
+        <Button label="Add comment" size="sm" variant="secondary" isDisabled={path.trim() === '' || comment.trim() === ''} onClick={() => void addComment()} />
+        <TextArea label="Feedback for the agent" value={feedback} onChange={setFeedback} rows={3} />
+        <Button label="Send feedback" size="sm" variant="primary" isDisabled={feedback.trim() === ''} onClick={() => void sendFeedback()} />
+      </div>
+
+      <div {...stylex.props(styles.block)}>
         <Text type="label" weight="medium">
           Changed work
         </Text>
@@ -202,6 +378,8 @@ const styles = stylex.create({
   metaItem: { display: 'flex', alignItems: 'center', gap: 'var(--spacing-2)' },
   block: { display: 'grid', gap: 'var(--spacing-2)' },
   blockHeading: { display: 'flex', alignItems: 'center', gap: 'var(--spacing-2)' },
+  form: { display: 'grid', gap: 'var(--spacing-2)' },
+  reviewItem: { display: 'grid', gap: 'var(--spacing-1)', paddingBlock: 'var(--spacing-2)' },
   output: {
     display: 'grid',
     gap: 'var(--spacing-2)',

@@ -912,6 +912,7 @@ export function WorkSurface({
       onLeave={closePanel}
       onOpen={openTicket}
       onOpenChat={onOpenChat}
+      onChanged={read}
       onRefuse={setRefusal}
       onWrite={(change) => wrote(() => window.kira.changeTicket(open.id, change))}
       onGate={(gatedBy) => wrote(() => window.kira.gateTicket(open.id, gatedBy))}
@@ -1833,6 +1834,7 @@ function TicketReading({
   onLeave,
   onOpen,
   onOpenChat,
+  onChanged,
   onRefuse,
   onWrite,
   onGate,
@@ -1852,6 +1854,7 @@ function TicketReading({
   onLeave: () => void;
   onOpen: (id: string) => void;
   onOpenChat: (chatId: string) => void;
+  onChanged: () => Promise<void>;
   onRefuse: (message: string | null) => void;
   onWrite: (change: TicketChange) => Promise<Ticket | null>;
   onGate: (gatedBy: string) => Promise<Ticket | null>;
@@ -2125,9 +2128,11 @@ function TicketReading({
               something has worked, this is what the ticket is waiting on. */}
           <RunHistory ticket={ticket} chatIds={chatIds} onOpenChat={onOpenChat} />
 
-          {executionWorkspaces.length > 0 && (
-            <ExecutionWorkspacePanel ticket={ticket} workspaces={executionWorkspaces} />
-          )}
+          <ExecutionWorkspacePanel
+            ticket={ticket}
+            workspaces={executionWorkspaces}
+            onChanged={onChanged}
+          />
 
           <section {...stylex.props(styles.section)}>
             <Text type="label" weight="medium">
