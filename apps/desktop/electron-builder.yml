@@ -1,0 +1,44 @@
+appId: ai.foundry.kairos
+productName: Foundry
+
+# The custom protocol sign-in is returned to by. A packaged build is what
+# registers it: a development build is Electron running a script, with no
+# desktop entry for the application, so the operating system has nothing to hand
+# the link to (docs/adr/0004-sign-in.md).
+protocols:
+  - name: Foundry
+    schemes:
+      - ai.foundry.kairos
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - out/**
+  - package.json
+
+# Workflow skills are data, not application code. Keep them outside the asar so
+# the same resource path works on macOS, Windows and Linux packaged builds.
+extraResources:
+  - from: resources/skills
+    to: skills
+
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - dmg
+    - zip
+
+win:
+  target:
+    - nsis
+
+linux:
+  category: Development
+  target:
+    - AppImage
+
+publish:
+  provider: generic
+  url: https://kira.kairos-it.com/updates/desktop/

@@ -1,0 +1,60 @@
+/*
+ * Foundry's theme, in one place so every surface imports the same one.
+ *
+ * The first block is Astryx's own entry points, not ours: its reset, its compiled
+ * CSS (astryx.css is StyleX's output, generated in Astryx's build), and Foundry's
+ * own derived theme (built/foundry.css, generated from foundryTheme.ts by
+ * `astryx theme build` — see package.json's `theme:build` script). Importing
+ * them here rather than in each app is what makes this package the whole of
+ * "how Foundry looks".
+ *
+ * Nothing below needs StyleX compilation, which is why a consumer only has to
+ * import this file: astryx.css arrives precompiled, and what Foundry adds of its
+ * own is plain CSS. A component that styled itself with StyleX would move that
+ * cost onto every consumer's build.
+ */
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/geist-mono';
+@import '@astryxdesign/core/reset.css';
+@import '@astryxdesign/core/astryx.css';
+@import './built/foundry.css';
+
+@font-face {
+  font-family: 'Satoshi Variable';
+  font-style: normal;
+  font-weight: 300 900;
+  font-display: swap;
+  src: url('./fonts/Satoshi-Variable.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Satoshi Variable';
+  font-style: italic;
+  font-weight: 300 900;
+  font-display: swap;
+  src: url('./fonts/Satoshi-VariableItalic.woff2') format('woff2');
+}
+
+/* Keep every scroll container quiet and sharp, including the app viewport. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-emphasized) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--color-border-emphasized);
+  border-radius: 0;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-secondary);
+}

@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    // `node` is here for the tests colocated with the renderer's own modules,
+    // which run under `node --test` and so reach for `node:test`. A renderer
+    // module importing a node builtin would fail the renderer bundle, which is
+    // the boundary that matters.
+    "types": ["vite/client", "node"],
+    "noEmit": true
+  },
+  "include": ["src/renderer/src", "src/preload/bridge.ts"]
+}

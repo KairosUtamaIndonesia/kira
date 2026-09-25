@@ -1,1 +1,0 @@
-ALTER TABLE "organization_models" ADD COLUMN "thinking_level" text DEFAULT 'medium' NOT NULL;

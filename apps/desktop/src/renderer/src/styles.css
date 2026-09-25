@@ -1,0 +1,590 @@
+/*
+ * The theme is not ours to state here: importing `@foundry/theme` brings Astryx's
+ * entry points, Foundry's typefaces and the family tokens with it, so this surface and
+ * every other one are themed by the same file.
+ *
+ * Everything below is app layout: the panes' arrangement now that the frame is
+ * AppShell's — the shell owns the nav column, its width and the main region, while the
+ * primitives assistant-ui gives us are unstyled divs, and it is the app's job to place
+ * them — which pane is which, what scrolls, what stays put. One rule reaches the shell
+ * itself, and is marked as such where it sits: a prop would be the better place to say
+ * it and there is no prop for it. Lengths come from Astryx's spacing scale so this file
+ * says "one step of the rhythm", not "12px".
+ *
+ * Foundry also compiles its component-level StyleX overrides in the renderer build, so
+ * custom component presentation stays with the component rather than coming from here.
+ */
+
+/*
+ * The nav column is a column, and nothing in it is meant to move sideways: the
+ * resize handle sits flush against its edge and reaches 1px past it, which the
+ * shell's own horizontally scrolling panel would otherwise draw a scrollbar for.
+ * The shell, not a pane — AppShell styles this panel but offers no prop for its
+ * overflow, so naming Astryx's theming target is the only way to say it.
+ */
+.astryx-app-shell-sidenav {
+  overflow-x: clip;
+}
+
+/*
+ * Foundry's monogram, in the theme's own accent color — nowhere else in the
+ * rail wears it, so the collapsed state (where the "Foundry" wordmark itself
+ * is hidden) still shows whose window this is. Square rather than round: the
+ * theme zeroes every radius on purpose (see foundryTheme.ts), and a rounded
+ * mark would be the one thing in the rail that broke that.
+ */
+.brand-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  font-family: var(--font-family-heading);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.side-nav-header {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+}
+
+.side-nav-header > .astryx-side-nav-heading {
+  flex: 1;
+  min-width: 0;
+}
+
+.side-nav-header-collapsed {
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
+
+/*
+ * The signed-in account's initial (see AccountMenu/AccountAvatar in App.tsx).
+ * Square, like `.brand-mark` above — same rail, same theme with every radius
+ * zeroed — but a neutral fill so it reads as a person, not the product.
+ */
+.account-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: var(--color-background-muted);
+  color: var(--color-text-primary);
+  font-family: var(--font-family-heading);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+/*
+ * Astryx's SideNavItem defines its own hover overlay (interactionOverlayStyles,
+ * keyed off --color-overlay-hover) that should paint on Settings, project rows,
+ * and chat rows alike — but it isn't rendering in this dev build (verified: the
+ * element genuinely matches :hover, yet computed background-color stays
+ * transparent), leaving every nav row static under the pointer. Restated here
+ * with the same token so hover reads correctly regardless of that gap; safe to
+ * drop once the underlying rule is confirmed working again upstream. Selected
+ * rows are excluded because Astryx's own selected variant already holds
+ * --color-neutral through hover — the same "no visible change" as this rule
+ * skipping them entirely.
+ *
+ * `!important`: StyleX's own rules carry ID-level specificity here (each
+ * class repeats a `:not(#\#)` escape hatch as a priority-bucket trick),
+ * which outranks any class selector of ours regardless of source order —
+ * there is no honestly-scoped selector shape that beats it otherwise.
+ */
+.astryx-side-nav-item:hover:not(:disabled):not([aria-disabled='true']):not(
+    [data-selected='selected']
+  ) {
+  background-color: var(--color-overlay-hover) !important;
+}
+
+/*
+ * Same gap, one level down: DropdownMenuItem (what MoreMenu and ContextMenu
+ * both render their rows as) drives its hover look off :focus, not :hover —
+ * a `focusMenuItemOnHover` listener really does move keyboard focus to the
+ * item under the pointer (confirmed live), but the paired StyleX `:focus`
+ * background rule isn't rendering here either. Same fix, same token.
+ */
+.astryx-dropdown-menu-item:focus:not(:disabled):not([aria-disabled='true']) {
+  background-color: var(--color-overlay-hover) !important;
+}
+
+/*
+ * The two ways to begin: a chat of its own, or a project to work in. Stacked
+ * rather than side by side, because the nav is a narrow column at every width it
+ * can be dragged to.
+ */
+.nav-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+/*
+ * Astryx centers what a button holds, and drops a class name handed to one of its
+ * own components, so which buttons start at the left edge is said from the column.
+ * These two are not a pair of buttons but the head of the two lists under them.
+ */
+.nav-actions-expanded > button {
+  justify-content: flex-start;
+}
+
+/*
+ * The account trigger names who's signed in, so it reads left-to-right like
+ * every other row in the rail (avatar, then name) rather than centering the
+ * way a plain button does. The disclosure chevron is Astryx's `endContent`,
+ * the button's last child regardless of theme — pinning it there with its
+ * own margin holds it at the row's trailing edge while the avatar and name
+ * stay pinned to the leading edge above. Button wraps icon/label/endContent
+ * in a `display: contents` span (so they lay out as the button's own flex
+ * items, not a nested row) followed by a `position: absolute` a11y status
+ * span for loading announcements — out of flow, so it never renders and
+ * cannot be `:last-child` here; the chevron is the *contents* span's own
+ * last child instead. `!important`: StyleX gives its own generated class
+ * the same ID-level specificity trick noted above, which otherwise wins
+ * over this margin regardless of source order.
+ */
+.account-menu-trigger {
+  justify-content: flex-start;
+}
+
+.account-menu-trigger > span:first-child > span:last-child {
+  margin-left: auto !important;
+}
+
+/*
+ * A project with nothing in it yet still draws open (see the comment above
+ * where it is rendered), so this is what fills that space instead of a group
+ * that looks like it leads nowhere. Padding matches a chat row's so the line
+ * sits where a chat row would.
+ */
+.empty-workspace {
+  display: block;
+  padding: var(--spacing-1-5) var(--spacing-2);
+}
+
+/*
+ * A chat row's "..." menu stays out of the way until there's a reason to reach
+ * for it: hidden until the row is hovered or the trigger itself is focused
+ * (keyboard access, no pointer required), and pinned visible for as long as
+ * its own menu is open — the popover content renders outside this row through
+ * Astryx's Layer system, so :focus-within stops matching the moment focus
+ * moves into it, and the trigger would otherwise vanish under an open menu.
+ */
+.chat-row .astryx-more-menu {
+  opacity: 0;
+}
+
+.chat-row:hover .astryx-more-menu,
+.chat-row .astryx-more-menu:focus-visible,
+.chat-row-menu-open .astryx-more-menu {
+  opacity: 1;
+}
+
+/*
+ * The unfiled "Chats" group sits at the sidebar's top level, not inside
+ * anything — Astryx's disclosure indent (--spacing-6, on the children
+ * gutter every SideNavItem draws the same way) reads as nesting that isn't
+ * there. Zeroed here rather than on the group itself, since SideNavItem
+ * exposes no hook to reach only its own children gutter.
+ */
+.unfiled-chats [role='group'] > div {
+  padding-inline-start: 0 !important;
+}
+
+/*
+ * A project's chats stay indented — they really are nested — with tree
+ * lines standing in for the indent alone. One shared vertical stroke runs
+ * through the list, including the space above its first row; each row adds
+ * the short horizontal arm of the tree without moving its own content.
+ */
+.workspace-group [role='group'] {
+  position: relative;
+  padding-top: var(--spacing-1);
+}
+
+.workspace-group [role='group']::before {
+  content: '';
+  position: absolute;
+  top: calc(0px - var(--spacing-1));
+  bottom: 0;
+  left: 12px;
+  width: 1px;
+  background: var(--color-border);
+}
+
+.workspace-group [role='group'] > div > * {
+  position: relative;
+  margin-left: -12px;
+  padding-left: 12px;
+}
+
+.workspace-group [role='group'] > div > *::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 12px;
+  height: 1px;
+  background: var(--color-border);
+}
+
+/*
+ * The chat pane fills the shell's main region: a slim row naming the chat and
+ * holding the control for the pane beside it, over the conversation and the
+ * workbench. Height rather than `flex`, because what this pane sits in is the
+ * shell's main element and not a flex row of ours.
+ */
+.chat {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+/*
+ * The title takes what room it needs and no more, so a long one is cut off
+ * rather than pushing the control off the edge of the window.
+ */
+.chat-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-2);
+  flex-shrink: 0;
+  padding: var(--spacing-1-5) var(--spacing-4);
+  border-block-end: 1px solid var(--color-border);
+}
+
+.chat-heading {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: var(--spacing-3);
+}
+
+.chat-heading > :first-child {
+  min-width: 0;
+}
+
+.chat-mode-switcher {
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--spacing-1);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/*
+ * The conversation and the workbench, side by side.
+ */
+.chat-body {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+/*
+ * The conversation takes whatever the pane beside it leaves. `min-width: 0` so
+ * it can be narrowed — a flex item will not go below its content's width
+ * otherwise, and a long line of prose would push the pane off the window.
+ */
+.chat-body > .thread,
+.chat-body > .draft-pane {
+  flex: 1;
+  min-width: 0;
+}
+
+/*
+ * The workbench: the pane beside the conversation, holding the tabs — what Kira
+ * is holding for this chat, and the workspace and its files as they arrive. The
+ * resize handle sits inside this wrapper rather than beside it so that hiding
+ * the pane hides the control for it too, and so the width the handle drags is
+ * one number for the pair.
+ *
+ * Below the width where a readable column of conversation and a pane cannot
+ * both fit, the pane is absent rather than squeezed: the conversation is the
+ * thing being read. The ticket on the narrow window replaces this.
+ */
+.workbench-region {
+  display: flex;
+  flex-direction: row;
+  flex-shrink: 0;
+  min-height: 0;
+}
+
+/*
+ * Put away, it takes no room at all — answered here as well as by the browser's
+ * own rule, since `display` above is authored CSS and would otherwise win.
+ */
+.workbench-region[hidden] {
+  display: none;
+}
+
+@media (max-width: 70rem) {
+  /*
+   * The control goes with the pane. A button for something that cannot be shown
+   * is a button that lies about what pressing it did.
+   */
+  .workbench-region,
+  .workbench-toggle {
+    display: none;
+  }
+}
+
+.workbench {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  border-inline-start: 1px solid var(--color-border);
+  background: var(--color-background-surface);
+}
+
+/*
+ * The tab's own scrolling, so what Kira is holding scrolls under the strip
+ * rather than pushing it off the top of the pane. It scrolls both ways: an open
+ * file is as wide as its longest line.
+ */
+.workbench-tab {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--spacing-4);
+}
+
+/*
+ * An open file, as it is written. Lines are not wrapped, because a wrapped line
+ * of code says something the file does not — so the pane scrolls sideways
+ * instead, and the text is monospaced by Astryx's own code type.
+ */
+.file-tab-text {
+  margin: 0;
+  white-space: pre;
+  tab-size: 2;
+}
+
+/*
+ * The way out of a file's tab with a pointer. A span rather than a button,
+ * because a tab is a button and a button inside one is invalid markup; the
+ * keyboard's way out is Delete on the tab itself, which is where focus is.
+ */
+.workbench-tab-close {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--spacing-1);
+  border-radius: var(--spacing-1);
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.workbench-tab-close:hover {
+  background: var(--color-overlay-hover);
+}
+
+/*
+ * A new chat that has not been said anything in yet, while another chat is being
+ * read: hidden rather than unmounted, because its runtime is what is holding the
+ * words in its box. `hidden` is answered here as well as by the browser's own
+ * rule, so the pane below it takes the whole column either way.
+ */
+.draft-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.draft-pane[hidden] {
+  display: none;
+}
+
+/*
+ * The thread fills the chat pane: the messages scroll, the composer stays put.
+ * Structure is Astryx/assistant-ui's, but the inset's own background is ours —
+ * a flat --color-background-surface read as one uninterrupted hex with nothing
+ * to anchor the eye, so a soft glow sits behind the whole pane (not just the
+ * scrolling viewport, so it reaches the full inset width regardless of column
+ * width) and fades out toward the bottom.
+ */
+.thread {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: radial-gradient(
+    140% 100% at 50% -10%,
+    light-dark(#ffffff, #362929) 0%,
+    var(--color-background-surface) 60%
+  );
+}
+
+.thread::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+  background-size: 140px 140px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/*
+ * The scrolling element is full-width so its scrollbar sits at the pane's own
+ * edge, flush with the sidebar, rather than at the edge of the centered
+ * column — the column width lives on `.thread-viewport-inner` instead, one
+ * level in, where it doesn't affect where the scrollbar draws.
+ */
+.thread-viewport {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  width: 100%;
+}
+
+/*
+ * Messages read as a document column rather than stretching full-bleed
+ * across wide windows; the glow on `.thread` still spans the whole inset.
+ */
+.thread-viewport-inner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  padding: var(--spacing-4);
+  width: 100%;
+  max-width: 760px;
+  margin-inline: auto;
+}
+
+.thread-footer {
+  padding: var(--spacing-3) var(--spacing-4);
+  width: 100%;
+  max-width: 760px;
+  margin-inline: auto;
+}
+
+/*
+ * Words waiting to be read, stacked above the composer they were written in.
+ * They are the composer's own state — pi reads them when the turn reaches them
+ * — so they sit with the box rather than in the conversation.
+ */
+.composer-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1-5);
+}
+
+.waiting {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-1);
+  padding: 0 var(--spacing-1);
+}
+
+.waiting-line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-2);
+}
+
+/* Which turn it waits for, so the two lanes line up and read as a column. */
+.waiting-line > :first-child {
+  min-width: 2.75rem;
+  text-align: right;
+}
+
+.line {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
+
+/* A question sits on the right in its own bubble, so what it offers to do with
+   it — edit, fork — sits under that bubble instead of at the far left, where it
+   would look like it belonged to Kira's answer. */
+.line[data-sender='user'] .line-actions {
+  justify-content: flex-end;
+}
+
+/* Assistant actions sit beneath the response text, not the bubble edge. */
+.line[data-sender='assistant'] .line-actions {
+  padding-inline-start: var(--spacing-4);
+}
+
+.line-actions,
+.branches {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+}
+
+/* Keep message actions quiet until their message is being inspected. Focus keeps
+   the same controls reachable without a pointer. */
+.line-actions {
+  opacity: 0;
+}
+
+.line:hover .line-actions,
+.line:focus-within .line-actions {
+  opacity: 1;
+}
+
+/* What a message offers to do with it: ask again, fork, and whatever follows. */
+.action-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+}
+
+/*
+ * Signing in takes the whole window, because there is nothing else to show until
+ * it is done, and it is centred because it is one thing to do rather than a page
+ * to read. The column is as wide as its widest line and no wider, so the heading
+ * and the words sit over the button rather than stretching across a wide window.
+ */
+.sign-in {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-3);
+  height: 100%;
+  padding: var(--spacing-6);
+  text-align: center;
+}
+
+/*
+ * The model list opens above the picker rather than over it.
+ *
+ * Astryx anchors a selector's list below its trigger and then nudges the list up
+ * by exactly the amount it would overflow the window. The composer sits at the
+ * bottom of the window, so that nudge lands the list on top of the box it
+ * belongs to — and it wins over the `flip-block` fallback Astryx also declares,
+ * which would have moved the list above the trigger on its own. Anchoring it
+ * above puts the list where the room is, and that same fallback still moves it
+ * back down if the window is ever too short for the list to fit there.
+ *
+ * Remove this if Astryx stops nudging a layer that its own fallback would flip.
+ */
+.astryx-chat-composer [style*='position-anchor']:has(.astryx-selector-popup) {
+  position-area: self-block-start span-self-inline-end !important;
+}

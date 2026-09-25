@@ -1,22 +1,33 @@
+# The database Foundry's server keeps its own state in, for development and for
+# tests. Production points FOUNDRY_DATABASE_URL at a real instance instead; this
+# exists so a checkout has somewhere to run.
+#
+# Its own port rather than Postgres's default, so it cannot collide with another
+# project's Postgres on the same machine — docs/internal/server-development.md has
+# the ports Foundry claims and why.
+#
+# A named volume, so `docker compose down` does not throw away what was in it
+# and `down -v` does.
 services:
-  admin-postgres:
+  postgres:
     image: postgres:18-alpine
-    container_name: kira-admin-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: kira_admin
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
     ports:
-      - "5432:5432"
-    volumes:
-      - admin-postgres-data:/var/lib/postgresql
+      - '5439:5432'
+    environment:
+      POSTGRES_USER: foundry
+      POSTGRES_PASSWORD: foundry
+      POSTGRES_DB: foundry
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d kira_admin"]
-      interval: 10s
+      test: ['CMD-SHELL', 'pg_isready -U foundry -d foundry']
+      interval: 5s
       timeout: 5s
-      retries: 5
-      start_period: 10s
+      retries: 10
+    # Postgres 18's image wants the mount one level up, at /var/lib/postgresql,
+    # so the cluster lands in a version-named subdirectory and a future major
+    # upgrade can use `pg_upgrade --link`. Mounting .../data is what the image
+    # refuses to start on.
+    volumes:
+      - foundry-postgres:/var/lib/postgresql
 
 volumes:
-  admin-postgres-data:
+  foundry-postgres:

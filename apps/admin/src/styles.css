@@ -1,0 +1,43 @@
+/*
+ * The console's own layout. What things look like belongs to the theme, and
+ * Astryx's components are styled where they are called; this is only where they
+ * sit on the page. The spacing steps are Astryx's, so the rhythm here is the same
+ * one its components keep.
+ */
+
+.notice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-3);
+  max-width: 34rem;
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: var(--spacing-6);
+  text-align: center;
+}
+
+.waiting {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+}
+
+.allowanceForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  padding: var(--spacing-4) 0 0;
+}
+
+.allowanceActions {
+  display: flex;
+  gap: var(--spacing-2);
+}
+
+.allowanceRefusals {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
