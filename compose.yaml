@@ -27,7 +27,9 @@ services:
     # upgrade can use `pg_upgrade --link`. Mounting .../data is what the image
     # refuses to start on.
     volumes:
-      - kira-postgres:/var/lib/postgresql
+      # Keep the old volume key: renaming a Compose volume would otherwise make
+      # Docker create a new empty cluster during the Foundry → Kira migration.
+      - foundry-postgres:/var/lib/postgresql
 
 volumes:
-  kira-postgres:
+  foundry-postgres:

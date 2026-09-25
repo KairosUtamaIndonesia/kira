@@ -57,6 +57,28 @@ answering, so the server's first connection does not race the container's startu
 `docker compose up -d` returns as soon as the container is created, and the first `dev:server`
 of the day can fail to connect.
 
+If this checkout was run before the Foundry → Kira rename, the named volume contains a
+`foundry` role and database. Compose environment variables only initialize a new cluster; they
+do not rename roles or change passwords in an existing one. The checked-in `compose.yaml` keeps
+the old volume key so the data is not silently replaced. Run this one-time migration against
+the running development container:
+
+```sh
+docker exec -i foundry-postgres-1 psql -U foundry -d foundry <<'SQL'
+CREATE ROLE kira_migration_admin WITH LOGIN SUPERUSER PASSWORD 'temporary-migration-only';
+SQL
+docker exec -i -e PGPASSWORD=temporary-migration-only foundry-postgres-1 psql -h 127.0.0.1 -U kira_migration_admin -d postgres <<'SQL'
+ALTER ROLE foundry RENAME TO kira;
+ALTER ROLE kira PASSWORD 'kira';
+ALTER DATABASE foundry RENAME TO kira;
+SQL
+docker exec -i -e PGPASSWORD=kira foundry-postgres-1 psql -h 127.0.0.1 -U kira -d kira -c 'DROP ROLE kira_migration_admin'
+```
+
+The command preserves the existing tables and makes the default `kira:kira` development URL
+work again. The temporary role has this one-time password and should be dropped as shown. A new
+checkout does not need this step.
+
 The server creates its own tables at boot. Tests do not touch this database's tables: they keep
 theirs in a database of their own called `kira_test` on the same instance, which each boot
 empties and migrates again, so what one test leaves behind cannot be seen by another.
