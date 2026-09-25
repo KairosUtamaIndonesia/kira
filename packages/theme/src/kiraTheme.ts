@@ -42,10 +42,7 @@ export const kiraTheme = defineTheme({
     },
   },
 
-  // Sharp, brutalist corners for a clean, developer-centric look —
-  // multiplier 0 zeroes every scaled radius step, but --radius-full is
-  // exempt by design (it's the "always a pill" token for badges, avatars,
-  // and toggles). Zero it explicitly so nothing on the page stays rounded.
-  radius: { base: 4, multiplier: 0 },
-  tokens: { '--radius-full': '0px' },
+  // Keep corners subtle with half of Astryx's default radius scale: 2px
+  // inner, 4px elements, 6px containers, and 14px page/chat surfaces.
+  radius: { base: 4, multiplier: 0.5 },
 });

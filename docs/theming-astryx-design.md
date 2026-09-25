@@ -6,7 +6,7 @@ one manual escape hatch: `packages/theme/src/theme.css` overrides Astryx's font 
 Astryx's own typography system. This design closes both gaps with a single **derived theme** —
 a `defineTheme({ extends: neutralTheme, ... })` call that gives Kira a real brand accent
 (`#ff3859`), folds the existing Satoshi/Inter/Geist Mono choice into Astryx's `typography`
-config where it belongs, and sets a near-zero `radius` for a sleek, sharp-cornered,
+config where it belongs, and sets a subtle half-scale `radius` for a restrained,
 developer-centric look. It ships as a **built theme** (`astryx theme build`), matching how
 `neutralTheme/built` is already consumed today. Component-level overrides and motion tuning
 were considered and explicitly deferred — nothing about the current button/badge/etc. styling
@@ -87,10 +87,10 @@ restructuring how both apps import the theme, not just editing a config value.
   leaving `components` empty. Astryx's own convention (per `App.tsx`) is that components are
   styled per call site via props/`xstyle`, and a theme-level override only pays off when the
   same visual change needs to land everywhere a component is used, not once.
-- **Radius (Q9):** tune it to near-zero — no rounded corners at all, in service of a sleek,
-  clean, developer-centric look. Neutral's default radius ranges from 0.375rem (inner) up to
-  1.75rem (page); `defineTheme`'s `radius` config (base + multiplier) or direct `tokens`
-  overrides can flatten all of these to ~0.
+- **Radius (Q9):** use a subtle half-scale radius in service of a restrained,
+  developer-centric look. The scale is 2px (inner), 4px (element), 6px (container), and
+  14px (page/chat); `defineTheme`'s `radius` config keeps those values centralized and lets
+  the scale be increased later without changing component call sites.
 - **Motion (Q9, implicit):** left at Neutral's defaults (fast 125ms / medium 300ms / slow
   700ms, ratio 0.75). The answer to Q9 named radius specifically and did not ask for motion to
   change, so it stays out of scope for this pass.
@@ -121,38 +121,35 @@ Established by reading Astryx's source rather than by asking:
 
 Implemented as designed: `@astryxdesign/cli` is now a `packages/theme` devDependency;
 `packages/theme/src/kiraTheme.ts` is the `defineTheme({ extends: neutralTheme, ... })` source
-(accent `#ff3859`, typography folded in unchanged, `radius: { base: 4, multiplier: 0 }` for the
-sharp-cornered look); `packages/theme/src/built/kira.{css,js,d.ts,variants.d.ts}` are the
+(accent `#ff3859`, typography folded in unchanged, `radius: { base: 4, multiplier: 0.5 }` for the
+subtle half-scale radius); `packages/theme/src/built/kira.{css,js,d.ts,variants.d.ts}` are the
 committed, reviewed build output (`bun run theme:build` regenerates them, `bun run theme:check`
 verifies they're current); `index.tsx` and `theme.css` import the built theme instead of the raw
 `neutralTheme` import. Both apps typecheck and build against it.
 
-`radius`'s `multiplier: 0` only zeroes the scaled steps (`--radius-inner` through
-`--radius-page`) — `--radius-full`, the fixed 9999px token badges/avatars/toggles use for their
-pill shape, is exempt by design and stayed rounded. Caught by the prototype below; fixed with an
-explicit `tokens: { '--radius-full': '0px' }` override alongside `radius`.
+`radius`'s `multiplier: 0.5` restores a subtle scale (`--radius-inner` through `--radius-chat`)
+and leaves `--radius-full` as Astryx's fixed 9999px pill token for badges, avatars, and toggles.
+Components that are intentionally square, such as Kira's compact identity marks, remain explicit
+call-site choices.
 
 ## Prototype
 
 Before locking this in, `packages/theme/prototype/` (throwaway, deleted once the decision was
 made) rendered Astryx's own `theme-showcase` template three ways, switchable via `?variant=` on
 a local Vite dev server: stock Neutral, the shipped Kira theme, and a softer-radius
-alternative. This is what surfaced the `--radius-full` gap above. The shipped direction —
-`#ff3859` accent, zero radius everywhere including pills — was confirmed against that
-comparison and is now what both apps render.
+alternative. The shipped direction — `#ff3859` accent and a subtle half-scale radius — was
+confirmed against that comparison and is now what both apps render.
 
 ## Risks
 
 - ~~Flattening radius to near-zero is a visible, repo-wide change...~~ Resolved: reviewed via
   the prototype above and confirmed as the intended look, including the follow-on
-  `--radius-full` fix.
+  subtle half-scale radius.
 - ~~`#ff3859` was supplied directly without a stated source...~~ Resolved: confirmed against the
   prototype as the intended final brand hex, not a placeholder.
-- Zero-radius applies to every control uniformly, including radio buttons — a filled square
-  inside a square reads less immediately as "radio" than Neutral's circular default. Seen in
-  the prototype's checkout panel; not addressed in this pass. If it becomes a real usability
-  complaint, revisit via `components` overrides for the specific radio-rendering component
-  rather than reopening the global `radius` config.
+- The half-scale keeps the product's developer-centric restraint while making the shared
+  Astryx surfaces gently rounded. If a future surface needs stronger curvature, increase the
+  shared multiplier rather than adding component-local radius values.
 
 ## Deferred
 

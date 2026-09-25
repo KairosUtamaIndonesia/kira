@@ -150,8 +150,8 @@
   server cannot be reached.
 - Kira has its own typeface: Inter for text, Satoshi for headings, and Geist Mono
   for code and commands.
-- Kira has its own brand accent and a sharp, unrounded look, instead of Astryx's stock Neutral
-  theme.
+- Kira has its own brand accent and now uses a subtle Astryx radius scale, restoring lightly
+  rounded corners instead of the previous sharp, unrounded look.
 - Ask again, Edit and Fork are icon buttons, named on hover, and a reply's actions sit
   once per turn beneath the words they act on rather than under each step of her work.
 - Kira's expanded work now reads as a single execution trace: reasoning, each tool, and its result share a quiet rail instead of separate cards.

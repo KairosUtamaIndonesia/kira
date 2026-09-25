@@ -29,9 +29,8 @@
 /*
  * Kira's monogram, in the theme's own accent color — nowhere else in the
  * rail wears it, so the collapsed state (where the "Kira" wordmark itself
- * is hidden) still shows whose window this is. Square rather than round: the
- * theme zeroes every radius on purpose (see kiraTheme.ts), and a rounded
- * mark would be the one thing in the rail that broke that.
+ * is hidden) still shows whose window this is. It stays square so the mark
+ * reads as a compact logo rather than a control.
  */
 .brand-mark {
   display: flex;
@@ -66,8 +65,8 @@
 
 /*
  * The signed-in account's initial (see AccountMenu/AccountAvatar in App.tsx).
- * Square, like `.brand-mark` above — same rail, same theme with every radius
- * zeroed — but a neutral fill so it reads as a person, not the product.
+ * Square, like `.brand-mark` above, but with a neutral fill so it reads as a
+ * person, not the product.
  */
 .account-avatar {
   display: flex;
