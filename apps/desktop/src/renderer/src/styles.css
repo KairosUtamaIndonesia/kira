@@ -135,7 +135,7 @@
  * These two are not a pair of buttons but the head of the two lists under them.
  */
 .nav-actions-expanded > button {
-  justify-content: flex-start;
+  justify-content: flex-start !important;
 }
 
 /*
