@@ -158,6 +158,8 @@ const PARKED_PANE: ComponentProps<typeof ChatPane> = {
   models: [],
   modelId: null,
   onChooseModel: NOTHING,
+  mode: 'build',
+  onChooseChatMode: NOTHING,
   browserElements: [],
   onBrowserElementsChange: NOTHING,
   onAddBrowserElement: NOTHING,
@@ -1035,6 +1037,8 @@ export default function App() {
     models,
     modelId,
     onChooseModel: chooseModel,
+    mode,
+    onChooseChatMode: chooseChatMode,
     browserElements: browserElementsByChat[currentId] ?? [],
     onBrowserElementsChange: (browserElements) =>
       setBrowserElementsByChat((held) => ({ ...held, [currentId]: browserElements })),
@@ -1294,24 +1298,6 @@ export default function App() {
                 <Text type="label" weight="medium" maxLines={1}>
                   {currentChat?.title ?? 'New chat'}
                 </Text>
-                <fieldset className="chat-mode-switcher" aria-label="Chat mode">
-                  <Button
-                    label="Build"
-                    size="sm"
-                    variant={mode === 'build' ? 'primary' : 'ghost'}
-                    aria-pressed={mode === 'build'}
-                    isDisabled={isRunning}
-                    onClick={() => void chooseChatMode('build')}
-                  />
-                  <Button
-                    label="Spec"
-                    size="sm"
-                    variant={mode === 'spec' ? 'primary' : 'ghost'}
-                    aria-pressed={mode === 'spec'}
-                    isDisabled={isRunning}
-                    onClick={() => void chooseChatMode('spec')}
-                  />
-                </fieldset>
               </div>
               <IconButton
                 className="workbench-toggle"
@@ -1772,6 +1758,8 @@ function ChatPane({
   models,
   modelId,
   onChooseModel,
+  mode,
+  onChooseChatMode,
   browserElements,
   onBrowserElementsChange,
   onAddBrowserElement,
@@ -1808,6 +1796,8 @@ function ChatPane({
   /** The model this chat runs on, or null while it has chosen none. */
   modelId: string | null;
   onChooseModel: (modelId: string) => Promise<void>;
+  mode: ChatMode;
+  onChooseChatMode: (mode: ChatMode) => Promise<void>;
   browserElements: BrowserElementSelection[];
   onBrowserElementsChange: (browserElements: BrowserElementSelection[]) => void;
   onAddBrowserElement: (selection: BrowserElementSelection) => void;
@@ -1904,6 +1894,8 @@ function ChatPane({
             models={models}
             modelId={modelId}
             onChoose={(chosen) => void onChooseModel(chosen)}
+            mode={mode}
+            onChooseMode={(chosen) => void onChooseChatMode(chosen)}
             queued={queued}
             restored={restored}
             onTakeBack={onTakeBack}

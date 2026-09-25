@@ -18,7 +18,7 @@ import { useAui, useAuiState } from '@assistant-ui/react';
 import { ChevronDown, Gauge, X } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import * as stylex from '@stylexjs/stylex';
-import type { ChatUsage, ModelOption, QueuedLine, Usage } from '../../preload/bridge';
+import type { ChatMode, ChatUsage, ModelOption, QueuedLine, Usage } from '../../preload/bridge';
 import { chatLines, formatTokens, warningFor } from './allowanceText';
 import {
   browserElementsInMessage,
@@ -54,6 +54,8 @@ export function Composer({
   models = [],
   modelId = null,
   onChoose,
+  mode = 'build',
+  onChooseMode,
   queued = [],
   restored = null,
   onTakeBack,
@@ -74,6 +76,9 @@ export function Composer({
   modelId?: string | null;
   /** Run this chat on the model named. */
   onChoose?: (modelId: string) => void;
+  /** Run the next turn in build or spec mode. */
+  mode?: ChatMode;
+  onChooseMode?: (mode: ChatMode) => void;
   queued?: QueuedLine[];
   restored?: string | null;
   onTakeBack?: () => Promise<void>;
@@ -213,7 +218,32 @@ export function Composer({
           />
         </div>
       )}
-      <ChatComposer {...composer} footerActions={pickerFor(models, modelId, onChoose, isRunning)} />
+      <ChatComposer
+        {...composer}
+        footerActions={
+          <div className="composer-footer-actions">
+            <fieldset className="chat-mode-switcher" aria-label="Chat mode">
+              <Button
+                label="Build"
+                size="sm"
+                variant={mode === 'build' ? 'primary' : 'ghost'}
+                aria-pressed={mode === 'build'}
+                isDisabled={isRunning || onChooseMode === undefined}
+                onClick={() => onChooseMode?.('build')}
+              />
+              <Button
+                label="Spec"
+                size="sm"
+                variant={mode === 'spec' ? 'primary' : 'ghost'}
+                aria-pressed={mode === 'spec'}
+                isDisabled={isRunning || onChooseMode === undefined}
+                onClick={() => onChooseMode?.('spec')}
+              />
+            </fieldset>
+            {pickerFor(models, modelId, onChoose, isRunning)}
+          </div>
+        }
+      />
       {isRunning && (
         <Text color="secondary" size="sm">
           {queued.length > 0
