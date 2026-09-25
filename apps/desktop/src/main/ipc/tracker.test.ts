@@ -344,7 +344,7 @@ for (const testCase of CASES) {
       removeExecutionWorkspace: () => handlers.removeExecutionWorkspace(first, second),
     } as const;
 
-    assert.deepEqual(await run[testCase.call](), testCase.want);
+    assert.deepEqual(await (run as Record<string, (() => Promise<unknown>) | undefined>)[testCase.call]!(), testCase.want);
     assert.deepEqual(calls, testCase.wantCalls);
   });
 }

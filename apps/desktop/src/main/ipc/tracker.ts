@@ -140,7 +140,7 @@ export function trackerHandlers({
       if (!isId(ticketId) || !isId(workspaceId) || typeof comment !== 'object' || comment === null)
         return Promise.resolve({ ok: false, error: 'A review comment needs a ticket, workspace, and anchor.' });
       const value = comment as Record<string, unknown>;
-      if (typeof value.path !== 'string' || value.path.trim() === '' || !Number.isInteger(value.line) || value.line < 1 || typeof value.side !== 'string' || typeof value.body !== 'string' || value.body.trim() === '')
+      if (typeof value.path !== 'string' || value.path.trim() === '' || !Number.isInteger(value.line) || (value.line as number) < 1 || typeof value.side !== 'string' || typeof value.body !== 'string' || value.body.trim() === '')
         return Promise.resolve({ ok: false, error: 'A review comment needs a file, line, and message.' });
       if (addReviewComment === undefined) return Promise.resolve({ ok: false, error: 'Execution workspace review is unavailable.' });
       return envelope(() => addReviewComment(ticketId, workspaceId, value as never));
