@@ -336,10 +336,7 @@ test('Decision reads and person approvals use the key-bearing tracker seam', asy
 
   assert.deepEqual(await held.held.decisions?.(workspace.id), [decision]);
   assert.deepEqual(await held.held.approveDecision(workspace.id, proposal, 'chat-1'), decision);
-  assert.deepEqual(calls, [
-    'decisions key kira-project',
-    'createDecision key kira-project chat-1',
-  ]);
+  assert.deepEqual(calls, ['decisions key kira-project', 'createDecision key kira-project chat-1']);
 });
 
 test('map creation and destination approval use the person-owned tracker seam', async () => {
@@ -585,9 +582,7 @@ test('a prefix another project holds is refused, and the folder is left as it wa
   });
 
   assert.equal(
-    await tried(() =>
-      held.held.join(workspace.id, { kind: 'new', name: 'Kira', prefix: 'FND' }),
-    ),
+    await tried(() => held.held.join(workspace.id, { kind: 'new', name: 'Kira', prefix: 'FND' })),
     'refused Another project already holds FND.',
   );
 

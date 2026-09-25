@@ -284,13 +284,26 @@ test('breakdown proposals reject invalid kinds and dependencies before a card is
   const cases = [
     {
       name: 'unsupported kind',
-      slices: [{ id: 'a', kind: 'implementation', title: 'A', body: 'a', criteria: ['c'], dependsOn: [] }],
-      message: 'Slice "a" has unsupported kind "implementation". Use one of: prototype, bug, feature, refactor, question, research, spec, map.',
+      slices: [
+        { id: 'a', kind: 'implementation', title: 'A', body: 'a', criteria: ['c'], dependsOn: [] },
+      ],
+      message:
+        'Slice "a" has unsupported kind "implementation". Use one of: prototype, bug, feature, refactor, question, research, spec, map.',
     },
     {
       name: 'dependency is not a sibling slice',
-      slices: [{ id: 'a', kind: 'feature', title: 'A', body: 'a', criteria: ['c'], dependsOn: ['TESTPR-1'] }],
-      message: 'Slice "a" depends on "TESTPR-1", which is not a sibling slice id. The approved spec gate is attached automatically.',
+      slices: [
+        {
+          id: 'a',
+          kind: 'feature',
+          title: 'A',
+          body: 'a',
+          criteria: ['c'],
+          dependsOn: ['TESTPR-1'],
+        },
+      ],
+      message:
+        'Slice "a" depends on "TESTPR-1", which is not a sibling slice id. The approved spec gate is attached automatically.',
     },
   ];
 
