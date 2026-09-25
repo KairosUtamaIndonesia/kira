@@ -526,6 +526,62 @@ describe('a ticket', () => {
     });
   });
 
+  test('keeps planning fields and parent relationships on issues and their project board', async () => {
+    const made = await server();
+    const ada = await made.add();
+    const grace = await made.add('grace@company.example');
+    const projectMade = await project(made.app, ada.key);
+    const parent = await drafted(made.app, ada.key, projectMade.id, { title: 'Ship the board' });
+    const child = await drafted(made.app, ada.key, projectMade.id, { title: 'Add status fields' });
+
+    const changed = await wrote(made.app, ada.key, child.id, {
+      status: 'in-progress',
+      priority: 'high',
+      assigneeId: grace.id,
+      tags: ['frontend', '  project-work  ', 'frontend'],
+    });
+    expect(changed.status).toBe(200);
+    expect((await changed.json()).ticket).toMatchObject({
+      status: 'in-progress',
+      priority: 'high',
+      assignee: { id: grace.id, name: grace.name },
+      tags: ['frontend', 'project-work'],
+    });
+
+    const linked = await send(
+      made.app,
+      `/api/tickets/${child.id}/relationships`,
+      body('POST', bearer(ada.key), { type: 'parent', ticket: parent.id }),
+    );
+    expect(linked.status).toBe(200);
+    expect((await linked.json()).ticket.parent).toMatchObject({ id: parent.id });
+
+    const board = await queue(made.app, ada.key, projectMade.id);
+    expect(board.tickets.find((each) => each.id === parent.id)?.subIssues).toMatchObject([
+      { id: child.id },
+    ]);
+    expect(board.tickets.find((each) => each.id === child.id)).toMatchObject({
+      status: 'in-progress',
+      priority: 'high',
+      assignee: { id: grace.id },
+      tags: ['frontend', 'project-work'],
+      parent: { id: parent.id },
+    });
+  });
+
+  test('refuses an issue status outside the human-facing board vocabulary', async () => {
+    const { app, key } = await signedIn();
+    const made = await project(app, key);
+    const ticket = await drafted(app, key, made.id);
+
+    const refused = await wrote(app, key, ticket.id, { status: 'ready-for-agent' });
+
+    expect(refused.status).toBe(400);
+    expect((await refused.json()).error.code).toBe('STATUS_UNKNOWN');
+    expect((await read(app, key, ticket.id)).status).toBe(200);
+    expect((await (await read(app, key, ticket.id)).json()).ticket.status).toBe('backlog');
+  });
+
   test('migrates decision tickets to questions without changing their fields or links', async () => {
     const { app, key, database } = await signedIn();
     const made = await project(app, key);
