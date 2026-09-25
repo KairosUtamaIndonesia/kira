@@ -26,10 +26,13 @@ import { keyHolder, type HeldUser } from './keys';
 import { refusal, REFUSAL } from './refusals';
 import {
   claim,
+  delivery,
   executionWorkspace,
   gate,
   outcome,
   project,
+  reviewComment,
+  reviewFeedback,
   run,
   ticket,
   transcript,
@@ -144,6 +147,43 @@ const EXECUTION_WORKSPACE = t.Object({
   createdAt: t.String(),
 });
 const WORKSPACES = t.Object({ workspaces: t.Array(EXECUTION_WORKSPACE) });
+const REVIEW_COMMENT = t.Object({
+  id: t.String(),
+  workspaceId: t.String(),
+  runId: t.Union([t.String(), t.Null()]),
+  path: t.String(),
+  line: t.Integer(),
+  side: t.String(),
+  body: t.String(),
+  status: t.String(),
+  author: t.Union([t.Object({ id: t.String(), name: t.String() }), t.Null()]),
+  createdAt: t.String(),
+  addressedAt: t.Union([t.String(), t.Null()]),
+});
+const REVIEW_FEEDBACK = t.Object({
+  id: t.String(),
+  workspaceId: t.String(),
+  runId: t.Union([t.String(), t.Null()]),
+  body: t.String(),
+  author: t.Union([t.Object({ id: t.String(), name: t.String() }), t.Null()]),
+  createdAt: t.String(),
+});
+const REVIEW = t.Object({
+  comments: t.Array(REVIEW_COMMENT),
+  feedback: t.Array(REVIEW_FEEDBACK),
+});
+const DELIVERY = t.Object({
+  id: t.String(),
+  ticketId: t.String(),
+  workspaceId: t.String(),
+  path: t.String(),
+  outcome: t.String(),
+  reference: t.Union([t.String(), t.Null()]),
+  url: t.Union([t.String(), t.Null()]),
+  details: t.Union([t.String(), t.Null()]),
+  createdAt: t.String(),
+});
+const DELIVERIES = t.Object({ deliveries: t.Array(DELIVERY) });
 
 const OUTCOME_DECISION = t.Object({
   context: t.String(),
@@ -322,6 +362,100 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
           401: REFUSAL,
         },
         detail: { summary: 'The projects anyone signed in may work in' },
+      },
+    )
+    .get(
+      '/api/tickets/:ref/deliveries',
+      async ({ request, params, status }) => {
+        const held = await asking(auth, request);
+        if ('refused' in held) return status(401, held.refused);
+        const found = await resolve(database, params.ref);
+        if (!found) return status(404, refusal('TICKET_NOT_FOUND', 'No such ticket.'));
+
+        const rows = await database
+          .select()
+          .from(delivery)
+          .where(eq(delivery.ticketId, found.ticket.id))
+          .orderBy(asc(delivery.createdAt), asc(delivery.id));
+        return { deliveries: rows.map(asDelivery) };
+      },
+      {
+        params: t.Object({ ref: t.String() }),
+        response: { 200: DELIVERIES, 401: REFUSAL, 404: REFUSAL },
+        detail: { summary: 'Read the delivery audit trail for an issue' },
+      },
+    )
+    .post(
+      '/api/tickets/:ref/deliveries',
+      async ({ request, params, body, status }) => {
+        const held = await asking(auth, request);
+        if ('refused' in held) return status(401, held.refused);
+        const found = await resolve(database, params.ref);
+        if (!found) return status(404, refusal('TICKET_NOT_FOUND', 'No such ticket.'));
+        if (!isOneOf(['pull-request', 'local-merge'] as const, body.path)) {
+          return status(400, refusal('DELIVERY_PATH_UNKNOWN', 'A delivery uses a pull request or local merge.'));
+        }
+        if (!isOneOf(['delivered', 'refused'] as const, body.outcome)) {
+          return status(400, refusal('DELIVERY_OUTCOME_UNKNOWN', 'A delivery is delivered or refused.'));
+        }
+
+        const [workspace] = await database
+          .select()
+          .from(executionWorkspace)
+          .where(and(eq(executionWorkspace.id, body.workspaceId), eq(executionWorkspace.ticketId, found.ticket.id)));
+        if (!workspace) return status(404, refusal('WORKSPACE_NOT_FOUND', 'No such execution workspace.'));
+        if (body.outcome === 'delivered' && !body.reference?.trim()) {
+          return status(400, refusal('DELIVERY_REFERENCE_REQUIRED', 'A delivered change needs a pull request or merge reference.'));
+        }
+
+        const [approved] = await database
+          .select({ branch: run.branch })
+          .from(run)
+          .where(and(eq(run.ticketId, found.ticket.id), eq(run.verdict, 'accepted')))
+          .orderBy(desc(run.startedAt), desc(run.id))
+          .limit(1);
+        if (!approved || approved.branch !== workspace.branch) {
+          return status(400, refusal('DELIVERY_NOT_APPROVED', 'Only the approved workspace branch can be delivered.'));
+        }
+
+        const made = await database.transaction(async (transaction) => {
+          const [written] = await transaction
+            .insert(delivery)
+            .values({
+              id: randomUUID(),
+              ticketId: found.ticket.id,
+              workspaceId: workspace.id,
+              path: body.path,
+              outcome: body.outcome,
+              reference: body.reference?.trim() || null,
+              url: body.url?.trim() || null,
+              details: body.details?.trim() || null,
+              actorId: held.user.id,
+            })
+            .returning();
+          if (body.outcome === 'delivered') {
+            await transaction
+              .update(ticket)
+              .set({ status: 'done', closure: 'done', closedAt: new Date(), updatedAt: new Date() })
+              .where(eq(ticket.id, found.ticket.id));
+          }
+          return written!;
+        });
+
+        return { delivery: asDelivery(made), ticket: await one(database, found.project, found.ticket) };
+      },
+      {
+        params: t.Object({ ref: t.String() }),
+        body: t.Object({
+          workspaceId: t.String(),
+          path: t.String(),
+          outcome: t.String(),
+          reference: t.Optional(t.String()),
+          url: t.Optional(t.String()),
+          details: t.Optional(t.String()),
+        }),
+        response: { 200: t.Object({ delivery: DELIVERY, ticket: TICKET }), 400: REFUSAL, 401: REFUSAL, 404: REFUSAL },
+        detail: { summary: 'Record a conflict-safe local merge or pull request delivery' },
       },
     )
     .post(
@@ -555,6 +689,143 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
         params: t.Object({ ref: t.String(), workspaceId: t.String() }),
         response: { 200: t.Object({ workspace: t.Null() }), 401: REFUSAL, 404: REFUSAL },
         detail: { summary: 'Unlink an execution workspace from an issue' },
+      },
+    )
+    .get(
+      '/api/tickets/:ref/workspaces/:workspaceId/review',
+      async ({ request, params, status }) => {
+        const held = await asking(auth, request);
+        if ('refused' in held) return status(401, held.refused);
+        const found = await resolve(database, params.ref);
+        if (!found) return status(404, refusal('TICKET_NOT_FOUND', 'No such ticket.'));
+        const workspace = await workspaceOn(database, found.ticket.id, params.workspaceId);
+        if (!workspace) return status(404, refusal('WORKSPACE_NOT_FOUND', 'No such execution workspace.'));
+
+        const [comments, feedback] = await Promise.all([
+          database
+            .select({ comment: reviewComment, authorId: user.id, authorName: user.name })
+            .from(reviewComment)
+            .leftJoin(user, eq(reviewComment.authorId, user.id))
+            .where(eq(reviewComment.workspaceId, workspace.id))
+            .orderBy(asc(reviewComment.createdAt), asc(reviewComment.id)),
+          database
+            .select({ feedback: reviewFeedback, authorId: user.id, authorName: user.name })
+            .from(reviewFeedback)
+            .leftJoin(user, eq(reviewFeedback.authorId, user.id))
+            .where(eq(reviewFeedback.workspaceId, workspace.id))
+            .orderBy(asc(reviewFeedback.createdAt), asc(reviewFeedback.id)),
+        ]);
+        return {
+          comments: comments.map(({ comment, authorId, authorName }) =>
+            asReviewComment(comment, authorId === null || authorName === null ? null : { id: authorId, name: authorName }),
+          ),
+          feedback: feedback.map(({ feedback: item, authorId, authorName }) =>
+            asReviewFeedback(item, authorId === null || authorName === null ? null : { id: authorId, name: authorName }),
+          ),
+        };
+      },
+      {
+        params: t.Object({ ref: t.String(), workspaceId: t.String() }),
+        response: { 200: REVIEW, 401: REFUSAL, 404: REFUSAL },
+        detail: { summary: 'Read an execution workspace review' },
+      },
+    )
+    .post(
+      '/api/tickets/:ref/workspaces/:workspaceId/review/comments',
+      async ({ request, params, body, status }) => {
+        const held = await asking(auth, request);
+        if ('refused' in held) return status(401, held.refused);
+        const found = await resolve(database, params.ref);
+        if (!found) return status(404, refusal('TICKET_NOT_FOUND', 'No such ticket.'));
+        const workspace = await workspaceOn(database, found.ticket.id, params.workspaceId);
+        if (!workspace) return status(404, refusal('WORKSPACE_NOT_FOUND', 'No such execution workspace.'));
+        if (body.line < 1 || body.path.trim() === '' || body.body.trim() === '') {
+          return status(400, refusal('REVIEW_COMMENT_INVALID', 'A review comment needs a file, line, and message.'));
+        }
+        const [made] = await database
+          .insert(reviewComment)
+          .values({
+            id: randomUUID(),
+            workspaceId: workspace.id,
+            runId: body.runId ?? null,
+            path: body.path.trim(),
+            line: body.line,
+            side: body.side,
+            body: body.body.trim(),
+            authorId: held.user.id,
+          })
+          .returning();
+        return { comment: asReviewComment(made!, { id: held.user.id, name: held.user.name }) };
+      },
+      {
+        params: t.Object({ ref: t.String(), workspaceId: t.String() }),
+        body: t.Object({
+          runId: t.Optional(t.Union([t.String(), t.Null()])),
+          path: t.String(),
+          line: t.Integer(),
+          side: t.String(),
+          body: t.String(),
+        }),
+        response: { 200: t.Object({ comment: REVIEW_COMMENT }), 400: REFUSAL, 401: REFUSAL, 404: REFUSAL },
+        detail: { summary: 'Add an inline review comment' },
+      },
+    )
+    .patch(
+      '/api/tickets/:ref/workspaces/:workspaceId/review/comments/:commentId',
+      async ({ request, params, body, status }) => {
+        const held = await asking(auth, request);
+        if ('refused' in held) return status(401, held.refused);
+        const found = await resolve(database, params.ref);
+        if (!found) return status(404, refusal('TICKET_NOT_FOUND', 'No such ticket.'));
+        const workspace = await workspaceOn(database, found.ticket.id, params.workspaceId);
+        if (!workspace) return status(404, refusal('WORKSPACE_NOT_FOUND', 'No such execution workspace.'));
+        const [existing] = await database
+          .select()
+          .from(reviewComment)
+          .where(and(eq(reviewComment.id, params.commentId), eq(reviewComment.workspaceId, workspace.id)));
+        if (!existing) return status(404, refusal('REVIEW_COMMENT_NOT_FOUND', 'No such review comment.'));
+        const addressedAt = body.status === 'addressed' ? new Date() : null;
+        const [updated] = await database
+          .update(reviewComment)
+          .set({ status: body.status, addressedAt })
+          .where(eq(reviewComment.id, existing.id))
+          .returning();
+        return { comment: asReviewComment(updated!, { id: held.user.id, name: held.user.name }) };
+      },
+      {
+        params: t.Object({ ref: t.String(), workspaceId: t.String(), commentId: t.String() }),
+        body: t.Object({ status: t.Union([t.Literal('open'), t.Literal('addressed')]) }),
+        response: { 200: t.Object({ comment: REVIEW_COMMENT }), 401: REFUSAL, 404: REFUSAL },
+        detail: { summary: 'Mark a review comment open or addressed' },
+      },
+    )
+    .post(
+      '/api/tickets/:ref/workspaces/:workspaceId/review/feedback',
+      async ({ request, params, body, status }) => {
+        const held = await asking(auth, request);
+        if ('refused' in held) return status(401, held.refused);
+        const found = await resolve(database, params.ref);
+        if (!found) return status(404, refusal('TICKET_NOT_FOUND', 'No such ticket.'));
+        const workspace = await workspaceOn(database, found.ticket.id, params.workspaceId);
+        if (!workspace) return status(404, refusal('WORKSPACE_NOT_FOUND', 'No such execution workspace.'));
+        if (body.body.trim() === '') return status(400, refusal('REVIEW_FEEDBACK_INVALID', 'Feedback needs a message.'));
+        const [made] = await database
+          .insert(reviewFeedback)
+          .values({
+            id: randomUUID(),
+            workspaceId: workspace.id,
+            runId: body.runId ?? null,
+            body: body.body.trim(),
+            authorId: held.user.id,
+          })
+          .returning();
+        return { feedback: asReviewFeedback(made!, { id: held.user.id, name: held.user.name }) };
+      },
+      {
+        params: t.Object({ ref: t.String(), workspaceId: t.String() }),
+        body: t.Object({ runId: t.Optional(t.Union([t.String(), t.Null()])), body: t.String() }),
+        response: { 200: t.Object({ feedback: REVIEW_FEEDBACK }), 400: REFUSAL, 401: REFUSAL, 404: REFUSAL },
+        detail: { summary: 'Send feedback for an execution workspace run' },
       },
     )
     .post(
@@ -2589,6 +2860,58 @@ function asExecutionWorkspace(row: typeof executionWorkspace.$inferSelect) {
     agentConfig: row.agentConfig,
     createdAt: row.createdAt.toISOString(),
   };
+}
+
+type ReviewAuthor = { id: string; name: string } | null;
+
+function asReviewComment(row: typeof reviewComment.$inferSelect, author: ReviewAuthor) {
+  return {
+    id: row.id,
+    workspaceId: row.workspaceId,
+    runId: row.runId,
+    path: row.path,
+    line: row.line,
+    side: row.side,
+    body: row.body,
+    status: row.status,
+    author,
+    createdAt: row.createdAt.toISOString(),
+    addressedAt: row.addressedAt?.toISOString() ?? null,
+  };
+}
+
+function asReviewFeedback(row: typeof reviewFeedback.$inferSelect, author: ReviewAuthor) {
+  return {
+    id: row.id,
+    workspaceId: row.workspaceId,
+    runId: row.runId,
+    body: row.body,
+    author,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function asDelivery(row: typeof delivery.$inferSelect) {
+  return {
+    id: row.id,
+    ticketId: row.ticketId,
+    workspaceId: row.workspaceId,
+    path: row.path,
+    outcome: row.outcome,
+    reference: row.reference,
+    url: row.url,
+    details: row.details,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+async function workspaceOn(database: Database, ticketId: string, workspaceId: string) {
+  const [found] = await database
+    .select()
+    .from(executionWorkspace)
+    .where(and(eq(executionWorkspace.id, workspaceId), eq(executionWorkspace.ticketId, ticketId)));
+
+  return found ?? null;
 }
 
 async function workspacesFor(

@@ -27,6 +27,9 @@ import {
   type TicketKind,
   type TicketQueue,
   type ExecutionWorkspace,
+  type ExecutionReview,
+  type ReviewComment,
+  type ReviewFeedback,
 } from '../../preload/bridge.ts';
 import { envelope, isId } from './result.ts';
 
@@ -37,6 +40,10 @@ export interface TrackerDeps {
   executionWorkspaces?: ((ticketId: string) => Promise<ExecutionWorkspace[]>) | undefined;
   createExecutionWorkspace?: ((ticketId: string, draft: Omit<ExecutionWorkspace, 'id' | 'ticketId' | 'createdAt'>) => Promise<ExecutionWorkspace>) | undefined;
   removeExecutionWorkspace?: ((ticketId: string, workspaceId: string) => Promise<void>) | undefined;
+  readExecutionReview?: ((ticketId: string, workspaceId: string) => Promise<ExecutionReview>) | undefined;
+  addReviewComment?: ((ticketId: string, workspaceId: string, comment: { runId?: string | null; path: string; line: number; side: string; body: string }) => Promise<ReviewComment>) | undefined;
+  updateReviewComment?: ((ticketId: string, workspaceId: string, commentId: string, status: ReviewComment['status']) => Promise<ReviewComment>) | undefined;
+  sendReviewFeedback?: ((ticketId: string, workspaceId: string, feedback: { runId?: string | null; body: string }) => Promise<ReviewFeedback>) | undefined;
   /** The queue of the project this workspace works, or a throw saying why not. */
   queue(workspaceId: string): Promise<TicketQueue>;
   /** Open or resume the author-owned linked question chat. */
@@ -62,6 +69,10 @@ export interface TrackerHandlers {
   executionWorkspaces(ticketId: unknown): Promise<Result<ExecutionWorkspace[]>>;
   createExecutionWorkspace(ticketId: unknown, draft: unknown): Promise<Result<ExecutionWorkspace>>;
   removeExecutionWorkspace(ticketId: unknown, workspaceId: unknown): Promise<Result<null>>;
+  readExecutionReview(ticketId: unknown, workspaceId: unknown): Promise<Result<ExecutionReview>>;
+  addReviewComment(ticketId: unknown, workspaceId: unknown, comment: unknown): Promise<Result<ReviewComment>>;
+  updateReviewComment(ticketId: unknown, workspaceId: unknown, commentId: unknown, status: unknown): Promise<Result<ReviewComment>>;
+  sendReviewFeedback(ticketId: unknown, workspaceId: unknown, feedback: unknown): Promise<Result<ReviewFeedback>>;
   queue(workspaceId: unknown): Promise<Result<TicketQueue>>;
   write(workspaceId: unknown, draft: unknown): Promise<Result<Ticket>>;
   change(ticketId: unknown, change: unknown): Promise<Result<Ticket>>;
@@ -83,6 +94,10 @@ export function trackerHandlers({
   executionWorkspaces,
   createExecutionWorkspace,
   removeExecutionWorkspace,
+  readExecutionReview,
+  addReviewComment,
+  updateReviewComment,
+  sendReviewFeedback,
   queue,
   openQuestion,
   write,
@@ -115,6 +130,34 @@ export function trackerHandlers({
         await removeExecutionWorkspace(ticketId, workspaceId);
         return null;
       });
+    },
+    readExecutionReview: (ticketId, workspaceId) => {
+      if (!isId(ticketId) || !isId(workspaceId)) return Promise.resolve({ ok: false, error: 'A review needs a ticket and workspace.' });
+      if (readExecutionReview === undefined) return Promise.resolve({ ok: false, error: 'Execution workspace review is unavailable.' });
+      return envelope(() => readExecutionReview(ticketId, workspaceId));
+    },
+    addReviewComment: (ticketId, workspaceId, comment) => {
+      if (!isId(ticketId) || !isId(workspaceId) || typeof comment !== 'object' || comment === null)
+        return Promise.resolve({ ok: false, error: 'A review comment needs a ticket, workspace, and anchor.' });
+      const value = comment as Record<string, unknown>;
+      if (typeof value.path !== 'string' || value.path.trim() === '' || !Number.isInteger(value.line) || value.line < 1 || typeof value.side !== 'string' || typeof value.body !== 'string' || value.body.trim() === '')
+        return Promise.resolve({ ok: false, error: 'A review comment needs a file, line, and message.' });
+      if (addReviewComment === undefined) return Promise.resolve({ ok: false, error: 'Execution workspace review is unavailable.' });
+      return envelope(() => addReviewComment(ticketId, workspaceId, value as never));
+    },
+    updateReviewComment: (ticketId, workspaceId, commentId, status) => {
+      if (!isId(ticketId) || !isId(workspaceId) || !isId(commentId)) return Promise.resolve({ ok: false, error: 'A review comment needs a ticket, workspace, and id.' });
+      if (status !== 'open' && status !== 'addressed') return Promise.resolve({ ok: false, error: 'A review comment is open or addressed.' });
+      if (updateReviewComment === undefined) return Promise.resolve({ ok: false, error: 'Execution workspace review is unavailable.' });
+      return envelope(() => updateReviewComment(ticketId, workspaceId, commentId, status));
+    },
+    sendReviewFeedback: (ticketId, workspaceId, feedback) => {
+      if (!isId(ticketId) || !isId(workspaceId) || typeof feedback !== 'object' || feedback === null)
+        return Promise.resolve({ ok: false, error: 'Feedback needs a ticket, workspace, and message.' });
+      const value = feedback as Record<string, unknown>;
+      if (typeof value.body !== 'string' || value.body.trim() === '') return Promise.resolve({ ok: false, error: 'Feedback needs a message.' });
+      if (sendReviewFeedback === undefined) return Promise.resolve({ ok: false, error: 'Execution workspace review is unavailable.' });
+      return envelope(() => sendReviewFeedback(ticketId, workspaceId, value as never));
     },
     queue: (workspaceId) => {
       if (!isId(workspaceId)) {

@@ -113,6 +113,20 @@
       "when": 1790321000000,
       "tag": "0015_execution_workspaces",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1790322000000,
+      "tag": "0016_execution_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790323000000,
+      "tag": "0017_delivery",
+      "breakpoints": true
     }
   ]
 }

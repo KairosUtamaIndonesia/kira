@@ -38,6 +38,9 @@ import {
   type Usage,
   type DesktopUpdateSnapshot,
   type ExecutionWorkspace,
+  type ExecutionReview,
+  type ReviewComment,
+  type ReviewFeedback,
   type ShellSettingsSnapshot,
   type ShellTestResult,
   type Result,
@@ -142,6 +145,18 @@ const bridge: KiraBridge = {
 
   removeExecutionWorkspace: (ticketId, workspaceId) =>
     ask<null>(TRACKER_CHANNELS.removeExecutionWorkspace, ticketId, workspaceId),
+
+  readExecutionReview: (ticketId, workspaceId) =>
+    ask<ExecutionReview>(TRACKER_CHANNELS.readExecutionReview, ticketId, workspaceId),
+
+  addReviewComment: (ticketId, workspaceId, comment) =>
+    ask<ReviewComment>(TRACKER_CHANNELS.addReviewComment, ticketId, workspaceId, comment),
+
+  updateReviewComment: (ticketId, workspaceId, commentId, status) =>
+    ask<ReviewComment>(TRACKER_CHANNELS.updateReviewComment, ticketId, workspaceId, commentId, status),
+
+  sendReviewFeedback: (ticketId, workspaceId, feedback) =>
+    ask<ReviewFeedback>(TRACKER_CHANNELS.sendReviewFeedback, ticketId, workspaceId, feedback),
 
   worker: () => ask<WorkerStanding>(WORKER_CHANNELS.standing),
 

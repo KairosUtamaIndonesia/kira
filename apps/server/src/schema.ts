@@ -493,6 +493,71 @@ export const executionWorkspace = pgTable(
   (table) => [index('execution_workspace_by_ticket').on(table.ticketId, table.createdAt)],
 );
 
+/** One attempted delivery of an approved execution workspace (docs/adr/0023). */
+export const delivery = pgTable(
+  'delivery',
+  {
+    id: text('id').primaryKey(),
+    ticketId: text('ticketId')
+      .notNull()
+      .references(() => ticket.id, { onDelete: 'cascade' }),
+    workspaceId: text('workspaceId')
+      .notNull()
+      .references(() => executionWorkspace.id, { onDelete: 'cascade' }),
+    path: text('path').notNull(),
+    outcome: text('outcome').notNull(),
+    reference: text('reference'),
+    url: text('url'),
+    details: text('details'),
+    actorId: text('actorId').references(() => user.id, { onDelete: 'set null' }),
+    createdAt: timestamp('createdAt', { withTimezone: true })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [index('delivery_by_ticket').on(table.ticketId, table.createdAt)],
+);
+
+/** A review comment anchored to a file in an execution workspace. */
+export const reviewComment = pgTable(
+  'review_comment',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspaceId')
+      .notNull()
+      .references(() => executionWorkspace.id, { onDelete: 'cascade' }),
+    runId: text('runId'),
+    path: text('path').notNull(),
+    line: integer('line').notNull(),
+    side: text('side').notNull(),
+    body: text('body').notNull(),
+    status: text('status').notNull().default('open'),
+    authorId: text('authorId').references(() => user.id, { onDelete: 'set null' }),
+    createdAt: timestamp('createdAt', { withTimezone: true })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    addressedAt: timestamp('addressedAt', { withTimezone: true }),
+  },
+  (table) => [index('review_comment_by_workspace').on(table.workspaceId, table.createdAt)],
+);
+
+/** Feedback sent to the agent, grouped by execution workspace and run. */
+export const reviewFeedback = pgTable(
+  'review_feedback',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspaceId')
+      .notNull()
+      .references(() => executionWorkspace.id, { onDelete: 'cascade' }),
+    runId: text('runId'),
+    body: text('body').notNull(),
+    authorId: text('authorId').references(() => user.id, { onDelete: 'set null' }),
+    createdAt: timestamp('createdAt', { withTimezone: true })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [index('review_feedback_by_workspace').on(table.workspaceId, table.createdAt)],
+);
+
 /**
  * A ticket held while somebody works it (docs/adr/0012).
  *
@@ -641,6 +706,7 @@ export const schema = {
   gate,
   ticketRelationship,
   executionWorkspace,
+  delivery,
   claim,
   run,
   transcript,

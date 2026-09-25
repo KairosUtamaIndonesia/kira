@@ -36,6 +36,9 @@ import type {
   MapProposal,
   WorkspaceSummary,
   ExecutionWorkspace,
+  ExecutionReview,
+  ReviewComment,
+  ReviewFeedback,
 } from '../preload/bridge.ts';
 
 /**
@@ -62,6 +65,26 @@ export interface TrackerWire {
     draft: Omit<ExecutionWorkspace, 'id' | 'ticketId' | 'createdAt'>,
   ) => Promise<TrackerAnswer<ExecutionWorkspace>>;
   removeExecutionWorkspace?: ((key: string, ticketId: string, workspaceId: string) => Promise<TrackerAnswer<unknown>>) | undefined;
+  readExecutionReview?: (key: string, ticketId: string, workspaceId: string) => Promise<TrackerAnswer<ExecutionReview>>;
+  addReviewComment?: (
+    key: string,
+    ticketId: string,
+    workspaceId: string,
+    comment: { runId?: string | null; path: string; line: number; side: string; body: string },
+  ) => Promise<TrackerAnswer<ReviewComment>>;
+  updateReviewComment?: (
+    key: string,
+    ticketId: string,
+    workspaceId: string,
+    commentId: string,
+    status: ReviewComment['status'],
+  ) => Promise<TrackerAnswer<ReviewComment>>;
+  sendReviewFeedback?: (
+    key: string,
+    ticketId: string,
+    workspaceId: string,
+    feedback: { runId?: string | null; body: string },
+  ) => Promise<TrackerAnswer<ReviewFeedback>>;
   /** The projects anyone signed in may work in. */
   projects(key: string): Promise<TrackerAnswer<ProjectSummary[]>>;
   /** Make a project, refused when its prefix is taken. */
@@ -251,6 +274,14 @@ export interface Tracker {
     draft: Omit<ExecutionWorkspace, 'id' | 'ticketId' | 'createdAt'>,
   ): Promise<ExecutionWorkspace>;
   removeExecutionWorkspace(ticketId: string, workspaceId: string): Promise<void>;
+  readExecutionReview(ticketId: string, workspaceId: string): Promise<ExecutionReview>;
+  addReviewComment(
+    ticketId: string,
+    workspaceId: string,
+    comment: { runId?: string | null; path: string; line: number; side: string; body: string },
+  ): Promise<ReviewComment>;
+  updateReviewComment(ticketId: string, workspaceId: string, commentId: string, status: ReviewComment['status']): Promise<ReviewComment>;
+  sendReviewFeedback(ticketId: string, workspaceId: string, feedback: { runId?: string | null; body: string }): Promise<ReviewFeedback>;
   queue(workspaceId: string): Promise<TicketQueue>;
   /** Read the current project context for a run from the tracker seam. */
   runContext(workspaceId: string, ticketId: string): Promise<RunContext>;
@@ -363,6 +394,26 @@ export function trackerFor({
       if (wire.removeExecutionWorkspace === undefined) throw new Error('Execution workspaces are unavailable.');
       const held = await key();
       await asked(() => wire.removeExecutionWorkspace!(held, ticketId, workspaceId));
+    },
+    async readExecutionReview(ticketId, workspaceId) {
+      if (wire.readExecutionReview === undefined) throw new Error('Execution workspace review is unavailable.');
+      const held = await key();
+      return await asked(() => wire.readExecutionReview!(held, ticketId, workspaceId));
+    },
+    async addReviewComment(ticketId, workspaceId, comment) {
+      if (wire.addReviewComment === undefined) throw new Error('Execution workspace review is unavailable.');
+      const held = await key();
+      return await asked(() => wire.addReviewComment!(held, ticketId, workspaceId, comment));
+    },
+    async updateReviewComment(ticketId, workspaceId, commentId, status) {
+      if (wire.updateReviewComment === undefined) throw new Error('Execution workspace review is unavailable.');
+      const held = await key();
+      return await asked(() => wire.updateReviewComment!(held, ticketId, workspaceId, commentId, status));
+    },
+    async sendReviewFeedback(ticketId, workspaceId, feedback) {
+      if (wire.sendReviewFeedback === undefined) throw new Error('Execution workspace review is unavailable.');
+      const held = await key();
+      return await asked(() => wire.sendReviewFeedback!(held, ticketId, workspaceId, feedback));
     },
     async queue(workspaceId) {
       const held = await key();

@@ -31,6 +31,9 @@ import {
   type TicketSaid,
   type WorkerStanding,
   type ExecutionWorkspace,
+  type ExecutionReview,
+  type ReviewComment,
+  type ReviewFeedback,
 } from '../../preload/bridge.ts';
 import type { TrackerAnswer } from '../tracker.ts';
 import { type Kira, RETURN_PATH } from './signIn.ts';
@@ -264,6 +267,30 @@ export function kiraFor({ server, scheme }: { server: string; scheme: string }):
       asked(
         () => kira.api.tickets({ ref: ticketId }).workspaces({ workspaceId }).delete(undefined, { headers: bearerFor(key) }),
         (data) => data,
+      ),
+
+    readExecutionReview: async (key, ticketId, workspaceId) =>
+      asked(
+        () => kira.api.tickets({ ref: ticketId }).workspaces({ workspaceId }).review.get({ headers: bearerFor(key) }),
+        (data) => data as ExecutionReview,
+      ),
+
+    addReviewComment: async (key, ticketId, workspaceId, comment) =>
+      asked(
+        () => kira.api.tickets({ ref: ticketId }).workspaces({ workspaceId }).review.comments.post(comment, { headers: bearerFor(key) }),
+        (data) => (data as { comment: ReviewComment }).comment,
+      ),
+
+    updateReviewComment: async (key, ticketId, workspaceId, commentId, status) =>
+      asked(
+        () => kira.api.tickets({ ref: ticketId }).workspaces({ workspaceId }).review.comments({ commentId }).patch({ status }, { headers: bearerFor(key) }),
+        (data) => (data as { comment: ReviewComment }).comment,
+      ),
+
+    sendReviewFeedback: async (key, ticketId, workspaceId, feedback) =>
+      asked(
+        () => kira.api.tickets({ ref: ticketId }).workspaces({ workspaceId }).review.feedback.post(feedback, { headers: bearerFor(key) }),
+        (data) => (data as { feedback: ReviewFeedback }).feedback,
       ),
 
     decisions: async (key, projectId) =>

@@ -677,6 +677,10 @@ export const TRACKER_CHANNELS = {
   executionWorkspaces: 'tracker:execution-workspaces',
   createExecutionWorkspace: 'tracker:execution-workspace:create',
   removeExecutionWorkspace: 'tracker:execution-workspace:remove',
+  readExecutionReview: 'tracker:execution-review:read',
+  addReviewComment: 'tracker:execution-review:comment:add',
+  updateReviewComment: 'tracker:execution-review:comment:update',
+  sendReviewFeedback: 'tracker:execution-review:feedback:send',
 } as const;
 
 /**
@@ -892,6 +896,34 @@ export interface ExecutionWorkspace {
   branch: string;
   agentConfig: string;
   createdAt: string;
+}
+
+export interface ReviewComment {
+  id: string;
+  workspaceId: string;
+  runId: string | null;
+  path: string;
+  line: number;
+  side: string;
+  body: string;
+  status: 'open' | 'addressed';
+  author: { id: string; name: string } | null;
+  createdAt: string;
+  addressedAt: string | null;
+}
+
+export interface ReviewFeedback {
+  id: string;
+  workspaceId: string;
+  runId: string | null;
+  body: string;
+  author: { id: string; name: string } | null;
+  createdAt: string;
+}
+
+export interface ExecutionReview {
+  comments: ReviewComment[];
+  feedback: ReviewFeedback[];
 }
 
 /**
@@ -1392,6 +1424,23 @@ export interface KiraBridge {
     draft: Omit<ExecutionWorkspace, 'id' | 'ticketId' | 'createdAt'>,
   ): Promise<Result<ExecutionWorkspace>>;
   removeExecutionWorkspace(ticketId: string, workspaceId: string): Promise<Result<null>>;
+  readExecutionReview(ticketId: string, workspaceId: string): Promise<Result<ExecutionReview>>;
+  addReviewComment(
+    ticketId: string,
+    workspaceId: string,
+    comment: { runId?: string | null; path: string; line: number; side: string; body: string },
+  ): Promise<Result<ReviewComment>>;
+  updateReviewComment(
+    ticketId: string,
+    workspaceId: string,
+    commentId: string,
+    status: ReviewComment['status'],
+  ): Promise<Result<ReviewComment>>;
+  sendReviewFeedback(
+    ticketId: string,
+    workspaceId: string,
+    feedback: { runId?: string | null; body: string },
+  ): Promise<Result<ReviewFeedback>>;
   /** Write a ticket down in the workspace's project, as a draft. */
   writeTicket(workspaceId: string, draft: TicketDraft): Promise<Result<Ticket>>;
   /**
