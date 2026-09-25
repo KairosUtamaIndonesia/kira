@@ -635,23 +635,26 @@ describe('a ticket', () => {
     if (before === undefined) throw new Error('the ticket was not written');
 
     // Boot has already applied the current migrations. Rewind the schema and journal
-    // through 0014 so this test can exercise 0009 against a row shaped like an older
-    // installation, then restore every migration in the cumulative history. Removing
-    // all later rows matters: Drizzle applies the entries after the newest recorded row,
-    // so leaving 0010-0012 recorded would skip 0009 entirely.
+    // past every migration after 0008 so this test can exercise 0009 against a row shaped
+    // like an older installation, then restore every migration in the cumulative history. Removing
+    // all later rows matters: Drizzle applies entries after the newest recorded row,
+    // so leaving any newer migration recorded would skip 0009 entirely.
     await database.$client.query('ALTER TABLE "ticket" DROP COLUMN IF EXISTS "sourceChatId"');
     await database.$client.query('ALTER TABLE "ticket" DROP COLUMN IF EXISTS "status"');
     await database.$client.query('ALTER TABLE "ticket" DROP COLUMN IF EXISTS "priority"');
     await database.$client.query('ALTER TABLE "ticket" DROP COLUMN IF EXISTS "assigneeId"');
     await database.$client.query('ALTER TABLE "ticket" DROP COLUMN IF EXISTS "tags"');
     await database.$client.query('DROP TABLE IF EXISTS ticket_relationship CASCADE');
+    await database.$client.query('DROP TABLE IF EXISTS delivery CASCADE');
+    await database.$client.query('DROP TABLE IF EXISTS review_comment CASCADE');
+    await database.$client.query('DROP TABLE IF EXISTS review_feedback CASCADE');
     await database.$client.query('DROP TABLE IF EXISTS execution_workspace CASCADE');
     await database.$client.query('DROP TABLE IF EXISTS glossary_history CASCADE');
     await database.$client.query('DROP TABLE IF EXISTS glossary_entry CASCADE');
     await database.$client.query('DROP TABLE IF EXISTS outcome CASCADE');
     await database.$client.query('DROP TABLE IF EXISTS decision CASCADE');
     await database.$client.query(
-      'DELETE FROM drizzle.__drizzle_migrations WHERE hash IN ($1, $2, $3, $4, $5, $6, $7)',
+      'DELETE FROM drizzle.__drizzle_migrations WHERE hash IN ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
       [
         '7b218fb9233736fb51d9dd946e2551cc909b394db2c4edcae73e8a8ff78e12dd',
         'b6b9616c92307a15412fbd0d2fed91b52594cbf315cdf69ece366005b96b3545',
@@ -660,6 +663,8 @@ describe('a ticket', () => {
         '7ae2c56e8448cbe9725084311bf1b257542801b652a98dea042d1dc15a316e0a',
         'eaccfc7612ebfc4421c254028b8f3f174f3360fe18b19d8a7b34adae70f23711',
         '1794627f1b29c2e5f55eb9df0ec8e9c023bdcbd954e33bd68d3023f46a9fee93',
+        'efbfbe2cf4bf63771d14b7ee491dd7b66dc5f9f49b8577d7a3abd9d7d58cc428',
+        '954e0b563615b3eefa25c3a9d47a2ef5bbcd435c9c8dcd40abd8a25a26fbe179',
       ],
     );
     await migrate(database);
