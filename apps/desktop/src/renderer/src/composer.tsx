@@ -12,6 +12,7 @@ import { ProgressBar } from '@astryxdesign/core/ProgressBar';
 import { Selector } from '@astryxdesign/core/Selector';
 import { Text } from '@astryxdesign/core/Text';
 import { Popover } from '@astryxdesign/core/Popover';
+import { Tooltip } from '@astryxdesign/core/Tooltip';
 import { VStack } from '@astryxdesign/core/VStack';
 import { borderVars, colorVars, spacingVars } from '@astryxdesign/core/theme/tokens.stylex';
 import { useAui, useAuiState } from '@assistant-ui/react';
@@ -150,22 +151,32 @@ export function Composer({
           <ContextGauge usage={usage} chatUsage={chatUsage} />
         )}
         <fieldset className="chat-mode-switcher" aria-label="Chat mode">
-          <Button
-            label="Build"
-            size="sm"
-            variant={mode === 'build' ? 'primary' : 'ghost'}
-            aria-pressed={mode === 'build'}
-            isDisabled={isRunning || onChooseMode === undefined}
-            onClick={() => onChooseMode?.('build')}
-          />
-          <Button
-            label="Spec"
-            size="sm"
-            variant={mode === 'spec' ? 'primary' : 'ghost'}
-            aria-pressed={mode === 'spec'}
-            isDisabled={isRunning || onChooseMode === undefined}
-            onClick={() => onChooseMode?.('spec')}
-          />
+          <Tooltip
+            content="Build mode: Kira makes the requested changes in your workspace."
+            placement="above"
+          >
+            <Button
+              label="Build"
+              size="sm"
+              variant={mode === 'build' ? 'primary' : 'ghost'}
+              aria-pressed={mode === 'build'}
+              isDisabled={isRunning || onChooseMode === undefined}
+              onClick={() => onChooseMode?.('build')}
+            />
+          </Tooltip>
+          <Tooltip
+            content="Spec mode: Kira helps shape and plan the work before building it."
+            placement="above"
+          >
+            <Button
+              label="Spec"
+              size="sm"
+              variant={mode === 'spec' ? 'primary' : 'ghost'}
+              aria-pressed={mode === 'spec'}
+              isDisabled={isRunning || onChooseMode === undefined}
+              onClick={() => onChooseMode?.('spec')}
+            />
+          </Tooltip>
         </fieldset>
         {pickerFor(models, modelId, onChoose, isRunning)}
       </div>
