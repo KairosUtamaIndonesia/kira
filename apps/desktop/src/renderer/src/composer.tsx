@@ -138,12 +138,38 @@ export function Composer({
       : usage?.warned
         ? { type: 'warning', message: warningFor(usage) }
         : undefined,
-    // The month's spend, in the slot Astryx keeps for actions beside the send
-    // button — where the eye already is when a message is about to be sent.
-    sendActions:
+    // The gauge, mode, and model choices all belong beside the send button: they
+    // describe what the next turn will use, rather than the draft itself.
+    sendActions: isEditing ? (
       usage === null && chatUsage === null ? undefined : (
         <ContextGauge usage={usage} chatUsage={chatUsage} />
-      ),
+      )
+    ) : (
+      <div className="composer-send-actions">
+        {usage === null && chatUsage === null ? null : (
+          <ContextGauge usage={usage} chatUsage={chatUsage} />
+        )}
+        <fieldset className="chat-mode-switcher" aria-label="Chat mode">
+          <Button
+            label="Build"
+            size="sm"
+            variant={mode === 'build' ? 'primary' : 'ghost'}
+            aria-pressed={mode === 'build'}
+            isDisabled={isRunning || onChooseMode === undefined}
+            onClick={() => onChooseMode?.('build')}
+          />
+          <Button
+            label="Spec"
+            size="sm"
+            variant={mode === 'spec' ? 'primary' : 'ghost'}
+            aria-pressed={mode === 'spec'}
+            isDisabled={isRunning || onChooseMode === undefined}
+            onClick={() => onChooseMode?.('spec')}
+          />
+        </fieldset>
+        {pickerFor(models, modelId, onChoose, isRunning)}
+      </div>
+    ),
     // The same button, in its other state: while Kira is writing there is
     // something to stop, and stopping is what it does instead of sending.
     isStopShown: canCancel && !isEditing,
@@ -218,32 +244,7 @@ export function Composer({
           />
         </div>
       )}
-      <ChatComposer
-        {...composer}
-        footerActions={
-          <div className="composer-footer-actions">
-            <fieldset className="chat-mode-switcher" aria-label="Chat mode">
-              <Button
-                label="Build"
-                size="sm"
-                variant={mode === 'build' ? 'primary' : 'ghost'}
-                aria-pressed={mode === 'build'}
-                isDisabled={isRunning || onChooseMode === undefined}
-                onClick={() => onChooseMode?.('build')}
-              />
-              <Button
-                label="Spec"
-                size="sm"
-                variant={mode === 'spec' ? 'primary' : 'ghost'}
-                aria-pressed={mode === 'spec'}
-                isDisabled={isRunning || onChooseMode === undefined}
-                onClick={() => onChooseMode?.('spec')}
-              />
-            </fieldset>
-            {pickerFor(models, modelId, onChoose, isRunning)}
-          </div>
-        }
-      />
+      <ChatComposer {...composer} />
       {isRunning && (
         <Text color="secondary" size="sm">
           {queued.length > 0

@@ -287,7 +287,7 @@
   border: 0;
 }
 
-.composer-footer-actions {
+.composer-send-actions {
   display: flex;
   align-items: center;
   gap: var(--spacing-1);
