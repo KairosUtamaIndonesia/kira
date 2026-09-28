@@ -1,15 +1,14 @@
 /**
- * The workbench's tabs: what this chat has open, and which of them is showing.
+ * The workbench's open files and selected view, kept separate so editor tabs
+ * stay selected while someone visits another workbench view.
  *
  * The files a chat has open are the chat's own, so every rule here is asked for
- * one chat's tabs — a chat opened beside this one keeps what it had, and nothing
- * carries across a switch. That is also where the strip's shape lives: the pane's
- * own tabs and the files are peers, ordered by when each file was opened, so a
- * file the reader comes back to is where they left it rather than appended.
+ * one chat — a chat opened beside this one keeps what it had, and nothing carries
+ * across a switch. Open files stay ordered by when each was opened.
  *
  * Kept out of the component that paints it, the way the tree's rows are, so what
- * a click does — opens, brings forward, closes and shows what took the closed
- * tab's place — is checkable without a DOM.
+ * a click does — opens, selects, closes and chooses the neighbouring file — is
+ * checkable without a DOM.
  */
 import type { Result } from '../../preload/bridge';
 
@@ -50,8 +49,10 @@ export function nameOf(path: string): string {
 export interface Tabs {
   /** The files this chat has open, in the order they were opened. */
   open: readonly string[];
-  /** The tab showing: one of the pane's own, or a file's. */
+  /** Which workbench view is showing. Open files are shown inside Workspace. */
   showing: string;
+  /** The selected file tab in Workspace, if there is one. */
+  selectedFile: string | null;
 }
 
 /** What every chat has open. A chat that has opened nothing is not in here. */
@@ -59,22 +60,32 @@ export type ByChat = ReadonlyMap<string, Tabs>;
 
 /** What a chat has open, or the first relevant pane tab for a new chat. */
 export function tabsOf(all: ByChat, chatId: string, initialTab = CONTEXT): Tabs {
-  return all.get(chatId) ?? { open: [], showing: initialTab };
+  return all.get(chatId) ?? { open: [], showing: initialTab, selectedFile: null };
 }
 
-/** Open a file, or bring the tab it already has forward. */
+/** Open a file in the Workspace editor, or bring its tab forward. */
 export function opened(all: ByChat, chatId: string, path: string): ByChat {
   const tabs = tabsOf(all, chatId);
 
   return withTabs(all, chatId, {
     open: tabs.open.includes(path) ? tabs.open : [...tabs.open, path],
-    showing: valueOf(path),
+    showing: WORKSPACE,
+    selectedFile: path,
   });
 }
 
-/** Show one of this chat's tabs. */
+/** Show a workbench view or select one of Workspace's open files. */
 export function shown(all: ByChat, chatId: string, value: string): ByChat {
-  return withTabs(all, chatId, { ...tabsOf(all, chatId), showing: value });
+  const tabs = tabsOf(all, chatId);
+  const file = tabs.open.find((path) => valueOf(path) === value);
+
+  return withTabs(
+    all,
+    chatId,
+    file === undefined
+      ? { ...tabs, showing: value }
+      : { ...tabs, showing: WORKSPACE, selectedFile: file },
+  );
 }
 
 /**
@@ -95,7 +106,8 @@ export function closed(all: ByChat, chatId: string, path: string): ByChat {
 
   return withTabs(all, chatId, {
     open: tabs.open.filter((held) => held !== path),
-    showing: tabs.showing === valueOf(path) ? neighbourOf(tabs.open, at) : tabs.showing,
+    showing: tabs.showing,
+    selectedFile: tabs.selectedFile === path ? neighbourOf(tabs.open, at) : tabs.selectedFile,
   });
 }
 
@@ -113,10 +125,8 @@ export function contentsOf(result: Result<string>): Reading {
 }
 
 /** The tab that takes the place of the one closed at `at`. */
-function neighbourOf(open: readonly string[], at: number): string {
-  const taking = open[at + 1] ?? open[at - 1];
-
-  return taking === undefined ? WORKSPACE : valueOf(taking);
+function neighbourOf(open: readonly string[], at: number): string | null {
+  return open[at + 1] ?? open[at - 1] ?? null;
 }
 
 function withTabs(all: ByChat, chatId: string, tabs: Tabs): ByChat {

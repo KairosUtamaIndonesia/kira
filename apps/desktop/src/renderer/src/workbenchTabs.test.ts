@@ -17,13 +17,22 @@ import {
 } from './workbenchTabs.ts';
 
 /** Every chat's tabs, as a case can say them in a line. */
-function byChat(...entries: [string, { open: string[]; showing: string }][]): ByChat {
-  return new Map(entries);
+function byChat(
+  ...entries: [string, { open: string[]; showing: string; selectedFile?: string | null }][]
+): ByChat {
+  return new Map(
+    entries.map(([chat, tabs]) => [chat, { ...tabs, selectedFile: tabs.selectedFile ?? null }]),
+  );
 }
 
 /** One chat's tabs, which is most cases. */
-function one(chat: string, open: string[], showing: string): ByChat {
-  return byChat([chat, { open, showing }]);
+function one(
+  chat: string,
+  open: string[],
+  showing: string,
+  selectedFile: string | null = null,
+): ByChat {
+  return byChat([chat, { open, showing, selectedFile }]);
 }
 
 interface TabsCase {
@@ -31,7 +40,7 @@ interface TabsCase {
   all: ByChat;
   chat: string;
   initialTab?: string;
-  want: { open: readonly string[]; showing: string };
+  want: { open: readonly string[]; showing: string; selectedFile: string | null };
 }
 
 const TABS_CASES: TabsCase[] = [
@@ -39,33 +48,33 @@ const TABS_CASES: TabsCase[] = [
     name: 'a chat that has opened nothing shows Context',
     all: byChat(),
     chat: 'a',
-    want: { open: [], showing: CONTEXT },
+    want: { open: [], showing: CONTEXT, selectedFile: null },
   },
   {
     name: 'a chat with files open is showing what it was showing',
-    all: one('a', ['x.ts', 'y.ts'], valueOf('y.ts')),
+    all: one('a', ['x.ts', 'y.ts'], WORKSPACE, 'y.ts'),
     chat: 'a',
-    want: { open: ['x.ts', 'y.ts'], showing: valueOf('y.ts') },
+    want: { open: ['x.ts', 'y.ts'], showing: WORKSPACE, selectedFile: 'y.ts' },
   },
   {
     name: 'what another chat has open is not this chat’s',
-    all: one('a', ['x.ts'], valueOf('x.ts')),
+    all: one('a', ['x.ts'], WORKSPACE, 'x.ts'),
     chat: 'b',
-    want: { open: [], showing: CONTEXT },
+    want: { open: [], showing: CONTEXT, selectedFile: null },
   },
   {
     name: 'a newly shaping chat opens the Spec tab by default',
     all: byChat(),
     chat: 'new-chat',
     initialTab: SPEC,
-    want: { open: [], showing: SPEC },
+    want: { open: [], showing: SPEC, selectedFile: null },
   },
   {
     name: 'the initial Spec tab does not replace a tab the person already chose',
     all: one('a', [], CONTEXT),
     chat: 'a',
     initialTab: SPEC,
-    want: { open: [], showing: CONTEXT },
+    want: { open: [], showing: CONTEXT, selectedFile: null },
   },
 ];
 
@@ -89,26 +98,26 @@ const OPEN_CASES: EditCase[] = [
     all: one('a', ['x.ts'], CONTEXT),
     chat: 'a',
     path: 'y.ts',
-    want: one('a', ['x.ts', 'y.ts'], valueOf('y.ts')),
+    want: one('a', ['x.ts', 'y.ts'], WORKSPACE, 'y.ts'),
   },
   {
     name: 'a file that is already open is brought forward, not opened twice',
     all: one('a', ['x.ts', 'y.ts'], CONTEXT),
     chat: 'a',
     path: 'x.ts',
-    want: one('a', ['x.ts', 'y.ts'], valueOf('x.ts')),
+    want: one('a', ['x.ts', 'y.ts'], WORKSPACE, 'x.ts'),
   },
   {
     name: 'opening a file in one chat leaves another chat’s files where they were',
     all: byChat(
       ['a', { open: ['x.ts'], showing: CONTEXT }],
-      ['b', { open: ['z.ts'], showing: valueOf('z.ts') }],
+      ['b', { open: ['z.ts'], showing: WORKSPACE, selectedFile: 'z.ts' }],
     ),
     chat: 'b',
     path: 'y.ts',
     want: byChat(
       ['a', { open: ['x.ts'], showing: CONTEXT }],
-      ['b', { open: ['z.ts', 'y.ts'], showing: valueOf('y.ts') }],
+      ['b', { open: ['z.ts', 'y.ts'], showing: WORKSPACE, selectedFile: 'y.ts' }],
     ),
   },
 ];
@@ -119,41 +128,61 @@ for (const testCase of OPEN_CASES) {
   });
 }
 
+test('an opened editor file stays selected after leaving and returning to Workspace', () => {
+  const path = 'src/app.ts';
+  let all = opened(new Map(), 'a', path);
+
+  assert.deepEqual(tabsOf(all, 'a'), {
+    open: [path],
+    showing: WORKSPACE,
+    selectedFile: path,
+  });
+
+  all = shown(all, 'a', CONTEXT);
+  all = shown(all, 'a', WORKSPACE);
+
+  assert.deepEqual(tabsOf(all, 'a'), {
+    open: [path],
+    showing: WORKSPACE,
+    selectedFile: path,
+  });
+});
+
 const CLOSE_CASES: EditCase[] = [
   {
     name: 'closing the file that is showing shows the one that took its place',
-    all: one('a', ['x.ts', 'y.ts', 'z.ts'], valueOf('y.ts')),
+    all: one('a', ['x.ts', 'y.ts', 'z.ts'], WORKSPACE, 'y.ts'),
     chat: 'a',
     path: 'y.ts',
-    want: one('a', ['x.ts', 'z.ts'], valueOf('z.ts')),
+    want: one('a', ['x.ts', 'z.ts'], WORKSPACE, 'z.ts'),
   },
   {
     name: 'closing the last file that is showing shows the one before it',
-    all: one('a', ['x.ts', 'y.ts'], valueOf('y.ts')),
+    all: one('a', ['x.ts', 'y.ts'], WORKSPACE, 'y.ts'),
     chat: 'a',
     path: 'y.ts',
-    want: one('a', ['x.ts'], valueOf('x.ts')),
+    want: one('a', ['x.ts'], WORKSPACE, 'x.ts'),
   },
   {
     name: 'closing the only file leaves the chat’s workspace showing, since the pane stays',
-    all: one('a', ['x.ts'], valueOf('x.ts')),
+    all: one('a', ['x.ts'], WORKSPACE, 'x.ts'),
     chat: 'a',
     path: 'x.ts',
     want: one('a', [], WORKSPACE),
   },
   {
     name: 'closing a file that is not showing leaves what is showing alone',
-    all: one('a', ['x.ts', 'y.ts'], CONTEXT),
+    all: one('a', ['x.ts', 'y.ts'], CONTEXT, 'y.ts'),
     chat: 'a',
     path: 'x.ts',
-    want: one('a', ['y.ts'], CONTEXT),
+    want: one('a', ['y.ts'], CONTEXT, 'y.ts'),
   },
   {
     name: 'closing a file the chat does not have open leaves it as it was',
-    all: one('a', ['x.ts'], valueOf('x.ts')),
+    all: one('a', ['x.ts'], WORKSPACE, 'x.ts'),
     chat: 'a',
     path: 'nope.ts',
-    want: one('a', ['x.ts'], valueOf('x.ts')),
+    want: one('a', ['x.ts'], WORKSPACE, 'x.ts'),
   },
 ];
 
@@ -173,15 +202,15 @@ interface ShowCase {
 const SHOW_CASES: ShowCase[] = [
   {
     name: 'showing the tree keeps the chat’s open files',
-    all: one('a', ['x.ts'], valueOf('x.ts')),
+    all: one('a', ['x.ts'], WORKSPACE, 'x.ts'),
     value: WORKSPACE,
-    want: one('a', ['x.ts'], WORKSPACE),
+    want: one('a', ['x.ts'], WORKSPACE, 'x.ts'),
   },
   {
     name: 'showing a file the chat has open shows that file',
     all: one('a', ['x.ts', 'y.ts'], CONTEXT),
     value: valueOf('y.ts'),
-    want: one('a', ['x.ts', 'y.ts'], valueOf('y.ts')),
+    want: one('a', ['x.ts', 'y.ts'], WORKSPACE, 'y.ts'),
   },
 ];
 

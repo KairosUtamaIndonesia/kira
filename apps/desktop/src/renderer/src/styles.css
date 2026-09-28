@@ -431,6 +431,46 @@
   padding: var(--spacing-4);
 }
 
+.workbench-workspace {
+  display: flex;
+  overflow: hidden;
+  padding: 0;
+}
+
+.workbench-workspace[hidden] {
+  display: none;
+}
+
+.workbench-editor {
+  display: flex;
+  flex: 1 1 55%;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-inline-end: 1px solid var(--color-border);
+}
+
+.workbench-editor-pages {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workbench-editor-page {
+  height: 100%;
+  overflow: auto;
+  padding: var(--spacing-4);
+}
+
+.workbench-explorer {
+  flex: 0 0 45%;
+  min-width: 120px;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--spacing-4);
+}
+
 /*
  * An open file, as it is written. Lines are not wrapped, because a wrapped line
  * of code says something the file does not — so the pane scrolls sideways
@@ -462,7 +502,9 @@
 }
 
 .workbench-view:hover .workbench-tab-close,
-.workbench-view:focus-visible .workbench-tab-close {
+.workbench-view:focus-visible .workbench-tab-close,
+.workbench-file-tab:hover .workbench-tab-close,
+.workbench-file-tab:focus-visible .workbench-tab-close {
   opacity: 1;
   pointer-events: auto;
 }

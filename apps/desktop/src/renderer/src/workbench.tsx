@@ -15,10 +15,11 @@ import { Button } from '@astryxdesign/core/Button';
 import { HStack } from '@astryxdesign/core/HStack';
 import { ResizeHandle, useResizable, type ResizableRegion } from '@astryxdesign/core/Resizable';
 import { Icon } from '@astryxdesign/core/Icon';
+import { Tab, TabList } from '@astryxdesign/core/TabList';
 import { Text } from '@astryxdesign/core/Text';
 import { VStack } from '@astryxdesign/core/VStack';
 import { Tooltip } from '@astryxdesign/core/Tooltip';
-import { Brain, FileCode2, FileText, FolderTree, Globe, ListChecks, X } from 'lucide-react';
+import { Brain, FileText, FolderTree, Globe, ListChecks, X } from 'lucide-react';
 import * as stylex from '@stylexjs/stylex';
 import { useRef, useState, type KeyboardEvent } from 'react';
 import type {
@@ -141,30 +142,24 @@ export function Workbench({
   // Each tab, so closing one can hand focus to the tab that took its place
   // without reaching for Astryx's own attributes.
   const tabRefs = useRef(new Map<string, HTMLButtonElement | null>());
+  const fileTabRefs = useRef(new Map<string, HTMLButtonElement | null>());
 
   // Spec and Tickets are there only while the chat has something to show in
   // them; a chat that has a proposal and has chosen nothing opens on Spec.
   const available = shapingTabs(shaping);
   const held = tabsOf(tabs, chatId, available.spec ? SPEC : CONTEXT);
   const open = held.open;
+  const selectedFile = held.selectedFile;
   const showing =
     (held.showing === SPEC && !available.spec) || (held.showing === TICKETS && !available.tickets)
       ? CONTEXT
       : held.showing;
   const views = [
-    { value: CONTEXT, label: 'Context', tooltip: undefined, icon: Brain },
-    ...(available.spec ? [{ value: SPEC, label: 'Spec', tooltip: undefined, icon: FileText }] : []),
-    ...(available.tickets
-      ? [{ value: TICKETS, label: 'Tickets', tooltip: undefined, icon: ListChecks }]
-      : []),
-    { value: WORKSPACE, label: 'Workspace', tooltip: undefined, icon: FolderTree },
-    { value: BROWSER, label: 'Browser', tooltip: undefined, icon: Globe },
-    ...open.map((path) => ({
-      value: valueOf(path),
-      label: nameOf(path),
-      tooltip: path,
-      icon: FileCode2,
-    })),
+    { value: CONTEXT, label: 'Context', icon: Brain },
+    ...(available.spec ? [{ value: SPEC, label: 'Spec', icon: FileText }] : []),
+    ...(available.tickets ? [{ value: TICKETS, label: 'Tickets', icon: ListChecks }] : []),
+    { value: WORKSPACE, label: 'Workspace', icon: FolderTree },
+    { value: BROWSER, label: 'Browser', icon: Globe },
   ];
 
   function readingKey(path: string): string {
@@ -199,12 +194,9 @@ export function Workbench({
       return left;
     });
 
-    /*
-     * The tab that was closed is the one that had focus, so focus follows it to
-     * the tab that took its place. Otherwise a reader who closes a tab with the
-     * keyboard is left at the top of the window with the strip behind them.
-     */
-    tabRefs.current.get(tabsOf(next, chatId).showing)?.focus();
+    const nextFile = tabsOf(next, chatId).selectedFile;
+    if (nextFile) fileTabRefs.current.get(valueOf(nextFile))?.focus();
+    else tabRefs.current.get(WORKSPACE)?.focus();
   }
 
   function rememberBrowsers(next: BrowsersByChat): void {
@@ -265,41 +257,22 @@ export function Workbench({
           aria-orientation="vertical"
         >
           {views.map((view) => (
-            <Tooltip key={view.value} content={view.tooltip ?? view.label} placement="start">
+            <Tooltip key={view.value} content={view.label} placement="start">
               <button
                 ref={(element) => {
                   tabRefs.current.set(view.value, element);
                 }}
                 type="button"
                 role="tab"
-                aria-label={view.tooltip ? `${view.label}: ${view.tooltip}` : view.label}
+                aria-label={view.label}
                 aria-selected={showing === view.value}
                 aria-controls={panelOf(view.value)}
                 tabIndex={showing === view.value ? 0 : -1}
                 className="workbench-view"
                 onClick={() => show(view.value)}
-                onKeyDown={(event) => {
-                  if (view.tooltip && (event.key === 'Delete' || event.key === 'Backspace')) {
-                    event.preventDefault();
-                    closeFile(view.tooltip);
-                    return;
-                  }
-                  moveFocus(event, view.value);
-                }}
+                onKeyDown={(event) => moveFocus(event, view.value)}
               >
                 <Icon icon={view.icon} size="md" />
-                {view.tooltip && (
-                  <span
-                    className="workbench-tab-close"
-                    aria-hidden="true"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      closeFile(view.tooltip!);
-                    }}
-                  >
-                    <Icon icon={X} size="sm" />
-                  </span>
-                )}
               </button>
             </Tooltip>
           ))}
@@ -352,31 +325,89 @@ export function Workbench({
           id={panelOf(WORKSPACE)}
           role="tabpanel"
           aria-label="Workspace"
-          className="workbench-tab"
+          className="workbench-tab workbench-workspace"
           hidden={showing !== WORKSPACE}
         >
-          {workspaceVisits > 0 ? (
-            /*
-             * Rebuilt rather than reused when the chat on screen changes — and
-             * when the chat being composed stops being one, which is when it
-             * gains the workspace it had none of. What a tree has read belongs
-             * to the chat it was read for, so none of it is carried across.
-             */
-            <WorkspaceTab
-              key={`${chatId}:${composing}`}
-              chatId={chatId}
-              workspaceName={workspaceName}
-              visits={workspaceVisits}
+          <div className="workbench-editor">
+            {open.length > 0 && (
+              <TabList
+                value={selectedFile ? valueOf(selectedFile) : valueOf(open[0]!)}
+                onChange={(next) => setTabs(shown(tabs, chatId, next))}
+                hasDivider
+                role="tablist"
+                aria-label="Open files"
+              >
+                {open.map((path) => (
+                  <Tooltip key={path} content={path} placement="below">
+                    <Tab
+                      value={valueOf(path)}
+                      label={nameOf(path)}
+                      panelId={panelOf(valueOf(path))}
+                      className="workbench-file-tab"
+                      ref={(element) => {
+                        fileTabRefs.current.set(valueOf(path), element);
+                      }}
+                      endContent={
+                        <span
+                          className="workbench-tab-close"
+                          aria-hidden="true"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            closeFile(path);
+                          }}
+                        >
+                          <Icon icon={X} size="sm" />
+                        </span>
+                      }
+                      onKeyDown={(event) => {
+                        if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+                        event.preventDefault();
+                        closeFile(path);
+                      }}
+                    />
+                  </Tooltip>
+                ))}
+              </TabList>
+            )}
+            <div className="workbench-editor-pages">
+              {open.map((path) => (
+                <div
+                  key={path}
+                  id={panelOf(valueOf(path))}
+                  role="tabpanel"
+                  aria-label={path}
+                  className="workbench-editor-page"
+                  hidden={selectedFile !== path}
+                >
+                  <FileTab reading={readings.get(readingKey(path))} />
+                </div>
+              ))}
+            </div>
+          </div>
+          <section className="workbench-explorer" aria-label="Files">
+            {workspaceVisits > 0 ? (
               /*
-               * Watched only while the tree is actually on screen: not while
-               * another tab is showing, and not while the whole pane is put
-               * away, so a folder is never watched for a chat nobody is looking
-               * at (ADR 0016).
+               * Rebuilt rather than reused when the chat on screen changes — and
+               * when the chat being composed stops being one, which is when it
+               * gains the workspace it had none of. What a tree has read belongs
+               * to the chat it was read for, so none of it is carried across.
                */
-              showing={showing === WORKSPACE && !region.isCollapsed}
-              onOpenFile={openFile}
-            />
-          ) : null}
+              <WorkspaceTab
+                key={`${chatId}:${composing}`}
+                chatId={chatId}
+                workspaceName={workspaceName}
+                visits={workspaceVisits}
+                /*
+                 * Watched only while the tree is actually on screen: not while
+                 * another view is showing, and not while the whole pane is put
+                 * away, so a folder is never watched for a chat nobody is looking
+                 * at (ADR 0016).
+                 */
+                showing={showing === WORKSPACE && !region.isCollapsed}
+                onOpenFile={openFile}
+              />
+            ) : null}
+          </section>
         </div>
         <div
           id={panelOf(BROWSER)}
@@ -391,23 +422,6 @@ export function Workbench({
             onChange={rememberBrowsers}
           />
         </div>
-        {/*
-         * An open file's panel is mounted while its tab exists and hidden while
-         * another tab is showing. What it read is kept by the pane under the chat
-         * and path it was read for, so the tab finds it again.
-         */}
-        {open.map((path) => (
-          <div
-            key={path}
-            id={panelOf(valueOf(path))}
-            role="tabpanel"
-            aria-label={path}
-            className="workbench-tab"
-            hidden={showing !== valueOf(path)}
-          >
-            <FileTab reading={readings.get(readingKey(path))} />
-          </div>
-        ))}
       </div>
     </div>
   );
