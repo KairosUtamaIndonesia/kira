@@ -24,22 +24,29 @@ import {
 export function ExecutionWorkspacePanel({
   ticket,
   workspaces,
+  repository,
+  onStart,
   onChanged,
 }: {
   ticket: Ticket;
   workspaces: ExecutionWorkspace[];
+  repository: string;
+  onStart: (executionWorkspaceId: string) => Promise<boolean>;
   onChanged: () => Promise<void>;
 }) {
   const [selectedId, setSelectedId] = useState(workspaces[0]?.id ?? null);
   const selected = workspaces.find((workspace) => workspace.id === selectedId) ?? workspaces[0];
-  const [creating, setCreating] = useState(workspaces.length === 0);
+  const [creating, setCreating] = useState(false);
+  const [starting, setStarting] = useState(false);
 
   if (selected === undefined) {
     return (
       <section {...stylex.props(styles.section)} aria-label="Execution workspaces">
         <WorkspaceForm
           ticket={ticket}
-          onCreated={async () => {
+          repository={repository}
+          onCreated={async (id) => {
+            setSelectedId(id);
             setCreating(false);
             await onChanged();
           }}
@@ -93,13 +100,37 @@ export function ExecutionWorkspacePanel({
       {creating ? (
         <WorkspaceForm
           ticket={ticket}
-          onCreated={async () => {
+          repository={repository}
+          onCreated={async (id) => {
+            setSelectedId(id);
             setCreating(false);
             await onChanged();
           }}
         />
       ) : (
-        <Button label="Add execution workspace" size="sm" variant="secondary" onClick={() => setCreating(true)} />
+        <Button
+          label="Add execution workspace"
+          size="sm"
+          variant="secondary"
+          onClick={() => setCreating(true)}
+        />
+      )}
+
+      {ticket.band === 'ready' && view.status !== 'running' && (
+        <Button
+          label={view.run === null ? 'Start agent' : 'Run again'}
+          size="sm"
+          variant="primary"
+          isDisabled={starting}
+          onClick={async () => {
+            setStarting(true);
+            try {
+              await onStart(selected.id);
+            } finally {
+              setStarting(false);
+            }
+          }}
+        />
       )}
 
       <WorkspaceDetails ticket={ticket} view={view} workspaceId={selected.id} />
@@ -109,12 +140,14 @@ export function ExecutionWorkspacePanel({
 
 function WorkspaceForm({
   ticket,
+  repository: initialRepository,
   onCreated,
 }: {
   ticket: Ticket;
-  onCreated: () => Promise<void>;
+  repository: string;
+  onCreated: (id: string) => Promise<void>;
 }) {
-  const [repository, setRepository] = useState('');
+  const [repository, setRepository] = useState(initialRepository);
   const [baseBranch, setBaseBranch] = useState('main');
   const [branch, setBranch] = useState(ticket.branch);
   const [agentConfig, setAgentConfig] = useState('default');
@@ -135,7 +168,7 @@ function WorkspaceForm({
       return;
     }
     setTrouble(null);
-    await onCreated();
+    await onCreated(result.value.id);
   };
 
   return (
@@ -144,14 +177,36 @@ function WorkspaceForm({
         Create execution workspace
       </Text>
       <Text type="supporting" color="secondary">
-        Choose the repository, base branch, working branch, and agent configuration before starting work.
+        Choose the repository, base branch, working branch, and agent configuration before starting
+        work.
       </Text>
-      <TextInput label="Repository" value={repository} onChange={setRepository} size="sm" />
+      <TextInput
+        label="Repository folder"
+        value={repository}
+        onChange={setRepository}
+        description="The local checkout the agent will work in."
+        size="sm"
+      />
       <TextInput label="Base branch" value={baseBranch} onChange={setBaseBranch} size="sm" />
       <TextInput label="Workspace branch" value={branch} onChange={setBranch} size="sm" />
-      <TextInput label="Agent configuration" value={agentConfig} onChange={setAgentConfig} size="sm" />
-      {trouble !== null && <Text type="supporting" color="secondary">{trouble}</Text>}
-      <Button label={busy ? 'Creating workspace' : 'Create workspace'} size="sm" variant="primary" isDisabled={busy} onClick={() => void create()} />
+      <TextInput
+        label="Agent configuration"
+        value={agentConfig}
+        onChange={setAgentConfig}
+        size="sm"
+      />
+      {trouble !== null && (
+        <Text type="supporting" color="secondary">
+          {trouble}
+        </Text>
+      )}
+      <Button
+        label={busy ? 'Creating workspace' : 'Create workspace'}
+        size="sm"
+        variant="primary"
+        isDisabled={busy}
+        onClick={() => void create()}
+      />
     </div>
   );
 }
@@ -172,6 +227,7 @@ function WorkspaceDetails({
   const [line, setLine] = useState('1');
   const [comment, setComment] = useState('');
   const [feedback, setFeedback] = useState('');
+  const [diff, setDiff] = useState<string | null>(null);
 
   const readOutput = async (): Promise<void> => {
     if (view.run === null) return;
@@ -192,6 +248,16 @@ function WorkspaceDetails({
     }
     setTrouble(null);
     setReview(answer.value);
+  };
+
+  const readDiff = async (): Promise<void> => {
+    const answer = await window.kira.readExecutionDiff(ticket.id, workspaceId);
+    if (!answer.ok) {
+      setTrouble(answer.error);
+      return;
+    }
+    setTrouble(null);
+    setDiff(answer.value);
   };
 
   const addComment = async (): Promise<void> => {
@@ -295,19 +361,32 @@ function WorkspaceDetails({
 
       <div {...stylex.props(styles.block)}>
         <div {...stylex.props(styles.blockHeading)}>
-          <Text type="label" weight="medium">Review and feedback</Text>
-          <Button label="Refresh review" size="sm" variant="ghost" onClick={() => void readReview()} />
+          <Text type="label" weight="medium">
+            Review and feedback
+          </Text>
+          <Button
+            label="Refresh review"
+            size="sm"
+            variant="ghost"
+            onClick={() => void readReview()}
+          />
         </div>
         {review === null ? (
-          <Text type="supporting" color="secondary">Refresh review to inspect comments and feedback for this workspace.</Text>
+          <Text type="supporting" color="secondary">
+            Refresh review to inspect comments and feedback for this workspace.
+          </Text>
         ) : (
           <>
             {review.comments.length === 0 && review.feedback.length === 0 && (
-              <Text type="supporting" color="secondary">No review comments or feedback yet.</Text>
+              <Text type="supporting" color="secondary">
+                No review comments or feedback yet.
+              </Text>
             )}
             {review.comments.map((item) => (
               <div key={item.id} {...stylex.props(styles.reviewItem)}>
-                <Text type="code">{item.path}:{item.line} · {item.status}</Text>
+                <Text type="code">
+                  {item.path}:{item.line} · {item.status}
+                </Text>
                 <Text type="supporting">{item.body}</Text>
                 {item.status === 'open' && (
                   <Button
@@ -315,7 +394,12 @@ function WorkspaceDetails({
                     size="sm"
                     variant="ghost"
                     onClick={async () => {
-                      const answer = await window.kira.updateReviewComment(ticket.id, workspaceId, item.id, 'addressed');
+                      const answer = await window.kira.updateReviewComment(
+                        ticket.id,
+                        workspaceId,
+                        item.id,
+                        'addressed',
+                      );
                       if (!answer.ok) setTrouble(answer.error);
                       else await readReview();
                     }}
@@ -333,21 +417,44 @@ function WorkspaceDetails({
         <TextInput label="Changed file" value={path} onChange={setPath} size="sm" />
         <TextInput label="Line" value={line} onChange={setLine} size="sm" />
         <TextArea label="Inline comment" value={comment} onChange={setComment} rows={3} />
-        <Button label="Add comment" size="sm" variant="secondary" isDisabled={path.trim() === '' || comment.trim() === ''} onClick={() => void addComment()} />
+        <Button
+          label="Add comment"
+          size="sm"
+          variant="secondary"
+          isDisabled={path.trim() === '' || comment.trim() === ''}
+          onClick={() => void addComment()}
+        />
         <TextArea label="Feedback for the agent" value={feedback} onChange={setFeedback} rows={3} />
-        <Button label="Send feedback" size="sm" variant="primary" isDisabled={feedback.trim() === ''} onClick={() => void sendFeedback()} />
+        <Button
+          label="Send feedback"
+          size="sm"
+          variant="primary"
+          isDisabled={feedback.trim() === ''}
+          onClick={() => void sendFeedback()}
+        />
       </div>
 
       <div {...stylex.props(styles.block)}>
-        <Text type="label" weight="medium">
-          Changed work
-        </Text>
+        <div {...stylex.props(styles.blockHeading)}>
+          <Text type="label" weight="medium">
+            Changed work
+          </Text>
+          <Button label="View diff" size="sm" variant="secondary" onClick={() => void readDiff()} />
+        </div>
         <Text type="supporting" color="secondary">
           {view.changed ??
             (view.status === 'running'
               ? 'No changed work has been recorded yet.'
               : 'No changed work was recorded.')}
         </Text>
+        {diff !== null &&
+          (diff === '' ? (
+            <Text type="supporting" color="secondary">
+              No tracked changes from the base branch.
+            </Text>
+          ) : (
+            <pre {...stylex.props(styles.diff)}>{diff}</pre>
+          ))}
       </div>
 
       <div {...stylex.props(styles.block)}>
@@ -380,6 +487,16 @@ const styles = stylex.create({
   blockHeading: { display: 'flex', alignItems: 'center', gap: 'var(--spacing-2)' },
   form: { display: 'grid', gap: 'var(--spacing-2)' },
   reviewItem: { display: 'grid', gap: 'var(--spacing-1)', paddingBlock: 'var(--spacing-2)' },
+  diff: {
+    overflowX: 'auto',
+    maxHeight: 480,
+    padding: 'var(--spacing-3)',
+    borderRadius: 'var(--radius-md)',
+    backgroundColor: 'var(--color-background-muted)',
+    fontFamily: 'var(--font-family-mono)',
+    fontSize: 'var(--font-size-sm)',
+    whiteSpace: 'pre',
+  },
   output: {
     display: 'grid',
     gap: 'var(--spacing-2)',

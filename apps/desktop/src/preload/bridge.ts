@@ -709,6 +709,7 @@ export const RUN_CHANNELS = {
   judge: 'run:judge',
   takeover: 'run:takeover',
   release: 'run:release',
+  diff: 'run:diff',
 } as const;
 
 /**
@@ -1469,7 +1470,11 @@ export interface KiraBridge {
    * refusal a person needs to read — the window does not decide for itself whether a
    * ticket can be picked up.
    */
-  startRun(workspaceId: string, ticketId: string): Promise<Result<TicketRun>>;
+  startRun(
+    workspaceId: string,
+    ticketId: string,
+    executionWorkspaceId?: string,
+  ): Promise<Result<TicketRun>>;
   /** Start a same-ticket run to resolve a spec-branch merge conflict. */
   resolveRun(workspaceId: string, ticketId: string, reason: string): Promise<Result<TicketRun>>;
   /**
@@ -1479,6 +1484,7 @@ export interface KiraBridge {
    * ticket and would then carry every run's whole conversation.
    */
   readTranscript(ticketId: string, runId: string): Promise<Result<TicketSaid[]>>;
+  readExecutionDiff(ticketId: string, executionWorkspaceId: string): Promise<Result<string>>;
   /**
    * Take over a claim whose lease has run out, by hand.
    *

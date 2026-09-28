@@ -21,7 +21,7 @@ export { RUN_CHANNELS };
 /** What the handler needs from the main process. */
 export interface RunDeps {
   /** Press Run on a ticket in a workspace. */
-  start(workspaceId: string, ticketId: string): Promise<TicketRun>;
+  start(workspaceId: string, ticketId: string, executionWorkspaceId?: string): Promise<TicketRun>;
   /** Start a same-ticket run to resolve an integration conflict. */
   resolve(workspaceId: string, ticketId: string, reason: string): Promise<TicketRun>;
   /** What was said while a run went on, oldest first. */
@@ -37,10 +37,15 @@ export interface RunDeps {
     verdict: 'accepted' | 'sent-back',
     workspaceId?: string,
   ): Promise<TicketRun>;
+  diff(ticketId: string, executionWorkspaceId: string): Promise<string>;
 }
 
 export interface RunHandlers {
-  start(workspaceId: unknown, ticketId: unknown): Promise<Result<TicketRun>>;
+  start(
+    workspaceId: unknown,
+    ticketId: unknown,
+    executionWorkspaceId?: unknown,
+  ): Promise<Result<TicketRun>>;
   resolve(workspaceId: unknown, ticketId: unknown, reason: unknown): Promise<Result<TicketRun>>;
   transcript(ticketId: unknown, runId: unknown): Promise<Result<TicketSaid[]>>;
   takeOver(ticketId: unknown): Promise<Result<Ticket>>;
@@ -51,6 +56,7 @@ export interface RunHandlers {
     verdict: unknown,
     workspaceId?: unknown,
   ): Promise<Result<TicketRun>>;
+  diff(ticketId: unknown, executionWorkspaceId: unknown): Promise<Result<string>>;
 }
 
 export function runHandlers({
@@ -60,17 +66,21 @@ export function runHandlers({
   takeOver,
   release,
   judge,
+  diff,
 }: RunDeps): RunHandlers {
   return {
-    start: (workspaceId, ticketId) => {
+    start: (workspaceId, ticketId, executionWorkspaceId) => {
       if (!isId(workspaceId)) {
         return Promise.resolve({ ok: false, error: 'A run happens in a workspace.' });
       }
       if (!isId(ticketId)) {
         return Promise.resolve({ ok: false, error: 'A run happens on a ticket.' });
       }
+      if (executionWorkspaceId !== undefined && !isId(executionWorkspaceId)) {
+        return Promise.resolve({ ok: false, error: 'A run needs a valid execution workspace.' });
+      }
 
-      return envelope(() => start(workspaceId, ticketId));
+      return envelope(() => start(workspaceId, ticketId, executionWorkspaceId));
     },
 
     resolve: (workspaceId, ticketId, reason) => {
@@ -136,6 +146,16 @@ export function runHandlers({
       }
 
       return envelope(() => judge(ticketId, runId, verdict, workspaceId));
+    },
+
+    diff: (ticketId, executionWorkspaceId) => {
+      if (!isId(ticketId)) {
+        return Promise.resolve({ ok: false, error: 'A diff belongs to an issue.' });
+      }
+      if (!isId(executionWorkspaceId)) {
+        return Promise.resolve({ ok: false, error: 'A diff needs an execution workspace.' });
+      }
+      return envelope(() => diff(ticketId, executionWorkspaceId));
     },
   };
 }

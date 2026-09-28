@@ -24,7 +24,8 @@
  * ended is finished; the branch is the ticket's, so a second try carries on from it.
  */
 import { existsSync } from 'node:fs';
-import type { Ticket, TicketRun, TicketSaid } from '../preload/bridge.ts';
+import { isAbsolute } from 'node:path';
+import type { ExecutionWorkspace, Ticket, TicketRun, TicketSaid } from '../preload/bridge.ts';
 import type { RunChat } from './pi/runChat.ts';
 import { asked, type TrackerWire } from './tracker.ts';
 import type { Worktrees } from './workspace/worktrees.ts';
@@ -50,13 +51,15 @@ export interface Runs {
    * going on the ticket. Answers the run, or throws the sentence saying why it could not
    * begin. The turn itself goes on after this has answered.
    */
-  start(workspaceId: string, ticketId: string): Promise<TicketRun>;
+  start(workspaceId: string, ticketId: string, executionWorkspaceId?: string): Promise<TicketRun>;
   /** A run has done what it was asked: record what it made and end it as a proposal. */
   finish(ticketId: string, evidence: RunEvidence): Promise<TicketRun>;
   /** A run cannot go on, or cannot begin: end it saying why, and let its checkout go. */
   stop(ticketId: string, reason: string): Promise<TicketRun>;
   /** Where a ticket's run is working, or null when this machine is not running it. */
   where(ticketId: string): string | null;
+  /** Read a persistent execution workspace's tracked diff. */
+  diff(ticketId: string, executionWorkspaceId: string): Promise<string>;
   /** What was said while a run went on, oldest first. */
   saidIn(ticketId: string, runId: string): Promise<TicketSaid[]>;
   /** Whether a run is in flight on this machine right now. */
@@ -100,12 +103,14 @@ interface Working {
   kind: Ticket['kind'];
   /** The last thing it said, which is what a proposal's summary is made of. */
   said: string | null;
+  keepCheckout: boolean;
 }
 
 export function runsFor({
   token,
   workerOf,
   folderOf,
+  executionWorkspaceOf,
   thereFor,
   affordable,
   worktrees,
@@ -118,6 +123,11 @@ export function runsFor({
   workerOf: () => Promise<string | null>;
   /** The folder a workspace works in, or undefined when it is no longer open. */
   folderOf: (workspaceId: string) => string | undefined;
+  /** Resolve the issue's chosen execution workspace from the server. */
+  executionWorkspaceOf?: (
+    ticketId: string,
+    executionWorkspaceId: string,
+  ) => Promise<ExecutionWorkspace | null>;
   /** Where a ticket's run should work, from this machine's own paths. */
   thereFor: (ticketId: string) => string;
   /** Whether there is allowance left to spend on a run. */
@@ -160,7 +170,7 @@ export function runsFor({
 
     workingRuns.delete(ticketId);
     run.chat?.close();
-    await worktrees.drop(run.folder, run.into);
+    if (!run.keepCheckout) await worktrees.drop(run.folder, run.into);
   }
 
   /**
@@ -181,21 +191,40 @@ export function runsFor({
   async function startRun(
     workspaceId: string,
     ticketId: string,
+    executionWorkspaceId?: string,
     resolutionReason?: string,
   ): Promise<TicketRun> {
     const held = await key();
 
-    const folder = folderOf(workspaceId);
-    if (folder === undefined) throw new Error('That folder is no longer open.');
+    const projectFolder = folderOf(workspaceId);
+    if (projectFolder === undefined) throw new Error('That folder is no longer open.');
+    if (executionWorkspaceId === undefined && !existsSync(projectFolder)) {
+      throw new Error('That folder is not there any more, so nothing can run in it.');
+    }
+
+    const ticket = await asked(() => wire.readTicket(held, ticketId));
+    const execution =
+      executionWorkspaceId === undefined
+        ? null
+        : ((await executionWorkspaceOf?.(ticketId, executionWorkspaceId)) ?? null);
+    if (executionWorkspaceId !== undefined && execution === null) {
+      throw new Error('That execution workspace is no longer available for this issue.');
+    }
+    if (execution !== null && execution.ticketId !== ticketId) {
+      throw new Error('That execution workspace belongs to a different issue.');
+    }
+    if (execution !== null && !isAbsolute(execution.repository)) {
+      throw new Error('The execution workspace repository must be an absolute folder path.');
+    }
+    const folder = execution?.repository ?? projectFolder;
     // Refused here rather than after the claim: a run in a folder that is not there
     // cannot begin, and claiming a ticket for it would only take it off the queue.
     if (!existsSync(folder)) {
       throw new Error('That folder is not there any more, so nothing can run in it.');
     }
 
-    // Maps chart work but are never themselves runs. Read the current ticket through the
-    // tracker seam before claiming anything so a planning record stays on the queue.
-    const ticket = await asked(() => wire.readTicket(held, ticketId));
+    // Maps chart work but are never themselves runs. The ticket was read above before
+    // resolving an optional execution workspace, so planning records stay on the queue.
     if (ticket.kind === 'map') throw new Error(MAP_RUN_REFUSAL);
 
     const worker = await workerOf();
@@ -211,6 +240,7 @@ export function runsFor({
 
     // The server's own words when the ticket is not ready, or is somebody else's.
     const claimed = await asked(() => wire.claimTicket(held, ticketId, worker));
+    const branch = execution?.branch ?? claimed.branch;
 
     // The claim was taken a line ago, so a run that cannot start has to give it back: the
     // claim is what takes the ticket off the queue, and nothing is standing on this one, so
@@ -234,8 +264,14 @@ export function runsFor({
       );
     }
 
-    const into = thereFor(ticketId);
-    const made = await worktrees.make(folder, claimed.branch, into, spec?.branch);
+    const into = thereFor(execution?.id ?? ticketId);
+    const made = await worktrees.make(
+      folder,
+      branch,
+      into,
+      spec?.branch ?? execution?.baseBranch,
+      execution !== null,
+    );
     if (made === null) {
       throw new Error(await gaveUp(ticketId, run.id, 'A checkout to work in could not be made.'));
     }
@@ -247,6 +283,7 @@ export function runsFor({
       chat: null,
       kind: 'feature',
       said: null,
+      keepCheckout: execution !== null,
     };
     workingRuns.set(ticketId, working);
     runFolders.set(ticketId, folder);
@@ -254,9 +291,7 @@ export function runsFor({
     // The branch that exists, rather than the one derived from the title: a retitle
     // changes the derived name and must not change the branch a run already made
     // (GH #64).
-    const recorded = await asked(() =>
-      wire.recordRun(held, ticketId, run.id, { branch: claimed.branch }),
-    );
+    const recorded = await asked(() => wire.recordRun(held, ticketId, run.id, { branch }));
 
     try {
       // The ticket was read before the claim so a map stays off the run queue and a spec
@@ -283,7 +318,7 @@ export function runsFor({
       // The turn is not waited for: a run somebody is watching is not a run that needs
       // watching, and the ticket is where what it does shows up.
       void chat
-        .begin(claimed.branch, resolutionReason)
+        .begin(branch, resolutionReason)
         .then(() => proposes(ticketId, chat))
         .catch((failure: unknown) => fellOver(ticketId, failure));
     } catch (failure) {
@@ -348,12 +383,24 @@ export function runsFor({
     finish: finishRun,
     stop: stopRun,
     where: (ticketId) => workingRuns.get(ticketId)?.into ?? null,
+    diff: async (ticketId, executionWorkspaceId) => {
+      const execution = await executionWorkspaceOf?.(ticketId, executionWorkspaceId);
+      if (execution == null || execution.ticketId !== ticketId) {
+        throw new Error('That execution workspace is no longer available for this issue.');
+      }
+      if (!isAbsolute(execution.repository)) {
+        throw new Error('The execution workspace repository must be an absolute folder path.');
+      }
+      const output = await worktrees.diff(thereFor(execution.id), execution.baseBranch);
+      if (output === null) throw new Error('The execution workspace diff could not be read.');
+      return output;
+    },
     saidIn: saidInRun,
     driving: () => [...workingRuns.keys()],
     takeOverClaim: takeOverRun,
     letClaimGo: letClaimGo,
     judge: judgeRun,
-    resolve: (workspaceId, ticketId, reason) => startRun(workspaceId, ticketId, reason),
+    resolve: (workspaceId, ticketId, reason) => startRun(workspaceId, ticketId, undefined, reason),
   };
 
   /** Find the nearest enclosing spec through the tracker's gate edges. */
@@ -444,14 +491,14 @@ export function runsFor({
   }
 
   function folderFor(ticket: Ticket, workspaceId?: string): string {
+    const runFolder = runFolders.get(ticket.id);
+    if (runFolder !== undefined) return runFolder;
+
     if (workspaceId !== undefined) {
       const folder = folderOf(workspaceId);
       if (folder !== undefined) return folder;
       throw new Error('That folder is no longer open.');
     }
-
-    const folder = runFolders.get(ticket.id);
-    if (folder !== undefined) return folder;
 
     throw new Error('The run is no longer available on this desktop.');
   }

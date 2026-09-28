@@ -153,19 +153,28 @@ const bridge: KiraBridge = {
     ask<ReviewComment>(TRACKER_CHANNELS.addReviewComment, ticketId, workspaceId, comment),
 
   updateReviewComment: (ticketId, workspaceId, commentId, status) =>
-    ask<ReviewComment>(TRACKER_CHANNELS.updateReviewComment, ticketId, workspaceId, commentId, status),
+    ask<ReviewComment>(
+      TRACKER_CHANNELS.updateReviewComment,
+      ticketId,
+      workspaceId,
+      commentId,
+      status,
+    ),
 
   sendReviewFeedback: (ticketId, workspaceId, feedback) =>
     ask<ReviewFeedback>(TRACKER_CHANNELS.sendReviewFeedback, ticketId, workspaceId, feedback),
 
   worker: () => ask<WorkerStanding>(WORKER_CHANNELS.standing),
 
-  startRun: (workspaceId, ticketId) => ask<TicketRun>(RUN_CHANNELS.start, workspaceId, ticketId),
+  startRun: (workspaceId, ticketId, executionWorkspaceId) =>
+    ask<TicketRun>(RUN_CHANNELS.start, workspaceId, ticketId, executionWorkspaceId),
 
   resolveRun: (workspaceId, ticketId, reason) =>
     ask<TicketRun>(RUN_CHANNELS.resolve, workspaceId, ticketId, reason),
 
   readTranscript: (ticketId, runId) => ask<TicketSaid[]>(RUN_CHANNELS.transcript, ticketId, runId),
+  readExecutionDiff: (ticketId, executionWorkspaceId) =>
+    ask<string>(RUN_CHANNELS.diff, ticketId, executionWorkspaceId),
 
   takeOverClaim: (ticketId) => ask<Ticket>(RUN_CHANNELS.takeover, ticketId),
 

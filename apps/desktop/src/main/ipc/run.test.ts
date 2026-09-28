@@ -34,8 +34,12 @@ function handlers(over: Partial<RunDeps> = {}) {
   return {
     asked,
     handlers: runHandlers({
-      start: async (workspaceId, ticketId) => {
-        asked.push(`${workspaceId}/${ticketId}`);
+      start: async (workspaceId, ticketId, executionWorkspaceId) => {
+        asked.push(
+          executionWorkspaceId === undefined
+            ? `${workspaceId}/${ticketId}`
+            : `${workspaceId}/${ticketId}/${executionWorkspaceId}`,
+        );
         return started;
       },
       resolve: async (workspaceId, ticketId, reason) => {
@@ -57,6 +61,10 @@ function handlers(over: Partial<RunDeps> = {}) {
         asked.push(`${ticketId}/${runId} ${verdict}`);
         return started;
       },
+      diff: async (ticketId, executionWorkspaceId) => {
+        asked.push(`diff ${ticketId}/${executionWorkspaceId}`);
+        return 'diff --git a/file.ts b/file.ts';
+      },
       ...over,
     }),
   };
@@ -67,6 +75,34 @@ test('a workspace and a ticket, and the run the server answered with', async () 
 
   assert.deepEqual(await door.start('workspace-1', 'ticket-1'), { ok: true, value: started });
   assert.deepEqual(asked, ['workspace-1/ticket-1']);
+});
+
+test('a diff names an issue execution workspace', async () => {
+  const { asked, handlers: door } = handlers();
+
+  assert.deepEqual(await door.diff('ticket-1', 'execution-1'), {
+    ok: true,
+    value: 'diff --git a/file.ts b/file.ts',
+  });
+  assert.deepEqual(await door.diff('', 'execution-1'), {
+    ok: false,
+    error: 'A diff belongs to an issue.',
+  });
+  assert.deepEqual(asked, ['diff ticket-1/execution-1']);
+});
+
+test('a run can name the issue execution workspace it should use', async () => {
+  const { asked, handlers: door } = handlers();
+
+  assert.deepEqual(await door.start('workspace-1', 'ticket-1', 'execution-1'), {
+    ok: true,
+    value: started,
+  });
+  assert.deepEqual(await door.start('workspace-1', 'ticket-1', ''), {
+    ok: false,
+    error: 'A run needs a valid execution workspace.',
+  });
+  assert.deepEqual(asked, ['workspace-1/ticket-1/execution-1']);
 });
 
 test('a conflict resolution names its workspace, ticket and reason', async () => {

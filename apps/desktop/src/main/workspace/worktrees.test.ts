@@ -118,6 +118,34 @@ test('a branch that already exists is worked on again rather than made twice', a
   assert.deepEqual(branchNames(project).sort(), [branch, 'main']);
 });
 
+test('a persistent execution workspace reuses its checkout and keeps uncommitted edits', async () => {
+  const project = checkout();
+  const into = runPath();
+  const branch = 'feature/keep-the-workspace';
+  const worktrees = runWorktrees();
+
+  assert.equal(await worktrees.make(project, branch, into, 'main', true), into);
+  writeFileSync(join(into, 'agent-notes.md'), 'still here after the run\n');
+
+  assert.equal(await worktrees.make(project, branch, into, 'main', true), into);
+  assert.equal(readFileSync(join(into, 'agent-notes.md'), 'utf8'), 'still here after the run\n');
+  await worktrees.drop(project, into);
+});
+
+test('an execution workspace diff includes committed and uncommitted tracked changes from its base', async () => {
+  const project = checkout();
+  const into = runPath();
+  const branch = 'feature/reviewable-work';
+  const worktrees = runWorktrees();
+  await worktrees.make(project, branch, into, 'main', true);
+  writeFileSync(join(into, 'README.md'), 'agent update\n');
+  const diff = await worktrees.diff(into, 'main');
+
+  assert.match(diff ?? '', /diff --git a\/README.md b\/README.md/);
+  assert.match(diff ?? '', /\+agent update/);
+  await worktrees.drop(project, into);
+});
+
 test('two runs on one project get two checkouts, and neither disturbs the other', async () => {
   const project = checkout();
 
@@ -175,7 +203,10 @@ test('an invalid base branch leaves no partial checkout behind', async () => {
   const project = checkout();
   const into = runPath();
 
-  assert.equal(await runWorktrees().make(project, 'kira-invalid-base', into, 'does-not-exist'), null);
+  assert.equal(
+    await runWorktrees().make(project, 'kira-invalid-base', into, 'does-not-exist'),
+    null,
+  );
   assert.equal(existsSync(into), false);
   assert.deepEqual(branchNames(project), ['main']);
 });

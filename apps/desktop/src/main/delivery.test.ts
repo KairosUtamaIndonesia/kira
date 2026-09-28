@@ -18,6 +18,7 @@ function worktrees(result: Awaited<ReturnType<Worktrees['mergeSpec']>>): Worktre
     make: async () => null,
     drop: async () => {},
     changed: async () => null,
+    diff: async () => null,
   };
 }
 
@@ -41,7 +42,11 @@ test('a local merge records delivery only after the worktree seam reports succes
     recorder: recorder(audits),
   });
 
-  const result = await delivery.deliver(workspace, { path: 'local-merge', title: 'Deliver', body: 'Issue context' });
+  const result = await delivery.deliver(workspace, {
+    path: 'local-merge',
+    title: 'Deliver',
+    body: 'Issue context',
+  });
 
   assert.deepEqual(result, {
     workspaceId: 'workspace-1',
@@ -60,7 +65,11 @@ test('a merge conflict is recorded as refused and never as a successful delivery
     recorder: recorder(audits),
   });
 
-  const result = await delivery.deliver(workspace, { path: 'local-merge', title: 'Deliver', body: 'Issue context' });
+  const result = await delivery.deliver(workspace, {
+    path: 'local-merge',
+    title: 'Deliver',
+    body: 'Issue context',
+  });
 
   assert.equal(result.outcome, 'refused');
   assert.equal(result.reference, null);
@@ -76,7 +85,11 @@ test('a pull request refusal keeps the audit outcome refused', async () => {
     recorder: recorder(audits),
   });
 
-  const result = await delivery.deliver(workspace, { path: 'pull-request', title: 'Deliver', body: 'Issue context' });
+  const result = await delivery.deliver(workspace, {
+    path: 'pull-request',
+    title: 'Deliver',
+    body: 'Issue context',
+  });
 
   assert.equal(result.outcome, 'refused');
   assert.equal(result.details, 'provider unavailable');
@@ -87,11 +100,17 @@ test('a created pull request preserves its reference and URL for the issue audit
   const audits: DeliveryAudit[] = [];
   const delivery = deliveriesFor({
     worktrees: worktrees({ kind: 'merged' }),
-    pullRequests: { create: async () => ({ reference: '#42', url: 'https://github.com/owner/kira/pull/42' }) },
+    pullRequests: {
+      create: async () => ({ reference: '#42', url: 'https://github.com/owner/kira/pull/42' }),
+    },
     recorder: recorder(audits),
   });
 
-  const result = await delivery.deliver(workspace, { path: 'pull-request', title: 'Deliver', body: 'Issue context' });
+  const result = await delivery.deliver(workspace, {
+    path: 'pull-request',
+    title: 'Deliver',
+    body: 'Issue context',
+  });
 
   assert.deepEqual(result, {
     workspaceId: 'workspace-1',

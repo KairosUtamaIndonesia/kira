@@ -15,8 +15,9 @@
  * git is run through the same `simple-git` the workbench lists folders with — a way
  * of running the binary rather than a second git (docs/adr/0014).
  */
+import { existsSync } from 'node:fs';
 import { mkdtemp, mkdir, rm } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { simpleGit } from 'simple-git';
 
@@ -39,7 +40,13 @@ export interface Worktrees {
    * A worktree of `folder` on `branch`, at `into`. When `from` is given, a new
    * ticket branch starts at that branch rather than at the folder's current HEAD.
    */
-  make(folder: string, branch: string, into: string, from?: string): Promise<string | null>;
+  make(
+    folder: string,
+    branch: string,
+    into: string,
+    from?: string,
+    reuse?: boolean,
+  ): Promise<string | null>;
   /** Take a worktree away, leaving its branch behind, however the run ended. */
   drop(folder: string, into: string): Promise<void>;
   /**
@@ -51,6 +58,8 @@ export interface Worktrees {
    * null when there is nothing to compare.
    */
   changed(folder: string, into: string): Promise<string | null>;
+  /** The issue workspace's tracked diff from its base branch. */
+  diff(into: string, baseBranch: string): Promise<string | null>;
 }
 
 export function runWorktrees(): Worktrees {
@@ -128,15 +137,21 @@ export function runWorktrees(): Worktrees {
       }
     },
 
-    async make(folder, branch, into, from) {
+    async make(folder, branch, into, from, reuse = false) {
       try {
         await mkdir(dirname(into), { recursive: true });
         const git = simpleGit(folder);
 
-        // Anything already at that path is a run that did not get to clean up after
-        // itself — this machine was closed, or killed. Its work is on the branch it
-        // worked on, so the checkout itself is only in the way.
-        await dropAt(git, into);
+        if (reuse) {
+          const existing = await worktreeAt(git, into);
+          if (existing !== null) return existing === branch ? into : null;
+          if (existsSync(into)) return null;
+        } else {
+          // Anything already at that path is a run that did not get to clean up after
+          // itself — this machine was closed, or killed. Its work is on the branch it
+          // worked on, so the checkout itself is only in the way.
+          await dropAt(git, into);
+        }
 
         const made = await branches(git);
         await git.raw(
@@ -175,7 +190,37 @@ export function runWorktrees(): Worktrees {
         return null;
       }
     },
+
+    async diff(into, baseBranch) {
+      try {
+        return await simpleGit(into).raw([
+          'diff',
+          '--no-ext-diff',
+          '--no-color',
+          '--unified=3',
+          baseBranch,
+        ]);
+      } catch {
+        return null;
+      }
+    },
   };
+}
+
+/** The branch registered at a persistent workspace path, if Git knows it. */
+async function worktreeAt(git: ReturnType<typeof simpleGit>, into: string): Promise<string | null> {
+  const listed = await git.raw(['worktree', 'list', '--porcelain']);
+  const target = resolve(into);
+
+  for (const block of listed.split(/\n\s*\n/)) {
+    const path = /^worktree (.+)$/m.exec(block)?.[1];
+    if (path === undefined || resolve(path) !== target) continue;
+
+    const branch = /^branch refs\/heads\/(.+)$/m.exec(block)?.[1];
+    return branch ?? null;
+  }
+
+  return null;
 }
 
 /** The branches this checkout knows, without their markers. */

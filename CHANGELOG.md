@@ -4,7 +4,7 @@
 
 ### Added
 
-- Work now has a Linear-style surface across List, Board, and Split views, with shared search, status, kind, claim, grouping, ordering, and completed-ticket controls. Ready tickets can be reordered with pointer or keyboard drag and drop, while the server remains the source of truth for ticket bands.
+- Work is organized around issues with Board and List views, search, and collapsible filters. Each issue can have an execution workspace with its own repository, base branch, and working branch; agents start in that persistent checkout, where tracked changes can be reviewed as a diff and work can continue between runs.
 
 - Kira's desktop now runs on Electron, with its own Bun-powered platform API and administration console.
 - Packaged desktop builds check for updates automatically, download them in the background, and offer a restart to install from Settings. macOS, Windows, and Linux AppImage are supported.

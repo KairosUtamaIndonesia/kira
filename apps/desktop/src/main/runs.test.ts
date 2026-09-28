@@ -16,7 +16,7 @@ import { strict as assert } from 'node:assert';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import type { Ticket, TicketRun, TicketSaid } from '../preload/bridge.ts';
+import type { ExecutionWorkspace, Ticket, TicketRun, TicketSaid } from '../preload/bridge.ts';
 import type { RunChat, RunLine } from './pi/runChat.ts';
 import { runsFor, type Runs } from './runs.ts';
 import type { TrackerAnswer, TrackerWire } from './tracker.ts';
@@ -180,6 +180,8 @@ function worktrees(
 ) {
   const made: { folder: string; branch: string; into: string }[] = [];
   const bases: (string | undefined)[] = [];
+  const reuses: boolean[] = [];
+  const diffs: { into: string; baseBranch: string }[] = [];
   const dropped: string[] = [];
 
   const held: Worktrees = {
@@ -190,10 +192,11 @@ function worktrees(
         ? { kind: 'merged' }
         : { kind: merge, reason: `the ${merge} was refused` };
     },
-    make: async (folder, branch, into, from) => {
+    make: async (folder, branch, into, from, reuse = false) => {
       calls.push(`worktree ${branch}`);
       made.push({ folder, branch, into });
       bases.push(from);
+      reuses.push(reuse);
 
       return canMake ? into : null;
     },
@@ -206,9 +209,13 @@ function worktrees(
 
       return changed;
     },
+    diff: async (into, baseBranch) => {
+      diffs.push({ into, baseBranch });
+      return 'diff --git a/file.ts b/file.ts';
+    },
   };
 
-  return { held, made, bases, dropped };
+  return { held, made, bases, reuses, diffs, dropped };
 }
 
 /** A chat for a run: it says what it is told to, and goes on until the test lets it end. */
@@ -272,6 +279,7 @@ function keeper(
     merge?: 'merged' | 'conflict' | 'refused';
     read?: Ticket;
     queue?: Ticket[];
+    executionWorkspace?: ExecutionWorkspace;
   } = {},
 ) {
   const calls = over.calls ?? [];
@@ -301,11 +309,16 @@ function keeper(
     ...(over.ran === undefined ? {} : { ran: over.ran }),
     ...(over.fails === undefined ? {} : { fails: over.fails }),
   });
+  const runsWorkspace = over.executionWorkspace;
 
   const runs: Runs = runsFor({
     token: async () => (over.signedIn === false ? null : 'key-1'),
     workerOf: async () => 'desk-1',
     folderOf: () => over.folder,
+    executionWorkspaceOf: async (ticketId, workspaceId) => {
+      calls.push(`execution workspace ${workspaceId} for ${ticketId}`);
+      return runsWorkspace?.id === workspaceId ? runsWorkspace : null;
+    },
     thereFor: (ticketId) => `/runs/${ticketId}`,
     affordable: () => over.affordable ?? true,
     worktrees: trees.held,
@@ -340,6 +353,62 @@ test('Run claims the ticket, starts a run, and sets a chat going in a checkout o
   ]);
   assert.equal(runs.where('ticket-1'), '/runs/ticket-1');
   assert.deepEqual(runs.driving(), ['ticket-1']);
+});
+
+test('Run starts in the selected execution workspace repository, base, and branch', async () => {
+  const repository = folderMade();
+  const { runs, calls, trees, chatting } = keeper({
+    folder: folderMade(),
+    executionWorkspace: {
+      id: 'execution-1',
+      ticketId: ticket.id,
+      repository,
+      baseBranch: 'develop',
+      branch: 'feature/fnd-1',
+      agentConfig: 'default',
+      createdAt: '2026-09-28T00:00:00.000Z',
+    },
+  });
+
+  await runs.start('workspace-1', 'ticket-1', 'execution-1');
+
+  assert.deepEqual(calls, [
+    'read ticket-1',
+    'execution workspace execution-1 for ticket-1',
+    'claim ticket-1 as desk-1 with key-1',
+    'start ticket-1 as desk-1',
+    'worktree feature/fnd-1',
+    'record run-1 {"branch":"feature/fnd-1"}',
+    'begin on feature/fnd-1',
+  ]);
+  assert.deepEqual(trees.made, [
+    { folder: repository, branch: 'feature/fnd-1', into: '/runs/execution-1' },
+  ]);
+  assert.equal(trees.bases[0], 'develop');
+  assert.deepEqual(trees.reuses, [true]);
+
+  await chatting.ends();
+
+  assert.deepEqual(trees.dropped, []);
+});
+
+test('an execution workspace diff reads its persistent checkout and rejects another issue workspace', async () => {
+  const repository = folderMade();
+  const { runs, trees } = keeper({
+    executionWorkspace: {
+      id: 'execution-1',
+      ticketId: ticket.id,
+      repository,
+      baseBranch: 'develop',
+      branch: 'feature/fnd-1',
+      agentConfig: 'default',
+      createdAt: '2026-09-28T00:00:00.000Z',
+    },
+  });
+
+  assert.equal(await runs.diff(ticket.id, 'execution-1'), 'diff --git a/file.ts b/file.ts');
+  assert.deepEqual(trees.diffs, [{ into: '/runs/execution-1', baseBranch: 'develop' }]);
+  await assert.rejects(() => runs.diff(ticket.id, 'other'), /no longer available/);
 });
 
 test('a slice starts from its enclosing spec branch', async () => {

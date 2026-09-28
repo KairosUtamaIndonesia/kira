@@ -1,11 +1,9 @@
 /**
- * The Work surface: one project's tickets, read three ways over one queue.
+ * The Work surface: one project's issues, on a board or in a list.
  *
- * Queue, Board and Split are three readings of the same list, not three
- * surfaces: which ticket is open, which band is being looked at and the order
- * the queue is in belong to this component, so switching views keeps your place
- * and a rank changed on the board is a rank changed in the queue. That is the
- * question the prototype was built to answer, and the answer is kept.
+ * Board and List are two readings of the same issues. Opening an issue puts the
+ * same detail panel over either view, so its execution workspace stays close to
+ * the plan without replacing the board or list.
  *
  * Nothing here derives a band. The server decides what band a ticket is in and
  * the surface groups what it was handed, because a window that derived one could
@@ -67,10 +65,10 @@ import {
   FileText,
   FolderOpen,
   GripVertical,
-  LayoutGrid,
   Play,
   Plus,
   Rows3,
+  SlidersHorizontal,
   SquareKanban,
   X,
   Ticket as TicketIcon,
@@ -79,8 +77,6 @@ import type { LucideIcon } from 'lucide-react';
 import {
   bandIcon,
   branchNote,
-  byName,
-  firstIn,
   holding,
   inBand,
   runChoiceLabel,
@@ -118,27 +114,21 @@ import type {
 } from '../../preload/bridge.ts';
 import { ExecutionWorkspacePanel } from './executionWorkspace.tsx';
 
-/** The three readings of one queue. Which ticket is open belongs to the surface. */
-type View = 'queue' | 'board' | 'split';
+/** Two readings of the same issues. */
+type View = 'board' | 'list';
 
 const VIEWS: { id: View; label: string; icon: LucideIcon; note: string }[] = [
-  {
-    id: 'queue',
-    label: 'List',
-    icon: Rows3,
-    note: 'scan and prioritize the work',
-  },
   {
     id: 'board',
     label: 'Board',
     icon: SquareKanban,
-    note: 'see work by its current state',
+    note: 'issues grouped by status',
   },
   {
-    id: 'split',
-    label: 'Split',
-    icon: LayoutGrid,
-    note: 'work on one ticket beside the list',
+    id: 'list',
+    label: 'List',
+    icon: Rows3,
+    note: 'all issues in a list',
   },
 ];
 
@@ -163,7 +153,7 @@ const BANDS: { id: Band; label: string; note: string }[] = [
     label: 'Ready',
     note: 'ready to start when you are',
   },
-  { id: 'blocked', label: 'Blocked', note: 'waiting on another ticket' },
+  { id: 'blocked', label: 'Blocked', note: 'waiting on another issue' },
   { id: 'done', label: 'Done', note: 'closed with a recorded outcome' },
   { id: 'draft', label: 'Drafts', note: 'captured, but not ready to run' },
 ];
@@ -245,11 +235,23 @@ const styles = stylex.create({
     flexWrap: 'wrap',
     justifyContent: 'flex-end',
   },
+  filterBar: {
+    display: 'flex',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacingVars['--spacing-1'],
+    paddingBlock: spacingVars['--spacing-2'],
+    paddingInline: spacingVars['--spacing-4'],
+    borderBlockEndWidth: borderVars['--border-width'],
+    borderBlockEndStyle: 'solid',
+    borderBlockEndColor: colorVars['--color-background-muted'],
+  },
   scroll: {
     flex: 1,
     minHeight: 0,
     overflowY: 'auto',
   },
+  listView: { position: 'relative' },
   waiting: {
     display: 'flex',
     flexDirection: 'column',
@@ -378,43 +380,6 @@ const styles = stylex.create({
     borderInlineStartWidth: borderVars['--border-width'],
     borderInlineStartStyle: 'solid',
     borderInlineStartColor: colorVars['--color-background-muted'],
-  },
-
-  /* The list and the ticket, side by side. */
-  split: {
-    display: 'flex',
-    flexDirection: 'row',
-    flex: 1,
-    minHeight: 0,
-  },
-  paneList: {
-    display: 'flex',
-    flexDirection: 'column',
-    flexShrink: 0,
-    width: 320,
-    minHeight: 0,
-    borderInlineEndWidth: borderVars['--border-width'],
-    borderInlineEndStyle: 'solid',
-    borderInlineEndColor: colorVars['--color-background-muted'],
-  },
-  paneDetail: {
-    display: 'flex',
-    flexDirection: 'column',
-    flex: 1,
-    minWidth: 0,
-    minHeight: 0,
-  },
-  filters: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: spacingVars['--spacing-1'],
-    padding: spacingVars['--spacing-2'],
-    flexShrink: 0,
-  },
-  worklist: {
-    flex: 1,
-    minHeight: 0,
-    overflowY: 'auto',
   },
 
   /* The panel a ticket is read in. */
@@ -638,13 +603,7 @@ export function WorkSurface({
   const [isWriting, setIsWriting] = useState(false);
   /** What the server last refused, in its own words. */
   const [refusal, setRefusal] = useState<string | null>(null);
-  /**
-   * The name somebody said to open a ticket by, and what came of saying it. The
-   * answer belongs to the words rather than to the surface's last write, so it
-   * clears when the words change or the name is found — not when the view does.
-   */
-  const [said, setSaid] = useState('');
-  const [miss, setMiss] = useState<string | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [executionWorkspaces, setExecutionWorkspaces] = useState<
     Record<string, ExecutionWorkspace[]>
   >({});
@@ -829,27 +788,8 @@ export function WorkSurface({
   const visibleTickets = displayWork(tickets, display);
   const visibleBands = display.showDone ? BANDS : BANDS.filter((each) => each.id !== 'done');
   const readyCanReorder = canReorderReady(display);
-  const counts = queue?.counts ?? {
-    draft: 0,
-    ready: 0,
-    blocked: 0,
-    running: 0,
-    'needs-you': 0,
-    done: 0,
-  };
-  /**
-   * What the surface is showing, which is the same answer for the list and the panel.
-   *
-   * Split has nowhere to put a ticket that is not open, so a band it is filtered to
-   * falls back to its first — and the panel follows that fallback rather than the
-   * click, because a list with nothing beside it is the one thing the reading is
-   * for. The other two views open nothing until something is chosen.
-   */
-  const shownId =
-    view === 'split' ? (openId ?? firstIn(visibleTickets, 'all')?.id ?? null) : openId;
-  const open = tickets.find((each) => each.id === shownId) ?? null;
-  /** Where a ticket opens, which is the one thing the views disagree about. */
-  const placement = view === 'board' ? 'over' : view === 'split' ? 'beside' : 'inline';
+  const open = tickets.find((each) => each.id === openId) ?? null;
+  const placement = 'over';
   const closePanel = (): void => {
     setIsWriting(false);
     setOpenId(null);
@@ -858,33 +798,6 @@ export function WorkSurface({
   const openTicket = (id: string): void => {
     setIsWriting(false);
     setOpenId(id);
-  };
-
-  /** Whether a name can be looked up at all: a queue in hand, and something said. */
-  const canOpen = queue !== null && said.trim() !== '';
-
-  /**
-   * Open the ticket somebody named, or say this project has no ticket by that
-   * name. The words stay in the field, because a name typed wrong is a name
-   * about to be typed again.
-   *
-   * With no queue in hand there is nothing to look in and nothing to say about
-   * names: a lookup over a list that failed to load would blame the project for
-   * the server being away, which is the one thing a queue read must never do.
-   */
-  const openSaid = (): void => {
-    if (!canOpen) return;
-
-    const named = said.trim();
-    const found = byName(tickets, named);
-    if (found === undefined) {
-      setMiss(`No ticket in this project is called ${named}.`);
-      return;
-    }
-
-    setMiss(null);
-    setSaid('');
-    openTicket(found.id);
   };
 
   const panel = isWriting ? (
@@ -905,6 +818,7 @@ export function WorkSurface({
   ) : open === null ? null : (
     <TicketReading
       ticket={open}
+      repository={workspace.folder}
       executionWorkspaces={executionWorkspaces[open.id] ?? []}
       placement={placement}
       refusal={refusal}
@@ -917,7 +831,9 @@ export function WorkSurface({
       onWrite={(change) => wrote(() => window.kira.changeTicket(open.id, change))}
       onGate={(gatedBy) => wrote(() => window.kira.gateTicket(open.id, gatedBy))}
       onUngate={(gatedBy) => wrote(() => window.kira.ungateTicket(open.id, gatedBy))}
-      onRun={() => acted(() => window.kira.startRun(workspace.id, open.id))}
+      onRun={(executionWorkspaceId) =>
+        acted(() => window.kira.startRun(workspace.id, open.id, executionWorkspaceId))
+      }
       onQuestion={() => acted(() => window.kira.openQuestion(workspace.id, open.id))}
       onTakeOver={() => acted(() => window.kira.takeOverClaim(open.id))}
       onLetGo={() => acted(() => window.kira.releaseClaim(open.id))}
@@ -978,7 +894,7 @@ export function WorkSurface({
                 query ? `${window.location.pathname}?${query}` : window.location.pathname,
               );
             }}
-            label="How to read this queue"
+            label="Issue view"
             size="sm"
           >
             {VIEWS.map((each) => (
@@ -991,16 +907,39 @@ export function WorkSurface({
             ))}
           </SegmentedControl>
           <TextInput
-            label="Search tickets"
+            label="Search issues"
             isLabelHidden
             size="sm"
             width={190}
             value={display.search}
-            placeholder="Search tickets"
+            placeholder="Search issues"
             isDisabled={queue === null}
             disabledMessage={trouble === null ? 'Work is loading.' : undefined}
             onChange={(next) => updateDisplay((current) => ({ ...current, search: next }))}
           />
+          <Button
+            label={filtersOpen ? 'Hide filters' : 'Filters'}
+            icon={<Icon icon={SlidersHorizontal} size="sm" />}
+            size="sm"
+            variant={filtersOpen ? 'secondary' : 'ghost'}
+            onClick={() => setFiltersOpen((open) => !open)}
+          />
+          <Button
+            label="New issue"
+            icon={<Icon icon={Plus} size="sm" />}
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              setOpenId(null);
+              setIsWriting(true);
+              setRefusal(null);
+            }}
+          />
+        </div>
+      </div>
+
+      {filtersOpen && (
+        <div {...stylex.props(styles.filterBar)} aria-label="Issue filters">
           <Button
             label={`Status: ${display.band === 'all' ? 'all' : BANDS.find((each) => each.id === display.band)?.label}`}
             size="sm"
@@ -1079,36 +1018,14 @@ export function WorkSurface({
               updateDisplay((current) => ({ ...current, showDone: !current.showDone }))
             }
           />
-          <TextInput
-            label="Open a ticket by name"
-            isLabelHidden
-            size="sm"
-            width={150}
-            value={said}
-            placeholder="Open by name"
-            isDisabled={queue === null}
-            disabledMessage={trouble === null ? 'Work is loading.' : undefined}
-            status={miss === null || queue === null ? undefined : { type: 'error', message: miss }}
-            onChange={(next) => {
-              setSaid(next);
-              setMiss(null);
-            }}
-            onEnter={openSaid}
-          />
-          <Button label="Open" size="sm" variant="ghost" isDisabled={!canOpen} onClick={openSaid} />
           <Button
-            label="New"
-            icon={<Icon icon={Plus} size="sm" />}
-            variant="secondary"
+            label="Clear filters"
             size="sm"
-            onClick={() => {
-              setOpenId(null);
-              setIsWriting(true);
-              setRefusal(null);
-            }}
+            variant="ghost"
+            onClick={() => updateDisplay(DEFAULT_WORK_DISPLAY)}
           />
         </div>
-      </div>
+      )}
 
       {trouble !== null && !isWriting ? (
         <div {...stylex.props(styles.scroll)}>
@@ -1126,13 +1043,13 @@ export function WorkSurface({
       ) : tickets.length === 0 && !isWriting ? (
         <div {...stylex.props(styles.scroll)}>
           <EmptyState
-            title="No tickets yet"
-            description="A ticket says what to build and how it is known to be done. Write the first one and it lands among the drafts."
+            title="No issues yet"
+            description="Create an issue to plan work, start an agent workspace, and review the result."
             icon={<Icon icon={FileText} size="lg" />}
             headingLevel={2}
             actions={
               <Button
-                label="New ticket"
+                label="New issue"
                 icon={<Icon icon={Plus} size="sm" />}
                 variant="primary"
                 onClick={() => setIsWriting(true)}
@@ -1143,7 +1060,7 @@ export function WorkSurface({
       ) : visibleTickets.length === 0 && !isWriting ? (
         <div {...stylex.props(styles.scroll)}>
           <EmptyState
-            title="No matching tickets"
+            title="No matching issues"
             description="Try a different search or clear the current filters."
             icon={<Icon icon={FileText} size="lg" />}
             headingLevel={2}
@@ -1168,16 +1085,6 @@ export function WorkSurface({
           panel={panel}
           onLeave={closePanel}
         />
-      ) : view === 'split' ? (
-        <SplitView
-          tickets={visibleTickets}
-          counts={counts}
-          band={display.band}
-          onBand={(next) => updateDisplay((current) => ({ ...current, band: next }))}
-          selected={shownId ?? null}
-          onOpen={openTicket}
-          panel={panel}
-        />
       ) : (
         <QueueView
           tickets={visibleTickets}
@@ -1186,6 +1093,7 @@ export function WorkSurface({
           selected={openId}
           onOpen={openTicket}
           panel={panel}
+          onLeave={closePanel}
         />
       )}
     </div>
@@ -1327,7 +1235,7 @@ function Join({
                     <Item
                       key={each.id}
                       label={each.name}
-                      description={`${each.prefix} · tickets are named ${each.prefix}-1, ${each.prefix}-2`}
+                      description={`${each.prefix} · issues are named ${each.prefix}-1, ${each.prefix}-2`}
                       endContent={
                         <Button
                           label="Join"
@@ -1361,7 +1269,7 @@ function Join({
                     label="Prefix"
                     value={prefix}
                     onChange={(next) => setPrefix(next.toUpperCase())}
-                    description="Two to six letters and digits. Tickets are named with it, so it cannot change later."
+                    description="Two to six letters and digits. Issue names use this prefix, which cannot change later."
                     size="sm"
                   />
                 </div>
@@ -1403,15 +1311,11 @@ function QueueView({
   group,
   onOpen,
   panel,
-}: ViewProps & { bands: typeof BANDS; group: WorkGroup }) {
-  // The panel takes the queue's place whenever there is one — a ticket being read,
-  // or one being written — because that is what `inline` means here. The queue is
-  // what is left when there is nothing to read.
-  if (panel !== null) return <div {...stylex.props(styles.scroll)}>{panel}</div>;
-
-  if (group === 'kind') {
-    return (
-      <div {...stylex.props(styles.scroll)}>
+  onLeave,
+}: ViewProps & { bands: typeof BANDS; group: WorkGroup; onLeave: () => void }) {
+  const content =
+    group === 'kind' ? (
+      <>
         {groupedWork(tickets, 'kind').map((section) => (
           <div key={section.key}>
             <div {...stylex.props(styles.bandHead)}>
@@ -1442,16 +1346,34 @@ function QueueView({
             </List>
           </div>
         ))}
-      </div>
+      </>
+    ) : (
+      <>
+        {bands.map((band) => (
+          <Band key={band.id} band={band} tickets={inBand(tickets, band.id)} onOpen={onOpen} />
+        ))}
+      </>
     );
-  }
 
   return (
-    <div {...stylex.props(styles.scroll)}>
-      {bands.map((band) => (
-        <Band key={band.id} band={band} tickets={inBand(tickets, band.id)} onOpen={onOpen} />
-      ))}
+    <div {...stylex.props(styles.scroll, styles.listView)}>
+      {content}
+      {panel !== null && <IssueDrawer panel={panel} onLeave={onLeave} />}
     </div>
+  );
+}
+
+function IssueDrawer({ panel, onLeave }: { panel: ReactNode; onLeave: () => void }) {
+  return (
+    <>
+      <button
+        type="button"
+        aria-label="Close the issue"
+        {...stylex.props(styles.scrim)}
+        onClick={onLeave}
+      />
+      <div {...stylex.props(styles.drawer)}>{panel}</div>
+    </>
   );
 }
 
@@ -1512,7 +1434,7 @@ function BoardView({
                 </SortableContext>
                 {held.length === 0 && (
                   <Text type="supporting" color="secondary">
-                    No tickets in this state.
+                    No issues in this state.
                   </Text>
                 )}
               </div>
@@ -1520,19 +1442,7 @@ function BoardView({
           );
         })}
 
-        {panel !== null && (
-          <>
-            {/* The scrim is a button rather than a decorated div: leaving by clicking
-                outside the ticket is an action, and one the keyboard can take too. */}
-            <button
-              type="button"
-              aria-label="Close the ticket"
-              {...stylex.props(styles.scrim)}
-              onClick={onLeave}
-            />
-            <div {...stylex.props(styles.drawer)}>{panel}</div>
-          </>
-        )}
+        {panel !== null && <IssueDrawer panel={panel} onLeave={onLeave} />}
       </div>
     </DndContext>
   );
@@ -1567,7 +1477,7 @@ function SortableTicketCard({
       {...stylex.props(isDragging && styles.cardDragging)}
     >
       <ClickableCard
-        label={`Open ${ticket.name}`}
+        label={`Open issue ${ticket.name}`}
         padding={2}
         variant={selected ? 'muted' : 'default'}
         onClick={() => onOpen(ticket.id)}
@@ -1588,7 +1498,7 @@ function SortableTicketCard({
               {canReorder && (
                 <button
                   type="button"
-                  aria-label={`Reorder ${ticket.name}`}
+                  aria-label={`Reorder issue ${ticket.name}`}
                   {...stylex.props(styles.dragHandle)}
                   {...attributes}
                   {...listeners}
@@ -1599,7 +1509,7 @@ function SortableTicketCard({
               )}
               {ticket.band === 'ready' && (
                 <IconButton
-                  label={`Move ${ticket.name} to the front of Ready`}
+                  label={`Move issue ${ticket.name} to the front of Ready`}
                   icon={<Icon icon={ArrowUp} size="sm" />}
                   onClick={(event) => {
                     event.stopPropagation();
@@ -1611,69 +1521,6 @@ function SortableTicketCard({
           </span>
         </span>
       </ClickableCard>
-    </div>
-  );
-}
-
-function SplitView({
-  tickets,
-  counts,
-  band,
-  onBand,
-  selected,
-  onOpen,
-  panel,
-}: ViewProps & {
-  counts: Record<Band, number>;
-  band: Band | 'all';
-  onBand: (next: Band | 'all') => void;
-}) {
-  const shown = band === 'all' ? tickets : inBand(tickets, band);
-
-  return (
-    <div {...stylex.props(styles.split)}>
-      <div {...stylex.props(styles.paneList)}>
-        <div {...stylex.props(styles.filters)}>
-          <Button
-            label={`Everything ${tickets.length}`}
-            size="sm"
-            variant={band === 'all' ? 'secondary' : 'ghost'}
-            onClick={() => onBand('all')}
-          />
-          {BANDS.map((each) => (
-            <Button
-              key={each.id}
-              label={`${each.label} ${counts[each.id]}`}
-              size="sm"
-              variant={band === each.id ? 'secondary' : 'ghost'}
-              onClick={() => onBand(each.id)}
-            />
-          ))}
-        </div>
-        <div {...stylex.props(styles.worklist)}>
-          <List density="compact" hasDividers>
-            {shown.map((ticket) => (
-              <Item
-                key={ticket.id}
-                as="li"
-                isSelected={ticket.id === selected}
-                startContent={<StateGlyph ticket={ticket} />}
-                label={ticket.title || 'Untitled'}
-                labelLines={1}
-                description={`${ticket.name} · ${GATE_LABEL[ticket.gate]}`}
-                descriptionLines={1}
-                onClick={() => onOpen(ticket.id)}
-              />
-            ))}
-          </List>
-          {shown.length === 0 && (
-            <Text type="supporting" color="secondary">
-              Nothing in this band.
-            </Text>
-          )}
-        </div>
-      </div>
-      <div {...stylex.props(styles.paneDetail)}>{panel}</div>
     </div>
   );
 }
@@ -1827,6 +1674,7 @@ function TicketPanel({
 /** One ticket in full, with everything that can be done to it. */
 function TicketReading({
   ticket,
+  repository,
   executionWorkspaces,
   placement,
   refusal,
@@ -1847,6 +1695,7 @@ function TicketReading({
   onResolve,
 }: {
   ticket: Ticket;
+  repository: string;
   executionWorkspaces: ExecutionWorkspace[];
   placement: 'inline' | 'over' | 'beside';
   refusal: string | null;
@@ -1859,7 +1708,7 @@ function TicketReading({
   onWrite: (change: TicketChange) => Promise<Ticket | null>;
   onGate: (gatedBy: string) => Promise<Ticket | null>;
   onUngate: (gatedBy: string) => Promise<Ticket | null>;
-  onRun: () => Promise<boolean>;
+  onRun: (executionWorkspaceId: string) => Promise<boolean>;
   onQuestion: () => Promise<boolean>;
   onTakeOver: () => Promise<boolean>;
   onLetGo: () => Promise<boolean>;
@@ -1941,15 +1790,6 @@ function TicketReading({
             {/* Run is offered on a ready ticket and nowhere else, because whether a ticket
                 can be picked up is the server's answer and its own words are what is shown
                 when it says no. */}
-            {ticket.band === 'ready' && (
-              <Button
-                label="Start run"
-                size="sm"
-                variant="primary"
-                isDisabled={isBusy}
-                onClick={() => void run(onRun)}
-              />
-            )}
             {ticket.kind === 'question' &&
               (ticket.band === 'ready' || ticket.band === 'needs-you') && (
                 <Button
@@ -2131,6 +1971,8 @@ function TicketReading({
           <ExecutionWorkspacePanel
             ticket={ticket}
             workspaces={executionWorkspaces}
+            repository={repository}
+            onStart={onRun}
             onChanged={onChanged}
           />
 
@@ -2180,7 +2022,7 @@ function TicketReading({
                 <div {...stylex.props(styles.field)}>
                   <div {...stylex.props(styles.fieldGrow)}>
                     <TextInput
-                      label="Which ticket holds this up"
+                      label="Which issue blocks this one"
                       value={named}
                       onChange={setNamed}
                       description="By its name — FND-12 — or by anything else the server knows it as."
@@ -2565,7 +2407,7 @@ function TicketForm({
       foot={
         <>
           <Button
-            label={isBusy ? 'Creating ticket' : 'Create ticket'}
+            label={isBusy ? 'Creating issue' : 'Create issue'}
             size="sm"
             variant="primary"
             isDisabled={isBusy}
@@ -2608,7 +2450,7 @@ function TicketForm({
           label="Title"
           value={title}
           onChange={setTitle}
-          description="What it is called, in one line. A ticket's branch is named from it."
+          description="What the issue is called. Its suggested branch name comes from the title."
         />
         <TextArea
           label="Description"
@@ -2722,11 +2564,11 @@ function isView(value: string): value is View {
   return VIEWS.some((each) => each.id === value);
 }
 
-/** Which reading the window opens on, from `?view=` — List is the default. */
+/** Which reading the window opens on, from `?view=` — Board is the default. */
 function readView(): View {
   const asked = new URLSearchParams(window.location.search).get('view') ?? '';
 
-  return isView(asked) ? asked : 'queue';
+  return asked === 'queue' ? 'list' : isView(asked) ? asked : 'board';
 }
 
 /**

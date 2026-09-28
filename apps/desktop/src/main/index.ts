@@ -267,17 +267,21 @@ function registerWorkerChannel(): void {
  */
 function registerRunChannel(): void {
   const handlers = runHandlers({
-    start: (workspaceId, ticketId) => runs.start(workspaceId, ticketId),
+    start: (workspaceId, ticketId, executionWorkspaceId) =>
+      runs.start(workspaceId, ticketId, executionWorkspaceId),
     resolve: (workspaceId, ticketId, reason) => runs.resolve(workspaceId, ticketId, reason),
     transcript: (ticketId, runId) => runs.saidIn(ticketId, runId),
     takeOver: (ticketId) => runs.takeOverClaim(ticketId),
     release: (ticketId) => runs.letClaimGo(ticketId),
     judge: (ticketId, runId, verdict, workspaceId) =>
       runs.judge(ticketId, runId, verdict, workspaceId),
+    diff: (ticketId, executionWorkspaceId) => runs.diff(ticketId, executionWorkspaceId),
   });
 
-  ipcMain.handle(RUN_CHANNELS.start, (_event, workspaceId: unknown, ticketId: unknown) =>
-    handlers.start(workspaceId, ticketId),
+  ipcMain.handle(
+    RUN_CHANNELS.start,
+    (_event, workspaceId: unknown, ticketId: unknown, executionWorkspaceId: unknown) =>
+      handlers.start(workspaceId, ticketId, executionWorkspaceId),
   );
   ipcMain.handle(
     RUN_CHANNELS.resolve,
@@ -286,6 +290,9 @@ function registerRunChannel(): void {
   );
   ipcMain.handle(RUN_CHANNELS.transcript, (_event, ticketId: unknown, runId: unknown) =>
     handlers.transcript(ticketId, runId),
+  );
+  ipcMain.handle(RUN_CHANNELS.diff, (_event, ticketId: unknown, executionWorkspaceId: unknown) =>
+    handlers.diff(ticketId, executionWorkspaceId),
   );
   ipcMain.handle(RUN_CHANNELS.takeover, (_event, ticketId: unknown) => handlers.takeOver(ticketId));
   ipcMain.handle(RUN_CHANNELS.release, (_event, ticketId: unknown) => handlers.release(ticketId));
@@ -299,8 +306,10 @@ function registerRunChannel(): void {
 function registerTrackerChannels(): void {
   const handlers = trackerHandlers({
     executionWorkspaces: (ticketId) => tracker.executionWorkspaces(ticketId),
-    createExecutionWorkspace: (ticketId, draft) => tracker.createExecutionWorkspace(ticketId, draft),
-    removeExecutionWorkspace: (ticketId, workspaceId) => tracker.removeExecutionWorkspace(ticketId, workspaceId),
+    createExecutionWorkspace: (ticketId, draft) =>
+      tracker.createExecutionWorkspace(ticketId, draft),
+    removeExecutionWorkspace: (ticketId, workspaceId) =>
+      tracker.removeExecutionWorkspace(ticketId, workspaceId),
     queue: (workspaceId) => tracker.queue(workspaceId),
     openQuestion: async (workspaceId, ticketId) => {
       await chats.startQuestion(workspaceId, ticketId);
@@ -342,7 +351,8 @@ function registerTrackerChannels(): void {
   );
   ipcMain.handle(
     TRACKER_CHANNELS.createExecutionWorkspace,
-    (_event, ticketId: unknown, draft: unknown) => handlers.createExecutionWorkspace(ticketId, draft),
+    (_event, ticketId: unknown, draft: unknown) =>
+      handlers.createExecutionWorkspace(ticketId, draft),
   );
   ipcMain.handle(
     TRACKER_CHANNELS.removeExecutionWorkspace,
@@ -938,15 +948,18 @@ if (claimTheScheme()) {
         questionnaires,
       );
 
-      // Running a ticket. The checkout goes under the app's own data rather than beside
-      // the person's folder, because it is Kira's scratch space and not their work —
-      // and the branch it makes is theirs, which is why the checkout can be thrown away
-      // and the branch cannot.
+      // Agent checkouts live under app data so the user's project folder stays untouched.
+      // Execution workspaces keep their checkout between runs; legacy runs still drop it.
       runs = runsFor({
         token: async () => (await keys.read())?.key ?? null,
         workerOf: () => worker.id(),
         folderOf: (workspaceId) => store.findWorkspace(workspaceId)?.folder,
-        thereFor: (ticketId) => join(app.getPath('userData'), 'runs', ticketId),
+        executionWorkspaceOf: async (ticketId, executionWorkspaceId) =>
+          (await tracker.executionWorkspaces(ticketId)).find(
+            (each) => each.id === executionWorkspaceId,
+          ) ?? null,
+        thereFor: (workspaceId) =>
+          join(app.getPath('userData'), 'execution-workspaces', workspaceId),
         // Asked when Run is pressed rather than watched while the run goes: work that
         // cannot be paid for should not begin (docs/adr/0013).
         affordable: () => {
