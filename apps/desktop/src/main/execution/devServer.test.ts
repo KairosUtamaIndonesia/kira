@@ -26,6 +26,10 @@ test('a workspace dev server retains its logs, exposes only loopback preview URL
       `${JSON.stringify(process.execPath)} -e "console.log('ready https://not-local.example/ http://localhost:4173/'); setInterval(() => {}, 1000)"`,
     );
     assert.equal(start.running, true);
+    assert.throws(
+      () => servers.start('workspace-1', checkout, 'another-dev-server'),
+      /already running/,
+    );
 
     const ready = await waitFor(
       () => servers.read('workspace-1'),

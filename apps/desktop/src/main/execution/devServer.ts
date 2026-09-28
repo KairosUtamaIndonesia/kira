@@ -85,7 +85,7 @@ export class ExecutionDevServers {
   private append(held: HeldProcess, chunk: Buffer | string): void {
     const text = chunk.toString();
     held.output = this.trim(held.output + text);
-    held.previewUrl ??= previewUrlIn(text);
+    held.previewUrl ??= previewUrlIn(held.output);
   }
 
   private trim(output: string): string {
