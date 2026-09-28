@@ -98,6 +98,7 @@ import {
 import type {
   AuthState,
   Band,
+  ChatSummary,
   Gate,
   JoinRequest,
   NamedTicket,
@@ -604,9 +605,11 @@ export function WorkSurface({
   workspace,
   auth,
   chatIds,
+  chatSummaries,
   initialTicketId,
   onBack,
   onOpenChat,
+  onStartChat,
   onJoined,
 }: {
   /** The workspace whose project is being worked, or null when there is none. */
@@ -615,12 +618,15 @@ export function WorkSurface({
   auth: AuthState | null;
   /** The chats the window is holding, by id: a run's chat is one of them. */
   chatIds: string[];
+  chatSummaries: ChatSummary[];
   /** A ticket to select when Work was opened from the shaping Workbench. */
   initialTicketId?: string | null;
   /** Return to the project navigator, when this surface was entered from there. */
   onBack?: () => void;
   /** Show a chat: what a run is, and where its words are read. */
   onOpenChat: (chatId: string) => void;
+  /** Start an ordinary chat with selected tickets attached as working context. */
+  onStartChat: (ticketIds: string[]) => void;
   /** A join happened, so the window can draw the link the folder now has. */
   onJoined: (workspace: WorkspaceSummary) => void;
 }) {
@@ -636,6 +642,7 @@ export function WorkSurface({
   /** What the server last refused, in its own words. */
   const [refusal, setRefusal] = useState<string | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [attachedIds, setAttachedIds] = useState<string[]>([]);
   const [executionWorkspaces, setExecutionWorkspaces] = useState<
     Record<string, ExecutionWorkspace[]>
   >({});
@@ -970,6 +977,15 @@ export function WorkSurface({
               setRefusal(null);
             }}
           />
+          {view === 'board' && attachedIds.length > 0 && (
+            <Button
+              label={`Start chat with ${attachedIds.length} ${attachedIds.length === 1 ? 'issue' : 'issues'}`}
+              icon={<Icon icon={TicketIcon} size="sm" />}
+              variant="primary"
+              size="sm"
+              onClick={() => onStartChat(attachedIds)}
+            />
+          )}
         </div>
       </div>
 
@@ -1118,6 +1134,14 @@ export function WorkSurface({
           canReorder={readyCanReorder}
           onReorder={(activeId, overId) => void reorder(activeId, overId)}
           panel={panel}
+          attachedIds={attachedIds}
+          chatSummaries={chatSummaries}
+          onOpenChat={onOpenChat}
+          onToggleAttached={(id) =>
+            setAttachedIds((current) =>
+              current.includes(id) ? current.filter((each) => each !== id) : [...current, id],
+            )
+          }
         />
       ) : (
         <QueueView
@@ -1420,11 +1444,19 @@ function BoardView({
   canReorder,
   onReorder,
   panel,
+  attachedIds,
+  chatSummaries,
+  onOpenChat,
+  onToggleAttached,
 }: ViewProps & {
   bands: typeof BANDS;
   onPromote: (id: string) => void;
   canReorder: boolean;
   onReorder: (activeId: string, overId: string) => void;
+  attachedIds: string[];
+  chatSummaries: ChatSummary[];
+  onOpenChat: (chatId: string) => void;
+  onToggleAttached: (id: string) => void;
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -1462,6 +1494,12 @@ function BoardView({
                         canReorder={canReorder && band.id === 'ready'}
                         onOpen={onOpen}
                         onPromote={onPromote}
+                        attached={attachedIds.includes(ticket.id)}
+                        onToggleAttached={onToggleAttached}
+                        linkedChats={chatSummaries.filter((chat) =>
+                          chat.workTicketIds.includes(ticket.id),
+                        )}
+                        onOpenChat={onOpenChat}
                       />
                     ))}
                   </SortableContext>
@@ -1488,12 +1526,20 @@ function SortableTicketCard({
   canReorder,
   onOpen,
   onPromote,
+  attached,
+  onToggleAttached,
+  linkedChats,
+  onOpenChat,
 }: {
   ticket: Ticket;
   selected: boolean;
   canReorder: boolean;
   onOpen: (id: string) => void;
   onPromote: (id: string) => void;
+  attached: boolean;
+  onToggleAttached: (id: string) => void;
+  linkedChats: ChatSummary[];
+  onOpenChat: (chatId: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: ticket.id,
@@ -1529,6 +1575,14 @@ function SortableTicketCard({
           <span {...stylex.props(styles.cardFoot)}>
             <Holding ticket={ticket} />
             <span {...stylex.props(styles.meta)}>
+              <IconButton
+                label={`${attached ? 'Remove' : 'Attach'} ${ticket.name} ${attached ? 'from' : 'to'} chat context`}
+                icon={<Icon icon={attached ? CircleCheck : Plus} size="sm" />}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onToggleAttached(ticket.id);
+                }}
+              />
               {canReorder && (
                 <button
                   type="button"
@@ -1553,6 +1607,22 @@ function SortableTicketCard({
               )}
             </span>
           </span>
+          {linkedChats.length > 0 && (
+            <span {...stylex.props(styles.meta)}>
+              {linkedChats.map((chat) => (
+                <Button
+                  key={chat.id}
+                  label={`Open chat: ${chat.title}`}
+                  size="sm"
+                  variant="ghost"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onOpenChat(chat.id);
+                  }}
+                />
+              ))}
+            </span>
+          )}
         </span>
       </ClickableCard>
     </div>

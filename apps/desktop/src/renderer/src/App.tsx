@@ -830,8 +830,8 @@ export default function App() {
    * no workspace is named. A workspace's chats share its folder, which is the whole
    * point of one: the same files, the same instructions beside them.
    */
-  async function startChat(workspaceId: string | null): Promise<void> {
-    await switchChat(() => window.kira.startChat(workspaceId));
+  async function startChat(workspaceId: string | null, workTicketIds?: string[]): Promise<void> {
+    await switchChat(() => window.kira.startChat(workspaceId, workTicketIds));
   }
 
   /**
@@ -1280,7 +1280,9 @@ export default function App() {
             // A run's chat is a chat, so the ticket hands the window to it rather than
             // drawing the run's words a second time in the panel (GH #68).
             chatIds={chats.map((each) => each.id)}
+            chatSummaries={chats}
             onOpenChat={(chatId) => void switchChat(() => window.kira.openChat(chatId))}
+            onStartChat={(ticketIds) => void startChat(worked?.id ?? null, ticketIds)}
             onJoined={(joined) =>
               setWorkspaces((held) => held.map((each) => (each.id === joined.id ? joined : each)))
             }
@@ -1302,6 +1304,11 @@ export default function App() {
                 <Text type="label" weight="medium" maxLines={1}>
                   {currentChat?.title ?? 'New chat'}
                 </Text>
+                {(currentChat?.workTicketIds.length ?? 0) > 0 && (
+                  <Text type="supporting" color="secondary">
+                    Working with {currentChat!.workTicketIds.length} attached project {currentChat!.workTicketIds.length === 1 ? 'ticket' : 'tickets'}
+                  </Text>
+                )}
               </div>
               <IconButton
                 className="workbench-toggle"

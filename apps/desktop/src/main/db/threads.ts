@@ -9,7 +9,7 @@ import type { ChatMode, ShapingState } from '../../preload/bridge.ts';
  * Bumped whenever the statements below change shape. A database written by a
  * newer build is refused rather than misread.
  */
-const SCHEMA_VERSION = 15;
+const SCHEMA_VERSION = 16;
 
 export type McpServerScope = 'global' | 'workspace';
 export type McpServerTransport = 'stdio' | 'streamable-http';
@@ -79,6 +79,8 @@ export interface ThreadRecord {
    * and it is what the sidebar draws a ticket's run with (GH #68).
    */
   ticketId: string | null;
+  /** Project tickets this ordinary chat is working across, independent of runs. */
+  workTicketIds: string[];
   /** The one-time shaping offer and latest proposal, persisted with the chat. */
   shaping: ShapingState | null;
   parentThreadId: string | null;
@@ -232,6 +234,7 @@ export class ThreadStore {
           workspace_id     TEXT REFERENCES workspaces(id) ON DELETE SET NULL,
           parent_thread_id TEXT REFERENCES threads(id),
           ticket_id        TEXT,
+          work_ticket_ids_json TEXT,
           shaping_json     TEXT,
           head_id          TEXT,
           model_id         TEXT,
@@ -395,6 +398,12 @@ export class ThreadStore {
       const columns = this.db.prepare('PRAGMA table_info(threads)').all() as { name: string }[];
       if (!columns.some((column) => column.name === 'mode')) {
         this.db.exec("ALTER TABLE threads ADD COLUMN mode TEXT NOT NULL DEFAULT 'build'");
+      }
+    }
+    if (row.user_version < 16) {
+      const columns = this.db.prepare('PRAGMA table_info(threads)').all() as { name: string }[];
+      if (!columns.some((column) => column.name === 'work_ticket_ids_json')) {
+        this.db.exec('ALTER TABLE threads ADD COLUMN work_ticket_ids_json TEXT');
       }
     }
     this.db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
@@ -622,6 +631,7 @@ export class ThreadStore {
       parentThreadId?: string;
       workspaceId?: string;
       ticketId?: string;
+      workTicketIds?: string[];
       subagent?: SubagentRecord;
       mode?: ChatMode;
     } = {},
@@ -631,12 +641,13 @@ export class ThreadStore {
     const parentThreadId = options.parentThreadId ?? null;
     const workspaceId = options.workspaceId ?? null;
     const ticketId = options.ticketId ?? null;
+    const workTicketIds = [...new Set(options.workTicketIds ?? [])];
     const subagent = options.subagent ?? null;
     const mode = options.mode ?? 'build';
 
     this.db
       .prepare(
-        'INSERT INTO threads (id, cwd, workspace_id, parent_thread_id, ticket_id, shaping_json, subagent_json, mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO threads (id, cwd, workspace_id, parent_thread_id, ticket_id, work_ticket_ids_json, shaping_json, subagent_json, mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       )
       .run(
         id,
@@ -644,6 +655,7 @@ export class ThreadStore {
         workspaceId,
         parentThreadId,
         ticketId,
+        JSON.stringify(workTicketIds),
         null,
         subagentJsonOf(subagent),
         mode,
@@ -657,6 +669,7 @@ export class ThreadStore {
       mode,
       workspaceId,
       ticketId,
+      workTicketIds,
       shaping: null,
       parentThreadId,
       subagent,
@@ -1352,6 +1365,7 @@ interface ThreadRow {
   mode: ChatMode;
   workspace_id: string | null;
   ticket_id: string | null;
+  work_ticket_ids_json: string | null;
   shaping_json: string | null;
   parent_thread_id: string | null;
   head_id: string | null;
@@ -1362,10 +1376,20 @@ interface ThreadRow {
 }
 
 const THREAD_COLUMNS =
-  'SELECT id, cwd, mode, workspace_id, parent_thread_id, head_id, model_id, ticket_id, shaping_json, subagent_json, created_at, updated_at FROM threads';
+  'SELECT id, cwd, mode, workspace_id, parent_thread_id, head_id, model_id, ticket_id, work_ticket_ids_json, shaping_json, subagent_json, created_at, updated_at FROM threads';
 
 function subagentJsonOf(value: SubagentRecord | null): string | null {
   return value === null ? null : JSON.stringify(value);
+}
+
+function ticketIdsOf(value: string | null): string[] {
+  if (value === null) return [];
+  try {
+    const held: unknown = JSON.parse(value);
+    return Array.isArray(held) && held.every((id) => typeof id === 'string') ? held : [];
+  } catch {
+    return [];
+  }
 }
 
 function subagentOf(value: string | null): SubagentRecord | null {
@@ -1418,6 +1442,7 @@ function threadRecordOf(row: ThreadRow): ThreadRecord {
     mode: row.mode === 'spec' ? 'spec' : 'build',
     workspaceId: row.workspace_id,
     ticketId: row.ticket_id,
+    workTicketIds: ticketIdsOf(row.work_ticket_ids_json),
     shaping: shapingOf(row.shaping_json),
     parentThreadId: row.parent_thread_id,
     subagent: subagentOf(row.subagent_json),

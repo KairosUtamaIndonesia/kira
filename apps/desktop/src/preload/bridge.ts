@@ -331,6 +331,8 @@ export interface ChatSummary {
    * goes and still there to read afterwards (GH #68).
    */
   ticketId: string | null;
+  /** Tickets explicitly attached as context to this chat; not ticket runs. */
+  workTicketIds: string[];
   /** When the chat was created. */
   createdAt: string;
   /** When a message or other conversation content last changed. */
@@ -1412,7 +1414,7 @@ export interface KiraBridge {
    */
   takeQueuedBack(): Promise<Result<QueuedLine[]>>;
   /** Start a new chat and switch to it, filed under `workspaceId` when there is one. */
-  startChat(workspaceId: string | null): Promise<Result<null>>;
+  startChat(workspaceId: string | null, workTicketIds?: string[]): Promise<Result<null>>;
   /** Switch to a stored chat, leaving whatever it — or the chat left behind — is doing. */
   openChat(id: string): Promise<Result<null>>;
   /**

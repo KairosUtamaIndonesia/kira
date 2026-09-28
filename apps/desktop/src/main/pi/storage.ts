@@ -71,6 +71,7 @@ export function createThread(
     parentThreadId?: string;
     workspaceId?: string;
     ticketId?: string;
+    workTicketIds?: string[];
     mode?: ChatMode;
   } = {},
 ): PiThread {
@@ -117,6 +118,7 @@ export function forkThread(
   const record = store.createThread(source.cwd, {
     parentThreadId: sourceThreadId,
     workspaceId: source.workspaceId ?? undefined,
+    workTicketIds: source.workTicketIds,
     mode: source.mode,
   });
 

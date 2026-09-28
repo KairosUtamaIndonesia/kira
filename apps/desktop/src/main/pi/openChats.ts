@@ -123,7 +123,7 @@ export interface OpenChats {
    * lands on disk either, because where a new chat would work is worked out when
    * it becomes one.
    */
-  start(workspaceId: string | null): Promise<void>;
+  start(workspaceId: string | null, workTicketIds?: string[]): Promise<void>;
   /**
    * Forget a workspace, leaving its chats, and the folder they work in, alone.
    *
@@ -187,6 +187,7 @@ interface Draft {
   id: string;
   /** The workspace it was asked for, or null when it was filed nowhere. */
   workspaceId: string | null;
+  workTicketIds: string[];
   /** The planning/build choice made before the first message is sent. */
   mode: ChatMode;
   /**
@@ -411,6 +412,7 @@ export function openChats(
               // switch while it was being composed.
               ...(composing.modelId === null ? {} : { modelId: composing.modelId }),
               mode: composing.mode,
+              workTicketIds: composing.workTicketIds,
             },
             memorySettings,
             tracker,
@@ -444,7 +446,7 @@ export function openChats(
    * is whatever was asked for last — including nowhere in particular, when New
    * chat was pressed after New chat here.
    */
-  function begin(workspaceId: string | null): void {
+  function begin(workspaceId: string | null, workTicketIds: string[] = []): void {
     const left = shown === null ? undefined : open.get(shown);
 
     // A new chat starts on the model the one being left runs on. The choice is
@@ -454,8 +456,8 @@ export function openChats(
     const modelId = left?.modelId() ?? null;
 
     draft = draft
-      ? { ...draft, workspaceId }
-      : { id: randomUUID(), workspaceId, modelId, mode: 'build' };
+      ? { ...draft, workspaceId, workTicketIds: [...new Set(workTicketIds)] }
+      : { id: randomUUID(), workspaceId, workTicketIds: [...new Set(workTicketIds)], modelId, mode: 'build' };
     shown = null;
 
     if (left) {
@@ -790,7 +792,7 @@ export function openChats(
      */
     compact: async () => await current().compact(),
 
-    start: async (workspaceId) => begin(workspaceId),
+    start: async (workspaceId, workTicketIds) => begin(workspaceId, workTicketIds),
 
     choose: async (modelId) => {
       // A chat being composed is not open yet, so there is no session to switch:

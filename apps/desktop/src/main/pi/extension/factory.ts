@@ -22,6 +22,7 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 import { getShellConfig, isToolCallEventType } from '@earendil-works/pi-coding-agent';
 import type { ChatMode } from '../../../preload/bridge.ts';
+import type { Ticket } from '../../../preload/bridge.ts';
 import type { TSchema } from 'typebox';
 import { reflectingWith } from '../../../preload/bridge.ts';
 import { memoryRuns, type MemorySource } from '../../memory.ts';
@@ -46,6 +47,39 @@ import {
   trackerTools,
 } from './trackerTool.ts';
 import { toolAllowedInMode, toolsForMode, workflowForMode } from '../workflow.ts';
+
+async function attachedTicketContext(
+  store: ThreadStore,
+  threadId: string,
+  tracker: Tracker | undefined,
+): Promise<string> {
+  const ids = store.getThread(threadId).workTicketIds;
+  if (ids.length === 0) return '';
+  const read = async (id: string): Promise<Ticket | null> => {
+    if (tracker === undefined) return null;
+    try {
+      return await tracker.readTicket(id);
+    } catch {
+      return null;
+    }
+  };
+  const tickets = await Promise.all(ids.map(read));
+  const lines = tickets.map((ticket, index) => {
+    const id = ids[index]!;
+    if (ticket === null) return `- ${id}: unavailable; use tracker_read_ticket if still relevant.`;
+    return [
+      `- ${ticket.name} — ${ticket.title} [${ticket.kind}; ${ticket.band}] (id: ${id})`,
+      ticket.body.trim() || '(no description)',
+      ...(ticket.criteria.length === 0 ? [] : [`Acceptance criteria:\n${ticket.criteria.map((criterion) => `  - ${criterion}`).join('\n')}`]),
+    ].join('\n');
+  });
+  return [
+    '',
+    '## Attached project tickets',
+    'The person attached these tickets as shared context for this chat. They are references, not a claim that this chat is a dedicated run of any one ticket. Do not change their state unless the person explicitly asks and the available tracker tools permit it.',
+    ...lines,
+  ].join('\n');
+}
 
 /**
  * Kira's extension: the hooks pi calls, and nothing else.
@@ -109,10 +143,13 @@ export function kiraExtension({
         appliedMode = current;
       };
 
-      pi.on('before_agent_start', (event) => {
+      pi.on('before_agent_start', async (event) => {
         const current = mode();
         applyModeTools();
-        return { systemPrompt: `${event.systemPrompt}\n\n${workflowForMode(current)}` };
+        const attached = await attachedTicketContext(store, threadId, tracker);
+        return {
+          systemPrompt: `${event.systemPrompt}\n\n${workflowForMode(current)}${attached}`,
+        };
       });
       // Tool-list filtering is what Kira sees. This guard is the trust boundary:
       // a model can still attempt a tool it was not offered, so Spec mode refuses

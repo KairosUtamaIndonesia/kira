@@ -22,7 +22,7 @@ test('a new database reaches the current schema version', () => {
   const db = new DatabaseSync(path);
   assert.equal(
     (db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version,
-    15,
+    16,
   );
   assert.ok(
     (db.prepare('PRAGMA table_info(threads)').all() as { name: string }[]).some(
@@ -39,6 +39,17 @@ test('chat mode defaults to Build and is remembered per chat', () => {
   assert.equal(thread.mode, 'build');
   store.setThreadMode(thread.id, 'spec');
   assert.equal(store.getThread(thread.id).mode, 'spec');
+
+  store.close();
+});
+
+test('an ordinary chat remembers its attached project tickets without becoming a ticket run', () => {
+  const store = new ThreadStore(storePath());
+  const chat = store.createThread(tmpdir(), { workTicketIds: ['ticket-a', 'ticket-b', 'ticket-a'] });
+
+  assert.equal(chat.ticketId, null);
+  assert.deepEqual(chat.workTicketIds, ['ticket-a', 'ticket-b']);
+  assert.deepEqual(store.getThread(chat.id).workTicketIds, ['ticket-a', 'ticket-b']);
 
   store.close();
 });

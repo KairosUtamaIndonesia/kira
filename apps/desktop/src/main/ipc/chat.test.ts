@@ -14,6 +14,7 @@ interface Case {
   makeDeps: (calls: string[]) => ChatDeps;
   call: keyof ChatHandlers;
   argument?: unknown;
+  secondArgument?: unknown;
   /** The lane a queued message names, for the cases that queue one. */
   lane?: unknown;
   want: unknown;
@@ -36,6 +37,7 @@ const surface: ChatState = {
       updatedAt: '2026-01-01T00:00:00.000Z',
       workspaceId: null,
       ticketId: null,
+      workTicketIds: [],
     },
   ],
   workspaces: [],
@@ -76,8 +78,8 @@ function deps(calls: string[], overrides: Partial<ChatDeps> = {}): ChatDeps {
       calls.push('unqueue');
       return [];
     },
-    start: async (workspaceId) => {
-      calls.push(`start ${workspaceId ?? 'nowhere'}`);
+    start: async (workspaceId, workTicketIds) => {
+      calls.push(`start ${workspaceId ?? 'nowhere'} ${workTicketIds?.join(',') ?? ''}`);
     },
     open: async (id) => {
       calls.push(`open ${id}`);
@@ -280,7 +282,7 @@ const CASES: Case[] = [
     call: 'start',
     argument: null,
     want: { ok: true, value: null },
-    wantCalls: ['start nowhere'],
+    wantCalls: ['start nowhere '],
   },
   {
     name: 'start files a new chat under the workspace it names',
@@ -288,7 +290,25 @@ const CASES: Case[] = [
     call: 'start',
     argument: 'api',
     want: { ok: true, value: null },
-    wantCalls: ['start api'],
+    wantCalls: ['start api '],
+  },
+  {
+    name: 'start attaches multiple ticket references to the new chat',
+    makeDeps: (calls) => deps(calls),
+    call: 'start',
+    argument: 'api',
+    secondArgument: ['ticket-a', 'ticket-b'],
+    want: { ok: true, value: null },
+    wantCalls: ['start api ticket-a,ticket-b'],
+  },
+  {
+    name: 'start refuses an invalid attached ticket list',
+    makeDeps: (calls) => deps(calls, { start: async () => assert.fail('a chat was started') }),
+    call: 'start',
+    argument: 'api',
+    secondArgument: ['ticket-a', 3],
+    want: { ok: false, error: 'A chat can hold up to 20 distinct ticket references.' },
+    wantCalls: [],
   },
   {
     name: 'start reports a failure as a value',
@@ -599,7 +619,7 @@ for (const testCase of CASES) {
       unqueue: () => handlers.unqueue(),
       stop: () => handlers.stop(),
       compact: () => handlers.compact(),
-      start: () => handlers.start(testCase.argument),
+      start: () => handlers.start(testCase.argument, testCase.secondArgument),
       open: () => handlers.open(testCase.argument),
       branch: () => handlers.branch(testCase.argument),
       edit: () => handlers.edit(testCase.argument),

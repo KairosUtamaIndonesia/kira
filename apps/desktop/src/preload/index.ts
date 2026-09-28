@@ -104,7 +104,8 @@ const bridge: KiraBridge = {
   stopChat: () => ask<QueuedLine[]>(CHAT_CHANNELS.stop),
   compactChat: () => ask<null>(CHAT_CHANNELS.compact),
 
-  startChat: (workspaceId) => ask<null>(CHAT_CHANNELS.start, workspaceId),
+  startChat: (workspaceId, workTicketIds) =>
+    ask<null>(CHAT_CHANNELS.start, workspaceId, workTicketIds),
 
   openChat: (id) => ask<null>(CHAT_CHANNELS.open, id),
 

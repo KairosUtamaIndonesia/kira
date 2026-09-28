@@ -199,7 +199,9 @@ function registerChatChannels(): void {
     void usage.refresh();
     return answer;
   });
-  ipcMain.handle(CHAT_CHANNELS.start, (_event, projectId: unknown) => handlers.start(projectId));
+  ipcMain.handle(CHAT_CHANNELS.start, (_event, projectId: unknown, ticketIds: unknown) =>
+    handlers.start(projectId, ticketIds),
+  );
   ipcMain.handle(CHAT_CHANNELS.open, (_event, threadId: unknown) => handlers.open(threadId));
   ipcMain.handle(CHAT_CHANNELS.branch, (_event, messageId: unknown) => handlers.branch(messageId));
   ipcMain.handle(CHAT_CHANNELS.edit, (_event, messageId: unknown) => handlers.edit(messageId));

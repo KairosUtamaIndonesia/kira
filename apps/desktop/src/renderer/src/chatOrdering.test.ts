@@ -18,7 +18,7 @@ interface Case {
 
 /** A chat as the list receives it, filed nowhere: only the order matters here. */
 function chat(id: string, title: string, createdAt: string, updatedAt: string): ChatSummary {
-  return { id, title, createdAt, updatedAt, workspaceId: null, ticketId: null };
+  return { id, title, createdAt, updatedAt, workspaceId: null, ticketId: null, workTicketIds: [] };
 }
 
 /** A day in January, in the shape pi writes timestamps: UTC, to the millisecond. */

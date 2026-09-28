@@ -254,6 +254,7 @@ export async function startConversation(
     workspaceId?: string;
     modelId?: string;
     ticketId?: string;
+    workTicketIds?: string[];
     mode?: ChatMode;
   } = {},
   memorySettings?: MemorySource,
@@ -698,6 +699,7 @@ export function listChats(store: ThreadStore): ChatSummary[] {
     updatedAt: thread.updatedAt,
     workspaceId: thread.workspaceId,
     ticketId: thread.ticketId,
+    workTicketIds: thread.workTicketIds,
   }));
 }
 
