@@ -86,7 +86,9 @@ let runs: Runs;
 let auth: SignIn | undefined;
 let mainWindow: BrowserWindow | undefined;
 let kiraShell: KiraShell | undefined;
-const executionDevServers = new ExecutionDevServers();
+const executionDevServers = new ExecutionDevServers((event) => {
+  mainWindow?.webContents.send(EXECUTION_CHANNELS.process, event);
+});
 
 function shellSettings(): KiraShell {
   kiraShell ??= kiraShellSettings((path) => chats?.setShellPath(path) ?? Promise.resolve());

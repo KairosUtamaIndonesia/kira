@@ -7,7 +7,7 @@ import { TextInput } from '@astryxdesign/core/TextInput';
 import { Text } from '@astryxdesign/core/Text';
 import * as stylex from '@stylexjs/stylex';
 import { ExternalLink, GitBranch, Laptop, Terminal } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type {
   ExecutionWorkspace,
   ExecutionReview,
@@ -16,6 +16,7 @@ import type {
   Result,
   ExecutionCommandResult,
   ExecutionProcessSnapshot,
+  ExecutionProcessEvent,
   Ticket,
   TicketSaid,
 } from '../../preload/bridge.ts';
@@ -257,6 +258,21 @@ function WorkspaceDetails({
   const [devServerCommand, setDevServerCommand] = useState('npm run dev -- --host 127.0.0.1');
   const [server, setServer] = useState<ExecutionProcessSnapshot | null>(null);
   const [startingServer, setStartingServer] = useState(false);
+
+  useMountEffect(() => {
+    let receivedEvent = false;
+    const unsubscribe = window.kira.onExecutionProcess((event: ExecutionProcessEvent) => {
+      if (event.workspaceId !== workspaceId) return;
+      receivedEvent = true;
+      setServer(event);
+    });
+    void window.kira.readExecutionDevServer(ticket.id, workspaceId).then((answer) => {
+      if (receivedEvent) return;
+      if (answer.ok) setServer(answer.value);
+      else setTrouble(answer.error);
+    });
+    return unsubscribe;
+  });
 
   const readOutput = async (): Promise<void> => {
     if (view.run === null) return;
@@ -807,3 +823,8 @@ const styles = stylex.create({
     paddingInlineStart: 'var(--spacing-4)',
   },
 });
+
+function useMountEffect(effect: () => void | (() => void)): void {
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(effect, []);
+}

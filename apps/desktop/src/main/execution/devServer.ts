@@ -1,8 +1,9 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { isIP } from 'node:net';
-import type { ExecutionProcessSnapshot } from '../../preload/bridge.ts';
+import type { ExecutionProcessEvent, ExecutionProcessSnapshot } from '../../preload/bridge.ts';
 
 interface HeldProcess {
+  workspaceId: string;
   child: ChildProcess;
   output: string;
   previewUrl: string | null;
@@ -15,6 +16,8 @@ const MAX_LOG_LENGTH = 100_000;
 /** Owns the dev-server children for this desktop process, one per execution workspace. */
 export class ExecutionDevServers {
   private readonly held = new Map<string, HeldProcess>();
+
+  constructor(private readonly changed: (event: ExecutionProcessEvent) => void = () => {}) {}
 
   start(workspaceId: string, checkout: string, command: string): ExecutionProcessSnapshot {
     const current = this.held.get(workspaceId);
@@ -30,6 +33,7 @@ export class ExecutionDevServers {
       windowsHide: true,
     });
     const held: HeldProcess = {
+      workspaceId,
       child,
       output: '',
       previewUrl: null,
@@ -43,10 +47,13 @@ export class ExecutionDevServers {
     child.once('error', (error) => {
       held.output = this.trim(`${held.output}\n${error.message}`);
       held.exitCode = 1;
+      this.publish(workspaceId, held);
     });
     child.once('exit', (code) => {
       held.exitCode = code ?? 1;
+      this.publish(workspaceId, held);
     });
+    this.publish(workspaceId, held);
     return this.snapshot(held);
   }
 
@@ -74,6 +81,7 @@ export class ExecutionDevServers {
         if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
       }
       held.stopped = true;
+      this.publish(workspaceId, held);
     }
     return this.snapshot(held);
   }
@@ -86,6 +94,7 @@ export class ExecutionDevServers {
     const text = chunk.toString();
     held.output = this.trim(held.output + text);
     held.previewUrl ??= previewUrlIn(held.output);
+    this.publish(held.workspaceId, held);
   }
 
   private trim(output: string): string {
@@ -99,6 +108,10 @@ export class ExecutionDevServers {
       previewUrl: held.previewUrl,
       exitCode: held.exitCode,
     };
+  }
+
+  private publish(workspaceId: string, held: HeldProcess): void {
+    this.changed({ workspaceId, ...this.snapshot(held) });
   }
 }
 

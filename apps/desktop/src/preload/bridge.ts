@@ -703,6 +703,7 @@ export const EXECUTION_CHANNELS = {
   devServerStart: 'execution:dev-server:start',
   devServerRead: 'execution:dev-server:read',
   devServerStop: 'execution:dev-server:stop',
+  process: 'execution:process',
 } as const;
 
 /**
@@ -961,6 +962,10 @@ export interface ExecutionProcessSnapshot {
   output: string;
   previewUrl: string | null;
   exitCode: number | null;
+}
+
+export interface ExecutionProcessEvent extends ExecutionProcessSnapshot {
+  workspaceId: string;
 }
 
 /**
@@ -1503,6 +1508,7 @@ export interface KiraBridge {
     ticketId: string,
     workspaceId: string,
   ): Promise<Result<ExecutionProcessSnapshot>>;
+  onExecutionProcess(listener: (event: ExecutionProcessEvent) => void): () => void;
   /** Write a ticket down in the workspace's project, as a draft. */
   writeTicket(workspaceId: string, draft: TicketDraft): Promise<Result<Ticket>>;
   /**

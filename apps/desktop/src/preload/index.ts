@@ -46,6 +46,7 @@ import {
   type DeliveryAudit,
   type ExecutionCommandResult,
   type ExecutionProcessSnapshot,
+  type ExecutionProcessEvent,
   type ShellSettingsSnapshot,
   type ShellTestResult,
   type Result,
@@ -188,6 +189,14 @@ const bridge: KiraBridge = {
 
   stopExecutionDevServer: (ticketId, workspaceId) =>
     ask<ExecutionProcessSnapshot>(EXECUTION_CHANNELS.devServerStop, ticketId, workspaceId),
+
+  onExecutionProcess: (listener) => {
+    const handler = (_event: IpcRendererEvent, payload: ExecutionProcessEvent): void => {
+      listener(payload);
+    };
+    ipcRenderer.on(EXECUTION_CHANNELS.process, handler);
+    return () => ipcRenderer.off(EXECUTION_CHANNELS.process, handler);
+  },
 
   worker: () => ask<WorkerStanding>(WORKER_CHANNELS.standing),
 
