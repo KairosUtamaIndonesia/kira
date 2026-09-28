@@ -246,10 +246,7 @@ export function kiraFor({ server, scheme }: { server: string; scheme: string }):
       ),
 
     queue: async (key, projectId) =>
-      asked(
-        () => kira.api.projects({ ref: projectId }).get({ headers: bearerFor(key) }),
-        asQueue,
-      ),
+      asked(() => kira.api.projects({ ref: projectId }).get({ headers: bearerFor(key) }), asQueue),
 
     executionWorkspaces: async (key, ticketId) =>
       asked(
@@ -259,39 +256,75 @@ export function kiraFor({ server, scheme }: { server: string; scheme: string }):
 
     createExecutionWorkspace: async (key, ticketId, draft) =>
       asked(
-        () => kira.api.tickets({ ref: ticketId }).workspaces.post(draft, { headers: bearerFor(key) }),
+        () =>
+          kira.api.tickets({ ref: ticketId }).workspaces.post(draft, { headers: bearerFor(key) }),
         (data) => (data as { workspace: ExecutionWorkspace }).workspace,
       ),
 
     removeExecutionWorkspace: async (key, ticketId, workspaceId) =>
       asked(
-        () => kira.api.tickets({ ref: ticketId }).workspaces({ workspaceId }).delete(undefined, { headers: bearerFor(key) }),
+        () =>
+          kira.api
+            .tickets({ ref: ticketId })
+            .workspaces({ workspaceId })
+            .delete(undefined, { headers: bearerFor(key) }),
         (data) => data,
       ),
 
     readExecutionReview: async (key, ticketId, workspaceId) =>
       asked(
-        () => kira.api.tickets({ ref: ticketId }).workspaces({ workspaceId }).review.get({ headers: bearerFor(key) }),
+        () =>
+          kira.api
+            .tickets({ ref: ticketId })
+            .workspaces({ workspaceId })
+            .review.get({ headers: bearerFor(key) }),
         (data) => data as ExecutionReview,
       ),
 
     addReviewComment: async (key, ticketId, workspaceId, comment) =>
       asked(
-        () => kira.api.tickets({ ref: ticketId }).workspaces({ workspaceId }).review.comments.post(comment, { headers: bearerFor(key) }),
+        () =>
+          kira.api
+            .tickets({ ref: ticketId })
+            .workspaces({ workspaceId })
+            .review.comments.post(comment, { headers: bearerFor(key) }),
         (data) => (data as { comment: ReviewComment }).comment,
       ),
 
     updateReviewComment: async (key, ticketId, workspaceId, commentId, status) =>
       asked(
-        () => kira.api.tickets({ ref: ticketId }).workspaces({ workspaceId }).review.comments({ commentId }).patch({ status }, { headers: bearerFor(key) }),
+        () =>
+          kira.api
+            .tickets({ ref: ticketId })
+            .workspaces({ workspaceId })
+            .review.comments({ commentId })
+            .patch({ status }, { headers: bearerFor(key) }),
         (data) => (data as { comment: ReviewComment }).comment,
       ),
 
     sendReviewFeedback: async (key, ticketId, workspaceId, feedback) =>
       asked(
-        () => kira.api.tickets({ ref: ticketId }).workspaces({ workspaceId }).review.feedback.post(feedback, { headers: bearerFor(key) }),
+        () =>
+          kira.api
+            .tickets({ ref: ticketId })
+            .workspaces({ workspaceId })
+            .review.feedback.post(feedback, { headers: bearerFor(key) }),
         (data) => (data as { feedback: ReviewFeedback }).feedback,
       ),
+
+    recordDelivery: async (key, ticketId, audit) => {
+      const { reference, ...fields } = audit;
+      return await asked(
+        () =>
+          kira.api
+            .tickets({ ref: ticketId })
+            .deliveries.post(
+              { ...fields, ...(reference === null ? {} : { reference }) },
+              { headers: bearerFor(key) },
+            ),
+        () => null,
+      );
+    },
 
     decisions: async (key, projectId) =>
       asked(
@@ -373,9 +406,7 @@ export function kiraFor({ server, scheme }: { server: string; scheme: string }):
     gateTicket: async (key, ticketId, gatedBy) =>
       asked(
         () =>
-          kira.api
-            .tickets({ ref: ticketId })
-            .gates.post({ gatedBy }, { headers: bearerFor(key) }),
+          kira.api.tickets({ ref: ticketId }).gates.post({ gatedBy }, { headers: bearerFor(key) }),
         (data) => asTicket((data as { ticket: unknown }).ticket),
       ),
 
@@ -439,27 +470,21 @@ export function kiraFor({ server, scheme }: { server: string; scheme: string }):
     claimTicket: async (key, ticketId, workerId) =>
       asked(
         () =>
-          kira.api
-            .tickets({ ref: ticketId })
-            .claim.post({ workerId }, { headers: bearerFor(key) }),
+          kira.api.tickets({ ref: ticketId }).claim.post({ workerId }, { headers: bearerFor(key) }),
         (data) => asTicket((data as { ticket: unknown }).ticket),
       ),
 
     releaseTicket: async (key, ticketId) =>
       asked(
         () =>
-          kira.api
-            .tickets({ ref: ticketId })
-            .claim.delete(undefined, { headers: bearerFor(key) }),
+          kira.api.tickets({ ref: ticketId }).claim.delete(undefined, { headers: bearerFor(key) }),
         (data) => data,
       ),
 
     startRun: async (key, ticketId, workerId) =>
       asked(
         () =>
-          kira.api
-            .tickets({ ref: ticketId })
-            .runs.post({ workerId }, { headers: bearerFor(key) }),
+          kira.api.tickets({ ref: ticketId }).runs.post({ workerId }, { headers: bearerFor(key) }),
         asRun,
       ),
 
@@ -500,8 +525,7 @@ export function kiraFor({ server, scheme }: { server: string; scheme: string }):
 
     recordOutcome: async (key, ticketId, value) =>
       asked(
-        () =>
-          kira.api.tickets({ ref: ticketId }).outcome.post(value, { headers: bearerFor(key) }),
+        () => kira.api.tickets({ ref: ticketId }).outcome.post(value, { headers: bearerFor(key) }),
         (data) => asOutcome((data as { outcome: unknown }).outcome),
       ),
 

@@ -110,6 +110,9 @@ import type {
   TicketRun,
   TicketSaid,
   ExecutionWorkspace,
+  DeliveryAudit,
+  DeliveryPath,
+  Result,
   WorkspaceSummary,
 } from '../../preload/bridge.ts';
 import { ExecutionWorkspacePanel } from './executionWorkspace.tsx';
@@ -833,6 +836,9 @@ export function WorkSurface({
       onUngate={(gatedBy) => wrote(() => window.kira.ungateTicket(open.id, gatedBy))}
       onRun={(executionWorkspaceId, followUp) =>
         acted(() => window.kira.startRun(workspace.id, open.id, executionWorkspaceId, followUp))
+      }
+      onDeliver={(workspaceId, path) =>
+        window.kira.deliverExecutionWorkspace(open.id, workspaceId, path)
       }
       onQuestion={() => acted(() => window.kira.openQuestion(workspace.id, open.id))}
       onTakeOver={() => acted(() => window.kira.takeOverClaim(open.id))}
@@ -1688,6 +1694,7 @@ function TicketReading({
   onGate,
   onUngate,
   onRun,
+  onDeliver,
   onQuestion,
   onTakeOver,
   onLetGo,
@@ -1709,6 +1716,7 @@ function TicketReading({
   onGate: (gatedBy: string) => Promise<Ticket | null>;
   onUngate: (gatedBy: string) => Promise<Ticket | null>;
   onRun: (executionWorkspaceId: string, followUp?: string) => Promise<boolean>;
+  onDeliver: (workspaceId: string, path: DeliveryPath) => Promise<Result<DeliveryAudit>>;
   onQuestion: () => Promise<boolean>;
   onTakeOver: () => Promise<boolean>;
   onLetGo: () => Promise<boolean>;
@@ -1973,6 +1981,7 @@ function TicketReading({
             workspaces={executionWorkspaces}
             repository={repository}
             onStart={onRun}
+            onDeliver={onDeliver}
             onChanged={onChanged}
           />
 

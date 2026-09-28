@@ -62,6 +62,8 @@ export interface Worktrees {
   changed(folder: string, into: string): Promise<string | null>;
   /** The issue workspace's tracked diff from its base branch. */
   diff(into: string, baseBranch: string): Promise<string | null>;
+  /** Whether a checkout has no tracked or untracked changes. */
+  isClean(folder: string): Promise<boolean>;
 }
 
 export function runWorktrees(): Worktrees {
@@ -244,6 +246,14 @@ export function runWorktrees(): Worktrees {
         ]);
       } catch {
         return null;
+      }
+    },
+
+    async isClean(folder) {
+      try {
+        return (await simpleGit(folder).status()).isClean();
+      } catch {
+        return false;
       }
     },
   };

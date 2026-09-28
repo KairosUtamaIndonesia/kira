@@ -13,7 +13,7 @@ import {
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { hostname } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import type { AuthState, ChatEvent } from '../preload/bridge.ts';
 import { kiraFor } from './auth/kira.ts';
 import { keyStore, type SecretKeeper } from './auth/keys.ts';
@@ -28,6 +28,7 @@ import { RUN_CHANNELS, runHandlers } from './ipc/run.ts';
 import { USAGE_CHANNELS, usageHandlers } from './ipc/usage.ts';
 import { CHAT_CHANNELS, chatHandlers } from './ipc/chat.ts';
 import { TRACKER_CHANNELS, trackerHandlers } from './ipc/tracker.ts';
+import { DELIVERY_CHANNELS, deliveryHandlers } from './ipc/delivery.ts';
 import { WORKER_CHANNELS, workerHandlers } from './ipc/worker.ts';
 import { WORKSPACE_CHANNELS, workspaceHandlers } from './ipc/workspaces.ts';
 import { workspaceSummaryOf } from './pi/conversations.ts';
@@ -38,6 +39,7 @@ import { usageFor, type UsageKeeper } from './usage.ts';
 import { runsFor, type Runs } from './runs.ts';
 import { startRunChat } from './pi/runChat.ts';
 import { runWorktrees } from './workspace/worktrees.ts';
+import { deliveriesFor, ghPullRequests } from './delivery/delivery.ts';
 import { workerFor, type Worker } from './worker.ts';
 import { type OpenChats, openChats } from './pi/openChats.ts';
 import { listFolder } from './workspace/listing.ts';
@@ -363,6 +365,49 @@ function registerTrackerChannels(): void {
     TRACKER_CHANNELS.removeExecutionWorkspace,
     (_event, ticketId: unknown, workspaceId: unknown) =>
       handlers.removeExecutionWorkspace(ticketId, workspaceId),
+  );
+}
+
+function registerDeliveryChannel(): void {
+  const handlers = deliveryHandlers({
+    deliver: async (ticketId, workspaceId, path) => {
+      const workspace = (await tracker.executionWorkspaces(ticketId)).find(
+        (candidate) => candidate.id === workspaceId,
+      );
+      if (workspace === undefined || workspace.ticketId !== ticketId) {
+        throw new Error('That execution workspace is no longer available for this issue.');
+      }
+      const ticket = await tracker.readTicket(ticketId);
+      const latestApproved = ticket.runs
+        .filter((run) => run.verdict === 'accepted')
+        .sort(
+          (left, right) =>
+            right.startedAt.localeCompare(left.startedAt) || right.id.localeCompare(left.id),
+        )[0];
+      if (latestApproved?.branch !== workspace.branch) {
+        throw new Error('Only the approved workspace branch can be delivered.');
+      }
+      if (!isAbsolute(workspace.repository)) {
+        throw new Error('The execution workspace repository must be an absolute folder path.');
+      }
+
+      return await deliveriesFor({
+        worktrees: runWorktrees(),
+        pullRequests: ghPullRequests(),
+        recorder: { record: (audit) => tracker.recordDelivery(ticketId, audit) },
+      }).deliver(
+        {
+          ...workspace,
+          checkout: join(app.getPath('userData'), 'execution-workspaces', workspace.id),
+        },
+        { path, title: ticket.title, body: ticket.body },
+      );
+    },
+  });
+  ipcMain.handle(
+    DELIVERY_CHANNELS.deliver,
+    (_event, ticketId: unknown, workspaceId: unknown, path: unknown) =>
+      handlers.deliver(ticketId, workspaceId, path),
   );
 }
 
@@ -1008,6 +1053,7 @@ if (claimTheScheme()) {
       registerModelChannels();
       registerWorkspaceChannels();
       registerTrackerChannels();
+      registerDeliveryChannel();
       registerWorkerChannel();
       registerRunChannel();
       registerFileChannels();

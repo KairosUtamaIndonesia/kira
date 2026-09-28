@@ -7,6 +7,7 @@ const workspace = {
   id: 'workspace-1',
   ticketId: 'ticket-1',
   repository: 'owner/kira',
+  checkout: '/execution/workspace-1',
   baseBranch: 'main',
   branch: 'kira-1-delivery',
 };
@@ -20,6 +21,7 @@ function worktrees(result: Awaited<ReturnType<Worktrees['mergeLocal']>>): Worktr
     drop: async () => {},
     changed: async () => null,
     diff: async () => null,
+    isClean: async () => true,
   };
 }
 
@@ -75,6 +77,27 @@ test('a merge conflict is recorded as refused and never as a successful delivery
   assert.equal(result.outcome, 'refused');
   assert.equal(result.reference, null);
   assert.equal(result.details, 'conflicting files: src/app.ts');
+  assert.deepEqual(audits, [result]);
+});
+
+test('delivery refuses uncommitted execution-workspace changes instead of omitting them', async () => {
+  const audits: DeliveryAudit[] = [];
+  const worktree = worktrees({ kind: 'merged' });
+  worktree.isClean = async (folder) => folder !== workspace.checkout;
+  const delivery = deliveriesFor({
+    worktrees: worktree,
+    pullRequests: noPullRequest,
+    recorder: recorder(audits),
+  });
+
+  const result = await delivery.deliver(workspace, {
+    path: 'local-merge',
+    title: 'Deliver',
+    body: 'Issue context',
+  });
+
+  assert.equal(result.outcome, 'refused');
+  assert.match(result.details ?? '', /uncommitted changes/);
   assert.deepEqual(audits, [result]);
 });
 

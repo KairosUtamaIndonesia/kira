@@ -39,6 +39,7 @@ import type {
   ExecutionReview,
   ReviewComment,
   ReviewFeedback,
+  DeliveryAudit,
 } from '../preload/bridge.ts';
 
 /**
@@ -58,14 +59,22 @@ export type TrackerAnswer<T> =
 
 /** The server's half of the tracker, as `auth/kira.ts` implements it. */
 export interface TrackerWire {
-  executionWorkspaces?: ((key: string, ticketId: string) => Promise<TrackerAnswer<ExecutionWorkspace[]>>) | undefined;
+  executionWorkspaces?:
+    | ((key: string, ticketId: string) => Promise<TrackerAnswer<ExecutionWorkspace[]>>)
+    | undefined;
   createExecutionWorkspace?: (
     key: string,
     ticketId: string,
     draft: Omit<ExecutionWorkspace, 'id' | 'ticketId' | 'createdAt'>,
   ) => Promise<TrackerAnswer<ExecutionWorkspace>>;
-  removeExecutionWorkspace?: ((key: string, ticketId: string, workspaceId: string) => Promise<TrackerAnswer<unknown>>) | undefined;
-  readExecutionReview?: (key: string, ticketId: string, workspaceId: string) => Promise<TrackerAnswer<ExecutionReview>>;
+  removeExecutionWorkspace?:
+    | ((key: string, ticketId: string, workspaceId: string) => Promise<TrackerAnswer<unknown>>)
+    | undefined;
+  readExecutionReview?: (
+    key: string,
+    ticketId: string,
+    workspaceId: string,
+  ) => Promise<TrackerAnswer<ExecutionReview>>;
   addReviewComment?: (
     key: string,
     ticketId: string,
@@ -85,6 +94,11 @@ export interface TrackerWire {
     workspaceId: string,
     feedback: { runId?: string | null; body: string },
   ) => Promise<TrackerAnswer<ReviewFeedback>>;
+  recordDelivery?: (
+    key: string,
+    ticketId: string,
+    audit: DeliveryAudit,
+  ) => Promise<TrackerAnswer<unknown>>;
   /** The projects anyone signed in may work in. */
   projects(key: string): Promise<TrackerAnswer<ProjectSummary[]>>;
   /** Make a project, refused when its prefix is taken. */
@@ -280,8 +294,18 @@ export interface Tracker {
     workspaceId: string,
     comment: { runId?: string | null; path: string; line: number; side: string; body: string },
   ): Promise<ReviewComment>;
-  updateReviewComment(ticketId: string, workspaceId: string, commentId: string, status: ReviewComment['status']): Promise<ReviewComment>;
-  sendReviewFeedback(ticketId: string, workspaceId: string, feedback: { runId?: string | null; body: string }): Promise<ReviewFeedback>;
+  updateReviewComment(
+    ticketId: string,
+    workspaceId: string,
+    commentId: string,
+    status: ReviewComment['status'],
+  ): Promise<ReviewComment>;
+  sendReviewFeedback(
+    ticketId: string,
+    workspaceId: string,
+    feedback: { runId?: string | null; body: string },
+  ): Promise<ReviewFeedback>;
+  recordDelivery(ticketId: string, audit: DeliveryAudit): Promise<void>;
   queue(workspaceId: string): Promise<TicketQueue>;
   /** Read the current project context for a run from the tracker seam. */
   runContext(workspaceId: string, ticketId: string): Promise<RunContext>;
@@ -381,39 +405,54 @@ export function trackerFor({
 
   return {
     async executionWorkspaces(ticketId) {
-      if (wire.executionWorkspaces === undefined) throw new Error('Execution workspaces are unavailable.');
+      if (wire.executionWorkspaces === undefined)
+        throw new Error('Execution workspaces are unavailable.');
       const held = await key();
       return await asked(() => wire.executionWorkspaces!(held, ticketId));
     },
     async createExecutionWorkspace(ticketId, draft) {
-      if (wire.createExecutionWorkspace === undefined) throw new Error('Execution workspaces are unavailable.');
+      if (wire.createExecutionWorkspace === undefined)
+        throw new Error('Execution workspaces are unavailable.');
       const held = await key();
       return await asked(() => wire.createExecutionWorkspace!(held, ticketId, draft));
     },
     async removeExecutionWorkspace(ticketId, workspaceId) {
-      if (wire.removeExecutionWorkspace === undefined) throw new Error('Execution workspaces are unavailable.');
+      if (wire.removeExecutionWorkspace === undefined)
+        throw new Error('Execution workspaces are unavailable.');
       const held = await key();
       await asked(() => wire.removeExecutionWorkspace!(held, ticketId, workspaceId));
     },
     async readExecutionReview(ticketId, workspaceId) {
-      if (wire.readExecutionReview === undefined) throw new Error('Execution workspace review is unavailable.');
+      if (wire.readExecutionReview === undefined)
+        throw new Error('Execution workspace review is unavailable.');
       const held = await key();
       return await asked(() => wire.readExecutionReview!(held, ticketId, workspaceId));
     },
     async addReviewComment(ticketId, workspaceId, comment) {
-      if (wire.addReviewComment === undefined) throw new Error('Execution workspace review is unavailable.');
+      if (wire.addReviewComment === undefined)
+        throw new Error('Execution workspace review is unavailable.');
       const held = await key();
       return await asked(() => wire.addReviewComment!(held, ticketId, workspaceId, comment));
     },
     async updateReviewComment(ticketId, workspaceId, commentId, status) {
-      if (wire.updateReviewComment === undefined) throw new Error('Execution workspace review is unavailable.');
+      if (wire.updateReviewComment === undefined)
+        throw new Error('Execution workspace review is unavailable.');
       const held = await key();
-      return await asked(() => wire.updateReviewComment!(held, ticketId, workspaceId, commentId, status));
+      return await asked(() =>
+        wire.updateReviewComment!(held, ticketId, workspaceId, commentId, status),
+      );
     },
     async sendReviewFeedback(ticketId, workspaceId, feedback) {
-      if (wire.sendReviewFeedback === undefined) throw new Error('Execution workspace review is unavailable.');
+      if (wire.sendReviewFeedback === undefined)
+        throw new Error('Execution workspace review is unavailable.');
       const held = await key();
       return await asked(() => wire.sendReviewFeedback!(held, ticketId, workspaceId, feedback));
+    },
+    async recordDelivery(ticketId, audit) {
+      if (wire.recordDelivery === undefined)
+        throw new Error('Execution workspace delivery is unavailable.');
+      const held = await key();
+      await asked(() => wire.recordDelivery!(held, ticketId, audit));
     },
     async queue(workspaceId) {
       const held = await key();

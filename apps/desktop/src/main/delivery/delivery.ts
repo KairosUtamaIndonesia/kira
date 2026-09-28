@@ -1,27 +1,19 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import type { DeliveryAudit, DeliveryPath } from '../../preload/bridge.ts';
 import type { Worktrees } from '../workspace/worktrees.ts';
 
 const run = promisify(execFile);
 
-export type DeliveryPath = 'pull-request' | 'local-merge';
-export type DeliveryOutcome = 'delivered' | 'refused';
+export type { DeliveryAudit, DeliveryPath } from '../../preload/bridge.ts';
 
 export interface DeliveryWorkspace {
   id: string;
   ticketId: string;
   repository: string;
+  checkout: string;
   baseBranch: string;
   branch: string;
-}
-
-export interface DeliveryAudit {
-  workspaceId: string;
-  path: DeliveryPath;
-  outcome: DeliveryOutcome;
-  reference: string | null;
-  url?: string;
-  details?: string;
 }
 
 export interface PullRequests {
@@ -61,6 +53,18 @@ export function deliveriesFor({
 }): Deliveries {
   return {
     async deliver(workspace, input) {
+      if (!(await worktrees.isClean(workspace.checkout))) {
+        const audit: DeliveryAudit = {
+          workspaceId: workspace.id,
+          path: input.path,
+          outcome: 'refused',
+          reference: null,
+          details: 'The execution workspace has uncommitted changes. Commit them before delivery.',
+        };
+        await recorder.record(audit);
+        return audit;
+      }
+
       if (input.path === 'pull-request') {
         const made = await pullRequests.create({
           repository: workspace.repository,
@@ -120,11 +124,32 @@ export function ghPullRequests(): PullRequests {
   return {
     async create({ repository, baseBranch, branch, title, body }) {
       try {
-        const result = await run('gh', ['pr', 'create', '--repo', repository, '--base', baseBranch, '--head', branch, '--title', title, '--body', body], {
+        await run('git', ['push', '--set-upstream', 'origin', branch], {
           encoding: 'utf8',
+          cwd: repository,
         });
+        const result = await run(
+          'gh',
+          [
+            'pr',
+            'create',
+            '--base',
+            baseBranch,
+            '--head',
+            branch,
+            '--title',
+            title,
+            '--body',
+            body,
+          ],
+          {
+            encoding: 'utf8',
+            cwd: repository,
+          },
+        );
         const url = result.stdout.trim().split(/\s+/).at(-1);
-        if (url === undefined || url === '') return { refused: 'GitHub did not return a pull request URL.' };
+        if (url === undefined || url === '')
+          return { refused: 'GitHub did not return a pull request URL.' };
         return { reference: url, url };
       } catch (error) {
         return { refused: String(error) };

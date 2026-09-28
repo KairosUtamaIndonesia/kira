@@ -694,6 +694,10 @@ export const WORKER_CHANNELS = {
   standing: 'worker:standing',
 } as const;
 
+export const DELIVERY_CHANNELS = {
+  deliver: 'delivery:execution-workspace',
+} as const;
+
 /**
  * The channels pressing Run goes through.
  *
@@ -925,6 +929,18 @@ export interface ReviewFeedback {
 export interface ExecutionReview {
   comments: ReviewComment[];
   feedback: ReviewFeedback[];
+}
+
+export type DeliveryPath = 'pull-request' | 'local-merge';
+export type DeliveryOutcome = 'delivered' | 'refused';
+
+export interface DeliveryAudit {
+  workspaceId: string;
+  path: DeliveryPath;
+  outcome: DeliveryOutcome;
+  reference: string | null;
+  url?: string;
+  details?: string;
 }
 
 /**
@@ -1442,6 +1458,12 @@ export interface KiraBridge {
     workspaceId: string,
     feedback: { runId?: string | null; body: string },
   ): Promise<Result<ReviewFeedback>>;
+  /** Merge an approved workspace locally or create its pull request. */
+  deliverExecutionWorkspace(
+    ticketId: string,
+    workspaceId: string,
+    path: DeliveryPath,
+  ): Promise<Result<DeliveryAudit>>;
   /** Write a ticket down in the workspace's project, as a draft. */
   writeTicket(workspaceId: string, draft: TicketDraft): Promise<Result<Ticket>>;
   /**

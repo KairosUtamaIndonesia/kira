@@ -214,6 +214,7 @@ function worktrees(
       diffs.push({ into, baseBranch });
       return 'diff --git a/file.ts b/file.ts';
     },
+    isClean: async () => true,
   };
 
   return { held, made, bases, reuses, diffs, dropped };

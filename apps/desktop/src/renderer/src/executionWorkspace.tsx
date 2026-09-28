@@ -11,6 +11,9 @@ import { useState } from 'react';
 import type {
   ExecutionWorkspace,
   ExecutionReview,
+  DeliveryAudit,
+  DeliveryPath,
+  Result,
   Ticket,
   TicketSaid,
 } from '../../preload/bridge.ts';
@@ -27,12 +30,14 @@ export function ExecutionWorkspacePanel({
   workspaces,
   repository,
   onStart,
+  onDeliver,
   onChanged,
 }: {
   ticket: Ticket;
   workspaces: ExecutionWorkspace[];
   repository: string;
   onStart: (executionWorkspaceId: string, followUp?: string) => Promise<boolean>;
+  onDeliver: (workspaceId: string, path: DeliveryPath) => Promise<Result<DeliveryAudit>>;
   onChanged: () => Promise<void>;
 }) {
   const [selectedId, setSelectedId] = useState(workspaces[0]?.id ?? null);
@@ -138,6 +143,11 @@ export function ExecutionWorkspacePanel({
         view={view}
         workspaceId={selected.id}
         onStart={(followUp) => startWorkspace(selected.id, followUp)}
+        onDeliver={async (path) => {
+          const answer = await onDeliver(selected.id, path);
+          if (answer.ok && answer.value.outcome === 'delivered') await onChanged();
+          return answer;
+        }}
       />
     </section>
   );
@@ -221,11 +231,13 @@ function WorkspaceDetails({
   view,
   workspaceId,
   onStart,
+  onDeliver,
 }: {
   ticket: Ticket;
   view: ExecutionWorkspaceView;
   workspaceId: string;
   onStart: (followUp?: string) => Promise<boolean>;
+  onDeliver: (path: DeliveryPath) => Promise<Result<DeliveryAudit>>;
 }) {
   const [said, setSaid] = useState<TicketSaid[] | null>(null);
   const [trouble, setTrouble] = useState<string | null>(null);
@@ -235,6 +247,8 @@ function WorkspaceDetails({
   const [feedback, setFeedback] = useState('');
   const [diff, setDiff] = useState<string | null>(null);
   const [sendingFeedback, setSendingFeedback] = useState(false);
+  const [delivering, setDelivering] = useState(false);
+  const [deliveryMessage, setDeliveryMessage] = useState<string | null>(null);
 
   const readOutput = async (): Promise<void> => {
     if (view.run === null) return;
@@ -300,6 +314,27 @@ function WorkspaceDetails({
       await readReview();
     } finally {
       setSendingFeedback(false);
+    }
+  };
+
+  const deliver = async (path: DeliveryPath): Promise<void> => {
+    setDelivering(true);
+    setDeliveryMessage(null);
+    try {
+      const answer = await onDeliver(path);
+      if (!answer.ok) {
+        setTrouble(answer.error);
+      } else if (answer.value.outcome === 'refused') {
+        setDeliveryMessage(answer.value.details ?? 'Delivery was refused.');
+      } else {
+        setDeliveryMessage(
+          path === 'local-merge'
+            ? `Merged into ${answer.value.reference}.`
+            : `Pull request created: ${answer.value.url ?? answer.value.reference}.`,
+        );
+      }
+    } finally {
+      setDelivering(false);
     }
   };
 
@@ -541,6 +576,35 @@ function WorkspaceDetails({
           {executionPreviewLabel(view.preview)}
         </Text>
       </div>
+
+      {view.run?.verdict === 'accepted' && ticket.band !== 'done' && (
+        <div {...stylex.props(styles.block)}>
+          <Text type="label" weight="medium">
+            Deliver approved work
+          </Text>
+          <div {...stylex.props(styles.choices)}>
+            <Button
+              label="Merge locally"
+              size="sm"
+              variant="secondary"
+              isDisabled={delivering}
+              onClick={() => void deliver('local-merge')}
+            />
+            <Button
+              label="Create pull request"
+              size="sm"
+              variant="primary"
+              isDisabled={delivering}
+              onClick={() => void deliver('pull-request')}
+            />
+          </div>
+          {deliveryMessage !== null && (
+            <Text type="supporting" color="secondary">
+              {deliveryMessage}
+            </Text>
+          )}
+        </div>
+      )}
     </>
   );
 }

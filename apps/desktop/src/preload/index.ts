@@ -9,6 +9,7 @@ import {
   MODELS_CHANNELS,
   RUN_CHANNELS,
   TRACKER_CHANNELS,
+  DELIVERY_CHANNELS,
   UPDATE_CHANNELS,
   SHELL_CHANNELS,
   WORKER_CHANNELS,
@@ -41,6 +42,7 @@ import {
   type ExecutionReview,
   type ReviewComment,
   type ReviewFeedback,
+  type DeliveryAudit,
   type ShellSettingsSnapshot,
   type ShellTestResult,
   type Result,
@@ -163,6 +165,9 @@ const bridge: KiraBridge = {
 
   sendReviewFeedback: (ticketId, workspaceId, feedback) =>
     ask<ReviewFeedback>(TRACKER_CHANNELS.sendReviewFeedback, ticketId, workspaceId, feedback),
+
+  deliverExecutionWorkspace: (ticketId, workspaceId, path) =>
+    ask<DeliveryAudit>(DELIVERY_CHANNELS.deliver, ticketId, workspaceId, path),
 
   worker: () => ask<WorkerStanding>(WORKER_CHANNELS.standing),
 
