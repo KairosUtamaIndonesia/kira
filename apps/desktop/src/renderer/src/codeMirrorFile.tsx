@@ -99,7 +99,7 @@ async function createEditor(
   const filename = path.split('/').pop() ?? path;
   const extension = filename.split('.').pop()?.toLowerCase();
   const language = languageFor(extension);
-  const shikiLanguage = languageOf(path) ?? extension;
+  const shikiLanguage = languageOf(path);
   const currentTheme = document.documentElement.getAttribute('data-theme');
   const theme = currentTheme === 'light' ? SHIKI_THEME_LIGHT : SHIKI_THEME_DARK;
   const extensions: Extension[] = [
@@ -112,7 +112,7 @@ async function createEditor(
     closeBrackets(),
     search(),
     lineWrapping.of(wrapLines ? EditorView.lineWrapping : []),
-    syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+    ...(!shikiLanguage ? [syntaxHighlighting(defaultHighlightStyle, { fallback: true })] : []),
     EditorState.readOnly.of(readOnly),
     EditorView.editable.of(!readOnly),
     EditorView.theme({
@@ -276,7 +276,7 @@ function shikiDecorationExtension(language: string, theme: string) {
             }
             view.dispatch({ effects: replaceShikiDecorations.of(builder.finish()) });
           } catch {
-            // The CodeMirror language extension remains as the local highlighter fallback.
+            // Keep the editor usable if Shiki cannot provide syntax colors.
           }
         }
 
