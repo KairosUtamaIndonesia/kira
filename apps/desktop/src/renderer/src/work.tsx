@@ -302,25 +302,43 @@ const styles = stylex.create({
   board: {
     display: 'flex',
     flexDirection: 'row',
+    flex: 1,
+    minWidth: 0,
+    minHeight: 0,
+    overflow: 'hidden',
+  },
+  boardColumns: {
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'stretch',
     gap: spacingVars['--spacing-3'],
     flex: 1,
+    minWidth: 0,
     minHeight: 0,
     padding: spacingVars['--spacing-3'],
     overflowX: 'auto',
+    overflowY: 'hidden',
   },
   column: {
     display: 'flex',
     flexDirection: 'column',
-    // Columns share the width there is and keep a readable floor when there is not,
-    // rather than a fixed width that leaves the last one half off the edge.
-    flexGrow: 1,
     flexShrink: 0,
-    flexBasis: 200,
-    minWidth: 200,
+    flexBasis: 236,
+    minWidth: 236,
     minHeight: 0,
+    padding: spacingVars['--spacing-2'],
+    borderWidth: borderVars['--border-width'],
+    borderStyle: 'solid',
+    borderColor: colorVars['--color-background-muted'],
+    borderRadius: 8,
+    backgroundColor: colorVars['--color-background-muted'],
   },
   columnHead: {
-    paddingInline: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingInline: spacingVars['--spacing-1'],
+    paddingBlock: spacingVars['--spacing-1'],
     backgroundColor: 'transparent',
   },
   cards: {
@@ -379,6 +397,17 @@ const styles = stylex.create({
     display: 'flex',
     flexDirection: 'column',
     width: 'min(460px, 100%)',
+    backgroundColor: colorVars['--color-background-surface'],
+    borderInlineStartWidth: borderVars['--border-width'],
+    borderInlineStartStyle: 'solid',
+    borderInlineStartColor: colorVars['--color-background-muted'],
+  },
+  boardDrawer: {
+    display: 'flex',
+    flexDirection: 'column',
+    flex: '0 0 min(420px, 42vw)',
+    minWidth: 320,
+    minHeight: 0,
     backgroundColor: colorVars['--color-background-surface'],
     borderInlineStartWidth: borderVars['--border-width'],
     borderInlineStartStyle: 'solid',
@@ -792,7 +821,7 @@ export function WorkSurface({
   const visibleBands = display.showDone ? BANDS : BANDS.filter((each) => each.id !== 'done');
   const readyCanReorder = canReorderReady(display);
   const open = tickets.find((each) => each.id === openId) ?? null;
-  const placement = 'over';
+  const placement = view === 'board' ? 'beside' : 'over';
   const closePanel = (): void => {
     setIsWriting(false);
     setOpenId(null);
@@ -1089,7 +1118,6 @@ export function WorkSurface({
           canReorder={readyCanReorder}
           onReorder={(activeId, overId) => void reorder(activeId, overId)}
           panel={panel}
-          onLeave={closePanel}
         />
       ) : (
         <QueueView
@@ -1392,13 +1420,11 @@ function BoardView({
   canReorder,
   onReorder,
   panel,
-  onLeave,
 }: ViewProps & {
   bands: typeof BANDS;
   onPromote: (id: string) => void;
   canReorder: boolean;
   onReorder: (activeId: string, overId: string) => void;
-  onLeave: () => void;
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -1415,40 +1441,42 @@ function BoardView({
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
       <div {...stylex.props(styles.board)}>
-        {bands.map((band) => {
-          const held = inBand(tickets, band.id);
-          return (
-            <div key={band.id} {...stylex.props(styles.column)}>
-              <div {...stylex.props(styles.bandHead, styles.columnHead)}>
-                <BandHead band={band} count={held.length} />
+        <div {...stylex.props(styles.boardColumns)}>
+          {bands.map((band) => {
+            const held = inBand(tickets, band.id);
+            return (
+              <div key={band.id} {...stylex.props(styles.column)}>
+                <div {...stylex.props(styles.bandHead, styles.columnHead)}>
+                  <BandHead band={band} count={held.length} showNote={false} />
+                </div>
+                <div {...stylex.props(styles.cards)}>
+                  <SortableContext
+                    items={held.map((ticket) => ticket.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    {held.map((ticket) => (
+                      <SortableTicketCard
+                        key={ticket.id}
+                        ticket={ticket}
+                        selected={ticket.id === selected}
+                        canReorder={canReorder && band.id === 'ready'}
+                        onOpen={onOpen}
+                        onPromote={onPromote}
+                      />
+                    ))}
+                  </SortableContext>
+                  {held.length === 0 && (
+                    <Text type="supporting" color="secondary">
+                      No issues in this state.
+                    </Text>
+                  )}
+                </div>
               </div>
-              <div {...stylex.props(styles.cards)}>
-                <SortableContext
-                  items={held.map((ticket) => ticket.id)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  {held.map((ticket) => (
-                    <SortableTicketCard
-                      key={ticket.id}
-                      ticket={ticket}
-                      selected={ticket.id === selected}
-                      canReorder={canReorder && band.id === 'ready'}
-                      onOpen={onOpen}
-                      onPromote={onPromote}
-                    />
-                  ))}
-                </SortableContext>
-                {held.length === 0 && (
-                  <Text type="supporting" color="secondary">
-                    No issues in this state.
-                  </Text>
-                )}
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
 
-        {panel !== null && <IssueDrawer panel={panel} onLeave={onLeave} />}
+        </div>
+        {panel !== null && <div {...stylex.props(styles.boardDrawer)}>{panel}</div>}
       </div>
     </DndContext>
   );
@@ -1568,15 +1596,25 @@ function StateGlyph({ ticket }: { ticket: Ticket }) {
   );
 }
 
-function BandHead({ band, count }: { band: { label: string; note: string }; count: number }) {
+function BandHead({
+  band,
+  count,
+  showNote = true,
+}: {
+  band: { label: string; note: string };
+  count: number;
+  showNote?: boolean;
+}) {
   return (
     <>
       <Text type="label" weight="medium">
         {band.label} <span {...stylex.props(styles.count)}>{count}</span>
       </Text>
-      <Text type="supporting" color="secondary">
-        {band.note}
-      </Text>
+      {showNote && (
+        <Text type="supporting" color="secondary">
+          {band.note}
+        </Text>
+      )}
     </>
   );
 }
@@ -1653,17 +1691,15 @@ function TicketPanel({
   return (
     <div {...stylex.props(styles.panel)}>
       <div {...stylex.props(styles.panelHead)}>
-        {placement !== 'beside' && (
-          <div>
-            <Button
-              label={placement === 'over' ? 'Close' : 'Back to the queue'}
-              icon={<Icon icon={placement === 'over' ? X : ArrowLeft} size="sm" />}
-              variant="ghost"
-              size="sm"
-              onClick={onLeave}
-            />
-          </div>
-        )}
+        <div>
+          <Button
+            label={placement === 'inline' ? 'Back to the queue' : 'Close issue'}
+            icon={<Icon icon={placement === 'inline' ? ArrowLeft : X} size="sm" />}
+            variant="ghost"
+            size="sm"
+            onClick={onLeave}
+          />
+        </div>
         {head}
       </div>
       {refusal !== null && (
