@@ -32,7 +32,7 @@ export function ExecutionWorkspacePanel({
   ticket: Ticket;
   workspaces: ExecutionWorkspace[];
   repository: string;
-  onStart: (executionWorkspaceId: string) => Promise<boolean>;
+  onStart: (executionWorkspaceId: string, followUp?: string) => Promise<boolean>;
   onChanged: () => Promise<void>;
 }) {
   const [selectedId, setSelectedId] = useState(workspaces[0]?.id ?? null);
@@ -40,10 +40,10 @@ export function ExecutionWorkspacePanel({
   const [creating, setCreating] = useState(false);
   const [starting, setStarting] = useState(false);
 
-  const startWorkspace = async (id: string): Promise<void> => {
+  const startWorkspace = async (id: string, followUp?: string): Promise<boolean> => {
     setStarting(true);
     try {
-      await onStart(id);
+      return await onStart(id, followUp);
     } finally {
       setStarting(false);
     }
@@ -132,7 +132,13 @@ export function ExecutionWorkspacePanel({
         </Text>
       )}
 
-      <WorkspaceDetails key={selected.id} ticket={ticket} view={view} workspaceId={selected.id} />
+      <WorkspaceDetails
+        key={selected.id}
+        ticket={ticket}
+        view={view}
+        workspaceId={selected.id}
+        onStart={(followUp) => startWorkspace(selected.id, followUp)}
+      />
     </section>
   );
 }
@@ -214,10 +220,12 @@ function WorkspaceDetails({
   ticket,
   view,
   workspaceId,
+  onStart,
 }: {
   ticket: Ticket;
   view: ExecutionWorkspaceView;
   workspaceId: string;
+  onStart: (followUp?: string) => Promise<boolean>;
 }) {
   const [said, setSaid] = useState<TicketSaid[] | null>(null);
   const [trouble, setTrouble] = useState<string | null>(null);
@@ -226,6 +234,7 @@ function WorkspaceDetails({
   const [comment, setComment] = useState('');
   const [feedback, setFeedback] = useState('');
   const [diff, setDiff] = useState<string | null>(null);
+  const [sendingFeedback, setSendingFeedback] = useState(false);
 
   const readOutput = async (): Promise<void> => {
     if (view.run === null) return;
@@ -276,13 +285,22 @@ function WorkspaceDetails({
   };
 
   const sendFeedback = async (): Promise<void> => {
-    const answer = await window.kira.sendReviewFeedback(ticket.id, workspaceId, { body: feedback });
-    if (!answer.ok) {
-      setTrouble(answer.error);
-      return;
+    const followUp = feedback.trim();
+    if (followUp === '') return;
+    setSendingFeedback(true);
+    try {
+      const answer = await window.kira.sendReviewFeedback(ticket.id, workspaceId, {
+        body: followUp,
+      });
+      if (!answer.ok) {
+        setTrouble(answer.error);
+        return;
+      }
+      if (await onStart(followUp)) setFeedback('');
+      await readReview();
+    } finally {
+      setSendingFeedback(false);
     }
-    setFeedback('');
-    await readReview();
   };
 
   const changedFiles = diff === null ? [] : executionDiffFiles(diff);
@@ -444,10 +462,15 @@ function WorkspaceDetails({
         )}
         <TextArea label="Feedback for the agent" value={feedback} onChange={setFeedback} rows={3} />
         <Button
-          label="Send feedback"
+          label={view.status === 'running' ? 'Agent is running' : 'Send feedback & run agent'}
           size="sm"
           variant="primary"
-          isDisabled={feedback.trim() === ''}
+          isDisabled={
+            feedback.trim() === '' ||
+            sendingFeedback ||
+            ticket.band !== 'ready' ||
+            view.status === 'running'
+          }
           onClick={() => void sendFeedback()}
         />
       </div>

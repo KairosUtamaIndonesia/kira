@@ -166,8 +166,8 @@ const bridge: KiraBridge = {
 
   worker: () => ask<WorkerStanding>(WORKER_CHANNELS.standing),
 
-  startRun: (workspaceId, ticketId, executionWorkspaceId) =>
-    ask<TicketRun>(RUN_CHANNELS.start, workspaceId, ticketId, executionWorkspaceId),
+  startRun: (workspaceId, ticketId, executionWorkspaceId, followUp) =>
+    ask<TicketRun>(RUN_CHANNELS.start, workspaceId, ticketId, executionWorkspaceId, followUp),
 
   resolveRun: (workspaceId, ticketId, reason) =>
     ask<TicketRun>(RUN_CHANNELS.resolve, workspaceId, ticketId, reason),

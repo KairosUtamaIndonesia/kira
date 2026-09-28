@@ -1474,6 +1474,7 @@ export interface KiraBridge {
     workspaceId: string,
     ticketId: string,
     executionWorkspaceId?: string,
+    followUp?: string,
   ): Promise<Result<TicketRun>>;
   /** Start a same-ticket run to resolve a spec-branch merge conflict. */
   resolveRun(workspaceId: string, ticketId: string, reason: string): Promise<Result<TicketRun>>;

@@ -831,8 +831,8 @@ export function WorkSurface({
       onWrite={(change) => wrote(() => window.kira.changeTicket(open.id, change))}
       onGate={(gatedBy) => wrote(() => window.kira.gateTicket(open.id, gatedBy))}
       onUngate={(gatedBy) => wrote(() => window.kira.ungateTicket(open.id, gatedBy))}
-      onRun={(executionWorkspaceId) =>
-        acted(() => window.kira.startRun(workspace.id, open.id, executionWorkspaceId))
+      onRun={(executionWorkspaceId, followUp) =>
+        acted(() => window.kira.startRun(workspace.id, open.id, executionWorkspaceId, followUp))
       }
       onQuestion={() => acted(() => window.kira.openQuestion(workspace.id, open.id))}
       onTakeOver={() => acted(() => window.kira.takeOverClaim(open.id))}
@@ -1708,7 +1708,7 @@ function TicketReading({
   onWrite: (change: TicketChange) => Promise<Ticket | null>;
   onGate: (gatedBy: string) => Promise<Ticket | null>;
   onUngate: (gatedBy: string) => Promise<Ticket | null>;
-  onRun: (executionWorkspaceId: string) => Promise<boolean>;
+  onRun: (executionWorkspaceId: string, followUp?: string) => Promise<boolean>;
   onQuestion: () => Promise<boolean>;
   onTakeOver: () => Promise<boolean>;
   onLetGo: () => Promise<boolean>;

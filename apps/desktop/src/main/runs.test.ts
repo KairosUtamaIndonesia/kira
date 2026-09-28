@@ -322,7 +322,10 @@ function keeper(
     thereFor: (ticketId) => `/runs/${ticketId}`,
     affordable: () => over.affordable ?? true,
     worktrees: trees.held,
-    chatFor: async () => chatting.chat,
+    chatFor: async (_ticket, _folder, _id, _workspaceId, _resolutionReason, followUp) => {
+      if (followUp !== undefined) calls.push(`follow-up ${followUp}`);
+      return chatting.chat;
+    },
     wire: wired,
   });
 
@@ -390,6 +393,27 @@ test('Run starts in the selected execution workspace repository, base, and branc
   await chatting.ends();
 
   assert.deepEqual(trees.dropped, []);
+});
+
+test('a follow-up run starts the persistent workspace with the review guidance', async () => {
+  const repository = folderMade();
+  const { runs, calls } = keeper({
+    folder: folderMade(),
+    executionWorkspace: {
+      id: 'execution-1',
+      ticketId: ticket.id,
+      repository,
+      baseBranch: 'main',
+      branch: 'feature/fnd-1',
+      agentConfig: 'default',
+      createdAt: '2026-09-28T00:00:00.000Z',
+    },
+  });
+
+  await runs.start('workspace-1', 'ticket-1', 'execution-1', 'Fix the empty state.');
+
+  assert.ok(calls.includes('follow-up Fix the empty state.'));
+  assert.ok(calls.includes('begin on feature/fnd-1'));
 });
 
 test('an execution workspace diff reads its persistent checkout and rejects another issue workspace', async () => {

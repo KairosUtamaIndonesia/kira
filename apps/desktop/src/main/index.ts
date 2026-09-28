@@ -267,8 +267,8 @@ function registerWorkerChannel(): void {
  */
 function registerRunChannel(): void {
   const handlers = runHandlers({
-    start: (workspaceId, ticketId, executionWorkspaceId) =>
-      runs.start(workspaceId, ticketId, executionWorkspaceId),
+    start: (workspaceId, ticketId, executionWorkspaceId, followUp) =>
+      runs.start(workspaceId, ticketId, executionWorkspaceId, followUp),
     resolve: (workspaceId, ticketId, reason) => runs.resolve(workspaceId, ticketId, reason),
     transcript: (ticketId, runId) => runs.saidIn(ticketId, runId),
     takeOver: (ticketId) => runs.takeOverClaim(ticketId),
@@ -280,8 +280,13 @@ function registerRunChannel(): void {
 
   ipcMain.handle(
     RUN_CHANNELS.start,
-    (_event, workspaceId: unknown, ticketId: unknown, executionWorkspaceId: unknown) =>
-      handlers.start(workspaceId, ticketId, executionWorkspaceId),
+    (
+      _event,
+      workspaceId: unknown,
+      ticketId: unknown,
+      executionWorkspaceId: unknown,
+      followUp: unknown,
+    ) => handlers.start(workspaceId, ticketId, executionWorkspaceId, followUp),
   );
   ipcMain.handle(
     RUN_CHANNELS.resolve,
@@ -968,12 +973,13 @@ if (claimTheScheme()) {
           return now === null || now.used < now.allowance;
         },
         worktrees: runWorktrees(),
-        chatFor: (ticket, folder, id, workspaceId) =>
+        chatFor: (ticket, folder, id, workspaceId, resolutionReason, followUp) =>
           startRunChat({
             store,
             models,
             memory: () => memory.current(),
             ticket,
+            followUp,
             workspaceId,
             folder,
             id,

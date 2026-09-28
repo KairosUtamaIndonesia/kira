@@ -84,6 +84,7 @@ export async function startRunChat({
   mcp,
   questionnaires,
   prepareWorkspace,
+  followUp,
 }: {
   store: ThreadStore;
   models: Models;
@@ -91,6 +92,7 @@ export async function startRunChat({
   mcp?: McpManager;
   questionnaires?: Questionnaires;
   prepareWorkspace?: WorkspacePreparer;
+  followUp?: string;
   ticket: Ticket;
   workspaceId: string | null;
   folder: string;
@@ -146,7 +148,7 @@ export async function startRunChat({
 
     async begin(branch, resolutionReason) {
       try {
-        await conversation.send(promptFor(ticket, branch, context, resolutionReason));
+        await conversation.send(promptFor(ticket, branch, context, resolutionReason, followUp));
       } finally {
         // Whatever it managed to say before it stopped — including the last words of a
         // turn that fell over, which are usually the ones that say why.
@@ -194,6 +196,7 @@ export function promptFor(
   branch: string,
   contextOrReason: RunContext | string = EMPTY_CONTEXT,
   resolutionReason?: string,
+  followUp?: string,
 ): string {
   if (ticket.kind === 'map') throw new Error(MAP_RUN_REFUSAL);
 
@@ -252,6 +255,7 @@ export function promptFor(
           'This is a conflict-resolution run. Bring this ticket branch up to date with the enclosing spec branch, resolve the conflict, and leave the branch ready to be merged again.',
           `The conflict reason was: ${reason}`,
         ]),
+    ...(followUp === undefined ? [] : ['', 'Follow-up instructions from review:', followUp]),
     '',
     'What to build:',
     body === '' ? '(nothing was written down beyond the title)' : body,

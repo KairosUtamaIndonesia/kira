@@ -51,7 +51,12 @@ export interface Runs {
    * going on the ticket. Answers the run, or throws the sentence saying why it could not
    * begin. The turn itself goes on after this has answered.
    */
-  start(workspaceId: string, ticketId: string, executionWorkspaceId?: string): Promise<TicketRun>;
+  start(
+    workspaceId: string,
+    ticketId: string,
+    executionWorkspaceId?: string,
+    followUp?: string,
+  ): Promise<TicketRun>;
   /** A run has done what it was asked: record what it made and end it as a proposal. */
   finish(ticketId: string, evidence: RunEvidence): Promise<TicketRun>;
   /** A run cannot go on, or cannot begin: end it saying why, and let its checkout go. */
@@ -140,6 +145,7 @@ export function runsFor({
     id: string,
     workspaceId: string,
     resolutionReason?: string,
+    followUp?: string,
   ) => Promise<RunChat>;
   wire: TrackerWire;
 }): Runs {
@@ -193,6 +199,7 @@ export function runsFor({
     ticketId: string,
     executionWorkspaceId?: string,
     resolutionReason?: string,
+    followUp?: string,
   ): Promise<TicketRun> {
     const held = await key();
 
@@ -302,7 +309,7 @@ export function runsFor({
       // id serves for both, and the row in the sidebar, the transcript on the ticket
       // and the run record are three views of one thing rather than three to keep in
       // step.
-      const chat = await chatFor(ticket, into, run.id, workspaceId, resolutionReason);
+      const chat = await chatFor(ticket, into, run.id, workspaceId, resolutionReason, followUp);
       working.chat = chat;
 
       chat.onLine((line) => {
@@ -379,7 +386,8 @@ export function runsFor({
   }
 
   return {
-    start: startRun,
+    start: (workspaceId, ticketId, executionWorkspaceId, followUp) =>
+      startRun(workspaceId, ticketId, executionWorkspaceId, undefined, followUp),
     finish: finishRun,
     stop: stopRun,
     where: (ticketId) => workingRuns.get(ticketId)?.into ?? null,

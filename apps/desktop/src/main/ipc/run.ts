@@ -21,7 +21,12 @@ export { RUN_CHANNELS };
 /** What the handler needs from the main process. */
 export interface RunDeps {
   /** Press Run on a ticket in a workspace. */
-  start(workspaceId: string, ticketId: string, executionWorkspaceId?: string): Promise<TicketRun>;
+  start(
+    workspaceId: string,
+    ticketId: string,
+    executionWorkspaceId?: string,
+    followUp?: string,
+  ): Promise<TicketRun>;
   /** Start a same-ticket run to resolve an integration conflict. */
   resolve(workspaceId: string, ticketId: string, reason: string): Promise<TicketRun>;
   /** What was said while a run went on, oldest first. */
@@ -45,6 +50,7 @@ export interface RunHandlers {
     workspaceId: unknown,
     ticketId: unknown,
     executionWorkspaceId?: unknown,
+    followUp?: unknown,
   ): Promise<Result<TicketRun>>;
   resolve(workspaceId: unknown, ticketId: unknown, reason: unknown): Promise<Result<TicketRun>>;
   transcript(ticketId: unknown, runId: unknown): Promise<Result<TicketSaid[]>>;
@@ -69,7 +75,7 @@ export function runHandlers({
   diff,
 }: RunDeps): RunHandlers {
   return {
-    start: (workspaceId, ticketId, executionWorkspaceId) => {
+    start: (workspaceId, ticketId, executionWorkspaceId, followUp) => {
       if (!isId(workspaceId)) {
         return Promise.resolve({ ok: false, error: 'A run happens in a workspace.' });
       }
@@ -79,8 +85,11 @@ export function runHandlers({
       if (executionWorkspaceId !== undefined && !isId(executionWorkspaceId)) {
         return Promise.resolve({ ok: false, error: 'A run needs a valid execution workspace.' });
       }
+      if (followUp !== undefined && (typeof followUp !== 'string' || followUp.trim() === '')) {
+        return Promise.resolve({ ok: false, error: 'Follow-up instructions cannot be empty.' });
+      }
 
-      return envelope(() => start(workspaceId, ticketId, executionWorkspaceId));
+      return envelope(() => start(workspaceId, ticketId, executionWorkspaceId, followUp));
     },
 
     resolve: (workspaceId, ticketId, reason) => {

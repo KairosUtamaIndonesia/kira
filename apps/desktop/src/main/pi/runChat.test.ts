@@ -129,6 +129,13 @@ test('a conflict-resolution run tells Kira to update the ticket branch before me
   assert.match(told, /shared\.txt conflicts/);
 });
 
+test('review follow-up guidance is included without treating it as a merge conflict', () => {
+  const told = promptFor(ticket, 'feature/fnd-1', undefined, undefined, 'Fix the empty state.');
+
+  assert.match(told, /Follow-up instructions from review:\nFix the empty state\./);
+  assert.doesNotMatch(told, /conflict-resolution run/);
+});
+
 test('what proves a ticket done is asked by kind, not once for all of them', () => {
   const feature = promptFor(ticket, 'a-branch');
   const question = promptFor({ ...ticket, kind: 'question' }, 'a-branch');

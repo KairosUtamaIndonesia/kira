@@ -34,11 +34,13 @@ function handlers(over: Partial<RunDeps> = {}) {
   return {
     asked,
     handlers: runHandlers({
-      start: async (workspaceId, ticketId, executionWorkspaceId) => {
+      start: async (workspaceId, ticketId, executionWorkspaceId, followUp) => {
         asked.push(
-          executionWorkspaceId === undefined
-            ? `${workspaceId}/${ticketId}`
-            : `${workspaceId}/${ticketId}/${executionWorkspaceId}`,
+          followUp !== undefined
+            ? `${workspaceId}/${ticketId}/${executionWorkspaceId}: ${followUp}`
+            : executionWorkspaceId === undefined
+              ? `${workspaceId}/${ticketId}`
+              : `${workspaceId}/${ticketId}/${executionWorkspaceId}`,
         );
         return started;
       },
@@ -103,6 +105,23 @@ test('a run can name the issue execution workspace it should use', async () => {
     error: 'A run needs a valid execution workspace.',
   });
   assert.deepEqual(asked, ['workspace-1/ticket-1/execution-1']);
+});
+
+test('a follow-up run carries review instructions and rejects blank instructions', async () => {
+  const { asked, handlers: door } = handlers();
+
+  assert.deepEqual(
+    await door.start('workspace-1', 'ticket-1', 'execution-1', 'Fix the empty state.'),
+    {
+      ok: true,
+      value: started,
+    },
+  );
+  assert.deepEqual(await door.start('workspace-1', 'ticket-1', 'execution-1', '  '), {
+    ok: false,
+    error: 'Follow-up instructions cannot be empty.',
+  });
+  assert.deepEqual(asked, ['workspace-1/ticket-1/execution-1: Fix the empty state.']);
 });
 
 test('a conflict resolution names its workspace, ticket and reason', async () => {
