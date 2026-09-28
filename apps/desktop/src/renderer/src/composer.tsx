@@ -17,7 +17,13 @@ import { Text } from '@astryxdesign/core/Text';
 import { Popover } from '@astryxdesign/core/Popover';
 import { Tooltip } from '@astryxdesign/core/Tooltip';
 import { VStack } from '@astryxdesign/core/VStack';
-import { borderVars, colorVars, radiusVars, spacingVars } from '@astryxdesign/core/theme/tokens.stylex';
+import {
+  borderVars,
+  colorVars,
+  focusVars,
+  radiusVars,
+  spacingVars,
+} from '@astryxdesign/core/theme/tokens.stylex';
 import { useAui, useAuiState } from '@assistant-ui/react';
 import { ChevronDown, Gauge, Plus, Ticket as TicketIcon, X } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
@@ -70,6 +76,7 @@ export function Composer({
   workTicketIds = [],
   workTicketDetails = {},
   linkableWorkTickets = [],
+  onOpenWorkTicket,
   onLinkWorkTicket,
   onRemoveWorkTicket,
 }: {
@@ -98,6 +105,7 @@ export function Composer({
   workTicketIds?: string[];
   workTicketDetails?: Record<string, { name: string; title: string }>;
   linkableWorkTickets?: { id: string; name: string; title: string }[];
+  onOpenWorkTicket?: (ticketId: string) => void;
   onLinkWorkTicket?: (ticketId: string) => void;
   onRemoveWorkTicket?: (ticketId: string) => void;
 }): ReactNode {
@@ -119,13 +127,21 @@ export function Composer({
     const ticketName = ticket?.name ?? `Ticket ${ticketId.slice(0, 8)}`;
     return (
       <div {...stylex.props(styles.workTicketRow)} key={ticketId}>
-        <Icon icon={TicketIcon} size="sm" color="secondary" />
-        <span {...stylex.props(styles.workTicketName)}>{ticketName}</span>
-        {ticket?.title ? (
-          <span {...stylex.props(styles.workTicketTitle)} title={ticket.title}>
-            {ticket.title}
-          </span>
-        ) : null}
+        <button
+          type="button"
+          aria-label={`Open ticket ${ticketName}`}
+          title={`Open ticket ${ticketName}`}
+          {...stylex.props(styles.workTicketOpen)}
+          onClick={() => onOpenWorkTicket?.(ticketId)}
+        >
+          <Icon icon={TicketIcon} size="sm" color="secondary" />
+          <span {...stylex.props(styles.workTicketName)}>{ticketName}</span>
+          {ticket?.title ? (
+            <span {...stylex.props(styles.workTicketTitle)} title={ticket.title}>
+              {ticket.title}
+            </span>
+          ) : null}
+        </button>
         <IconButton
           label={`Remove ${ticketName} from chat context`}
           icon={<Icon icon={X} size="sm" />}
@@ -422,13 +438,33 @@ const styles = stylex.create({
   workTicketRow: {
     display: 'inline-flex',
     alignItems: 'center',
+    minWidth: 0,
+    maxWidth: '100%',
+    borderRadius: radiusVars['--radius-element'],
+    backgroundColor: colorVars['--color-background-muted'],
+  },
+  workTicketOpen: {
+    all: 'unset',
+    boxSizing: 'border-box',
+    display: 'inline-flex',
+    alignItems: 'center',
     gap: spacingVars['--spacing-2'],
     minWidth: 0,
     maxWidth: '100%',
     paddingInline: spacingVars['--spacing-2'],
     paddingBlock: spacingVars['--spacing-1'],
     borderRadius: radiusVars['--radius-element'],
-    backgroundColor: colorVars['--color-background-muted'],
+    color: colorVars['--color-text-primary'],
+    cursor: 'pointer',
+    ':hover': {
+      backgroundColor: colorVars['--color-background-surface'],
+    },
+    ':focus-visible': {
+      outlineWidth: focusVars['--focus-outline-width'],
+      outlineStyle: focusVars['--focus-outline-style'],
+      outlineColor: focusVars['--focus-outline-color'],
+      outlineOffset: focusVars['--focus-outline-offset'],
+    },
   },
   workTicketAttachments: {
     display: 'flex',

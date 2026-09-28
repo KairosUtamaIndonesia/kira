@@ -167,6 +167,7 @@ const PARKED_PANE: ComponentProps<typeof ChatPane> = {
   workTicketIds: [],
   workTicketDetails: {},
   linkableWorkTickets: [],
+  onOpenWorkTicket: NOTHING,
   onLinkWorkTicket: NOTHING,
   onRemoveWorkTicket: NOTHING,
   onAnswerQuestionnaire: async () => null,
@@ -771,6 +772,13 @@ export default function App() {
     showSurface('work');
   }
 
+  /** Open one linked ticket in its workspace's Work view. */
+  function openWorkTicket(ticketId: string): void {
+    setWorkWorkspaceId(currentChat?.workspaceId ?? null);
+    setWorkTicketId(ticketId);
+    showSurface('work');
+  }
+
   /** The Work action opens its project navigator, not a context-dependent queue. */
   function openWorkHome(): void {
     setWorkTicketId(null);
@@ -1104,6 +1112,7 @@ export default function App() {
     workTicketDetails,
     linkableWorkTickets:
       currentChat?.workspaceId === linkableTicketsWorkspaceId ? linkableWorkTickets : [],
+    onOpenWorkTicket: openWorkTicket,
     onLinkWorkTicket: (ticketId: string) => {
       const ticket = linkableWorkTickets.find((candidate) => candidate.id === ticketId);
       if (ticket !== undefined) {
@@ -1428,11 +1437,7 @@ export default function App() {
                 shaping={shaping}
                 ticketQueue={specQueueChatId === currentId ? specQueue : null}
                 onDecide={decideProposal}
-                onOpenWork={(ticket) => {
-                  setWorkWorkspaceId(currentChat?.workspaceId ?? null);
-                  setWorkTicketId(ticket.id);
-                  setSurface('work');
-                }}
+                onOpenWork={(ticket) => openWorkTicket(ticket.id)}
               />
             </div>
           </div>
@@ -1846,6 +1851,7 @@ function ChatPane({
   workTicketIds,
   workTicketDetails,
   linkableWorkTickets,
+  onOpenWorkTicket,
   onLinkWorkTicket,
   onRemoveWorkTicket,
   queued,
@@ -1889,6 +1895,7 @@ function ChatPane({
   workTicketIds: string[];
   workTicketDetails: Record<string, Pick<WorkTicket, 'name' | 'title'>>;
   linkableWorkTickets: WorkTicket[];
+  onOpenWorkTicket: (ticketId: string) => void;
   onLinkWorkTicket: (ticketId: string) => void;
   onRemoveWorkTicket: (ticketId: string) => void;
   // Whatever the runtime asks of a window that owns its own messages: the
@@ -1995,6 +2002,7 @@ function ChatPane({
             workTicketIds={workTicketIds}
             workTicketDetails={workTicketDetails}
             linkableWorkTickets={linkableWorkTickets}
+            onOpenWorkTicket={onOpenWorkTicket}
             onLinkWorkTicket={onLinkWorkTicket}
             onRemoveWorkTicket={onRemoveWorkTicket}
           />
