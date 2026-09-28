@@ -87,7 +87,7 @@ export function useWorkbench(): ResizableRegion {
     autoSaveId: WORKBENCH_STORAGE_KEY,
     defaultSize: 380,
     minSize: 300,
-    maxSize: 720,
+    maxSize: 960,
     collapsible: true,
     collapsedSize: COLLAPSED_SIZE,
   });
