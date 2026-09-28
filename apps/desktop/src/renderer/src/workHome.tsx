@@ -38,15 +38,51 @@ const styles = stylex.create({
     overflowY: 'auto',
   },
   content: {
-    maxWidth: 880,
-    padding: spacingVars['--spacing-5'],
+    width: '100%',
+    maxWidth: 1040,
+    marginInline: 'auto',
+    padding: spacingVars['--spacing-6'],
+  },
+  intro: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: spacingVars['--spacing-2'],
+    maxWidth: 680,
+    paddingBlockEnd: spacingVars['--spacing-6'],
+  },
+  projectHeading: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: spacingVars['--spacing-1'],
+    paddingBlockEnd: spacingVars['--spacing-2'],
+  },
+  projectRow: {
+    marginBlockEnd: spacingVars['--spacing-2'],
+    borderWidth: borderVars['--border-width'],
+    borderStyle: 'solid',
+    borderColor: colorVars['--color-border'],
+    borderRadius: 10,
+    backgroundColor: colorVars['--color-background-card'],
+  },
+  projectStart: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: spacingVars['--spacing-2'],
   },
   workspaceList: {
-    paddingInlineStart: spacingVars['--spacing-5'],
-    borderInlineStartWidth: borderVars['--border-width'],
-    borderInlineStartStyle: 'solid',
-    borderInlineStartColor: colorVars['--color-background-muted'],
-    marginInlineStart: spacingVars['--spacing-5'],
+    marginBlockStart: spacingVars['--spacing-3'],
+    padding: spacingVars['--spacing-4'],
+    borderWidth: borderVars['--border-width'],
+    borderStyle: 'solid',
+    borderColor: colorVars['--color-background-muted'],
+    borderRadius: 10,
+    backgroundColor: colorVars['--color-background-muted'],
+  },
+  workspaceHeading: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: spacingVars['--spacing-1'],
+    paddingBlockEnd: spacingVars['--spacing-2'],
   },
   message: {
     padding: spacingVars['--spacing-4'],
@@ -156,7 +192,7 @@ export function WorkHome({
           {projects !== null && projects.length === 0 && (
             <EmptyState
               title="No projects yet"
-              description="Projects shared with your account appear here. Link a workspace to open its ticket queue."
+              description="Projects shared with your account appear here. Choose one to open its ticket queue and the local folder where agent work runs."
               icon={<Icon icon={Ticket} size="lg" />}
               headingLevel={2}
             />
@@ -164,45 +200,87 @@ export function WorkHome({
 
           {projects !== null && projects.length > 0 && (
             <>
-              <Text type="label" weight="medium">
-                Projects
-              </Text>
-              <List density="compact" hasDividers>
+              <section {...stylex.props(styles.intro)}>
+                <Text type="large" weight="medium">
+                  Choose a project
+                </Text>
+                <Text type="supporting" color="secondary">
+                  Each project has one shared ticket queue. A linked workspace is the local folder
+                  where its agents run.
+                </Text>
+              </section>
+              <div {...stylex.props(styles.projectHeading)}>
+                <Text type="label" weight="medium">
+                  Available projects
+                </Text>
+                <Text type="supporting" color="secondary">
+                  {projects.length} {projects.length === 1 ? 'project' : 'projects'} shared with you
+                </Text>
+              </div>
+              <div>
                 {projects.map((project) => {
                   const linked = projectWorkspaces(project, workspaces);
                   const selected = selectedProjectId === project.id;
+                  const destination = destinationForProject(project, workspaces);
+                  const actionLabel =
+                    destination.kind === 'open'
+                      ? 'Open queue'
+                      : destination.kind === 'choose'
+                        ? selected
+                          ? 'Hide workspaces'
+                          : 'Choose workspace'
+                        : 'Link this folder';
+                  const description =
+                    linked.length === 0
+                      ? 'No local workspace linked'
+                      : linked.length === 1
+                        ? `Workspace · ${linked[0]!.name}`
+                        : `${linked.length} local workspaces`;
+
                   return (
-                    <Item
-                      key={project.id}
-                      label={project.name}
-                      description={`${project.prefix} · ${
-                        linked.length === 0
-                          ? 'No workspace linked'
-                          : `${linked.length} linked ${linked.length === 1 ? 'workspace' : 'workspaces'}`
-                      }`}
-                      startContent={<Icon icon={Ticket} size="sm" />}
-                      endContent={
-                        <Text type="supporting" color="secondary">
-                          {linked.length > 1
-                            ? selected
-                              ? 'Hide workspaces'
-                              : 'Choose workspace'
-                            : linked.length === 0
-                              ? 'Link workspace'
-                              : 'Open'}
-                        </Text>
-                      }
-                      isDisabled={isLinking}
-                      onClick={() => void openProject(project)}
-                    />
+                    <div key={project.id} {...stylex.props(styles.projectRow)}>
+                      <Item
+                        label={project.name}
+                        description={
+                          <span {...stylex.props(styles.projectStart)}>
+                            <Text type="supporting" color="secondary">
+                              {project.prefix}
+                            </Text>
+                            <Text type="supporting" color="secondary">
+                              {description}
+                            </Text>
+                          </span>
+                        }
+                        startContent={<Icon icon={Ticket} size="sm" />}
+                        endContent={
+                          <Button
+                            label={actionLabel}
+                            size="sm"
+                            variant={destination.kind === 'open' ? 'primary' : 'secondary'}
+                            isDisabled={isLinking}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void openProject(project);
+                            }}
+                          />
+                        }
+                        isDisabled={isLinking}
+                        onClick={() => void openProject(project)}
+                      />
+                    </div>
                   );
                 })}
-              </List>
+              </div>
               {selectedProject !== null && selectedWorkspaces.length > 1 && (
                 <section {...stylex.props(styles.workspaceList)}>
-                  <Text type="label" weight="medium">
-                    Choose a workspace for {selectedProject.name}
-                  </Text>
+                  <div {...stylex.props(styles.workspaceHeading)}>
+                    <Text type="label" weight="medium">
+                      Choose a workspace for {selectedProject.name}
+                    </Text>
+                    <Text type="supporting" color="secondary">
+                      The ticket queue is shared; this choice selects where local agent runs happen.
+                    </Text>
+                  </div>
                   <List density="compact">
                     {selectedWorkspaces.map((workspace) => (
                       <Item

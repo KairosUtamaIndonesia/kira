@@ -4,6 +4,8 @@
 
 ### Added
 
+- Work now opens with a clearer project-to-workspace chooser and a horizontal six-lane Kanban board. Dragging within Ready changes priority; dropping between lanes asks for a supported action—such as choosing a gate, editing a blocker, starting or answering a run, or closing a ticket—and then rereads the server-derived queue.
+
 - Work is organized around issues with Board and List views, search, and collapsible filters. Each issue can have an execution workspace with its own repository, base branch, and working branch; agents start in that persistent checkout, where tracked changes can be reviewed as a diff and work can continue between runs.
 
 - Kira's desktop now runs on Electron, with its own Bun-powered platform API and administration console.
@@ -59,11 +61,11 @@
   work nobody did says so rather than hiding it. Every ticket shows the branch it would be worked
   on, derived from its name and title, and copies it in one press.
 
-- The queue's bands are derived, never dragged: draft, ready, blocked and done are read off what is
-  written, what is closed and what is still open, so a board cannot show a state the machine does
-  not have. A ticket still in draft is answered and kept but stays off the frontier, so an idea can
-  be written down now and asked for later. Nothing takes a ticket yet: it is marked ready for an
-  agent or for a person, and the run that would take it is its own piece of work.
+- The queue's bands are derived, never set directly: draft, ready, blocked and done are read off
+  what is written, what is closed and what is still open, so a board cannot show a state the machine
+  does not have. A ticket still in draft is answered and kept but stays off the frontier, so an idea
+  can be written down now and asked for later. A cross-lane drop requests a supported ticket action;
+  the queue then shows the state the server derives from it.
 
 - The Work surface reads and writes a project's queue: the whole queue as a list, the bands side by
   side, or a worklist beside the ticket it has open. A ticket is opened by saying its name, written,

@@ -1,4 +1,4 @@
-import type { Band, Ticket, TicketKind } from '../../preload/bridge.ts';
+import type { Band, Gate, Ticket, TicketKind } from '../../preload/bridge.ts';
 
 export type WorkOrder = 'rank' | 'updated' | 'created';
 export type WorkGroup = 'status' | 'kind';
@@ -79,6 +79,138 @@ const BAND_LABELS: Record<Band, string> = {
   'needs-you': 'Needs review',
   done: 'Done',
 };
+
+export type TicketDropPlan =
+  | { kind: 'choose-ready-gate' }
+  | { kind: 'change-gate'; gate: Gate }
+  | { kind: 'prepare-agent-run' }
+  | { kind: 'start-run' }
+  | { kind: 'add-blocker' }
+  | { kind: 'resolve-blockers' }
+  | { kind: 'send-back' }
+  | { kind: 'accept-result' }
+  | { kind: 'choose-closure' }
+  | { kind: 'unavailable'; reason: string };
+
+/**
+ * A lane drop is an intent for a supported ticket action, never a band write.
+ * The server's next queue read remains the only authority on where the ticket lands.
+ */
+export function planTicketDrop(ticket: Ticket, target: Band): TicketDropPlan | null {
+  if (ticket.band === target) return null;
+  if (ticket.closedAt !== null || ticket.band === 'done') {
+    return { kind: 'unavailable', reason: 'Closed tickets cannot be reopened from the board.' };
+  }
+  if (ticket.claim !== null || ticket.band === 'running') {
+    return { kind: 'unavailable', reason: 'A ticket with an active run cannot be moved by hand.' };
+  }
+
+  if (ticket.band === 'needs-you') {
+    const proposal = ticket.runs[0];
+    if (
+      proposal?.endedAt === null ||
+      proposal?.endedAt === undefined ||
+      proposal.verdict !== null
+    ) {
+      return {
+        kind: 'unavailable',
+        reason: 'This ticket is waiting on a person, but has no run proposal to answer here.',
+      };
+    }
+    if (target === 'ready') return { kind: 'send-back' };
+    if (target === 'done') return { kind: 'accept-result' };
+    return {
+      kind: 'unavailable',
+      reason: 'Answer the run proposal before moving this ticket to another lane.',
+    };
+  }
+
+  if (target === 'needs-you') {
+    return {
+      kind: 'unavailable',
+      reason: 'Needs review is created by a real question or run result, not a board action.',
+    };
+  }
+
+  if (target === 'draft') return { kind: 'change-gate', gate: 'draft' };
+
+  if (target === 'ready') {
+    if (ticket.band === 'draft') {
+      return ticket.kind === 'map'
+        ? { kind: 'unavailable', reason: 'A map moves to review when its children have outcomes.' }
+        : { kind: 'choose-ready-gate' };
+    }
+    if (ticket.band === 'blocked') {
+      if (ticket.kind === 'map') {
+        return {
+          kind: 'unavailable',
+          reason: 'A map moves to review after its children have approved outcomes.',
+        };
+      }
+      if (!ticket.children.some((child) => !child.closed)) {
+        return {
+          kind: 'unavailable',
+          reason: 'This ticket is blocked by a rule that cannot be changed from the board.',
+        };
+      }
+      return { kind: 'resolve-blockers' };
+    }
+  }
+
+  if (target === 'running') {
+    if (ticket.kind === 'map') {
+      return { kind: 'unavailable', reason: 'Maps coordinate work; they do not run as tickets.' };
+    }
+    if (ticket.band === 'draft' || ticket.gate === 'ready-for-human') {
+      return ticket.criteria.some((criterion) => criterion.trim() !== '')
+        ? { kind: 'prepare-agent-run' }
+        : {
+            kind: 'unavailable',
+            reason: 'Add acceptance criteria before making this ticket ready for an agent.',
+          };
+    }
+    if (ticket.band === 'ready' && ticket.gate === 'ready-for-agent') {
+      return ticket.criteria.some((criterion) => criterion.trim() !== '')
+        ? { kind: 'start-run' }
+        : {
+            kind: 'unavailable',
+            reason: 'Add acceptance criteria before starting an agent run.',
+          };
+    }
+    return {
+      kind: 'unavailable',
+      reason: 'This ticket must be ready for an agent before a run can start.',
+    };
+  }
+
+  if (target === 'blocked') {
+    if (ticket.band !== 'ready') {
+      return {
+        kind: 'unavailable',
+        reason: 'Only ready tickets can add a blocker from the board.',
+      };
+    }
+    return { kind: 'add-blocker' };
+  }
+
+  if (target === 'done') {
+    if (ticket.kind === 'map') {
+      return {
+        kind: 'unavailable',
+        reason: 'A map closes only when its destination spec is approved.',
+      };
+    }
+    if ((ticket.kind === 'question' || ticket.kind === 'research') && ticket.outcome == null) {
+      return {
+        kind: 'unavailable',
+        reason: 'Approve this ticket’s outcome before closing it.',
+      };
+    }
+    return { kind: 'choose-closure' };
+  }
+
+  return { kind: 'unavailable', reason: 'That lane has no supported action for this ticket.' };
+}
 
 export function displayWork(tickets: Ticket[], display: WorkDisplay): Ticket[] {
   return tickets

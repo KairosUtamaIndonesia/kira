@@ -233,9 +233,12 @@ test('create and upload accept only workspace-relative paths and preserve the se
   const calls: string[] = [];
   const handlers = fileHandlers(
     deps(calls, {
-      create: async (root, path, kind) => calls.push(`create ${root}:${path}:${kind}`),
-      upload: async (root, path, content) =>
-        calls.push(`upload ${root}:${path}:${[...content].join(',')}`),
+      create: async (root, path, kind) => {
+        calls.push(`create ${root}:${path}:${kind}`);
+      },
+      upload: async (root, path, content) => {
+        calls.push(`upload ${root}:${path}:${[...content].join(',')}`);
+      },
     }),
   );
 
