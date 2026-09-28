@@ -11,10 +11,11 @@ const workspace = {
   branch: 'kira-1-delivery',
 };
 
-function worktrees(result: Awaited<ReturnType<Worktrees['mergeSpec']>>): Worktrees {
+function worktrees(result: Awaited<ReturnType<Worktrees['mergeLocal']>>): Worktrees {
   return {
     prepareSpec: async () => workspace.baseBranch,
     mergeSpec: async () => result,
+    mergeLocal: async () => result,
     make: async () => null,
     drop: async () => {},
     changed: async () => null,

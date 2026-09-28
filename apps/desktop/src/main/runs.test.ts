@@ -192,6 +192,7 @@ function worktrees(
         ? { kind: 'merged' }
         : { kind: merge, reason: `the ${merge} was refused` };
     },
+    mergeLocal: async () => ({ kind: 'refused', reason: 'not used by run tests' }),
     make: async (folder, branch, into, from, reuse = false) => {
       calls.push(`worktree ${branch}`);
       made.push({ folder, branch, into });

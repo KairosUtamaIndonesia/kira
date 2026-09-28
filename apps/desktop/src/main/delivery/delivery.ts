@@ -89,7 +89,11 @@ export function deliveriesFor({
         return audit;
       }
 
-      const merged = await worktrees.mergeSpec(workspace.repository, workspace.baseBranch, workspace.branch);
+      const merged = await worktrees.mergeLocal(
+        workspace.repository,
+        workspace.baseBranch,
+        workspace.branch,
+      );
       const audit: DeliveryAudit =
         merged.kind === 'merged'
           ? {

@@ -36,6 +36,8 @@ export interface Worktrees {
   prepareSpec(folder: string, branch: string): Promise<string | null>;
   /** Merge a slice branch into the pushed spec branch, answering without touching either on failure. */
   mergeSpec(folder: string, specBranch: string, runBranch: string): Promise<SpecMerge>;
+  /** Merge a delivered branch into the checked-out base, refusing dirty or other-branch checkouts. */
+  mergeLocal(folder: string, baseBranch: string, runBranch: string): Promise<SpecMerge>;
   /**
    * A worktree of `folder` on `branch`, at `into`. When `from` is given, a new
    * ticket branch starts at that branch rather than at the folder's current HEAD.
@@ -134,6 +136,46 @@ export function runWorktrees(): Worktrees {
           await git.raw(['worktree', 'prune']).catch(() => {});
           await rm(into, { recursive: true, force: true }).catch(() => {});
         }
+      }
+    },
+
+    async mergeLocal(folder, baseBranch, runBranch) {
+      const git = simpleGit(folder);
+      try {
+        const current = (await git.revparse(['--abbrev-ref', 'HEAD'])).trim();
+        if (current !== baseBranch) {
+          return {
+            kind: 'refused',
+            reason: `Check out ${baseBranch} in the repository before delivering locally.`,
+          };
+        }
+        if (!(await git.status()).isClean()) {
+          return {
+            kind: 'refused',
+            reason: 'The repository has local changes. Commit or stash them before delivering.',
+          };
+        }
+        if (!(await branches(git)).includes(runBranch)) {
+          return {
+            kind: 'refused',
+            reason: `The delivery branch ${runBranch} is not available locally.`,
+          };
+        }
+
+        try {
+          await git.merge([runBranch, '--no-edit', '--no-ff']);
+          return { kind: 'merged' };
+        } catch (error) {
+          const files = await git.raw(['diff', '--name-only', '--diff-filter=U']).catch(() => '');
+          await git.raw(['merge', '--abort']).catch(() => {});
+          const listed = files.trim().replaceAll('\n', ', ');
+          return {
+            kind: 'conflict',
+            reason: listed === '' ? String(error) : `conflicting files: ${listed}`,
+          };
+        }
+      } catch (error) {
+        return { kind: 'refused', reason: String(error) };
       }
     },
 

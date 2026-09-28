@@ -9,7 +9,7 @@
  */
 import { strict as assert } from 'node:assert';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { devNull, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
@@ -143,6 +143,67 @@ test('an execution workspace diff includes committed and uncommitted tracked cha
 
   assert.match(diff ?? '', /diff --git a\/README.md b\/README.md/);
   assert.match(diff ?? '', /\+agent update/);
+  await worktrees.drop(project, into);
+});
+
+test('local delivery merges into the checked-out base without pushing', async () => {
+  const project = checkout();
+  const into = runPath();
+  const branch = 'feature/deliver-locally';
+  const worktrees = runWorktrees();
+  await worktrees.make(project, branch, into, 'main', true);
+  commit(into, 'delivered.ts', 'delivered\n', 'the approved change');
+
+  assert.deepEqual(await worktrees.mergeLocal(project, 'main', branch), { kind: 'merged' });
+  assert.equal(readFileSync(join(project, 'delivered.ts'), 'utf8'), 'delivered\n');
+  assert.equal(
+    execFileSync('git', ['-C', project, 'branch', '--show-current'], { encoding: 'utf8' }).trim(),
+    'main',
+  );
+  await worktrees.drop(project, into);
+});
+
+test('local delivery refuses dirty or non-base checkouts without disturbing their work', async () => {
+  const project = checkout();
+  const into = runPath();
+  const branch = 'feature/not-delivered';
+  const worktrees = runWorktrees();
+  await worktrees.make(project, branch, into, 'main', true);
+  commit(into, 'branch.ts', 'branch\n', 'branch work');
+
+  writeFileSync(join(project, 'local.txt'), 'keep this\n');
+  const dirty = await worktrees.mergeLocal(project, 'main', branch);
+  assert.equal(dirty.kind, 'refused');
+  assert.equal(readFileSync(join(project, 'local.txt'), 'utf8'), 'keep this\n');
+  unlinkSync(join(project, 'local.txt'));
+
+  execFileSync('git', ['-C', project, 'checkout', '--detach', '-q']);
+  const wrongBranch = await worktrees.mergeLocal(project, 'main', branch);
+  assert.equal(wrongBranch.kind, 'refused');
+  assert.equal(readFileSync(join(into, 'branch.ts'), 'utf8'), 'branch\n');
+  await worktrees.drop(project, into);
+});
+
+test('a local merge conflict aborts and leaves the base checkout clean', async () => {
+  const project = checkout();
+  writeFileSync(join(project, 'conflict.txt'), 'before\nunchanged\nafter\n');
+  execFileSync('git', ['-C', project, 'add', '.']);
+  execFileSync('git', ['-C', project, 'commit', '-q', '-m', 'the file to conflict']);
+  const into = runPath();
+  const branch = 'feature/conflicting-delivery';
+  const worktrees = runWorktrees();
+  await worktrees.make(project, branch, into, 'main', true);
+  commit(into, 'conflict.txt', 'before\nbranch edit\nafter\n', 'branch change');
+  commit(project, 'conflict.txt', 'before\nbase edit\nafter\n', 'base change');
+
+  const result = await worktrees.mergeLocal(project, 'main', branch);
+
+  assert.equal(result.kind, 'conflict');
+  assert.equal(readFileSync(join(project, 'conflict.txt'), 'utf8'), 'before\nbase edit\nafter\n');
+  assert.equal(
+    execFileSync('git', ['-C', project, 'status', '--porcelain'], { encoding: 'utf8' }),
+    '',
+  );
   await worktrees.drop(project, into);
 });
 
