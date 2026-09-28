@@ -15,6 +15,7 @@ import type {
   DeliveryPath,
   Result,
   ExecutionCommandResult,
+  ExecutionProcessSnapshot,
   Ticket,
   TicketSaid,
 } from '../../preload/bridge.ts';
@@ -253,6 +254,9 @@ function WorkspaceDetails({
   const [command, setCommand] = useState('');
   const [commandResult, setCommandResult] = useState<ExecutionCommandResult | null>(null);
   const [runningCommand, setRunningCommand] = useState(false);
+  const [devServerCommand, setDevServerCommand] = useState('npm run dev -- --host 127.0.0.1');
+  const [server, setServer] = useState<ExecutionProcessSnapshot | null>(null);
+  const [startingServer, setStartingServer] = useState(false);
 
   const readOutput = async (): Promise<void> => {
     if (view.run === null) return;
@@ -357,6 +361,36 @@ function WorkspaceDetails({
     } finally {
       setRunningCommand(false);
     }
+  };
+
+  const readServer = async (): Promise<void> => {
+    const answer = await window.kira.readExecutionDevServer(ticket.id, workspaceId);
+    if (!answer.ok) setTrouble(answer.error);
+    else setServer(answer.value);
+  };
+
+  const startServer = async (): Promise<void> => {
+    setStartingServer(true);
+    setTrouble(null);
+    try {
+      const answer = await window.kira.startExecutionDevServer(
+        ticket.id,
+        workspaceId,
+        devServerCommand.trim(),
+      );
+      if (!answer.ok) setTrouble(answer.error);
+      else {
+        setServer(answer.value);
+      }
+    } finally {
+      setStartingServer(false);
+    }
+  };
+
+  const stopServer = async (): Promise<void> => {
+    const answer = await window.kira.stopExecutionDevServer(ticket.id, workspaceId);
+    if (!answer.ok) setTrouble(answer.error);
+    else setServer(answer.value);
   };
 
   const changedFiles = diff === null ? [] : executionDiffFiles(diff);
@@ -618,10 +652,54 @@ function WorkspaceDetails({
           <Text type="label" weight="medium">
             Development preview
           </Text>
+          <Button
+            label="Refresh process"
+            size="sm"
+            variant="ghost"
+            onClick={() => void readServer()}
+          />
         </div>
         <Text type="supporting" color="secondary">
-          {executionPreviewLabel(view.preview)}
+          {executionPreviewLabel(server?.previewUrl ? { url: server.previewUrl } : view.preview)}
         </Text>
+        {server?.running ? (
+          <Button
+            label="Stop development server"
+            size="sm"
+            variant="secondary"
+            onClick={() => void stopServer()}
+          />
+        ) : (
+          <div {...stylex.props(styles.commandForm)}>
+            <TextInput
+              label="Development server command"
+              value={devServerCommand}
+              onChange={setDevServerCommand}
+              size="sm"
+            />
+            <Button
+              label={startingServer ? 'Starting…' : 'Start server'}
+              size="sm"
+              variant="primary"
+              isDisabled={startingServer || devServerCommand.trim() === ''}
+              onClick={() => void startServer()}
+            />
+          </div>
+        )}
+        {server !== null && server.output !== '' && (
+          <pre {...stylex.props(styles.processLog)} aria-live="polite">
+            {server.output}
+          </pre>
+        )}
+        {server?.previewUrl !== null && server?.previewUrl !== undefined && (
+          <iframe
+            title="Execution workspace development preview"
+            src={server.previewUrl}
+            sandbox="allow-scripts allow-forms"
+            referrerPolicy="no-referrer"
+            {...stylex.props(styles.previewFrame)}
+          />
+        )}
       </div>
 
       {view.run?.verdict === 'accepted' && ticket.band !== 'done' && (
@@ -677,6 +755,25 @@ const styles = stylex.create({
     gap: 'var(--spacing-2)',
   },
   commandResult: { display: 'grid', gap: 'var(--spacing-2)', minWidth: 0 },
+  processLog: {
+    maxHeight: 240,
+    overflow: 'auto',
+    margin: 0,
+    padding: 'var(--spacing-3)',
+    borderRadius: 'var(--radius-md)',
+    backgroundColor: 'var(--color-background-muted)',
+    whiteSpace: 'pre-wrap',
+    overflowWrap: 'anywhere',
+    fontFamily: 'var(--font-family-mono)',
+    fontSize: 'var(--font-size-sm)',
+  },
+  previewFrame: {
+    width: '100%',
+    minHeight: 440,
+    border: '1px solid var(--color-border)',
+    borderRadius: 'var(--radius-md)',
+    backgroundColor: 'white',
+  },
   reviewItem: { display: 'grid', gap: 'var(--spacing-1)', paddingBlock: 'var(--spacing-2)' },
   diff: {
     display: 'grid',

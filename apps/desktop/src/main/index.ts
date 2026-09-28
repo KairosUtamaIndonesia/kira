@@ -42,6 +42,7 @@ import { startRunChat } from './pi/runChat.ts';
 import { runWorktrees } from './workspace/worktrees.ts';
 import { deliveriesFor, ghPullRequests } from './delivery/delivery.ts';
 import { runExecutionCommand } from './execution/commands.ts';
+import { ExecutionDevServers } from './execution/devServer.ts';
 import { workerFor, type Worker } from './worker.ts';
 import { type OpenChats, openChats } from './pi/openChats.ts';
 import { listFolder } from './workspace/listing.ts';
@@ -85,6 +86,7 @@ let runs: Runs;
 let auth: SignIn | undefined;
 let mainWindow: BrowserWindow | undefined;
 let kiraShell: KiraShell | undefined;
+const executionDevServers = new ExecutionDevServers();
 
 function shellSettings(): KiraShell {
   kiraShell ??= kiraShellSettings((path) => chats?.setShellPath(path) ?? Promise.resolve());
@@ -414,27 +416,56 @@ function registerDeliveryChannel(): void {
 }
 
 function registerExecutionChannel(): void {
+  async function checkoutFor(ticketId: string, workspaceId: string): Promise<string> {
+    const workspace = (await tracker.executionWorkspaces(ticketId)).find(
+      (candidate) => candidate.id === workspaceId,
+    );
+    if (workspace === undefined || workspace.ticketId !== ticketId) {
+      throw new Error('That execution workspace is no longer available for this issue.');
+    }
+    if (!isAbsolute(workspace.repository)) {
+      throw new Error('The execution workspace repository must be an absolute folder path.');
+    }
+    const checkout = join(app.getPath('userData'), 'execution-workspaces', workspace.id);
+    if (!existsSync(checkout))
+      throw new Error('The execution workspace checkout has not been created yet.');
+    return checkout;
+  }
+
   const handlers = executionHandlers({
     command: async (ticketId, workspaceId, command) => {
-      const workspace = (await tracker.executionWorkspaces(ticketId)).find(
-        (candidate) => candidate.id === workspaceId,
-      );
-      if (workspace === undefined || workspace.ticketId !== ticketId) {
-        throw new Error('That execution workspace is no longer available for this issue.');
-      }
-      if (!isAbsolute(workspace.repository)) {
-        throw new Error('The execution workspace repository must be an absolute folder path.');
-      }
-      const checkout = join(app.getPath('userData'), 'execution-workspaces', workspace.id);
-      if (!existsSync(checkout))
-        throw new Error('The execution workspace checkout has not been created yet.');
-      return await runExecutionCommand(checkout, command);
+      return await runExecutionCommand(await checkoutFor(ticketId, workspaceId), command);
+    },
+    startDevServer: async (ticketId, workspaceId, command) =>
+      executionDevServers.start(workspaceId, await checkoutFor(ticketId, workspaceId), command),
+    readDevServer: async (ticketId, workspaceId) => {
+      await checkoutFor(ticketId, workspaceId);
+      return executionDevServers.read(workspaceId);
+    },
+    stopDevServer: async (ticketId, workspaceId) => {
+      await checkoutFor(ticketId, workspaceId);
+      return executionDevServers.stop(workspaceId);
     },
   });
   ipcMain.handle(
     EXECUTION_CHANNELS.command,
     (_event, ticketId: unknown, workspaceId: unknown, command: unknown) =>
       handlers.command(ticketId, workspaceId, command),
+  );
+  ipcMain.handle(
+    EXECUTION_CHANNELS.devServerStart,
+    (_event, ticketId: unknown, workspaceId: unknown, command: unknown) =>
+      handlers.startDevServer(ticketId, workspaceId, command),
+  );
+  ipcMain.handle(
+    EXECUTION_CHANNELS.devServerRead,
+    (_event, ticketId: unknown, workspaceId: unknown) =>
+      handlers.readDevServer(ticketId, workspaceId),
+  );
+  ipcMain.handle(
+    EXECUTION_CHANNELS.devServerStop,
+    (_event, ticketId: unknown, workspaceId: unknown) =>
+      handlers.stopDevServer(ticketId, workspaceId),
   );
 }
 
@@ -1156,6 +1187,7 @@ app.on('before-quit', (event) => {
   if (saidGoodbye) return;
 
   saidGoodbye = true;
+  executionDevServers.stopAll();
   event.preventDefault();
   void Promise.all([
     worker === undefined ? undefined : worker.stop(),

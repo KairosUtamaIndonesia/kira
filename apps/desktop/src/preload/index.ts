@@ -45,6 +45,7 @@ import {
   type ReviewFeedback,
   type DeliveryAudit,
   type ExecutionCommandResult,
+  type ExecutionProcessSnapshot,
   type ShellSettingsSnapshot,
   type ShellTestResult,
   type Result,
@@ -173,6 +174,20 @@ const bridge: KiraBridge = {
 
   runExecutionCommand: (ticketId, workspaceId, command) =>
     ask<ExecutionCommandResult>(EXECUTION_CHANNELS.command, ticketId, workspaceId, command),
+
+  startExecutionDevServer: (ticketId, workspaceId, command) =>
+    ask<ExecutionProcessSnapshot>(
+      EXECUTION_CHANNELS.devServerStart,
+      ticketId,
+      workspaceId,
+      command,
+    ),
+
+  readExecutionDevServer: (ticketId, workspaceId) =>
+    ask<ExecutionProcessSnapshot>(EXECUTION_CHANNELS.devServerRead, ticketId, workspaceId),
+
+  stopExecutionDevServer: (ticketId, workspaceId) =>
+    ask<ExecutionProcessSnapshot>(EXECUTION_CHANNELS.devServerStop, ticketId, workspaceId),
 
   worker: () => ask<WorkerStanding>(WORKER_CHANNELS.standing),
 
