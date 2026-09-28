@@ -132,6 +132,9 @@
   ran in. Folders you had already added keep their name and their chats, and are offered a project
   to work the first time their work is opened.
 
+- The Work board uses fixed-width status lanes and keeps a selected issue beside the board, so its
+  details stay open without hiding the rest of the work.
+
 - Kira can look beyond the chat she is in: a search can reach every chat filed under the same
   project, so what was settled in one is findable from the next without remembering which chat it
   was in. A hit from another chat is named by that chat rather than by a turn number, because a
