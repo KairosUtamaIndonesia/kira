@@ -698,6 +698,10 @@ export const DELIVERY_CHANNELS = {
   deliver: 'delivery:execution-workspace',
 } as const;
 
+export const EXECUTION_CHANNELS = {
+  command: 'execution:command',
+} as const;
+
 /**
  * The channels pressing Run goes through.
  *
@@ -941,6 +945,12 @@ export interface DeliveryAudit {
   reference: string | null;
   url?: string;
   details?: string;
+}
+
+export interface ExecutionCommandResult {
+  command: string;
+  output: string;
+  exitCode: number;
 }
 
 /**
@@ -1464,6 +1474,12 @@ export interface KiraBridge {
     workspaceId: string,
     path: DeliveryPath,
   ): Promise<Result<DeliveryAudit>>;
+  /** Run a finite shell command in the selected execution workspace checkout. */
+  runExecutionCommand(
+    ticketId: string,
+    workspaceId: string,
+    command: string,
+  ): Promise<Result<ExecutionCommandResult>>;
   /** Write a ticket down in the workspace's project, as a draft. */
   writeTicket(workspaceId: string, draft: TicketDraft): Promise<Result<Ticket>>;
   /**

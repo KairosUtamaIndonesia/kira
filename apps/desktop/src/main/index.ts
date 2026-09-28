@@ -11,7 +11,7 @@ import {
   type OpenDialogOptions,
 } from 'electron';
 import { randomUUID } from 'node:crypto';
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import type { AuthState, ChatEvent } from '../preload/bridge.ts';
@@ -29,6 +29,7 @@ import { USAGE_CHANNELS, usageHandlers } from './ipc/usage.ts';
 import { CHAT_CHANNELS, chatHandlers } from './ipc/chat.ts';
 import { TRACKER_CHANNELS, trackerHandlers } from './ipc/tracker.ts';
 import { DELIVERY_CHANNELS, deliveryHandlers } from './ipc/delivery.ts';
+import { EXECUTION_CHANNELS, executionHandlers } from './ipc/execution.ts';
 import { WORKER_CHANNELS, workerHandlers } from './ipc/worker.ts';
 import { WORKSPACE_CHANNELS, workspaceHandlers } from './ipc/workspaces.ts';
 import { workspaceSummaryOf } from './pi/conversations.ts';
@@ -40,6 +41,7 @@ import { runsFor, type Runs } from './runs.ts';
 import { startRunChat } from './pi/runChat.ts';
 import { runWorktrees } from './workspace/worktrees.ts';
 import { deliveriesFor, ghPullRequests } from './delivery/delivery.ts';
+import { runExecutionCommand } from './execution/commands.ts';
 import { workerFor, type Worker } from './worker.ts';
 import { type OpenChats, openChats } from './pi/openChats.ts';
 import { listFolder } from './workspace/listing.ts';
@@ -408,6 +410,31 @@ function registerDeliveryChannel(): void {
     DELIVERY_CHANNELS.deliver,
     (_event, ticketId: unknown, workspaceId: unknown, path: unknown) =>
       handlers.deliver(ticketId, workspaceId, path),
+  );
+}
+
+function registerExecutionChannel(): void {
+  const handlers = executionHandlers({
+    command: async (ticketId, workspaceId, command) => {
+      const workspace = (await tracker.executionWorkspaces(ticketId)).find(
+        (candidate) => candidate.id === workspaceId,
+      );
+      if (workspace === undefined || workspace.ticketId !== ticketId) {
+        throw new Error('That execution workspace is no longer available for this issue.');
+      }
+      if (!isAbsolute(workspace.repository)) {
+        throw new Error('The execution workspace repository must be an absolute folder path.');
+      }
+      const checkout = join(app.getPath('userData'), 'execution-workspaces', workspace.id);
+      if (!existsSync(checkout))
+        throw new Error('The execution workspace checkout has not been created yet.');
+      return await runExecutionCommand(checkout, command);
+    },
+  });
+  ipcMain.handle(
+    EXECUTION_CHANNELS.command,
+    (_event, ticketId: unknown, workspaceId: unknown, command: unknown) =>
+      handlers.command(ticketId, workspaceId, command),
   );
 }
 
@@ -1054,6 +1081,7 @@ if (claimTheScheme()) {
       registerWorkspaceChannels();
       registerTrackerChannels();
       registerDeliveryChannel();
+      registerExecutionChannel();
       registerWorkerChannel();
       registerRunChannel();
       registerFileChannels();

@@ -14,6 +14,7 @@ import type {
   DeliveryAudit,
   DeliveryPath,
   Result,
+  ExecutionCommandResult,
   Ticket,
   TicketSaid,
 } from '../../preload/bridge.ts';
@@ -249,6 +250,9 @@ function WorkspaceDetails({
   const [sendingFeedback, setSendingFeedback] = useState(false);
   const [delivering, setDelivering] = useState(false);
   const [deliveryMessage, setDeliveryMessage] = useState<string | null>(null);
+  const [command, setCommand] = useState('');
+  const [commandResult, setCommandResult] = useState<ExecutionCommandResult | null>(null);
+  const [runningCommand, setRunningCommand] = useState(false);
 
   const readOutput = async (): Promise<void> => {
     if (view.run === null) return;
@@ -338,6 +342,23 @@ function WorkspaceDetails({
     }
   };
 
+  const runCommand = async (): Promise<void> => {
+    const input = command.trim();
+    if (input === '') return;
+    setRunningCommand(true);
+    setTrouble(null);
+    try {
+      const answer = await window.kira.runExecutionCommand(ticket.id, workspaceId, input);
+      if (!answer.ok) setTrouble(answer.error);
+      else {
+        setCommandResult(answer.value);
+        setCommand('');
+      }
+    } finally {
+      setRunningCommand(false);
+    }
+  };
+
   const changedFiles = diff === null ? [] : executionDiffFiles(diff);
 
   return (
@@ -411,6 +432,32 @@ function WorkspaceDetails({
               </ul>
             )}
           </>
+        )}
+        <div {...stylex.props(styles.commandForm)}>
+          <TextInput
+            label="Run a command in this checkout"
+            value={command}
+            onChange={setCommand}
+            size="sm"
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') void runCommand();
+            }}
+          />
+          <Button
+            label={runningCommand ? 'Command running…' : 'Run command'}
+            size="sm"
+            variant="secondary"
+            isDisabled={runningCommand || command.trim() === ''}
+            onClick={() => void runCommand()}
+          />
+        </div>
+        {commandResult !== null && (
+          <div {...stylex.props(styles.commandResult)} aria-live="polite">
+            <Text type="code">
+              $ {commandResult.command} · exit {commandResult.exitCode}
+            </Text>
+            <pre>{commandResult.output || '(no output)'}</pre>
+          </div>
         )}
       </div>
 
@@ -623,6 +670,13 @@ const styles = stylex.create({
   block: { display: 'grid', gap: 'var(--spacing-2)' },
   blockHeading: { display: 'flex', alignItems: 'center', gap: 'var(--spacing-2)' },
   form: { display: 'grid', gap: 'var(--spacing-2)' },
+  commandForm: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) auto',
+    alignItems: 'end',
+    gap: 'var(--spacing-2)',
+  },
+  commandResult: { display: 'grid', gap: 'var(--spacing-2)', minWidth: 0 },
   reviewItem: { display: 'grid', gap: 'var(--spacing-1)', paddingBlock: 'var(--spacing-2)' },
   diff: {
     display: 'grid',
