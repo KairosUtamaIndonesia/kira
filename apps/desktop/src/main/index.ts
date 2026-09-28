@@ -40,7 +40,11 @@ import { usageFor, type UsageKeeper } from './usage.ts';
 import { runsFor, type Runs } from './runs.ts';
 import { startRunChat } from './pi/runChat.ts';
 import { runWorktrees } from './workspace/worktrees.ts';
-import { deliveriesFor, ghPullRequests } from './delivery/delivery.ts';
+import {
+  deliveriesFor,
+  ghPullRequests,
+  latestRunForBranchIsAccepted,
+} from './delivery/delivery.ts';
 import { runExecutionCommand } from './execution/commands.ts';
 import { ExecutionDevServers } from './execution/devServer.ts';
 import { ExecutionTerminals } from './execution/terminal.ts';
@@ -394,14 +398,8 @@ function registerDeliveryChannel(): void {
         throw new Error('That execution workspace is no longer available for this issue.');
       }
       const ticket = await tracker.readTicket(ticketId);
-      const latestApproved = ticket.runs
-        .filter((run) => run.verdict === 'accepted')
-        .sort(
-          (left, right) =>
-            right.startedAt.localeCompare(left.startedAt) || right.id.localeCompare(left.id),
-        )[0];
-      if (latestApproved?.branch !== workspace.branch) {
-        throw new Error('Only the approved workspace branch can be delivered.');
+      if (!latestRunForBranchIsAccepted(ticket.runs, workspace.branch)) {
+        throw new Error('The latest run for this workspace must be accepted before delivery.');
       }
       if (!isAbsolute(workspace.repository)) {
         throw new Error('The execution workspace repository must be an absolute folder path.');

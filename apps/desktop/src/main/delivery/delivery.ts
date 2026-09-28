@@ -1,11 +1,25 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import type { DeliveryAudit, DeliveryPath } from '../../preload/bridge.ts';
+import type { DeliveryAudit, DeliveryPath, TicketRun } from '../../preload/bridge.ts';
 import type { Worktrees } from '../workspace/worktrees.ts';
 
 const run = promisify(execFile);
 
 export type { DeliveryAudit, DeliveryPath } from '../../preload/bridge.ts';
+
+/** Delivery is permitted only when this branch's newest run is explicitly accepted. */
+export function latestRunForBranchIsAccepted(
+  runs: readonly Pick<TicketRun, 'id' | 'branch' | 'startedAt' | 'verdict'>[],
+  branch: string,
+): boolean {
+  const latest = runs
+    .filter((run) => run.branch === branch)
+    .sort(
+      (left, right) =>
+        right.startedAt.localeCompare(left.startedAt) || right.id.localeCompare(left.id),
+    )[0];
+  return latest?.verdict === 'accepted';
+}
 
 export interface DeliveryWorkspace {
   id: string;

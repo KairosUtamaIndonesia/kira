@@ -1,6 +1,11 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { deliveriesFor, type DeliveryAudit, type PullRequests } from './delivery/delivery.ts';
+import {
+  deliveriesFor,
+  latestRunForBranchIsAccepted,
+  type DeliveryAudit,
+  type PullRequests,
+} from './delivery/delivery.ts';
 import type { Worktrees } from './workspace/worktrees.ts';
 
 const workspace = {
@@ -37,6 +42,56 @@ const noPullRequest: PullRequests = {
   create: async () => ({ refused: 'provider unavailable' }),
   merge: async () => ({ refused: 'provider unavailable' }),
 };
+
+test('delivery approval belongs to the newest run on that branch', () => {
+  const earlierAccepted = {
+    id: 'run-1',
+    branch: 'kira-1-delivery',
+    startedAt: '2026-09-28T10:00:00.000Z',
+    verdict: 'accepted',
+  } as const;
+  const cases = [
+    { name: 'accepted latest run', runs: [earlierAccepted], want: true },
+    {
+      name: 'sent-back run supersedes an older approval',
+      runs: [
+        earlierAccepted,
+        {
+          ...earlierAccepted,
+          id: 'run-2',
+          startedAt: '2026-09-28T11:00:00.000Z',
+          verdict: 'sent-back',
+        },
+      ],
+      want: false,
+    },
+    {
+      name: 'unjudged run supersedes an older approval',
+      runs: [
+        earlierAccepted,
+        { ...earlierAccepted, id: 'run-2', startedAt: '2026-09-28T11:00:00.000Z', verdict: null },
+      ],
+      want: false,
+    },
+    {
+      name: 'another branch does not supersede this workspace approval',
+      runs: [
+        earlierAccepted,
+        { ...earlierAccepted, id: 'run-2', branch: 'other-branch', verdict: 'sent-back' },
+      ],
+      want: true,
+    },
+    { name: 'no run on this branch', runs: [], want: false },
+  ] satisfies {
+    name: string;
+    runs: Parameters<typeof latestRunForBranchIsAccepted>[0];
+    want: boolean;
+  }[];
+
+  for (const { name, runs, want } of cases) {
+    assert.equal(latestRunForBranchIsAccepted(runs, workspace.branch), want, name);
+  }
+});
 
 test('a local merge records delivery only after the worktree seam reports success', async () => {
   const audits: DeliveryAudit[] = [];
