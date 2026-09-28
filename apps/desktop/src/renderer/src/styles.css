@@ -266,6 +266,10 @@
   border-block-end: 1px solid var(--color-border);
 }
 
+.chat-header-workbench-open {
+  padding-inline-end: var(--spacing-1-5);
+}
+
 .chat-heading {
   display: flex;
   align-items: center;

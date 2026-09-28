@@ -1293,7 +1293,11 @@ export default function App() {
              * yet has no title of its own — it has no row in the sidebar either —
              * so it is named by what it is.
              */}
-            <div className="chat-header">
+            <div
+              className={
+                workbench.isCollapsed ? 'chat-header' : 'chat-header chat-header-workbench-open'
+              }
+            >
               <div className="chat-heading">
                 <Text type="label" weight="medium" maxLines={1}>
                   {currentChat?.title ?? 'New chat'}
