@@ -85,6 +85,7 @@ export async function startRunChat({
   questionnaires,
   prepareWorkspace,
   followUp,
+  agentModelId,
 }: {
   store: ThreadStore;
   models: Models;
@@ -93,6 +94,7 @@ export async function startRunChat({
   questionnaires?: Questionnaires;
   prepareWorkspace?: WorkspacePreparer;
   followUp?: string;
+  agentModelId?: string;
   ticket: Ticket;
   workspaceId: string | null;
   folder: string;
@@ -120,7 +122,12 @@ export async function startRunChat({
     store,
     folder,
     models,
-    { id, ticketId: ticket.id, ...(workspaceId === null ? {} : { workspaceId }) },
+    {
+      id,
+      ticketId: ticket.id,
+      ...(workspaceId === null ? {} : { workspaceId }),
+      ...(agentModelId === undefined ? {} : { modelId: agentModelId }),
+    },
     memory,
     tracker,
     mcp,

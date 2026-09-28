@@ -913,6 +913,7 @@ export interface ExecutionWorkspace {
   repository: string;
   baseBranch: string;
   branch: string;
+  /** 'default' follows Kira's preferred model; otherwise this is a served model id. */
   agentConfig: string;
   createdAt: string;
 }

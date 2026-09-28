@@ -146,6 +146,7 @@ export function runsFor({
     workspaceId: string,
     resolutionReason?: string,
     followUp?: string,
+    agentModelId?: string,
   ) => Promise<RunChat>;
   wire: TrackerWire;
 }): Runs {
@@ -309,7 +310,15 @@ export function runsFor({
       // id serves for both, and the row in the sidebar, the transcript on the ticket
       // and the run record are three views of one thing rather than three to keep in
       // step.
-      const chat = await chatFor(ticket, into, run.id, workspaceId, resolutionReason, followUp);
+      const chat = await chatFor(
+        ticket,
+        into,
+        run.id,
+        workspaceId,
+        resolutionReason,
+        followUp,
+        execution?.agentConfig === 'default' ? undefined : execution?.agentConfig,
+      );
       working.chat = chat;
 
       chat.onLine((line) => {

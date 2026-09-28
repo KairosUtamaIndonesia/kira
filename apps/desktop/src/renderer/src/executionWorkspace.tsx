@@ -2,6 +2,7 @@ import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
 import { Divider } from '@astryxdesign/core/Divider';
 import { Icon } from '@astryxdesign/core/Icon';
+import { Selector } from '@astryxdesign/core/Selector';
 import { TextArea } from '@astryxdesign/core/TextArea';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { Text } from '@astryxdesign/core/Text';
@@ -22,6 +23,7 @@ import type {
   ExecutionProcessEvent,
   ExecutionTerminalEvent,
   ExecutionTerminalSnapshot,
+  ModelOption,
   Ticket,
   TicketSaid,
 } from '../../preload/bridge.ts';
@@ -174,8 +176,15 @@ function WorkspaceForm({
   const [baseBranch, setBaseBranch] = useState('main');
   const [branch, setBranch] = useState(ticket.branch);
   const [agentConfig, setAgentConfig] = useState('default');
+  const [models, setModels] = useState<ModelOption[]>([]);
   const [trouble, setTrouble] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useMountEffect(() => {
+    void window.kira.loadModels().then((answer) => {
+      if (answer.ok) setModels(answer.value);
+    });
+  });
 
   const create = async (): Promise<void> => {
     setBusy(true);
@@ -212,11 +221,15 @@ function WorkspaceForm({
       />
       <TextInput label="Base branch" value={baseBranch} onChange={setBaseBranch} size="sm" />
       <TextInput label="Workspace branch" value={branch} onChange={setBranch} size="sm" />
-      <TextInput
+      <Selector
         label="Agent configuration"
+        options={[
+          { value: 'default', label: 'Default model' },
+          ...models.map((model) => ({ value: model.id, label: model.name })),
+        ]}
         value={agentConfig}
         onChange={setAgentConfig}
-        size="sm"
+        isDisabled={busy}
       />
       {trouble !== null && (
         <Text type="supporting" color="secondary">

@@ -1133,13 +1133,14 @@ if (claimTheScheme()) {
           return now === null || now.used < now.allowance;
         },
         worktrees: runWorktrees(),
-        chatFor: (ticket, folder, id, workspaceId, resolutionReason, followUp) =>
+        chatFor: (ticket, folder, id, workspaceId, resolutionReason, followUp, agentModelId) =>
           startRunChat({
             store,
             models,
             memory: () => memory.current(),
             ticket,
             followUp,
+            agentModelId,
             workspaceId,
             folder,
             id,

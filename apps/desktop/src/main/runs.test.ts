@@ -324,8 +324,17 @@ function keeper(
     thereFor: (ticketId) => `/runs/${ticketId}`,
     affordable: () => over.affordable ?? true,
     worktrees: trees.held,
-    chatFor: async (_ticket, _folder, _id, _workspaceId, _resolutionReason, followUp) => {
+    chatFor: async (
+      _ticket,
+      _folder,
+      _id,
+      _workspaceId,
+      _resolutionReason,
+      followUp,
+      agentModelId,
+    ) => {
       if (followUp !== undefined) calls.push(`follow-up ${followUp}`);
+      if (agentModelId !== undefined) calls.push(`agent model ${agentModelId}`);
       return chatting.chat;
     },
     wire: wired,
@@ -395,6 +404,25 @@ test('Run starts in the selected execution workspace repository, base, and branc
   await chatting.ends();
 
   assert.deepEqual(trees.dropped, []);
+});
+
+test('Run uses the model selected by the execution workspace', async () => {
+  const { runs, calls } = keeper({
+    folder: folderMade(),
+    executionWorkspace: {
+      id: 'execution-1',
+      ticketId: ticket.id,
+      repository: folderMade(),
+      baseBranch: 'main',
+      branch: 'feature/fnd-1',
+      agentConfig: 'kira/gpt-6-luna',
+      createdAt: '2026-09-28T00:00:00.000Z',
+    },
+  });
+
+  await runs.start('workspace-1', 'ticket-1', 'execution-1');
+
+  assert.ok(calls.includes('agent model kira/gpt-6-luna'));
 });
 
 test('a follow-up run starts the persistent workspace with the review guidance', async () => {
