@@ -1068,6 +1068,8 @@ export const FILE_CHANNELS = {
   list: 'file:list',
   read: 'file:read',
   write: 'file:write',
+  create: 'file:create',
+  upload: 'file:upload',
   asset: 'file:asset',
   watch: 'file:watch',
   unwatch: 'file:unwatch',
@@ -1641,6 +1643,10 @@ export interface KiraBridge {
     expected: string,
     content: string,
   ): Promise<Result<null>>;
+  /** Create a new file or folder in the chat's workspace without replacing an existing item. */
+  createWorkspaceItem(chatId: string, path: string, kind: 'file' | 'folder'): Promise<Result<null>>;
+  /** Copy a user-selected file into the chat's workspace without replacing an existing item. */
+  uploadWorkspaceFile(chatId: string, path: string, content: Uint8Array): Promise<Result<null>>;
   /** Read an allowlisted image, document, media, or font preview asset. */
   readWorkspaceAsset(chatId: string, path: string): Promise<Result<WorkspaceAsset>>;
   /**

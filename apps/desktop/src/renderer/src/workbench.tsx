@@ -99,7 +99,6 @@ export function Workbench({
   conclusions,
   chatId,
   composing,
-  workspaceName,
   shaping,
   ticketQueue,
   onDecide,
@@ -113,8 +112,6 @@ export function Workbench({
   chatId: string;
   /** Whether the chat on screen is the one being composed, which has no workspace yet. */
   composing: boolean;
-  /** What to call the folder the chat works in, or null for one Kira made. */
-  workspaceName: string | null;
   shaping: ShapingState;
   /** The approved spec's tickets, read from the queue; null until there are any to read. */
   ticketQueue: TicketQueue | null;
@@ -215,6 +212,12 @@ export function Workbench({
   }
 
   function show(value: string): void {
+    if (!region.isCollapsed && showing === value) {
+      region.collapse();
+      return;
+    }
+
+    if (region.isCollapsed) region.expand();
     setTabs(shown(tabs, chatId, value));
     if (value === WORKSPACE) setWorkspaceVisits((visits) => visits + 1);
     if (value === BROWSER) {
@@ -406,7 +409,6 @@ export function Workbench({
               <WorkspaceTab
                 key={`${chatId}:${composing}`}
                 chatId={chatId}
-                workspaceName={workspaceName}
                 visits={workspaceVisits}
                 /*
                  * Watched only while the tree is actually on screen: not while

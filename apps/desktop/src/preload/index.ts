@@ -82,8 +82,7 @@ const bridge: KiraBridge = {
 
   loadChat: () => ask<ChatState>(CHAT_CHANNELS.load),
   setChatMode: (mode: ChatMode) => ask<null>(CHAT_CHANNELS.setMode, mode),
-  setChatWorkTicketIds: (workTicketIds) =>
-    ask<null>(CHAT_CHANNELS.setWorkTicketIds, workTicketIds),
+  setChatWorkTicketIds: (workTicketIds) => ask<null>(CHAT_CHANNELS.setWorkTicketIds, workTicketIds),
 
   approveProposal: (proposalId) => ask<null>(CHAT_CHANNELS.proposalApprove, proposalId),
 
@@ -252,6 +251,11 @@ const bridge: KiraBridge = {
 
   writeWorkspaceFile: (chatId, path, expected, content) =>
     ask<null>(FILE_CHANNELS.write, chatId, path, expected, content),
+
+  createWorkspaceItem: (chatId, path, kind) => ask<null>(FILE_CHANNELS.create, chatId, path, kind),
+
+  uploadWorkspaceFile: (chatId, path, content) =>
+    ask<null>(FILE_CHANNELS.upload, chatId, path, content),
 
   readWorkspaceAsset: (chatId, path) => ask<WorkspaceAsset>(FILE_CHANNELS.asset, chatId, path),
 

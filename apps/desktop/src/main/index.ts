@@ -51,7 +51,13 @@ import { ExecutionTerminals } from './execution/terminal.ts';
 import { workerFor, type Worker } from './worker.ts';
 import { type OpenChats, openChats } from './pi/openChats.ts';
 import { listFolder } from './workspace/listing.ts';
-import { readWorkspaceAsset, readWorkspaceFile, writeWorkspaceFile } from './workspace/reading.ts';
+import {
+  createWorkspaceItem,
+  readWorkspaceAsset,
+  readWorkspaceFile,
+  uploadWorkspaceFile,
+  writeWorkspaceFile,
+} from './workspace/reading.ts';
 import { watchFolders } from './workspace/watching.ts';
 import { mcpManager, type McpManager } from './mcp/servers.ts';
 import { mcpSecretStore } from './mcp/secrets.ts';
@@ -551,6 +557,8 @@ function registerFileChannels(): void {
     list: listFolder,
     read: readWorkspaceFile,
     write: writeWorkspaceFile,
+    create: createWorkspaceItem,
+    upload: uploadWorkspaceFile,
     asset: readWorkspaceAsset,
     watch: watchFolders,
   });
@@ -568,6 +576,12 @@ function registerFileChannels(): void {
     FILE_CHANNELS.write,
     (_event, chatId: unknown, path: unknown, expected: unknown, content: unknown) =>
       handlers.write(chatId, path, expected, content),
+  );
+  ipcMain.handle(FILE_CHANNELS.create, (_event, chatId: unknown, path: unknown, kind: unknown) =>
+    handlers.create(chatId, path, kind),
+  );
+  ipcMain.handle(FILE_CHANNELS.upload, (_event, chatId: unknown, path: unknown, content: unknown) =>
+    handlers.upload(chatId, path, content),
   );
   ipcMain.handle(FILE_CHANNELS.asset, (_event, chatId: unknown, path: unknown) =>
     handlers.asset(chatId, path),

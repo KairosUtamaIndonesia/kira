@@ -44,6 +44,8 @@ export interface FileDeps {
   read(root: string, path: string): Promise<string>;
   /** Replace a text file only if it still holds what the window opened. */
   write(root: string, path: string, expected: string, content: string): Promise<void>;
+  create(root: string, path: string, kind: 'file' | 'folder'): Promise<void>;
+  upload(root: string, path: string, content: Uint8Array): Promise<void>;
   /** One allowlisted binary asset for a native preview. */
   asset(root: string, path: string): Promise<WorkspaceAsset>;
   /**
@@ -58,6 +60,8 @@ export interface FileHandlers {
   list(chatId: unknown, path: unknown): Promise<Result<FolderListing | null>>;
   read(chatId: unknown, path: unknown): Promise<Result<string>>;
   write(chatId: unknown, path: unknown, expected: unknown, content: unknown): Promise<Result<null>>;
+  create(chatId: unknown, path: unknown, kind: unknown): Promise<Result<null>>;
+  upload(chatId: unknown, path: unknown, content: unknown): Promise<Result<null>>;
   asset(chatId: unknown, path: unknown): Promise<Result<WorkspaceAsset>>;
   /**
    * Watch the levels of the chat's workspace that one window is showing, so
@@ -75,6 +79,8 @@ export function fileHandlers({
   list,
   read,
   write,
+  create,
+  upload,
   asset,
   watch,
 }: FileDeps): FileHandlers {
@@ -151,6 +157,27 @@ export function fileHandlers({
         }
 
         await write(asked.root, asked.path, expected, content);
+        return null;
+      }),
+
+    create: (chatId, path, kind) =>
+      envelope(async () => {
+        const asked = target(chatId, path);
+        if (asked === null) throw new Error('This chat has no workspace yet.');
+        if (asked.path === '')
+          throw new Error('A name has to be given to create a file or folder.');
+        if (kind !== 'file' && kind !== 'folder') throw new Error('Choose a file or folder.');
+        await create(asked.root, asked.path, kind);
+        return null;
+      }),
+
+    upload: (chatId, path, content) =>
+      envelope(async () => {
+        const asked = target(chatId, path);
+        if (asked === null) throw new Error('This chat has no workspace yet.');
+        if (asked.path === '') throw new Error('A file name has to be given.');
+        if (!(content instanceof Uint8Array)) throw new Error('The upload was not file data.');
+        await upload(asked.root, asked.path, content);
         return null;
       }),
 

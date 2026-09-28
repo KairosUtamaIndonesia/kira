@@ -11,12 +11,15 @@
  * inside its workspace and the main process resolves the rest, so a path that
  * leaves the workspace is refused there rather than guarded against here.
  */
+import { Icon } from '@astryxdesign/core/Icon';
+import { IconButton } from '@astryxdesign/core/IconButton';
 import { StatusDot } from '@astryxdesign/core/StatusDot';
 import { Text } from '@astryxdesign/core/Text';
 import { TreeList, type TreeListItemData } from '@astryxdesign/core/TreeList';
 import { borderVars, colorVars, spacingVars } from '@astryxdesign/core/theme/tokens.stylex';
 import * as stylex from '@stylexjs/stylex';
-import { useEffect, useRef, useState } from 'react';
+import { FilePlus2, FolderPlus, ListCollapse, RefreshCw, Search, Upload } from 'lucide-react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { FileTypeIcon } from './fileTypeIcon';
 import { type Reads, type Row, readingOf, rowsIn } from './workspaceRows';
 
@@ -36,12 +39,49 @@ const styles = stylex.create({
   head: {
     display: 'flex',
     flexDirection: 'column',
-    gap: spacingVars['--spacing-1'],
+    gap: spacingVars['--spacing-3'],
     paddingBlockEnd: spacingVars['--spacing-3'],
-    marginBlockEnd: spacingVars['--spacing-3'],
+    marginBlockEnd: spacingVars['--spacing-2'],
     borderBlockEndWidth: borderVars['--border-width'],
     borderBlockEndStyle: 'solid',
     borderBlockEndColor: colorVars['--color-border'],
+  },
+  titleRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
+  actions: { display: 'flex', alignItems: 'center', gap: spacingVars['--spacing-1'] },
+  search: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: spacingVars['--spacing-2'],
+    minHeight: 34,
+    paddingInline: spacingVars['--spacing-2'],
+    borderWidth: borderVars['--border-width'],
+    borderStyle: 'solid',
+    borderColor: colorVars['--color-border'],
+    borderRadius: 'var(--radius-element)',
+    color: colorVars['--color-text-secondary'],
+    backgroundColor: colorVars['--color-background-muted'],
+  },
+  searchInput: {
+    width: '100%',
+    minWidth: 0,
+    border: 0,
+    outline: 0,
+    color: colorVars['--color-text-primary'],
+    backgroundColor: 'transparent',
+    font: 'inherit',
+    '::placeholder': { color: colorVars['--color-text-secondary'] },
+  },
+  createForm: { display: 'flex', gap: spacingVars['--spacing-2'] },
+  createInput: {
+    flex: 1,
+    minWidth: 0,
+    paddingInline: spacingVars['--spacing-2'],
+    borderWidth: borderVars['--border-width'],
+    borderStyle: 'solid',
+    borderColor: colorVars['--color-border'],
+    borderRadius: 'var(--radius-element)',
+    color: colorVars['--color-text-primary'],
+    backgroundColor: colorVars['--color-background-surface'],
   },
 });
 
@@ -58,13 +98,11 @@ const styles = stylex.create({
  */
 export function WorkspaceTab({
   chatId,
-  workspaceName,
   visits,
   showing,
   onOpenFile,
 }: {
   chatId: string;
-  workspaceName: string | null;
   /** How many times this tab has been shown, so showing it again reads again. */
   visits: number;
   /** Whether the tree is on screen: its tab, in a pane that is not put away. */
@@ -75,6 +113,12 @@ export function WorkspaceTab({
   const [read, setRead] = useState<Reads>(new Map());
   /** What the watch has said, counted: one more is one more look. */
   const [changes, setChanges] = useState(0);
+  const [query, setQuery] = useState('');
+  const [refresh, setRefresh] = useState(0);
+  const [creating, setCreating] = useState<'file' | 'folder' | null>(null);
+  const [newName, setNewName] = useState('');
+  const [message, setMessage] = useState('');
+  const uploadInput = useRef<HTMLInputElement>(null);
   /** Which read is the current one, so a slower earlier one cannot win. */
   const reading = useRef(0);
   /**
@@ -109,7 +153,7 @@ export function WorkspaceTab({
         setRead((before) => new Map(before).set(folder, readingOf(result)));
       }),
     );
-  }, [chatId, visits, changes]);
+  }, [chatId, visits, changes, refresh]);
 
   /*
    * Watched while it is on screen, and not otherwise: a folder is not watched
@@ -137,14 +181,37 @@ export function WorkspaceTab({
     // screen from now on, so it is watched from now on.
     void window.kira.watchWorkspace(chatId, [...held.current]);
 
+    const mine = reading.current;
     const result = await window.kira.listWorkspaceFolder(chatId, path);
 
+    if (mine !== reading.current || !held.current.has(path)) return;
     setRead((before) => new Map(before).set(path, readingOf(result)));
   }
 
-  /** The rows of a folder, as the tree wants them: a folder's row opens it. */
-  function itemsOf(folder: string): TreeListItemData[] {
-    return rowsIn(read, folder).map(itemOf);
+  async function createItem(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const name = newName.trim();
+    if (!creating || !name || name === '.' || name === '..' || /[/\\]/.test(name)) return;
+    const result = await window.kira.createWorkspaceItem(chatId, name, creating);
+    if (!result.ok) {
+      setMessage(result.error);
+      return;
+    }
+    setCreating(null);
+    setNewName('');
+    setMessage('');
+    setRefresh((n) => n + 1);
+  }
+
+  async function uploadFile(file: File | undefined): Promise<void> {
+    if (!file) return;
+    const result = await window.kira.uploadWorkspaceFile(
+      chatId,
+      file.name,
+      new Uint8Array(await file.arrayBuffer()),
+    );
+    setMessage(result.ok ? '' : result.error);
+    if (result.ok) setRefresh((n) => n + 1);
   }
 
   function itemOf(row: Row): TreeListItemData {
@@ -224,14 +291,101 @@ export function WorkspaceTab({
   // drawn as a folder with a notice under it: the tree is what is in the folder,
   // and this is about the folder itself.
   const empty = root.entries.length === 0;
-  const rows = empty ? [] : itemsOf(ROOT);
+  const matches = (row: Row, term: string): boolean => {
+    if (row.kind === 'notice') return false;
+    if (row.name.toLocaleLowerCase().includes(term)) return true;
+    return row.kind === 'folder' && row.children.some((child) => matches(child, term));
+  };
+  const allRows = empty ? [] : rowsIn(read, ROOT);
+  const term = query.trim().toLocaleLowerCase();
+  const rows = term ? allRows.filter((row) => matches(row, term)) : allRows;
 
   return (
     <div {...stylex.props(styles.tab)}>
       <div {...stylex.props(styles.head)}>
-        <Text type="supporting" weight="medium">
-          {workspaceName ?? 'this chat’s own workspace'}
-        </Text>
+        <div {...stylex.props(styles.titleRow)}>
+          <Text type="supporting" weight="medium">
+            Files
+          </Text>
+          <div {...stylex.props(styles.actions)}>
+            <IconButton
+              label="New file"
+              icon={<Icon icon={FilePlus2} size="sm" />}
+              onClick={() => {
+                setCreating('file');
+                setNewName('');
+              }}
+            />
+            <IconButton
+              label="New folder"
+              icon={<Icon icon={FolderPlus} size="sm" />}
+              onClick={() => {
+                setCreating('folder');
+                setNewName('');
+              }}
+            />
+            <IconButton
+              label="Upload file"
+              icon={<Icon icon={Upload} size="sm" />}
+              onClick={() => uploadInput.current?.click()}
+            />
+            <IconButton
+              label="Refresh files"
+              icon={<Icon icon={RefreshCw} size="sm" />}
+              onClick={() => setRefresh((n) => n + 1)}
+            />
+            <IconButton
+              label="Collapse all folders"
+              icon={<Icon icon={ListCollapse} size="sm" />}
+              onClick={() => {
+                reading.current += 1;
+                held.current = new Set([ROOT]);
+                setRead(new Map([[ROOT, root]]));
+                void window.kira.watchWorkspace(chatId, [ROOT]);
+              }}
+            />
+          </div>
+        </div>
+        <label {...stylex.props(styles.search)}>
+          <Icon icon={Search} size="sm" />
+          <input
+            {...stylex.props(styles.searchInput)}
+            aria-label="Search files"
+            placeholder="Search files..."
+            value={query}
+            onChange={(event) => setQuery(event.currentTarget.value)}
+          />
+        </label>
+        {creating ? (
+          <form {...stylex.props(styles.createForm)} onSubmit={(event) => void createItem(event)}>
+            <input
+              {...stylex.props(styles.createInput)}
+              aria-label={creating === 'file' ? 'New file name' : 'New folder name'}
+              placeholder={creating === 'file' ? 'File name' : 'Folder name'}
+              value={newName}
+              onChange={(event) => setNewName(event.currentTarget.value)}
+            />
+            <IconButton
+              label={`Create ${creating}`}
+              type="submit"
+              icon={<Icon icon={creating === 'file' ? FilePlus2 : FolderPlus} size="sm" />}
+            />
+          </form>
+        ) : null}
+        <input
+          ref={uploadInput}
+          type="file"
+          hidden
+          onChange={(event) => {
+            void uploadFile(event.currentTarget.files?.[0]);
+            event.currentTarget.value = '';
+          }}
+        />
+        {message ? (
+          <Text type="supporting" color="secondary">
+            {message}
+          </Text>
+        ) : null}
         {empty ? (
           <Text type="supporting" color="secondary">
             This workspace is empty.
@@ -267,7 +421,7 @@ export function WorkspaceTab({
         ) : null}
       </div>
 
-      {empty ? null : <TreeList items={rows} density="compact" />}
+      {empty ? null : <TreeList items={rows.map(itemOf)} density="compact" />}
     </div>
   );
 }

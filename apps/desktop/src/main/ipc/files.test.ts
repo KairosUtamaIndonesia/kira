@@ -40,6 +40,8 @@ function deps(calls: string[], overrides: Partial<FileDeps> = {}): FileDeps {
       return 'const one = 1;\n';
     },
     write: async () => {},
+    create: async () => {},
+    upload: async () => {},
     asset: async () => ({ dataUrl: '', mimeType: 'image/png', sizeBytes: 0 }),
     watch: (folders) => {
       calls.push(`watch ${folders.join(' ')}`);
@@ -225,6 +227,37 @@ test('write sends only a workspace-relative file and its expected contents to th
     value: null,
   });
   assert.deepEqual(calls, ['workspace of c1', 'write /work/api:src/a.ts:old text=>new text']);
+});
+
+test('create and upload accept only workspace-relative paths and preserve the selected operation', async () => {
+  const calls: string[] = [];
+  const handlers = fileHandlers(
+    deps(calls, {
+      create: async (root, path, kind) => calls.push(`create ${root}:${path}:${kind}`),
+      upload: async (root, path, content) =>
+        calls.push(`upload ${root}:${path}:${[...content].join(',')}`),
+    }),
+  );
+
+  assert.deepEqual(await handlers.create('c1', 'notes.md', 'file'), { ok: true, value: null });
+  assert.deepEqual(await handlers.create('c1', 'notes', 'folder'), { ok: true, value: null });
+  assert.deepEqual(await handlers.upload('c1', 'logo.bin', new Uint8Array([1, 2, 3])), {
+    ok: true,
+    value: null,
+  });
+  assert.deepEqual(await handlers.upload('c1', '../logo.bin', new Uint8Array([1])), {
+    ok: false,
+    error: 'That path is outside the chat’s workspace.',
+  });
+  assert.deepEqual(calls, [
+    'workspace of c1',
+    'create /work/api:notes.md:file',
+    'workspace of c1',
+    'create /work/api:notes:folder',
+    'workspace of c1',
+    'upload /work/api:logo.bin:1,2,3',
+    'workspace of c1',
+  ]);
 });
 
 test('asset reads a previewable file from only the named workspace', async () => {

@@ -6,7 +6,7 @@
  * megabytes of minified text, or a binary as replacement characters, would read
  * as the file's contents rather than as a refusal to show them.
  */
-import { readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 /** How large a file this will read: larger than anything worth reading here. */
@@ -98,6 +98,25 @@ export async function writeWorkspaceFile(
   }
 
   await writeFile(join(root, path), content, 'utf8');
+}
+
+/** Create a new empty file or folder without replacing anything already there. */
+export async function createWorkspaceItem(
+  root: string,
+  path: string,
+  kind: 'file' | 'folder',
+): Promise<void> {
+  if (kind === 'folder') await mkdir(join(root, path));
+  else await writeFile(join(root, path), '', { flag: 'wx' });
+}
+
+/** Copy a user-picked file into the workspace without overwriting an existing path. */
+export async function uploadWorkspaceFile(
+  root: string,
+  path: string,
+  content: Uint8Array,
+): Promise<void> {
+  await writeFile(join(root, path), content, { flag: 'wx' });
 }
 
 /** Read a bounded, allowlisted binary asset for native browser preview controls. */

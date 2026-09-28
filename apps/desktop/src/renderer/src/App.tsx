@@ -286,16 +286,8 @@ export default function App() {
    */
   const workbench = useWorkbench();
 
-  /*
-   * The chat on screen, where the sidebar has it — a chat being composed is not
-   * in the list yet, which is why the header names it by what it is — and what
-   * the workbench calls the folder it is showing: a workspace's own name, or null
-   * for a workspace Kira made for the chat, which the pane names in words
-   * because a folder named after a UUID says nothing to anyone.
-   */
+  // The chat on screen; a chat being composed is not in the list yet.
   const currentChat = chats.find((chat) => chat.id === currentId);
-  const workspaceName =
-    workspaces.find((workspace) => workspace.id === currentChat?.workspaceId)?.name ?? null;
 
   /**
    * The workspace whose work is on screen.
@@ -1384,7 +1376,8 @@ export default function App() {
                 </Text>
                 {workTicketIds.length > 0 && (
                   <Text type="supporting" color="secondary">
-                    Working with {workTicketIds.length} attached project {workTicketIds.length === 1 ? 'ticket' : 'tickets'}
+                    Working with {workTicketIds.length} attached project{' '}
+                    {workTicketIds.length === 1 ? 'ticket' : 'tickets'}
                   </Text>
                 )}
               </div>
@@ -1433,7 +1426,6 @@ export default function App() {
                 conclusions={conclusions}
                 chatId={currentId}
                 composing={draftShown}
-                workspaceName={workspaceName}
                 shaping={shaping}
                 ticketQueue={specQueueChatId === currentId ? specQueue : null}
                 onDecide={decideProposal}

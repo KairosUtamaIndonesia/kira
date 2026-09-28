@@ -1,9 +1,15 @@
 import { strict as assert } from 'node:assert';
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { tempDir } from '../test-support/temp.ts';
-import { readWorkspaceAsset, readWorkspaceFile, writeWorkspaceFile } from './reading.ts';
+import {
+  createWorkspaceItem,
+  readWorkspaceAsset,
+  readWorkspaceFile,
+  uploadWorkspaceFile,
+  writeWorkspaceFile,
+} from './reading.ts';
 
 function folderWith(files: Record<string, Buffer | string>): string {
   const root = tempDir('kira-read-');
@@ -148,4 +154,24 @@ test('binary preview refuses formats without a safe preview MIME type', async ()
   const root = folderWith({ 'installer.exe': Buffer.from([0x00, 0x01]) });
 
   await assert.rejects(readWorkspaceAsset(root, 'installer.exe'), /This file type has no preview/);
+});
+
+test('new files and folders are created without replacing existing files', async () => {
+  const root = folderWith({ 'already.txt': 'keep me' });
+  await createWorkspaceItem(root, 'new.txt', 'file');
+  await createWorkspaceItem(root, 'new-folder', 'folder');
+  await assert.rejects(createWorkspaceItem(root, 'already.txt', 'file'), /EEXIST/);
+
+  assert.equal(readFileSync(join(root, 'new.txt'), 'utf8'), '');
+  assert.equal(readFileSync(join(root, 'already.txt'), 'utf8'), 'keep me');
+});
+
+test('uploads copy bytes and refuse to replace an existing file', async () => {
+  const root = folderWith({ 'already.txt': 'keep me' });
+  const bytes = Buffer.from([0x00, 0xff, 0x01]);
+  await uploadWorkspaceFile(root, 'asset.bin', bytes);
+  await assert.rejects(uploadWorkspaceFile(root, 'already.txt', bytes), /EEXIST/);
+
+  assert.deepEqual(readFileSync(join(root, 'asset.bin')), bytes);
+  assert.equal(readFileSync(join(root, 'already.txt'), 'utf8'), 'keep me');
 });
