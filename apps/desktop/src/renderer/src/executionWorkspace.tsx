@@ -39,18 +39,26 @@ export function ExecutionWorkspacePanel({
   const [creating, setCreating] = useState(false);
   const [starting, setStarting] = useState(false);
 
+  const startWorkspace = async (id: string): Promise<void> => {
+    setStarting(true);
+    try {
+      await onStart(id);
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  const workspaceCreated = async (id: string): Promise<void> => {
+    setSelectedId(id);
+    setCreating(false);
+    await onChanged();
+    if (ticket.band === 'ready') await startWorkspace(id);
+  };
+
   if (selected === undefined) {
     return (
       <section {...stylex.props(styles.section)} aria-label="Execution workspaces">
-        <WorkspaceForm
-          ticket={ticket}
-          repository={repository}
-          onCreated={async (id) => {
-            setSelectedId(id);
-            setCreating(false);
-            await onChanged();
-          }}
-        />
+        <WorkspaceForm ticket={ticket} repository={repository} onCreated={workspaceCreated} />
       </section>
     );
   }
@@ -65,7 +73,7 @@ export function ExecutionWorkspacePanel({
             Execution workspace
           </Text>
           <Text type="supporting" color="secondary">
-            Follow the agent, checkout, changed work, and preview from this issue.
+            Follow the agent, checkout, changes, and review from this issue.
           </Text>
         </div>
         <Badge
@@ -98,15 +106,7 @@ export function ExecutionWorkspacePanel({
       )}
 
       {creating ? (
-        <WorkspaceForm
-          ticket={ticket}
-          repository={repository}
-          onCreated={async (id) => {
-            setSelectedId(id);
-            setCreating(false);
-            await onChanged();
-          }}
-        />
+        <WorkspaceForm ticket={ticket} repository={repository} onCreated={workspaceCreated} />
       ) : (
         <Button
           label="Add execution workspace"
@@ -122,18 +122,16 @@ export function ExecutionWorkspacePanel({
           size="sm"
           variant="primary"
           isDisabled={starting}
-          onClick={async () => {
-            setStarting(true);
-            try {
-              await onStart(selected.id);
-            } finally {
-              setStarting(false);
-            }
-          }}
+          onClick={() => void startWorkspace(selected.id)}
         />
       )}
+      {ticket.band !== 'ready' && view.run === null && (
+        <Text type="supporting" color="secondary">
+          Mark this issue ready before starting its agent.
+        </Text>
+      )}
 
-      <WorkspaceDetails ticket={ticket} view={view} workspaceId={selected.id} />
+      <WorkspaceDetails key={selected.id} ticket={ticket} view={view} workspaceId={selected.id} />
     </section>
   );
 }
@@ -177,8 +175,8 @@ function WorkspaceForm({
         Create execution workspace
       </Text>
       <Text type="supporting" color="secondary">
-        Choose the repository, base branch, working branch, and agent configuration before starting
-        work.
+        Choose the repository, base branch, working branch, and agent configuration. Creating this
+        workspace starts its agent when the issue is ready.
       </Text>
       <TextInput
         label="Repository folder"
@@ -201,7 +199,7 @@ function WorkspaceForm({
         </Text>
       )}
       <Button
-        label={busy ? 'Creating workspace' : 'Create workspace'}
+        label={busy ? 'Creating workspace' : 'Create workspace and start agent'}
         size="sm"
         variant="primary"
         isDisabled={busy}

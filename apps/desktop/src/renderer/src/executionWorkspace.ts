@@ -1,6 +1,6 @@
 import type { ExecutionWorkspace, Ticket, TicketRun } from '../../preload/bridge.ts';
 
-export type ExecutionStatus = 'starting' | 'running' | 'completed' | 'failed';
+export type ExecutionStatus = 'not-started' | 'running' | 'completed' | 'failed';
 
 export interface ExecutionWorkspaceView {
   workspace: ExecutionWorkspace;
@@ -24,13 +24,10 @@ export function executionWorkspaceView(
   workspace: ExecutionWorkspace,
   ticket: Pick<Ticket, 'runs'>,
 ): ExecutionWorkspaceView {
-  const run =
-    ticket.runs.find((candidate) => candidate.branch === workspace.branch) ??
-    ticket.runs[0] ??
-    null;
+  const run = ticket.runs.find((candidate) => candidate.branch === workspace.branch) ?? null;
   const status: ExecutionStatus =
     run === null
-      ? 'starting'
+      ? 'not-started'
       : run.endedAt === null
         ? 'running'
         : run.stoppedBecause === null
@@ -51,8 +48,8 @@ export function executionWorkspaceView(
 
 export function executionStatusLabel(status: ExecutionStatus): string {
   switch (status) {
-    case 'starting':
-      return 'Starting';
+    case 'not-started':
+      return 'Not started';
     case 'running':
       return 'Running';
     case 'completed':

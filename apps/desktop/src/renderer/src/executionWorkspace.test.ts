@@ -36,11 +36,11 @@ function ticket(runs: TicketRun[]): Pick<Ticket, 'runs'> {
   return { runs };
 }
 
-test('an execution workspace is starting before its first run', () => {
+test('an execution workspace is not started before its first run', () => {
   const view = executionWorkspaceView(workspace, ticket([]));
 
-  assert.equal(view.status, 'starting');
-  assert.equal(executionStatusLabel(view.status), 'Starting');
+  assert.equal(view.status, 'not-started');
+  assert.equal(executionStatusLabel(view.status), 'Not started');
   assert.equal(view.run, null);
   assert.deepEqual(view.processes, []);
 });
@@ -53,6 +53,15 @@ test('a running workspace exposes its branch and process checks without claiming
 
   assert.equal(view.status, 'running');
   assert.deepEqual(view.processes, ['bun test', 'bun run typecheck']);
+  assert.equal(view.changed, null);
+});
+
+test('an unrun workspace does not borrow another workspace’s latest run', () => {
+  const otherRun = run({ branch: 'feature/another-workspace' });
+  const view = executionWorkspaceView(workspace, ticket([otherRun]));
+
+  assert.equal(view.status, 'not-started');
+  assert.equal(view.run, null);
   assert.equal(view.changed, null);
 });
 
