@@ -31,49 +31,13 @@ import {
   highlightActiveLine,
   highlightActiveLineGutter,
 } from '@codemirror/view';
-import type { BundledLanguage, Highlighter, LanguageInput, ThemeRegistration } from 'shiki';
+import type { BundledLanguage, Highlighter, LanguageInput } from 'shiki';
 import { useEffect, useRef } from 'react';
 import { languageOf } from './filePreview';
 
 let highlighter: Promise<Highlighter> | undefined;
-const SHIKI_THEME_LIGHT = 'kira-warm-light';
-const SHIKI_THEME_DARK = 'kira-warm-dark';
-const SHIKI_THEMES: ThemeRegistration[] = [
-  {
-    name: SHIKI_THEME_LIGHT,
-    type: 'light',
-    fg: '#493b3c',
-    bg: '#fffaf8',
-    settings: [
-      { settings: { foreground: '#493b3c' } },
-      { scope: ['comment', 'punctuation.definition.comment'], settings: { foreground: '#907b7f', fontStyle: 'italic' } },
-      { scope: ['keyword', 'storage', 'storage.type', 'storage.modifier'], settings: { foreground: '#a43f5c' } },
-      { scope: ['string', 'string.quoted', 'string.template'], settings: { foreground: '#56734f' } },
-      { scope: ['constant.numeric', 'constant.language', 'constant.character'], settings: { foreground: '#98651f' } },
-      { scope: ['entity.name.type', 'entity.name.class', 'support.type', 'support.class'], settings: { foreground: '#397278' } },
-      { scope: ['entity.name.function', 'support.function'], settings: { foreground: '#76518a' } },
-      { scope: ['variable', 'variable.parameter'], settings: { foreground: '#754b46' } },
-      { scope: ['entity.name.tag', 'entity.other.attribute-name'], settings: { foreground: '#a43f5c' } },
-    ],
-  },
-  {
-    name: SHIKI_THEME_DARK,
-    type: 'dark',
-    fg: '#eadcda',
-    bg: '#241d20',
-    settings: [
-      { settings: { foreground: '#eadcda' } },
-      { scope: ['comment', 'punctuation.definition.comment'], settings: { foreground: '#b49da3', fontStyle: 'italic' } },
-      { scope: ['keyword', 'storage', 'storage.type', 'storage.modifier'], settings: { foreground: '#ed91a6' } },
-      { scope: ['string', 'string.quoted', 'string.template'], settings: { foreground: '#a8c49a' } },
-      { scope: ['constant.numeric', 'constant.language', 'constant.character'], settings: { foreground: '#e6bd79' } },
-      { scope: ['entity.name.type', 'entity.name.class', 'support.type', 'support.class'], settings: { foreground: '#8dc4c3' } },
-      { scope: ['entity.name.function', 'support.function'], settings: { foreground: '#c8a3db' } },
-      { scope: ['variable', 'variable.parameter'], settings: { foreground: '#e0b4a7' } },
-      { scope: ['entity.name.tag', 'entity.other.attribute-name'], settings: { foreground: '#ed91a6' } },
-    ],
-  },
-];
+const SHIKI_THEME_LIGHT = 'catppuccin-latte';
+const SHIKI_THEME_DARK = 'catppuccin-mocha';
 const lineWrapping = new Compartment();
 
 export function CodeMirrorFile({
@@ -281,7 +245,7 @@ function shikiDecorationExtension(language: string, theme: string) {
           const source = view.state.doc.toString();
           try {
             const shiki = await (highlighter ??= import('shiki').then(({ createHighlighter }) =>
-              createHighlighter({ themes: SHIKI_THEMES, langs: [] }),
+              createHighlighter({ themes: [SHIKI_THEME_LIGHT, SHIKI_THEME_DARK], langs: [] }),
             ));
             if (!shiki.getLoadedLanguages().includes(language)) {
               await shiki.loadLanguage(language as unknown as LanguageInput);
