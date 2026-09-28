@@ -585,6 +585,209 @@
   padding-inline: 8px;
 }
 
+/* Keep CodeMirror's find controls in the editor chrome, not as an unstyled row. */
+.file-code-editor .cm-panels {
+  position: absolute;
+  z-index: 5;
+  inset: 6px 12px auto auto;
+  width: auto;
+  border: 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+.file-code-editor .cm-panels-top {
+  border: 0;
+}
+
+.file-code-editor .cm-panel.cm-search {
+  padding: 5px;
+  width: min(440px, calc(100vw - 40px));
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-background-surface);
+  color: var(--color-text-primary);
+  box-shadow: 0 3px 12px color-mix(in srgb, var(--color-text-primary) 14%, transparent);
+  font: inherit;
+  line-height: 1;
+  pointer-events: auto;
+}
+
+.file-code-editor .cm-search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.file-code-editor .cm-search br {
+  display: none;
+}
+
+.file-code-editor .cm-search .cm-textfield {
+  height: 28px;
+  min-width: 0;
+  margin: 0;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  outline: 0;
+  background: var(--color-background-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 12px;
+}
+
+.file-code-editor .cm-search .cm-textfield:focus {
+  border-color: var(--color-border-focus, var(--color-text-secondary));
+}
+
+.file-code-editor .cm-search .cm-textfield::placeholder {
+  color: var(--color-text-secondary);
+  opacity: 1;
+}
+
+.file-code-editor .cm-search .cm-textfield[name='search'] {
+  order: 1;
+  flex: 1 1 120px;
+  max-width: calc(100% - 112px);
+}
+
+.file-code-editor .cm-search label,
+.file-code-editor .cm-search .cm-button,
+.file-code-editor .cm-panel.cm-search button[name='close'] {
+  display: inline-flex;
+  flex: 0 0 26px;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.file-code-editor .cm-search label {
+  order: 2;
+  overflow: hidden;
+  font-size: 0;
+}
+
+.file-code-editor .cm-search label input {
+  width: 0;
+  height: 0;
+  margin: 0;
+  opacity: 0;
+}
+
+.file-code-editor .cm-search label:has(input[name='case'])::after {
+  content: 'Aa';
+  font-size: 11px;
+}
+
+.file-code-editor .cm-search label:has(input[name='word'])::after {
+  content: 'ab';
+  font-size: 11px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.file-code-editor .cm-search label:has(input[name='re'])::after {
+  content: '.*';
+  font-family: monospace;
+  font-size: 12px;
+}
+
+.file-code-editor .cm-search .cm-button[name='next'] {
+  order: 3;
+  font-size: 0;
+}
+
+.file-code-editor .cm-search .cm-button[name='next']::after {
+  content: '↓';
+  font-size: 15px;
+}
+
+.file-code-editor .cm-search .cm-button[name='prev'] {
+  order: 4;
+  font-size: 0;
+}
+
+.file-code-editor .cm-search .cm-button[name='prev']::after {
+  content: '↑';
+  font-size: 15px;
+}
+
+.file-code-editor .cm-search .cm-button[name='select'] {
+  order: 5;
+  font-size: 0;
+}
+
+.file-code-editor .cm-search .cm-button[name='select']::after {
+  content: '≡';
+  font-size: 16px;
+}
+
+.file-code-editor .cm-search label:hover,
+.file-code-editor .cm-search .cm-button:hover,
+.file-code-editor .cm-panel.cm-search button[name='close']:hover,
+.file-code-editor .cm-search label:has(input:checked) {
+  background: color-mix(in srgb, var(--color-text-primary) 9%, transparent);
+  color: var(--color-text-primary);
+}
+
+.file-code-editor .cm-search [type='checkbox'] {
+  margin: 0 3px 0 0;
+  accent-color: var(--color-text-primary);
+}
+
+.file-code-editor .cm-search .cm-search-message {
+  padding: 0 5px;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.file-code-editor .cm-search .cm-button {
+  min-width: 26px;
+  background-image: none;
+  box-shadow: none;
+}
+
+.file-code-editor .cm-search .cm-button:focus-visible,
+.file-code-editor .cm-panel.cm-search button[name='close']:focus-visible {
+  outline: 2px solid var(--color-border-focus, var(--color-text-secondary));
+  outline-offset: 1px;
+}
+
+.file-code-editor .cm-panel.cm-search button[name='close'] {
+  position: static;
+  order: 6;
+  margin-left: auto;
+  font-size: 16px;
+}
+
+@media (max-width: 520px) {
+  .file-code-editor .cm-panels {
+    inset-inline: 6px;
+  }
+
+  .file-code-editor .cm-panel.cm-search {
+    width: 100%;
+  }
+}
+
 .file-preview-html,
 .file-preview-document {
   width: 100%;
