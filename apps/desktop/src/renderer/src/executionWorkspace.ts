@@ -124,6 +124,16 @@ export function executionWorkspaceView(
   };
 }
 
+/** Avoid suggesting a branch already assigned to another workspace on this issue. */
+export function suggestExecutionBranch(baseBranch: string, existing: readonly string[]): string {
+  const used = new Set(existing);
+  if (!used.has(baseBranch)) return baseBranch;
+
+  let suffix = 2;
+  while (used.has(`${baseBranch}-${suffix}`)) suffix += 1;
+  return `${baseBranch}-${suffix}`;
+}
+
 export function executionStatusLabel(status: ExecutionStatus): string {
   switch (status) {
     case 'not-started':

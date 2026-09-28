@@ -5,6 +5,7 @@ import {
   executionPreviewLabel,
   executionStatusLabel,
   executionDiffFiles,
+  suggestExecutionBranch,
   executionWorkspaceView,
 } from './executionWorkspace.ts';
 
@@ -36,6 +37,26 @@ const run = (overrides: Partial<TicketRun> = {}): TicketRun => ({
 function ticket(runs: TicketRun[]): Pick<Ticket, 'runs'> {
   return { runs };
 }
+
+test('a new workspace gets an unused branch suggestion', () => {
+  const cases = [
+    { name: 'unused issue branch', existing: [], want: 'fnd-1-execution' },
+    {
+      name: 'next numbered branch when default is already used',
+      existing: ['fnd-1-execution'],
+      want: 'fnd-1-execution-2',
+    },
+    {
+      name: 'skip numbered branches that are already used',
+      existing: ['fnd-1-execution', 'fnd-1-execution-2'],
+      want: 'fnd-1-execution-3',
+    },
+  ];
+
+  for (const { name, existing, want } of cases) {
+    assert.equal(suggestExecutionBranch('fnd-1-execution', existing), want, name);
+  }
+});
 
 test('an execution workspace is not started before its first run', () => {
   const view = executionWorkspaceView(workspace, ticket([]));

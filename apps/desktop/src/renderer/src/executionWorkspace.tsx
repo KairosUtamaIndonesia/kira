@@ -31,6 +31,7 @@ import {
   executionDiffFiles,
   executionPreviewLabel,
   executionStatusLabel,
+  suggestExecutionBranch,
   executionWorkspaceView,
   type ExecutionWorkspaceView,
 } from './executionWorkspace.ts';
@@ -74,7 +75,12 @@ export function ExecutionWorkspacePanel({
   if (selected === undefined) {
     return (
       <section {...stylex.props(styles.section)} aria-label="Execution workspaces">
-        <WorkspaceForm ticket={ticket} repository={repository} onCreated={workspaceCreated} />
+        <WorkspaceForm
+          ticket={ticket}
+          repository={repository}
+          existingBranches={workspaces.map((workspace) => workspace.branch)}
+          onCreated={workspaceCreated}
+        />
       </section>
     );
   }
@@ -122,7 +128,12 @@ export function ExecutionWorkspacePanel({
       )}
 
       {creating ? (
-        <WorkspaceForm ticket={ticket} repository={repository} onCreated={workspaceCreated} />
+        <WorkspaceForm
+          ticket={ticket}
+          repository={repository}
+          existingBranches={workspaces.map((workspace) => workspace.branch)}
+          onCreated={workspaceCreated}
+        />
       ) : (
         <Button
           label="Add execution workspace"
@@ -166,15 +177,19 @@ export function ExecutionWorkspacePanel({
 function WorkspaceForm({
   ticket,
   repository: initialRepository,
+  existingBranches,
   onCreated,
 }: {
   ticket: Ticket;
   repository: string;
+  existingBranches: string[];
   onCreated: (id: string) => Promise<void>;
 }) {
   const [repository, setRepository] = useState(initialRepository);
   const [baseBranch, setBaseBranch] = useState('main');
-  const [branch, setBranch] = useState(ticket.branch);
+  const [branch, setBranch] = useState(() =>
+    suggestExecutionBranch(ticket.branch, existingBranches),
+  );
   const [agentConfig, setAgentConfig] = useState('default');
   const [models, setModels] = useState<ModelOption[]>([]);
   const [trouble, setTrouble] = useState<string | null>(null);
