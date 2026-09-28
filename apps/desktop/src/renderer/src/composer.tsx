@@ -1,4 +1,6 @@
 import { Button } from '@astryxdesign/core/Button';
+import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog';
+import { DropdownMenu } from '@astryxdesign/core/DropdownMenu';
 import {
   ChatComposer,
   ChatComposerDrawer,
@@ -15,10 +17,9 @@ import { Text } from '@astryxdesign/core/Text';
 import { Popover } from '@astryxdesign/core/Popover';
 import { Tooltip } from '@astryxdesign/core/Tooltip';
 import { VStack } from '@astryxdesign/core/VStack';
-import { Token } from '@astryxdesign/core/Token';
-import { borderVars, colorVars, spacingVars } from '@astryxdesign/core/theme/tokens.stylex';
+import { borderVars, colorVars, radiusVars, spacingVars } from '@astryxdesign/core/theme/tokens.stylex';
 import { useAui, useAuiState } from '@assistant-ui/react';
-import { ChevronDown, Gauge, Ticket as TicketIcon, X } from 'lucide-react';
+import { ChevronDown, Gauge, Plus, Ticket as TicketIcon, X } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import * as stylex from '@stylexjs/stylex';
 import type { ChatMode, ChatUsage, ModelOption, QueuedLine, Usage } from '../../preload/bridge';
@@ -68,6 +69,8 @@ export function Composer({
   onBrowserElementsChange,
   workTicketIds = [],
   workTicketDetails = {},
+  linkableWorkTickets = [],
+  onLinkWorkTicket,
   onRemoveWorkTicket,
 }: {
   placeholder: string;
@@ -94,6 +97,8 @@ export function Composer({
   onBrowserElementsChange?: (browserElements: BrowserElementSelection[]) => void;
   workTicketIds?: string[];
   workTicketDetails?: Record<string, { name: string; title: string }>;
+  linkableWorkTickets?: { id: string; name: string; title: string }[];
+  onLinkWorkTicket?: (ticketId: string) => void;
   onRemoveWorkTicket?: (ticketId: string) => void;
 }): ReactNode {
   const aui = useAui();
@@ -108,7 +113,29 @@ export function Composer({
   // on its way out. An edit is the exception: it replaces a message *and* sends
   // the replacement, so it still waits for a turn that is running to finish.
   const canSend = useAuiState((state) => state.composer.canSend) && !(isEditing && isRunning);
-  const attachmentCount = browserElements.length + workTicketIds.length;
+  const [isLinkTicketOpen, setIsLinkTicketOpen] = useState(false);
+  const workTicketRows = workTicketIds.map((ticketId) => {
+    const ticket = workTicketDetails[ticketId];
+    const ticketName = ticket?.name ?? `Ticket ${ticketId.slice(0, 8)}`;
+    return (
+      <div {...stylex.props(styles.workTicketRow)} key={ticketId}>
+        <Icon icon={TicketIcon} size="sm" color="secondary" />
+        <span {...stylex.props(styles.workTicketName)}>{ticketName}</span>
+        {ticket?.title ? (
+          <span {...stylex.props(styles.workTicketTitle)} title={ticket.title}>
+            {ticket.title}
+          </span>
+        ) : null}
+        <IconButton
+          label={`Remove ${ticketName} from chat context`}
+          icon={<Icon icon={X} size="sm" />}
+          size="sm"
+          variant="ghost"
+          onClick={() => onRemoveWorkTicket?.(ticketId)}
+        />
+      </div>
+    );
+  });
   const sendDraft = (steer: boolean = true): void => {
     if (isEditing || browserElements.length === 0) {
       if (steer) aui.composer.send();
@@ -194,25 +221,30 @@ export function Composer({
     isStopShown: canCancel && !isEditing,
     onStop: () => aui.composer.cancel(),
     input: (
-      <ChatComposerInput
-        onKeyDown={(event) => {
-          if (event.key !== 'Enter' || event.shiftKey) {
-            return;
-          }
+      <div {...stylex.props(styles.composerInputContent)}>
+        {workTicketRows.length > 0 && (
+          <div {...stylex.props(styles.workTicketAttachments)}>{workTicketRows}</div>
+        )}
+        <ChatComposerInput
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter' || event.shiftKey) {
+              return;
+            }
 
-          // Alt+Enter says the same words, but holds them to the end of this
-          // turn instead of handing them over at Kira's next step.
-          if (event.altKey && canSend) {
-            event.preventDefault();
-            sendDraft(false);
-            return;
-          }
+            // Alt+Enter says the same words, but holds them to the end of this
+            // turn instead of handing them over at Kira's next step.
+            if (event.altKey && canSend) {
+              event.preventDefault();
+              sendDraft(false);
+              return;
+            }
 
-          if (!canSend) {
-            event.preventDefault();
-          }
-        }}
-      />
+            if (!canSend) {
+              event.preventDefault();
+            }
+          }}
+        />
+      </div>
     ),
     sendButton: isEditing ? (
       <Button label="Save" isDisabled={!canSend} onClick={() => sendDraft()} />
@@ -258,32 +290,8 @@ export function Composer({
       <ChatComposer
         {...composer}
         drawer={
-          attachmentCount === 0 ? undefined : (
-            <ChatComposerDrawer count={attachmentCount} label="Attachments">
-              {workTicketIds.map((ticketId) => {
-                const ticket = workTicketDetails[ticketId];
-                const label = ticket?.name ?? `Ticket ${ticketId.slice(0, 8)}`;
-                return (
-                  <Token
-                    key={ticketId}
-                    label={label}
-                    description={ticket?.title}
-                    size="sm"
-                    icon={<Icon icon={TicketIcon} size="sm" />}
-                    endContent={
-                      ticket?.title ? (
-                        <span
-                          {...stylex.props(styles.workTicketTitle)}
-                          title={ticket.title}
-                        >
-                          · {ticket.title}
-                        </span>
-                      ) : undefined
-                    }
-                    onRemove={() => onRemoveWorkTicket?.(ticketId)}
-                  />
-                );
-              })}
+          browserElements.length === 0 ? undefined : (
+            <ChatComposerDrawer count={browserElements.length} label="Attachments">
               {browserElements.length > 0 && (
                 <BrowserElementAttachments
                   selections={browserElements}
@@ -295,8 +303,75 @@ export function Composer({
             </ChatComposerDrawer>
           )
         }
-        footerActions={pickerFor(models, modelId, onChoose, isRunning)}
+        footerActions={
+          <div {...stylex.props(styles.footerActions)}>
+            <DropdownMenu
+              placement="above"
+              button={{
+                label: 'Add context',
+                icon: <Icon icon={Plus} size="sm" />,
+                isIconOnly: true,
+                variant: 'ghost',
+                size: 'md',
+              }}
+              items={[
+                {
+                  label: 'Link Ticket',
+                  icon: <Icon icon={TicketIcon} size="sm" />,
+                  onClick: () => setIsLinkTicketOpen(true),
+                },
+              ]}
+            />
+            {pickerFor(models, modelId, onChoose, isRunning)}
+          </div>
+        }
       />
+      <Dialog
+        isOpen={isLinkTicketOpen}
+        onOpenChange={setIsLinkTicketOpen}
+        purpose="info"
+        width={560}
+        maxHeight="min(75dvh, 680px)"
+      >
+        <DialogHeader
+          title="Link Ticket"
+          subtitle="Add a project ticket to this chat’s context."
+          onOpenChange={setIsLinkTicketOpen}
+        />
+        <div {...stylex.props(styles.ticketPickerList)}>
+          {linkableWorkTickets.length === 0 ? (
+            <Text color="secondary" size="sm">
+              No tickets are available for this chat’s project.
+            </Text>
+          ) : (
+            linkableWorkTickets.map((ticket) => {
+              const isLinked = workTicketIds.includes(ticket.id);
+              return (
+                <div {...stylex.props(styles.ticketPickerRow)} key={ticket.id}>
+                  <Icon icon={TicketIcon} size="sm" color="secondary" />
+                  <div {...stylex.props(styles.ticketPickerText)}>
+                    <Text weight="medium">{ticket.name}</Text>
+                    <Text color="secondary" size="sm">
+                      {ticket.title || 'Untitled'}
+                    </Text>
+                  </div>
+                  <Button
+                    label={isLinked ? 'Linked' : 'Link'}
+                    aria-label={isLinked ? `${ticket.name} is linked` : `Link ${ticket.name}`}
+                    size="sm"
+                    variant={isLinked ? 'ghost' : 'secondary'}
+                    isDisabled={isLinked}
+                    onClick={() => {
+                      onLinkWorkTicket?.(ticket.id);
+                      setIsLinkTicketOpen(false);
+                    }}
+                  />
+                </div>
+              );
+            })
+          )}
+        </div>
+      </Dialog>
       {isRunning && (
         <Text color="secondary" size="sm">
           {queued.length > 0
@@ -343,6 +418,63 @@ const styles = stylex.create({
     color: colorVars['--color-text-secondary'],
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
+  },
+  workTicketRow: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: spacingVars['--spacing-2'],
+    minWidth: 0,
+    maxWidth: '100%',
+    paddingInline: spacingVars['--spacing-2'],
+    paddingBlock: spacingVars['--spacing-1'],
+    borderRadius: radiusVars['--radius-element'],
+    backgroundColor: colorVars['--color-background-muted'],
+  },
+  workTicketAttachments: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: spacingVars['--spacing-1'],
+    minWidth: 0,
+  },
+  composerInputContent: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: spacingVars['--spacing-2'],
+    minWidth: 0,
+  },
+  workTicketName: {
+    flexShrink: 0,
+    color: colorVars['--color-text-primary'],
+    fontWeight: 600,
+    fontSize: '0.8rem',
+  },
+  footerActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: spacingVars['--spacing-1'],
+  },
+  ticketPickerList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: spacingVars['--spacing-2'],
+    maxHeight: 'min(56dvh, 520px)',
+    overflowY: 'auto',
+  },
+  ticketPickerRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: spacingVars['--spacing-3'],
+    minWidth: 0,
+    padding: spacingVars['--spacing-2'],
+    borderRadius: radiusVars['--radius-element'],
+    backgroundColor: colorVars['--color-background-muted'],
+  },
+  ticketPickerText: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: spacingVars['--spacing-0-5'],
+    flex: 1,
+    minWidth: 0,
   },
   browserElements: {
     display: 'flex',

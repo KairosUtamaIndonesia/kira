@@ -166,6 +166,8 @@ const PARKED_PANE: ComponentProps<typeof ChatPane> = {
   onAddBrowserElement: NOTHING,
   workTicketIds: [],
   workTicketDetails: {},
+  linkableWorkTickets: [],
+  onLinkWorkTicket: NOTHING,
   onRemoveWorkTicket: NOTHING,
   onAnswerQuestionnaire: async () => null,
   onCancelQuestionnaire: async () => null,
@@ -250,6 +252,8 @@ export default function App() {
   const [workTicketDetails, setWorkTicketDetails] = useState<
     Record<string, Pick<WorkTicket, 'name' | 'title'>>
   >({});
+  const [linkableWorkTickets, setLinkableWorkTickets] = useState<WorkTicket[]>([]);
+  const [linkableTicketsWorkspaceId, setLinkableTicketsWorkspaceId] = useState<string | null>(null);
   const [chatSort, setChatSort] = useState<ChatSort>(readChatSort);
   const [transcript, setTranscript] = useState<ChatTranscript>({
     messages: [],
@@ -345,20 +349,18 @@ export default function App() {
       const currentChat = result.value.chats.find((chat) => chat.id === result.value.currentId);
       const workspaceId = currentChat?.workspaceId;
       const proposalTicket = approvedSpecTicket(nextShaping);
-      if (
-        workspaceId !== null &&
-        workspaceId !== undefined &&
-        (proposalTicket !== null || result.value.workTicketIds.length > 0)
-      ) {
+      setLinkableTicketsWorkspaceId(workspaceId ?? null);
+      if (workspaceId !== null && workspaceId !== undefined) {
         const queue = await window.kira.loadQueue(workspaceId);
         if (queue.ok) {
+          setLinkableWorkTickets(queue.value.tickets);
           rememberWorkTicketDetails(queue.value, result.value.workTicketIds);
           if (proposalTicket !== null) {
             setSpecQueue(queue.value);
             setSpecQueueChatId(result.value.currentId);
           }
-        }
-      }
+        } else setLinkableWorkTickets([]);
+      } else setLinkableWorkTickets([]);
       setRunning(result.value.running);
       setStreaming(result.value.streaming);
       setQueued(result.value.queued);
@@ -865,7 +867,11 @@ export default function App() {
     await switchChat(() => window.kira.startChat(workspaceId, workTicketIds));
     if (ticketQueue !== null) {
       const queue = await ticketQueue;
-      if (queue.ok) rememberWorkTicketDetails(queue.value, workTicketIds ?? []);
+      if (queue.ok) {
+        setLinkableTicketsWorkspaceId(workspaceId);
+        setLinkableWorkTickets(queue.value.tickets);
+        rememberWorkTicketDetails(queue.value, workTicketIds ?? []);
+      }
     }
   }
 
@@ -1096,6 +1102,18 @@ export default function App() {
       })),
     workTicketIds,
     workTicketDetails,
+    linkableWorkTickets:
+      currentChat?.workspaceId === linkableTicketsWorkspaceId ? linkableWorkTickets : [],
+    onLinkWorkTicket: (ticketId: string) => {
+      const ticket = linkableWorkTickets.find((candidate) => candidate.id === ticketId);
+      if (ticket !== undefined) {
+        setWorkTicketDetails((details) => ({
+          ...details,
+          [ticket.id]: { name: ticket.name, title: ticket.title },
+        }));
+      }
+      void changeWorkTicketIds([...workTicketIds, ticketId]);
+    },
     onRemoveWorkTicket: (ticketId) =>
       void changeWorkTicketIds(workTicketIds.filter((id) => id !== ticketId)),
   };
@@ -1827,6 +1845,8 @@ function ChatPane({
   onAddBrowserElement,
   workTicketIds,
   workTicketDetails,
+  linkableWorkTickets,
+  onLinkWorkTicket,
   onRemoveWorkTicket,
   queued,
   restored,
@@ -1868,6 +1888,8 @@ function ChatPane({
   onAddBrowserElement: (selection: BrowserElementSelection) => void;
   workTicketIds: string[];
   workTicketDetails: Record<string, Pick<WorkTicket, 'name' | 'title'>>;
+  linkableWorkTickets: WorkTicket[];
+  onLinkWorkTicket: (ticketId: string) => void;
   onRemoveWorkTicket: (ticketId: string) => void;
   // Whatever the runtime asks of a window that owns its own messages: the
   // shapes are the adapter's, so there is one place they can drift from.
@@ -1972,6 +1994,8 @@ function ChatPane({
             onBrowserElementsChange={onBrowserElementsChange}
             workTicketIds={workTicketIds}
             workTicketDetails={workTicketDetails}
+            linkableWorkTickets={linkableWorkTickets}
+            onLinkWorkTicket={onLinkWorkTicket}
             onRemoveWorkTicket={onRemoveWorkTicket}
           />
         </ThreadPrimitive.ViewportFooter>
