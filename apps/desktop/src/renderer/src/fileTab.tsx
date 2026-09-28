@@ -1,11 +1,11 @@
 /** A bounded workspace file viewer, with explicit edit and save for text files. */
 import { Button } from '@astryxdesign/core/Button';
-import { CodeBlock } from '@astryxdesign/core/CodeBlock';
 import { Markdown } from '@astryxdesign/core/Markdown';
 import { Text } from '@astryxdesign/core/Text';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { Reading } from './workbenchTabs';
-import { delimiterForPath, fileKindOf, languageOf, parseDelimitedText } from './filePreview';
+import { delimiterForPath, fileKindOf, parseDelimitedText } from './filePreview';
+import { CodeMirrorFile } from './codeMirrorFile';
 
 export function FileTab({
   chatId,
@@ -31,6 +31,10 @@ function LoadedFileTab({
 }) {
   const [original, setOriginal] = useState(reading.kind === 'text' ? reading.text : '');
   const [draft, setDraft] = useState(reading.kind === 'text' ? reading.text : '');
+  const content = useRef({
+    original: reading.kind === 'text' ? reading.text : '',
+    draft: reading.kind === 'text' ? reading.text : '',
+  });
   const [mode, setMode] = useState<'preview' | 'edit'>('preview');
   const [busy, setBusy] = useState(false);
   const [trouble, setTrouble] = useState<string | null>(null);
@@ -52,14 +56,17 @@ function LoadedFileTab({
   const dirty = draft !== original;
 
   async function save(): Promise<void> {
+    const expected = content.current.original;
+    const next = content.current.draft;
     setBusy(true);
     setTrouble(null);
     try {
-      const result = await window.kira.writeWorkspaceFile(chatId, path, original, draft);
+      const result = await window.kira.writeWorkspaceFile(chatId, path, expected, next);
       if (!result.ok) {
         setTrouble(result.error);
       } else {
-        setOriginal(draft);
+        content.current.original = next;
+        setOriginal(next);
       }
     } catch (error) {
       setTrouble(error instanceof Error ? error.message : String(error));
@@ -91,13 +98,16 @@ function LoadedFileTab({
         );
       case 'text':
         return (
-          <CodeBlock
-            code={draft}
-            language={languageOf(path)}
-            title={path}
-            container="section"
-            width="100%"
-            hasLineNumbers
+          <CodeMirrorFile
+            key={`${path}:${mode}`}
+            path={path}
+            value={draft}
+            readOnly={mode === 'preview'}
+            onChange={(next) => {
+              content.current.draft = next;
+              setDraft(next);
+            }}
+            onSave={mode === 'edit' ? () => void save() : undefined}
           />
         );
     }
@@ -142,19 +152,17 @@ function LoadedFileTab({
         </div>
       )}
       <div className="file-viewer-content">
-        {mode === 'edit' ? (
-          <textarea
-            aria-label={`Edit ${path}`}
-            className="file-viewer-editor"
+        {mode === 'edit' && kind !== 'text' ? (
+          <CodeMirrorFile
+            key={`${path}:${mode}`}
+            path={path}
             value={draft}
-            onChange={(event) => setDraft(event.currentTarget.value)}
-            onKeyDown={(event) => {
-              if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
-                event.preventDefault();
-                void save();
-              }
+            readOnly={false}
+            onChange={(next) => {
+              content.current.draft = next;
+              setDraft(next);
             }}
-            spellCheck={false}
+            onSave={() => void save()}
           />
         ) : (
           rendered
@@ -211,21 +219,10 @@ function JsonPreview({ source, path }: { source: string; path: string }) {
   try {
     formatted = JSON.stringify(JSON.parse(source), null, 2);
   } catch {
-    return (
-      <CodeBlock code={source} language="json" title={path} container="section" width="100%" />
-    );
+    return <CodeMirrorFile path={path} value={source} readOnly onChange={() => {}} />;
   }
 
-  return (
-    <CodeBlock
-      code={formatted}
-      language="json"
-      title={path}
-      container="section"
-      width="100%"
-      hasLineNumbers
-    />
-  );
+  return <CodeMirrorFile path={path} value={formatted} readOnly onChange={() => {}} />;
 }
 
 function TablePreview({ source, path }: { source: string; path: string }) {

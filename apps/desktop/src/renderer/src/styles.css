@@ -541,20 +541,28 @@
   padding-block-start: var(--spacing-3);
 }
 
-.file-viewer-editor {
+.file-code-editor {
   width: 100%;
   height: 100%;
   min-height: 0;
-  resize: none;
-  border: 0;
+}
+
+.file-code-editor .cm-editor {
+  height: 100%;
   outline: none;
-  background: transparent;
-  color: inherit;
-  font-family: var(--font-family-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 13px;
-  line-height: 1.55;
-  tab-size: 2;
-  white-space: pre;
+}
+
+.file-code-editor .cm-content {
+  padding-block: var(--spacing-2);
+}
+
+.file-code-editor .cm-line {
+  padding-inline: var(--spacing-3);
+}
+
+.file-code-editor .cm-gutterElement {
+  min-width: 3ch;
+  padding-inline: var(--spacing-2);
 }
 
 .file-preview-html,
