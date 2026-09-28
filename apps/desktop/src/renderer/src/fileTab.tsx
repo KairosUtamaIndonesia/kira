@@ -53,6 +53,7 @@ function LoadedFileTab({
   }
 
   const kind = fileKindOf(path);
+  const codeSurface = kind === 'text' || kind === 'json' || mode === 'edit';
   const dirty = draft !== original;
 
   async function save(): Promise<void> {
@@ -114,7 +115,9 @@ function LoadedFileTab({
   })();
 
   return (
-    <div className={`file-viewer${fullscreen ? ' file-viewer-fullscreen' : ''}`}>
+    <div
+      className={`file-viewer${fullscreen ? ' file-viewer-fullscreen' : ''}${codeSurface ? ' file-viewer-code' : ''}`}
+    >
       <header className="file-viewer-toolbar">
         <Text type="supporting" color="secondary">
           {path}
