@@ -526,12 +526,21 @@
 
 .file-viewer-actions {
   flex: 0 0 auto;
+  gap: var(--spacing-1);
 }
 
-.file-viewer-actions button {
-  min-height: 28px;
-  padding: 4px 8px;
-  font-size: 12px;
+.file-viewer-actions .file-viewer-action {
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0;
+  color: var(--color-text-secondary);
+}
+
+.file-viewer-actions .file-viewer-action:hover,
+.file-viewer-actions .file-viewer-action[aria-pressed='true'] {
+  color: var(--color-text-primary);
+  background: color-mix(in srgb, var(--color-text-primary) 9%, transparent);
 }
 
 .file-viewer-error {

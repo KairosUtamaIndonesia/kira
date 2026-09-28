@@ -1,11 +1,34 @@
 /** A bounded workspace file viewer, with explicit edit and save for text files. */
-import { Button } from '@astryxdesign/core/Button';
+import { Icon } from '@astryxdesign/core/Icon';
+import { IconButton } from '@astryxdesign/core/IconButton';
 import { Markdown } from '@astryxdesign/core/Markdown';
 import { Text } from '@astryxdesign/core/Text';
+import { Tooltip } from '@astryxdesign/core/Tooltip';
+import { useClipboard } from '@astryxdesign/core/hooks';
+import {
+  Check,
+  Copy,
+  Download,
+  Eye,
+  EyeOff,
+  ListStart,
+  Maximize2,
+  Minimize2,
+  Save,
+  Search,
+  WrapText,
+} from 'lucide-react';
 import { useRef, useState } from 'react';
+import type { ReactNode } from 'react';
+import { EditorView } from '@codemirror/view';
 import type { Reading } from './workbenchTabs';
 import { delimiterForPath, fileKindOf, parseDelimitedText } from './filePreview';
-import { CodeMirrorFile } from './codeMirrorFile';
+import {
+  CodeMirrorFile,
+  openFileSearch,
+  openGoToLine,
+  setFileLineWrapping,
+} from './codeMirrorFile';
 
 export function FileTab({
   chatId,
@@ -39,6 +62,10 @@ function LoadedFileTab({
   const [busy, setBusy] = useState(false);
   const [trouble, setTrouble] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
+  const [wrapLines, setWrapLines] = useState(false);
+  const editor = useRef<EditorView | null>(null);
+  const { copy, isCopied } = useClipboard({ announce: 'Copied to clipboard' });
+  const { copy: copyPath, isCopied: isPathCopied } = useClipboard({ announce: 'File path copied' });
 
   if (reading.kind === 'refused') {
     return (
@@ -83,7 +110,16 @@ function LoadedFileTab({
       case 'html':
         return <iframe className="file-preview-html" sandbox="" srcDoc={draft} title={path} />;
       case 'json':
-        return <JsonPreview source={draft} path={path} />;
+        return (
+          <JsonPreview
+            source={draft}
+            path={path}
+            wrapLines={wrapLines}
+            onViewReady={(view) => {
+              editor.current = view;
+            }}
+          />
+        );
       case 'table':
         return <TablePreview source={draft} path={path} />;
       case 'image':
@@ -104,6 +140,10 @@ function LoadedFileTab({
             path={path}
             value={draft}
             readOnly={mode === 'preview'}
+            wrapLines={wrapLines}
+            onViewReady={(view) => {
+              editor.current = view;
+            }}
             onChange={(next) => {
               content.current.draft = next;
               setDraft(next);
@@ -123,26 +163,62 @@ function LoadedFileTab({
           {path}
         </Text>
         <div className="file-viewer-actions">
-          <Button
-            label={mode === 'preview' ? 'Edit' : 'Preview'}
-            size="sm"
-            variant="secondary"
-            isDisabled={busy}
-            onClick={() => setMode(mode === 'preview' ? 'edit' : 'preview')}
-          />
-          {mode === 'edit' && (
-            <Button
+          {mode === 'edit' && dirty && (
+            <FileAction
               label={busy ? 'Saving…' : 'Save'}
-              size="sm"
-              variant="primary"
-              isDisabled={!dirty || busy}
+              icon={<Icon icon={Save} size="sm" />}
+              isDisabled={busy}
               onClick={() => void save()}
             />
           )}
-          <Button
+          {codeSurface && (
+            <>
+              <FileAction
+                label={wrapLines ? 'Disable line wrapping' : 'Enable line wrapping'}
+                icon={<Icon icon={WrapText} size="sm" />}
+                isPressed={wrapLines}
+                onClick={() => {
+                  const next = !wrapLines;
+                  setWrapLines(next);
+                  setFileLineWrapping(editor.current, next);
+                }}
+              />
+              <FileAction
+                label="Find in file"
+                icon={<Icon icon={Search} size="sm" />}
+                onClick={() => openFileSearch(editor.current)}
+              />
+              <FileAction
+                label="Go to line"
+                icon={<Icon icon={ListStart} size="sm" />}
+                onClick={() => openGoToLine(editor.current)}
+              />
+            </>
+          )}
+          <FileAction
+            label={mode === 'preview' ? 'Edit' : 'Preview'}
+            icon={<Icon icon={mode === 'preview' ? Eye : EyeOff} size="sm" />}
+            isDisabled={busy}
+            onClick={() => setMode(mode === 'preview' ? 'edit' : 'preview')}
+          />
+          <FileAction
+            label={isCopied ? 'Copied file contents' : 'Copy file contents'}
+            icon={<Icon icon={isCopied ? Check : Copy} size="sm" />}
+            onClick={() => void copy(draft)}
+          />
+          <FileAction
+            label={isPathCopied ? 'Copied file path' : 'Copy file path'}
+            icon={<Icon icon={isPathCopied ? Check : Copy} size="sm" />}
+            onClick={() => void copyPath(path)}
+          />
+          <FileAction
+            label="Download file"
+            icon={<Icon icon={Download} size="sm" />}
+            onClick={() => downloadText(path, draft)}
+          />
+          <FileAction
             label={fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-            size="sm"
-            variant="secondary"
+            icon={<Icon icon={fullscreen ? Minimize2 : Maximize2} size="sm" />}
             onClick={() => setFullscreen(!fullscreen)}
           />
         </div>
@@ -161,6 +237,10 @@ function LoadedFileTab({
             path={path}
             value={draft}
             readOnly={false}
+            wrapLines={wrapLines}
+            onViewReady={(view) => {
+              editor.current = view;
+            }}
             onChange={(next) => {
               content.current.draft = next;
               setDraft(next);
@@ -173,6 +253,44 @@ function LoadedFileTab({
       </div>
     </div>
   );
+}
+
+function FileAction({
+  label,
+  icon,
+  onClick,
+  isDisabled = false,
+  isPressed,
+}: {
+  label: string;
+  icon: ReactNode;
+  onClick: () => void;
+  isDisabled?: boolean;
+  isPressed?: boolean;
+}) {
+  return (
+    <Tooltip content={label} placement="below">
+      <IconButton
+        label={label}
+        icon={icon}
+        size="sm"
+        variant="ghost"
+        className="file-viewer-action"
+        isDisabled={isDisabled}
+        aria-pressed={isPressed}
+        onClick={onClick}
+      />
+    </Tooltip>
+  );
+}
+
+function downloadText(path: string, content: string): void {
+  const url = URL.createObjectURL(new Blob([content], { type: 'text/plain;charset=utf-8' }));
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = path.split('/').pop() || 'file';
+  anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 function AssetPreview({
@@ -217,15 +335,34 @@ function AssetPreview({
   );
 }
 
-function JsonPreview({ source, path }: { source: string; path: string }) {
+function JsonPreview({
+  source,
+  path,
+  wrapLines,
+  onViewReady,
+}: {
+  source: string;
+  path: string;
+  wrapLines: boolean;
+  onViewReady: (view: EditorView | null) => void;
+}) {
   let formatted: string;
   try {
     formatted = JSON.stringify(JSON.parse(source), null, 2);
   } catch {
-    return <CodeMirrorFile path={path} value={source} readOnly onChange={() => {}} />;
+    formatted = source;
   }
 
-  return <CodeMirrorFile path={path} value={formatted} readOnly onChange={() => {}} />;
+  return (
+    <CodeMirrorFile
+      path={path}
+      value={formatted}
+      readOnly
+      wrapLines={wrapLines}
+      onViewReady={onViewReady}
+      onChange={() => {}}
+    />
+  );
 }
 
 function TablePreview({ source, path }: { source: string; path: string }) {

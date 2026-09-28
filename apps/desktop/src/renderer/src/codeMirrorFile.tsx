@@ -13,9 +13,10 @@ import { json } from '@codemirror/lang-json';
 import { markdown } from '@codemirror/lang-markdown';
 import { python } from '@codemirror/lang-python';
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
-import { search, searchKeymap } from '@codemirror/search';
+import { gotoLine, openSearchPanel, search, searchKeymap } from '@codemirror/search';
 import {
   EditorState,
+  Compartment,
   RangeSetBuilder,
   StateEffect,
   StateField,
@@ -37,6 +38,7 @@ import { languageOf } from './filePreview';
 let highlighter: Promise<Highlighter> | undefined;
 const SHIKI_THEME_LIGHT = 'github-light-default';
 const SHIKI_THEME_DARK = 'github-dark-default';
+const lineWrapping = new Compartment();
 
 export function CodeMirrorFile({
   path,
@@ -44,12 +46,16 @@ export function CodeMirrorFile({
   readOnly,
   onChange,
   onSave,
+  wrapLines = false,
+  onViewReady,
 }: {
   path: string;
   value: string;
   readOnly: boolean;
   onChange: (value: string) => void;
   onSave?: () => void;
+  wrapLines?: boolean;
+  onViewReady?: (view: EditorView | null) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
 
@@ -59,7 +65,7 @@ export function CodeMirrorFile({
     let cancelled = false;
     let view: EditorView | undefined;
 
-    void createEditor(path, value, readOnly, () => onSave?.()).then((extensions) => {
+    void createEditor(path, value, readOnly, wrapLines, () => onSave?.()).then((extensions) => {
       if (cancelled || !host.current) return;
       extensions.push(
         EditorView.updateListener.of((update) => {
@@ -70,18 +76,26 @@ export function CodeMirrorFile({
         state: EditorState.create({ doc: value, extensions }),
         parent: host.current,
       });
+      onViewReady?.(view);
     });
 
     return () => {
       cancelled = true;
       view?.destroy();
+      onViewReady?.(null);
     };
   });
 
   return <div ref={host} className="file-code-editor" aria-label={`${path} code`} />;
 }
 
-async function createEditor(path: string, value: string, readOnly: boolean, save: () => void) {
+async function createEditor(
+  path: string,
+  value: string,
+  readOnly: boolean,
+  wrapLines: boolean,
+  save: () => void,
+) {
   const filename = path.split('/').pop() ?? path;
   const extension = filename.split('.').pop()?.toLowerCase();
   const language = languageFor(extension);
@@ -97,6 +111,7 @@ async function createEditor(path: string, value: string, readOnly: boolean, save
     bracketMatching(),
     closeBrackets(),
     search(),
+    lineWrapping.of(wrapLines ? EditorView.lineWrapping : []),
     syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
     EditorState.readOnly.of(readOnly),
     EditorView.editable.of(!readOnly),
@@ -176,6 +191,18 @@ function languageFor(extension: string | undefined): Extension | undefined {
     default:
       return undefined;
   }
+}
+
+export function openFileSearch(view: EditorView | null): void {
+  if (view) openSearchPanel(view);
+}
+
+export function openGoToLine(view: EditorView | null): void {
+  if (view) gotoLine(view);
+}
+
+export function setFileLineWrapping(view: EditorView | null, wrap: boolean): void {
+  view?.dispatch({ effects: lineWrapping.reconfigure(wrap ? EditorView.lineWrapping : []) });
 }
 
 const replaceShikiDecorations = StateEffect.define<import('@codemirror/view').DecorationSet>();
