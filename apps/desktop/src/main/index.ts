@@ -86,9 +86,12 @@ let runs: Runs;
 let auth: SignIn | undefined;
 let mainWindow: BrowserWindow | undefined;
 let kiraShell: KiraShell | undefined;
-const executionDevServers = new ExecutionDevServers((event) => {
-  mainWindow?.webContents.send(EXECUTION_CHANNELS.process, event);
-});
+const executionDevServers = new ExecutionDevServers(
+  (event) => {
+    mainWindow?.webContents.send(EXECUTION_CHANNELS.process, event);
+  },
+  join(app.getPath('userData'), 'execution-process-logs'),
+);
 
 function shellSettings(): KiraShell {
   kiraShell ??= kiraShellSettings((path) => chats?.setShellPath(path) ?? Promise.resolve());

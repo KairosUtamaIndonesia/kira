@@ -18,8 +18,9 @@ async function waitFor<T>(read: () => T, ready: (value: T) => boolean): Promise<
 
 test('a workspace dev server retains its logs, exposes only loopback preview URLs, and stops', async () => {
   const checkout = await mkdtemp(join(tmpdir(), 'kira-dev-server-'));
+  const logDirectory = join(checkout, 'logs');
   const events: { workspaceId: string; output: string; previewUrl: string | null }[] = [];
-  const servers = new ExecutionDevServers((event) => events.push(event));
+  const servers = new ExecutionDevServers((event) => events.push(event), logDirectory);
   try {
     const start = servers.start(
       'workspace-1',
@@ -44,6 +45,12 @@ test('a workspace dev server retains its logs, exposes only loopback preview URL
     assert.equal(servers.read('missing').running, false);
     const stopped = servers.stop('workspace-1');
     assert.equal(stopped.running, false);
+    servers.stopAll();
+
+    const reopened = new ExecutionDevServers(() => {}, logDirectory).read('workspace-1');
+    assert.equal(reopened.running, false);
+    assert.match(reopened.output, /ready/);
+    assert.equal(reopened.previewUrl, null);
   } finally {
     servers.stopAll();
     await rm(checkout, { recursive: true, force: true });
