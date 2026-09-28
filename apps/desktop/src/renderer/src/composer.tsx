@@ -139,8 +139,8 @@ export function Composer({
       : usage?.warned
         ? { type: 'warning', message: warningFor(usage) }
         : undefined,
-    // The gauge, mode, and model choices all belong beside the send button: they
-    // describe what the next turn will use, rather than the draft itself.
+    // The gauge and mode belong beside the send button: they describe what the
+    // next turn will use, rather than the draft itself.
     sendActions: isEditing ? (
       usage === null && chatUsage === null ? undefined : (
         <ContextGauge usage={usage} chatUsage={chatUsage} />
@@ -178,7 +178,6 @@ export function Composer({
             />
           </Tooltip>
         </fieldset>
-        {pickerFor(models, modelId, onChoose, isRunning)}
       </div>
     ),
     // The same button, in its other state: while Kira is writing there is
@@ -255,7 +254,10 @@ export function Composer({
           />
         </div>
       )}
-      <ChatComposer {...composer} />
+      <ChatComposer
+        {...composer}
+        footerActions={pickerFor(models, modelId, onChoose, isRunning)}
+      />
       {isRunning && (
         <Text color="secondary" size="sm">
           {queued.length > 0
