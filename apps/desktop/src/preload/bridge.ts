@@ -939,7 +939,7 @@ export interface ExecutionReview {
   feedback: ReviewFeedback[];
 }
 
-export type DeliveryPath = 'pull-request' | 'local-merge';
+export type DeliveryPath = 'pull-request' | 'merge-pull-request' | 'local-merge';
 export type DeliveryOutcome = 'delivered' | 'refused';
 
 export interface DeliveryAudit {

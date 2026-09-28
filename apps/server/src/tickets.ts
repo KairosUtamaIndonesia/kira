@@ -392,20 +392,41 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
         if ('refused' in held) return status(401, held.refused);
         const found = await resolve(database, params.ref);
         if (!found) return status(404, refusal('TICKET_NOT_FOUND', 'No such ticket.'));
-        if (!isOneOf(['pull-request', 'local-merge'] as const, body.path)) {
-          return status(400, refusal('DELIVERY_PATH_UNKNOWN', 'A delivery uses a pull request or local merge.'));
+        if (!isOneOf(['pull-request', 'merge-pull-request', 'local-merge'] as const, body.path)) {
+          return status(
+            400,
+            refusal(
+              'DELIVERY_PATH_UNKNOWN',
+              'A delivery uses a pull request, pull request merge, or local merge.',
+            ),
+          );
         }
         if (!isOneOf(['delivered', 'refused'] as const, body.outcome)) {
-          return status(400, refusal('DELIVERY_OUTCOME_UNKNOWN', 'A delivery is delivered or refused.'));
+          return status(
+            400,
+            refusal('DELIVERY_OUTCOME_UNKNOWN', 'A delivery is delivered or refused.'),
+          );
         }
 
         const [workspace] = await database
           .select()
           .from(executionWorkspace)
-          .where(and(eq(executionWorkspace.id, body.workspaceId), eq(executionWorkspace.ticketId, found.ticket.id)));
-        if (!workspace) return status(404, refusal('WORKSPACE_NOT_FOUND', 'No such execution workspace.'));
+          .where(
+            and(
+              eq(executionWorkspace.id, body.workspaceId),
+              eq(executionWorkspace.ticketId, found.ticket.id),
+            ),
+          );
+        if (!workspace)
+          return status(404, refusal('WORKSPACE_NOT_FOUND', 'No such execution workspace.'));
         if (body.outcome === 'delivered' && !body.reference?.trim()) {
-          return status(400, refusal('DELIVERY_REFERENCE_REQUIRED', 'A delivered change needs a pull request or merge reference.'));
+          return status(
+            400,
+            refusal(
+              'DELIVERY_REFERENCE_REQUIRED',
+              'A delivered change needs a pull request or merge reference.',
+            ),
+          );
         }
 
         const [approved] = await database

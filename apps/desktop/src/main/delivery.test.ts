@@ -35,6 +35,7 @@ function recorder(audits: DeliveryAudit[]) {
 
 const noPullRequest: PullRequests = {
   create: async () => ({ refused: 'provider unavailable' }),
+  merge: async () => ({ refused: 'provider unavailable' }),
 };
 
 test('a local merge records delivery only after the worktree seam reports success', async () => {
@@ -126,6 +127,7 @@ test('a created pull request preserves its reference and URL for the issue audit
     worktrees: worktrees({ kind: 'merged' }),
     pullRequests: {
       create: async () => ({ reference: '#42', url: 'https://github.com/owner/kira/pull/42' }),
+      merge: async () => ({ reference: '#42' }),
     },
     recorder: recorder(audits),
   });
@@ -143,5 +145,58 @@ test('a created pull request preserves its reference and URL for the issue audit
     reference: '#42',
     url: 'https://github.com/owner/kira/pull/42',
   });
+  assert.deepEqual(audits, [result]);
+});
+
+test('merging a pull request records success only after GitHub confirms the merge', async () => {
+  const audits: DeliveryAudit[] = [];
+  let mergedBranch = '';
+  const delivery = deliveriesFor({
+    worktrees: worktrees({ kind: 'merged' }),
+    pullRequests: {
+      create: async () => ({ refused: 'not used' }),
+      merge: async ({ branch }) => {
+        mergedBranch = branch;
+        return { reference: '#42' };
+      },
+    },
+    recorder: recorder(audits),
+  });
+
+  const result = await delivery.deliver(workspace, {
+    path: 'merge-pull-request',
+    title: 'Deliver',
+    body: 'Issue context',
+  });
+
+  assert.deepEqual(result, {
+    workspaceId: 'workspace-1',
+    path: 'merge-pull-request',
+    outcome: 'delivered',
+    reference: '#42',
+  });
+  assert.equal(mergedBranch, workspace.branch);
+  assert.deepEqual(audits, [result]);
+});
+
+test('a pull request merge refusal is recorded without claiming delivery', async () => {
+  const audits: DeliveryAudit[] = [];
+  const delivery = deliveriesFor({
+    worktrees: worktrees({ kind: 'merged' }),
+    pullRequests: {
+      create: async () => ({ refused: 'not used' }),
+      merge: async () => ({ refused: 'no open pull request for branch' }),
+    },
+    recorder: recorder(audits),
+  });
+
+  const result = await delivery.deliver(workspace, {
+    path: 'merge-pull-request',
+    title: 'Deliver',
+    body: 'Issue context',
+  });
+
+  assert.equal(result.outcome, 'refused');
+  assert.equal(result.details, 'no open pull request for branch');
   assert.deepEqual(audits, [result]);
 });

@@ -26,7 +26,11 @@ test('delivery names an issue, execution workspace, and supported path', async (
   });
   assert.deepEqual(await handlers.deliver('ticket-1', 'workspace-1', 'unknown'), {
     ok: false,
-    error: 'Delivery uses a local merge or pull request.',
+    error: 'Delivery uses a local merge, pull request, or pull request merge.',
   });
-  assert.deepEqual(asked, ['ticket-1/workspace-1/local-merge']);
+  assert.equal((await handlers.deliver('ticket-1', 'workspace-1', 'merge-pull-request')).ok, true);
+  assert.deepEqual(asked, [
+    'ticket-1/workspace-1/local-merge',
+    'ticket-1/workspace-1/merge-pull-request',
+  ]);
 });

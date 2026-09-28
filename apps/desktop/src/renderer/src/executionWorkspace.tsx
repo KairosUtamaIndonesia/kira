@@ -354,7 +354,9 @@ function WorkspaceDetails({
         setDeliveryMessage(
           path === 'local-merge'
             ? `Merged into ${answer.value.reference}.`
-            : `Pull request created: ${answer.value.url ?? answer.value.reference}.`,
+            : path === 'merge-pull-request'
+              ? `Merged pull request ${answer.value.reference}.`
+              : `Pull request created: ${answer.value.url ?? answer.value.reference}.`,
         );
       }
     } finally {
@@ -737,6 +739,13 @@ function WorkspaceDetails({
               variant="primary"
               isDisabled={delivering}
               onClick={() => void deliver('pull-request')}
+            />
+            <Button
+              label="Merge pull request"
+              size="sm"
+              variant="secondary"
+              isDisabled={delivering}
+              onClick={() => void deliver('merge-pull-request')}
             />
           </div>
           {deliveryMessage !== null && (

@@ -25,10 +25,10 @@ export function deliveryHandlers({ deliver }: DeliveryDeps): DeliveryHandlers {
           error: 'Delivery needs an issue and execution workspace.',
         });
       }
-      if (path !== 'local-merge' && path !== 'pull-request') {
+      if (path !== 'local-merge' && path !== 'pull-request' && path !== 'merge-pull-request') {
         return Promise.resolve({
           ok: false,
-          error: 'Delivery uses a local merge or pull request.',
+          error: 'Delivery uses a local merge, pull request, or pull request merge.',
         });
       }
       return envelope(() => deliver(ticketId, workspaceId, path));

@@ -24,6 +24,10 @@ export interface PullRequests {
     title: string;
     body: string;
   }): Promise<{ reference: string; url: string } | { refused: string }>;
+  merge(input: {
+    repository: string;
+    branch: string;
+  }): Promise<{ reference: string } | { refused: string }>;
 }
 
 export interface DeliveryRecorder {
@@ -93,6 +97,30 @@ export function deliveriesFor({
         return audit;
       }
 
+      if (input.path === 'merge-pull-request') {
+        const merged = await pullRequests.merge({
+          repository: workspace.repository,
+          branch: workspace.branch,
+        });
+        const audit: DeliveryAudit =
+          'refused' in merged
+            ? {
+                workspaceId: workspace.id,
+                path: input.path,
+                outcome: 'refused',
+                reference: null,
+                details: merged.refused,
+              }
+            : {
+                workspaceId: workspace.id,
+                path: input.path,
+                outcome: 'delivered',
+                reference: merged.reference,
+              };
+        await recorder.record(audit);
+        return audit;
+      }
+
       const merged = await worktrees.mergeLocal(
         workspace.repository,
         workspace.baseBranch,
@@ -151,6 +179,17 @@ export function ghPullRequests(): PullRequests {
         if (url === undefined || url === '')
           return { refused: 'GitHub did not return a pull request URL.' };
         return { reference: url, url };
+      } catch (error) {
+        return { refused: String(error) };
+      }
+    },
+    async merge({ repository, branch }) {
+      try {
+        const result = await run('gh', ['pr', 'merge', branch, '--merge'], {
+          encoding: 'utf8',
+          cwd: repository,
+        });
+        return { reference: result.stdout.trim() || branch };
       } catch (error) {
         return { refused: String(error) };
       }
