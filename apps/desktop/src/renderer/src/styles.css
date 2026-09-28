@@ -315,11 +315,10 @@
 }
 
 /*
- * The workbench: the pane beside the conversation, holding the tabs — what Kira
- * is holding for this chat, and the workspace and its files as they arrive. The
- * resize handle sits inside this wrapper rather than beside it so that hiding
- * the pane hides the control for it too, and so the width the handle drags is
- * one number for the pair.
+ * The workbench: the pane beside the conversation, holding what Kira is holding
+ * for this chat, the workspace and its files as they arrive. Its activity rail
+ * stays at the outer edge while the selected view fills the rest. The resize
+ * handle sits inside this wrapper, so its width remains one number for the pair.
  *
  * Below the width where a readable column of conversation and a pane cannot
  * both fit, the pane is absent rather than squeezed: the conversation is the
@@ -353,7 +352,7 @@
 
 .workbench {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -361,13 +360,68 @@
   background: var(--color-background-surface);
 }
 
+.workbench-views {
+  order: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-1);
+  width: 44px;
+  flex: 0 0 44px;
+  padding-block: var(--spacing-2);
+  border-inline-start: 1px solid var(--color-border);
+  overflow-y: auto;
+}
+
+.workbench-view {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-element);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.workbench-view:hover {
+  background: var(--color-overlay-hover);
+  color: var(--color-text-primary);
+}
+
+.workbench-view[aria-selected='true'] {
+  background: var(--color-background-muted);
+  color: var(--color-accent);
+}
+
+.workbench-view[aria-selected='true']::before {
+  position: absolute;
+  inset-block: 7px;
+  inset-inline-start: -5px;
+  width: 2px;
+  border-radius: var(--radius-element);
+  background: var(--color-accent);
+  content: '';
+}
+
+.workbench-view:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
 /*
- * The tab's own scrolling, so what Kira is holding scrolls under the strip
- * rather than pushing it off the top of the pane. It scrolls both ways: an open
- * file is as wide as its longest line.
+ * The selected view's own scrolling, so its contents scroll without pushing the
+ * activity rail off the pane. It scrolls both ways: an open file is as wide as
+ * its longest line.
  */
 .workbench-tab {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   overflow: auto;
   padding: var(--spacing-4);
@@ -390,12 +444,23 @@
  * keyboard's way out is Delete on the tab itself, which is where focus is.
  */
 .workbench-tab-close {
+  position: absolute;
+  inset-block-start: 1px;
+  inset-inline-end: 1px;
   display: inline-flex;
   align-items: center;
   padding: var(--spacing-1);
   border-radius: var(--spacing-1);
   color: var(--color-text-primary);
   cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.workbench-view:hover .workbench-tab-close,
+.workbench-view:focus-visible .workbench-tab-close {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .workbench-tab-close:hover {

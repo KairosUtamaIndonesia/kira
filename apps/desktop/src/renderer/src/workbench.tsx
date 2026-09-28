@@ -1,10 +1,9 @@
 /**
  * The workbench: the pane beside the conversation, holding what Kira is holding
- * for this chat, and the strip that whatever else it comes to hold arrives in.
+ * for this chat, the workspace and its files as they arrive.
  *
- * One strip, every tab filling the pane from the strip down. The tabs are peers
- * rather than a strip inside a view of their own, because the pane is narrow and
- * a second strip costs more room than a second level explains.
+ * Its views are peers on the activity rail at the outer edge; the selected view
+ * fills the rest of the pane, without a horizontal strip taking room from it.
  *
  * Which chat's things it holds is the chat on screen's business. How wide it is
  * and whether it is showing are the window's, kept where the sidebar's width is
@@ -18,11 +17,10 @@ import { ResizeHandle, useResizable, type ResizableRegion } from '@astryxdesign/
 import { Icon } from '@astryxdesign/core/Icon';
 import { Text } from '@astryxdesign/core/Text';
 import { VStack } from '@astryxdesign/core/VStack';
-import { Tab, TabList } from '@astryxdesign/core/TabList';
 import { Tooltip } from '@astryxdesign/core/Tooltip';
-import { X } from 'lucide-react';
+import { Brain, FileCode2, FileText, FolderTree, Globe, ListChecks, X } from 'lucide-react';
 import * as stylex from '@stylexjs/stylex';
-import { useRef, useState } from 'react';
+import { useRef, useState, type KeyboardEvent } from 'react';
 import type {
   ChatConclusion,
   ChatMemory,
@@ -153,6 +151,21 @@ export function Workbench({
     (held.showing === SPEC && !available.spec) || (held.showing === TICKETS && !available.tickets)
       ? CONTEXT
       : held.showing;
+  const views = [
+    { value: CONTEXT, label: 'Context', tooltip: undefined, icon: Brain },
+    ...(available.spec ? [{ value: SPEC, label: 'Spec', tooltip: undefined, icon: FileText }] : []),
+    ...(available.tickets
+      ? [{ value: TICKETS, label: 'Tickets', tooltip: undefined, icon: ListChecks }]
+      : []),
+    { value: WORKSPACE, label: 'Workspace', tooltip: undefined, icon: FolderTree },
+    { value: BROWSER, label: 'Browser', tooltip: undefined, icon: Globe },
+    ...open.map((path) => ({
+      value: valueOf(path),
+      label: nameOf(path),
+      tooltip: path,
+      icon: FileCode2,
+    })),
+  ];
 
   function readingKey(path: string): string {
     return `${chatId}:${path}`;
@@ -203,6 +216,37 @@ export function Workbench({
     }
   }
 
+  function show(value: string): void {
+    setTabs(shown(tabs, chatId, value));
+    if (value === WORKSPACE) setWorkspaceVisits((visits) => visits + 1);
+    if (value === BROWSER) {
+      const browserId = browsersOf(browsers, chatId).activeId;
+      if (browserId) void window.kira.activateBrowser(chatId, browserId);
+      else void window.kira.deactivateBrowser(chatId);
+    }
+  }
+
+  function moveFocus(event: KeyboardEvent<HTMLButtonElement>, value: string): void {
+    const index = views.findIndex((view) => view.value === value);
+    const nextIndex =
+      event.key === 'ArrowDown'
+        ? (index + 1) % views.length
+        : event.key === 'ArrowUp'
+          ? (index - 1 + views.length) % views.length
+          : event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+              ? views.length - 1
+              : -1;
+    if (nextIndex === -1) return;
+
+    event.preventDefault();
+    const next = views[nextIndex];
+    if (!next) return;
+    tabRefs.current.get(next.value)?.focus();
+    show(next.value);
+  }
+
   return (
     /*
      * Hidden rather than unmounted while it is put away, the way the draft pane
@@ -214,79 +258,52 @@ export function Workbench({
     <div className="workbench-region" style={{ width: region.size }} hidden={region.isCollapsed}>
       <ResizeHandle resizable={region.props} isReversed label="Resize the workbench" />
       <div className="workbench">
-        <TabList
-          value={showing}
-          onChange={(next) => {
-            setTabs(shown(tabs, chatId, next));
-            // A chat switch should not pay for a tree nobody has looked at, so
-            // the workspace is read the first time its tab is shown and kept
-            // from then on — and read again every time it is shown after that.
-            if (next === WORKSPACE) setWorkspaceVisits((visits) => visits + 1);
-            if (next === BROWSER) {
-              const browserId = browsersOf(browsers, chatId).activeId;
-              if (browserId) void window.kira.activateBrowser(chatId, browserId);
-              else void window.kira.deactivateBrowser(chatId);
-            }
-          }}
-          hasDivider
+        <div
+          className="workbench-views"
           role="tablist"
+          aria-label="Workbench views"
+          aria-orientation="vertical"
         >
-          <Tab value={CONTEXT} label="Context" panelId={panelOf(CONTEXT)} />
-          {available.spec && <Tab value={SPEC} label="Spec" panelId={panelOf(SPEC)} />}
-          {available.tickets && <Tab value={TICKETS} label="Tickets" panelId={panelOf(TICKETS)} />}
-          <Tab
-            value={WORKSPACE}
-            label="Workspace"
-            panelId={panelOf(WORKSPACE)}
-            ref={(element) => {
-              tabRefs.current.set(WORKSPACE, element);
-            }}
-          />
-          <Tab value={BROWSER} label="Browser" panelId={panelOf(BROWSER)} />
-          {open.map((path) => (
-            /*
-             * The strip has room for a name, and the name is what it shows and
-             * what a reader is told it by. The path is on the tab's tooltip: two
-             * files of the same name in different folders are told apart by the
-             * tree they were opened from rather than by the strip.
-             */
-            <Tooltip key={path} content={path} placement="below">
-              <Tab
-                value={valueOf(path)}
-                label={nameOf(path)}
-                panelId={panelOf(valueOf(path))}
+          {views.map((view) => (
+            <Tooltip key={view.value} content={view.tooltip ?? view.label} placement="start">
+              <button
                 ref={(element) => {
-                  tabRefs.current.set(valueOf(path), element);
+                  tabRefs.current.set(view.value, element);
                 }}
-                endContent={
-                  /*
-                   * A span rather than a button, because a tab is a button itself
-                   * and a button inside one is neither valid markup nor reachable.
-                   * The keyboard way to close a tab is Delete on the tab, which is
-                   * where focus already is; this glyph is for the pointer.
-                   */
+                type="button"
+                role="tab"
+                aria-label={view.tooltip ? `${view.label}: ${view.tooltip}` : view.label}
+                aria-selected={showing === view.value}
+                aria-controls={panelOf(view.value)}
+                tabIndex={showing === view.value ? 0 : -1}
+                className="workbench-view"
+                onClick={() => show(view.value)}
+                onKeyDown={(event) => {
+                  if (view.tooltip && (event.key === 'Delete' || event.key === 'Backspace')) {
+                    event.preventDefault();
+                    closeFile(view.tooltip);
+                    return;
+                  }
+                  moveFocus(event, view.value);
+                }}
+              >
+                <Icon icon={view.icon} size="md" />
+                {view.tooltip && (
                   <span
                     className="workbench-tab-close"
                     aria-hidden="true"
                     onClick={(event) => {
                       event.stopPropagation();
-                      closeFile(path);
+                      closeFile(view.tooltip!);
                     }}
                   >
                     <Icon icon={X} size="sm" />
                   </span>
-                }
-                onKeyDown={(event) => {
-                  // Delete on a Mac keyboard sends Backspace, so both close.
-                  if (event.key !== 'Delete' && event.key !== 'Backspace') return;
-
-                  event.preventDefault();
-                  closeFile(path);
-                }}
-              />
+                )}
+              </button>
             </Tooltip>
           ))}
-        </TabList>
+        </div>
         {/*
          * The panel the selected tab points at. Opening any of them sends nothing
          * to a model: what Kira is holding is kept beside the conversation, and
