@@ -464,11 +464,15 @@
 }
 
 .workbench-explorer {
-  flex: 0 0 45%;
+  flex: 1;
   min-width: 120px;
   min-height: 0;
   overflow: auto;
   padding: var(--spacing-4);
+}
+
+.workbench-workspace.has-open-files .workbench-explorer {
+  flex: 0 0 45%;
 }
 
 /*

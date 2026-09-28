@@ -325,11 +325,11 @@ export function Workbench({
           id={panelOf(WORKSPACE)}
           role="tabpanel"
           aria-label="Workspace"
-          className="workbench-tab workbench-workspace"
+          className={`workbench-tab workbench-workspace${open.length > 0 ? ' has-open-files' : ''}`}
           hidden={showing !== WORKSPACE}
         >
-          <div className="workbench-editor">
-            {open.length > 0 && (
+          {open.length > 0 && (
+            <div className="workbench-editor">
               <TabList
                 value={selectedFile ? valueOf(selectedFile) : valueOf(open[0]!)}
                 onChange={(next) => setTabs(shown(tabs, chatId, next))}
@@ -368,22 +368,22 @@ export function Workbench({
                   </Tooltip>
                 ))}
               </TabList>
-            )}
-            <div className="workbench-editor-pages">
-              {open.map((path) => (
-                <div
-                  key={path}
-                  id={panelOf(valueOf(path))}
-                  role="tabpanel"
-                  aria-label={path}
-                  className="workbench-editor-page"
-                  hidden={selectedFile !== path}
-                >
-                  <FileTab reading={readings.get(readingKey(path))} />
-                </div>
-              ))}
+              <div className="workbench-editor-pages">
+                {open.map((path) => (
+                  <div
+                    key={path}
+                    id={panelOf(valueOf(path))}
+                    role="tabpanel"
+                    aria-label={path}
+                    className="workbench-editor-page"
+                    hidden={selectedFile !== path}
+                  >
+                    <FileTab reading={readings.get(readingKey(path))} />
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
           <section className="workbench-explorer" aria-label="Files">
             {workspaceVisits > 0 ? (
               /*
