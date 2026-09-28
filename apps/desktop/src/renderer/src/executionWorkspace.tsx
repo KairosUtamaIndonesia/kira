@@ -5,9 +5,12 @@ import { Icon } from '@astryxdesign/core/Icon';
 import { TextArea } from '@astryxdesign/core/TextArea';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { Text } from '@astryxdesign/core/Text';
+import { FitAddon } from '@xterm/addon-fit';
+import { Terminal as XTerm } from '@xterm/xterm';
+import '@xterm/xterm/css/xterm.css';
 import * as stylex from '@stylexjs/stylex';
-import { ExternalLink, GitBranch, Laptop, Terminal } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { ExternalLink, GitBranch, Laptop, Terminal as TerminalIcon } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import type {
   ExecutionWorkspace,
   ExecutionReview,
@@ -17,6 +20,8 @@ import type {
   ExecutionCommandResult,
   ExecutionProcessSnapshot,
   ExecutionProcessEvent,
+  ExecutionTerminalEvent,
+  ExecutionTerminalSnapshot,
   Ticket,
   TicketSaid,
 } from '../../preload/bridge.ts';
@@ -258,6 +263,11 @@ function WorkspaceDetails({
   const [devServerCommand, setDevServerCommand] = useState('npm run dev -- --host 127.0.0.1');
   const [server, setServer] = useState<ExecutionProcessSnapshot | null>(null);
   const [startingServer, setStartingServer] = useState(false);
+  const [terminalState, setTerminalState] = useState<ExecutionTerminalSnapshot | null>(null);
+  const [terminalBusy, setTerminalBusy] = useState(false);
+  const terminalHost = useRef<HTMLDivElement | null>(null);
+  const terminal = useRef<XTerm | null>(null);
+  const terminalRunning = useRef(false);
 
   useMountEffect(() => {
     let receivedEvent = false;
@@ -271,7 +281,82 @@ function WorkspaceDetails({
       if (answer.ok) setServer(answer.value);
       else setTrouble(answer.error);
     });
-    return unsubscribe;
+    const host = terminalHost.current;
+    if (host === null) return unsubscribe;
+
+    const instance = new XTerm({
+      cursorBlink: true,
+      convertEol: true,
+      fontSize: 13,
+      fontFamily: 'monospace',
+      theme: { background: '#111318' },
+      scrollback: 2000,
+    });
+    const fit = new FitAddon();
+    instance.loadAddon(fit);
+    instance.open(host);
+    terminal.current = instance;
+    fit.fit();
+
+    let hydrated = false;
+    const pending: ExecutionTerminalEvent[] = [];
+    const applyEvent = (event: ExecutionTerminalEvent): void => {
+      if (event.data !== '') instance.write(event.data);
+      terminalRunning.current = event.running;
+      setTerminalState((current) => ({
+        running: event.running,
+        output: current?.output ?? '',
+        exitCode: event.exitCode,
+        sequence: event.sequence,
+      }));
+    };
+    const unsubscribeTerminal = window.kira.onExecutionTerminal((event) => {
+      if (event.workspaceId !== workspaceId) return;
+      if (!hydrated) pending.push(event);
+      else applyEvent(event);
+    });
+    void window.kira.readExecutionTerminal(ticket.id, workspaceId).then((answer) => {
+      if (!answer.ok) {
+        setTrouble(answer.error);
+      } else {
+        instance.write(answer.value.output);
+        terminalRunning.current = answer.value.running;
+        setTerminalState(answer.value);
+      }
+      hydrated = true;
+      for (const event of pending) {
+        if (!answer.ok || event.sequence > answer.value.sequence) applyEvent(event);
+      }
+      pending.length = 0;
+    });
+    const input = instance.onData((data) => {
+      if (terminalRunning.current) {
+        void window.kira.writeExecutionTerminal(ticket.id, workspaceId, data).then((answer) => {
+          if (!answer.ok) setTrouble(answer.error);
+        });
+      }
+    });
+    const observer = new ResizeObserver(() => {
+      fit.fit();
+      if (terminalRunning.current) {
+        void window.kira.resizeExecutionTerminal(
+          ticket.id,
+          workspaceId,
+          instance.cols,
+          instance.rows,
+        );
+      }
+    });
+    observer.observe(host);
+    return () => {
+      unsubscribe();
+      unsubscribeTerminal();
+      input.dispose();
+      observer.disconnect();
+      instance.dispose();
+      terminal.current = null;
+      terminalRunning.current = false;
+    };
   });
 
   const readOutput = async (): Promise<void> => {
@@ -411,6 +496,38 @@ function WorkspaceDetails({
     else setServer(answer.value);
   };
 
+  const startTerminal = async (): Promise<void> => {
+    setTerminalBusy(true);
+    const answer = await window.kira.startExecutionTerminal(ticket.id, workspaceId);
+    if (!answer.ok) setTrouble(answer.error);
+    else {
+      terminalRunning.current = answer.value.running;
+      setTerminalState(answer.value);
+      const instance = terminal.current;
+      if (instance !== null) {
+        await window.kira.resizeExecutionTerminal(
+          ticket.id,
+          workspaceId,
+          instance.cols,
+          instance.rows,
+        );
+        instance.focus();
+      }
+    }
+    setTerminalBusy(false);
+  };
+
+  const stopTerminal = async (): Promise<void> => {
+    setTerminalBusy(true);
+    const answer = await window.kira.stopExecutionTerminal(ticket.id, workspaceId);
+    if (!answer.ok) setTrouble(answer.error);
+    else {
+      terminalRunning.current = false;
+      setTerminalState(answer.value);
+    }
+    setTerminalBusy(false);
+  };
+
   const changedFiles = diff === null ? [] : executionDiffFiles(diff);
 
   return (
@@ -433,7 +550,7 @@ function WorkspaceDetails({
 
       <div {...stylex.props(styles.block)}>
         <div {...stylex.props(styles.blockHeading)}>
-          <Icon icon={Terminal} size="sm" />
+          <Icon icon={TerminalIcon} size="sm" />
           <Text type="label" weight="medium">
             Agent and process output
           </Text>
@@ -511,6 +628,31 @@ function WorkspaceDetails({
             <pre>{commandResult.output || '(no output)'}</pre>
           </div>
         )}
+        <div {...stylex.props(styles.terminalBlock)}>
+          <div {...stylex.props(styles.blockHeading)}>
+            <Icon icon={TerminalIcon} size="sm" />
+            <Text type="label" weight="medium">
+              Terminal
+            </Text>
+            <Button
+              label={terminalState?.running ? 'Stop terminal' : 'Start terminal'}
+              size="sm"
+              variant={terminalState?.running ? 'secondary' : 'primary'}
+              isDisabled={terminalBusy}
+              onClick={() => void (terminalState?.running ? stopTerminal() : startTerminal())}
+            />
+          </div>
+          <div
+            ref={terminalHost}
+            {...stylex.props(styles.terminalHost)}
+            aria-label="Execution workspace terminal"
+          />
+          {terminalState !== null && !terminalState.running && terminalState.exitCode !== null && (
+            <Text type="supporting" color="secondary">
+              Terminal exited with code {terminalState.exitCode}.
+            </Text>
+          )}
+        </div>
       </div>
 
       <div {...stylex.props(styles.block)}>
@@ -780,6 +922,15 @@ const styles = stylex.create({
     gap: 'var(--spacing-2)',
   },
   commandResult: { display: 'grid', gap: 'var(--spacing-2)', minWidth: 0 },
+  terminalBlock: { display: 'grid', gap: 'var(--spacing-2)', minWidth: 0 },
+  terminalHost: {
+    width: '100%',
+    height: 300,
+    overflow: 'hidden',
+    padding: 'var(--spacing-2)',
+    borderRadius: 'var(--radius-md)',
+    backgroundColor: '#111318',
+  },
   processLog: {
     maxHeight: 240,
     overflow: 'auto',

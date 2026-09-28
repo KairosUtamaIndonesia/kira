@@ -14,6 +14,11 @@ function dependencies(
     startDevServer: async () => ({ running: true, output: '', previewUrl: null, exitCode: null }),
     readDevServer: async () => ({ running: true, output: '', previewUrl: null, exitCode: null }),
     stopDevServer: async () => ({ running: false, output: '', previewUrl: null, exitCode: 0 }),
+    startTerminal: async () => ({ running: true, output: '', exitCode: null, sequence: 0 }),
+    readTerminal: async () => ({ running: true, output: '', exitCode: null, sequence: 0 }),
+    writeTerminal: async () => null,
+    resizeTerminal: async () => null,
+    stopTerminal: async () => ({ running: false, output: '', exitCode: 0, sequence: 1 }),
   };
 }
 
@@ -39,6 +44,28 @@ test('workspace command handler validates names and bounds input before dispatch
     error: 'Commands must be 2000 characters or fewer.',
   });
   assert.deepEqual(dispatched, ['issue-1/workspace-1/bun test']);
+});
+
+test('terminal IPC validates input sizes and dimensions before dispatch', async () => {
+  const handlers = executionHandlers(
+    dependencies(async (_ticket, _workspace, command) => ({ command, output: '', exitCode: 0 })),
+  );
+  assert.deepEqual(await handlers.writeTerminal('issue', 'workspace', 'x'.repeat(8193)), {
+    ok: false,
+    error: 'Terminal input must be 8192 characters or fewer.',
+  });
+  assert.deepEqual(await handlers.resizeTerminal('issue', 'workspace', 1, 24), {
+    ok: false,
+    error: 'Terminal dimensions are outside the allowed range.',
+  });
+  assert.deepEqual(await handlers.resizeTerminal('issue', 'workspace', 100, 30), {
+    ok: true,
+    value: null,
+  });
+  assert.deepEqual(await handlers.startTerminal('', 'workspace'), {
+    ok: false,
+    error: 'A terminal needs an issue and execution workspace.',
+  });
 });
 
 test('dev server commands are validated and process read or stop requires named resources', async () => {

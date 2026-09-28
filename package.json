@@ -36,6 +36,7 @@
     "node": ">=22.19.0"
   },
   "trustedDependencies": [
-    "electron"
+    "electron",
+    "node-pty"
   ]
 }

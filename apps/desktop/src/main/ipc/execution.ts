@@ -2,6 +2,7 @@ import {
   EXECUTION_CHANNELS,
   type ExecutionCommandResult,
   type ExecutionProcessSnapshot,
+  type ExecutionTerminalSnapshot,
   type Result,
 } from '../../preload/bridge.ts';
 import { envelope, isId } from './result.ts';
@@ -17,6 +18,11 @@ export interface ExecutionDeps {
   ): Promise<ExecutionProcessSnapshot>;
   readDevServer(ticketId: string, workspaceId: string): Promise<ExecutionProcessSnapshot>;
   stopDevServer(ticketId: string, workspaceId: string): Promise<ExecutionProcessSnapshot>;
+  startTerminal(ticketId: string, workspaceId: string): Promise<ExecutionTerminalSnapshot>;
+  readTerminal(ticketId: string, workspaceId: string): Promise<ExecutionTerminalSnapshot>;
+  writeTerminal(ticketId: string, workspaceId: string, data: string): Promise<null>;
+  resizeTerminal(ticketId: string, workspaceId: string, cols: number, rows: number): Promise<null>;
+  stopTerminal(ticketId: string, workspaceId: string): Promise<ExecutionTerminalSnapshot>;
 }
 
 export interface ExecutionHandlers {
@@ -32,6 +38,19 @@ export interface ExecutionHandlers {
   ): Promise<Result<ExecutionProcessSnapshot>>;
   readDevServer(ticketId: unknown, workspaceId: unknown): Promise<Result<ExecutionProcessSnapshot>>;
   stopDevServer(ticketId: unknown, workspaceId: unknown): Promise<Result<ExecutionProcessSnapshot>>;
+  startTerminal(
+    ticketId: unknown,
+    workspaceId: unknown,
+  ): Promise<Result<ExecutionTerminalSnapshot>>;
+  readTerminal(ticketId: unknown, workspaceId: unknown): Promise<Result<ExecutionTerminalSnapshot>>;
+  writeTerminal(ticketId: unknown, workspaceId: unknown, data: unknown): Promise<Result<null>>;
+  resizeTerminal(
+    ticketId: unknown,
+    workspaceId: unknown,
+    cols: unknown,
+    rows: unknown,
+  ): Promise<Result<null>>;
+  stopTerminal(ticketId: unknown, workspaceId: unknown): Promise<Result<ExecutionTerminalSnapshot>>;
 }
 
 export function executionHandlers({
@@ -39,6 +58,11 @@ export function executionHandlers({
   startDevServer,
   readDevServer,
   stopDevServer,
+  startTerminal,
+  readTerminal,
+  writeTerminal,
+  resizeTerminal,
+  stopTerminal,
 }: ExecutionDeps): ExecutionHandlers {
   const validWorkspace = (ticketId: unknown, workspaceId: unknown): boolean =>
     isId(ticketId) && isId(workspaceId);
@@ -87,5 +111,65 @@ export function executionHandlers({
       !validWorkspace(ticketId, workspaceId)
         ? Promise.resolve({ ok: false, error: 'A process needs an issue and execution workspace.' })
         : envelope(() => stopDevServer(ticketId as string, workspaceId as string)),
+    startTerminal: (ticketId, workspaceId) =>
+      !validWorkspace(ticketId, workspaceId)
+        ? Promise.resolve({
+            ok: false,
+            error: 'A terminal needs an issue and execution workspace.',
+          })
+        : envelope(() => startTerminal(ticketId as string, workspaceId as string)),
+    readTerminal: (ticketId, workspaceId) =>
+      !validWorkspace(ticketId, workspaceId)
+        ? Promise.resolve({
+            ok: false,
+            error: 'A terminal needs an issue and execution workspace.',
+          })
+        : envelope(() => readTerminal(ticketId as string, workspaceId as string)),
+    writeTerminal: (ticketId, workspaceId, data) => {
+      if (!validWorkspace(ticketId, workspaceId)) {
+        return Promise.resolve({
+          ok: false,
+          error: 'Terminal input needs an issue and execution workspace.',
+        });
+      }
+      if (typeof data !== 'string' || data.length > 8192) {
+        return Promise.resolve({
+          ok: false,
+          error: 'Terminal input must be 8192 characters or fewer.',
+        });
+      }
+      return envelope(() => writeTerminal(ticketId as string, workspaceId as string, data));
+    },
+    resizeTerminal: (ticketId, workspaceId, cols, rows) => {
+      if (!validWorkspace(ticketId, workspaceId)) {
+        return Promise.resolve({
+          ok: false,
+          error: 'A terminal resize needs an issue and execution workspace.',
+        });
+      }
+      if (
+        !Number.isInteger(cols) ||
+        !Number.isInteger(rows) ||
+        (cols as number) < 2 ||
+        (cols as number) > 500 ||
+        (rows as number) < 1 ||
+        (rows as number) > 300
+      ) {
+        return Promise.resolve({
+          ok: false,
+          error: 'Terminal dimensions are outside the allowed range.',
+        });
+      }
+      return envelope(() =>
+        resizeTerminal(ticketId as string, workspaceId as string, cols as number, rows as number),
+      );
+    },
+    stopTerminal: (ticketId, workspaceId) =>
+      !validWorkspace(ticketId, workspaceId)
+        ? Promise.resolve({
+            ok: false,
+            error: 'A terminal needs an issue and execution workspace.',
+          })
+        : envelope(() => stopTerminal(ticketId as string, workspaceId as string)),
   };
 }

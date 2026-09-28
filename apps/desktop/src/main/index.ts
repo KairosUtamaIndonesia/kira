@@ -43,6 +43,7 @@ import { runWorktrees } from './workspace/worktrees.ts';
 import { deliveriesFor, ghPullRequests } from './delivery/delivery.ts';
 import { runExecutionCommand } from './execution/commands.ts';
 import { ExecutionDevServers } from './execution/devServer.ts';
+import { ExecutionTerminals } from './execution/terminal.ts';
 import { workerFor, type Worker } from './worker.ts';
 import { type OpenChats, openChats } from './pi/openChats.ts';
 import { listFolder } from './workspace/listing.ts';
@@ -91,6 +92,12 @@ const executionDevServers = new ExecutionDevServers(
     mainWindow?.webContents.send(EXECUTION_CHANNELS.process, event);
   },
   join(app.getPath('userData'), 'execution-process-logs'),
+);
+const executionTerminals = new ExecutionTerminals(
+  (event) => {
+    mainWindow?.webContents.send(EXECUTION_CHANNELS.terminalEvent, event);
+  },
+  join(app.getPath('userData'), 'execution-terminal-logs'),
 );
 
 function shellSettings(): KiraShell {
@@ -451,6 +458,26 @@ function registerExecutionChannel(): void {
       await checkoutFor(ticketId, workspaceId);
       return executionDevServers.stop(workspaceId);
     },
+    startTerminal: async (ticketId, workspaceId) =>
+      executionTerminals.start(workspaceId, await checkoutFor(ticketId, workspaceId)),
+    readTerminal: async (ticketId, workspaceId) => {
+      await checkoutFor(ticketId, workspaceId);
+      return executionTerminals.read(workspaceId);
+    },
+    writeTerminal: async (ticketId, workspaceId, data) => {
+      await checkoutFor(ticketId, workspaceId);
+      executionTerminals.write(workspaceId, data);
+      return null;
+    },
+    resizeTerminal: async (ticketId, workspaceId, cols, rows) => {
+      await checkoutFor(ticketId, workspaceId);
+      executionTerminals.resize(workspaceId, cols, rows);
+      return null;
+    },
+    stopTerminal: async (ticketId, workspaceId) => {
+      await checkoutFor(ticketId, workspaceId);
+      return executionTerminals.stop(workspaceId);
+    },
   });
   ipcMain.handle(
     EXECUTION_CHANNELS.command,
@@ -471,6 +498,31 @@ function registerExecutionChannel(): void {
     EXECUTION_CHANNELS.devServerStop,
     (_event, ticketId: unknown, workspaceId: unknown) =>
       handlers.stopDevServer(ticketId, workspaceId),
+  );
+  ipcMain.handle(
+    EXECUTION_CHANNELS.terminalStart,
+    (_event, ticketId: unknown, workspaceId: unknown) =>
+      handlers.startTerminal(ticketId, workspaceId),
+  );
+  ipcMain.handle(
+    EXECUTION_CHANNELS.terminalRead,
+    (_event, ticketId: unknown, workspaceId: unknown) =>
+      handlers.readTerminal(ticketId, workspaceId),
+  );
+  ipcMain.handle(
+    EXECUTION_CHANNELS.terminalWrite,
+    (_event, ticketId: unknown, workspaceId: unknown, data: unknown) =>
+      handlers.writeTerminal(ticketId, workspaceId, data),
+  );
+  ipcMain.handle(
+    EXECUTION_CHANNELS.terminalResize,
+    (_event, ticketId: unknown, workspaceId: unknown, cols: unknown, rows: unknown) =>
+      handlers.resizeTerminal(ticketId, workspaceId, cols, rows),
+  );
+  ipcMain.handle(
+    EXECUTION_CHANNELS.terminalStop,
+    (_event, ticketId: unknown, workspaceId: unknown) =>
+      handlers.stopTerminal(ticketId, workspaceId),
   );
 }
 
@@ -1193,6 +1245,7 @@ app.on('before-quit', (event) => {
 
   saidGoodbye = true;
   executionDevServers.stopAll();
+  executionTerminals.stopAll();
   event.preventDefault();
   void Promise.all([
     worker === undefined ? undefined : worker.stop(),

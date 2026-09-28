@@ -19,6 +19,10 @@ files:
   - out/**
   - package.json
 
+# node-pty loads its rebuilt native binaries at runtime, so keep those outside asar.
+asarUnpack:
+  - node_modules/node-pty/build/Release/**
+
 # Workflow skills are data, not application code. Keep them outside the asar so
 # the same resource path works on macOS, Windows and Linux packaged builds.
 extraResources:

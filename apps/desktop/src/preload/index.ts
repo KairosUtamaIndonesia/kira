@@ -47,6 +47,8 @@ import {
   type ExecutionCommandResult,
   type ExecutionProcessSnapshot,
   type ExecutionProcessEvent,
+  type ExecutionTerminalSnapshot,
+  type ExecutionTerminalEvent,
   type ShellSettingsSnapshot,
   type ShellTestResult,
   type Result,
@@ -196,6 +198,29 @@ const bridge: KiraBridge = {
     };
     ipcRenderer.on(EXECUTION_CHANNELS.process, handler);
     return () => ipcRenderer.off(EXECUTION_CHANNELS.process, handler);
+  },
+
+  startExecutionTerminal: (ticketId, workspaceId) =>
+    ask<ExecutionTerminalSnapshot>(EXECUTION_CHANNELS.terminalStart, ticketId, workspaceId),
+
+  readExecutionTerminal: (ticketId, workspaceId) =>
+    ask<ExecutionTerminalSnapshot>(EXECUTION_CHANNELS.terminalRead, ticketId, workspaceId),
+
+  writeExecutionTerminal: (ticketId, workspaceId, data) =>
+    ask<null>(EXECUTION_CHANNELS.terminalWrite, ticketId, workspaceId, data),
+
+  resizeExecutionTerminal: (ticketId, workspaceId, cols, rows) =>
+    ask<null>(EXECUTION_CHANNELS.terminalResize, ticketId, workspaceId, cols, rows),
+
+  stopExecutionTerminal: (ticketId, workspaceId) =>
+    ask<ExecutionTerminalSnapshot>(EXECUTION_CHANNELS.terminalStop, ticketId, workspaceId),
+
+  onExecutionTerminal: (listener) => {
+    const handler = (_event: IpcRendererEvent, payload: ExecutionTerminalEvent): void => {
+      listener(payload);
+    };
+    ipcRenderer.on(EXECUTION_CHANNELS.terminalEvent, handler);
+    return () => ipcRenderer.off(EXECUTION_CHANNELS.terminalEvent, handler);
   },
 
   worker: () => ask<WorkerStanding>(WORKER_CHANNELS.standing),

@@ -704,6 +704,12 @@ export const EXECUTION_CHANNELS = {
   devServerRead: 'execution:dev-server:read',
   devServerStop: 'execution:dev-server:stop',
   process: 'execution:process',
+  terminalStart: 'execution:terminal:start',
+  terminalRead: 'execution:terminal:read',
+  terminalWrite: 'execution:terminal:write',
+  terminalResize: 'execution:terminal:resize',
+  terminalStop: 'execution:terminal:stop',
+  terminalEvent: 'execution:terminal:event',
 } as const;
 
 /**
@@ -966,6 +972,21 @@ export interface ExecutionProcessSnapshot {
 
 export interface ExecutionProcessEvent extends ExecutionProcessSnapshot {
   workspaceId: string;
+}
+
+export interface ExecutionTerminalSnapshot {
+  running: boolean;
+  output: string;
+  exitCode: number | null;
+  sequence: number;
+}
+
+export interface ExecutionTerminalEvent {
+  workspaceId: string;
+  data: string;
+  running: boolean;
+  exitCode: number | null;
+  sequence: number;
 }
 
 /**
@@ -1509,6 +1530,30 @@ export interface KiraBridge {
     workspaceId: string,
   ): Promise<Result<ExecutionProcessSnapshot>>;
   onExecutionProcess(listener: (event: ExecutionProcessEvent) => void): () => void;
+  startExecutionTerminal(
+    ticketId: string,
+    workspaceId: string,
+  ): Promise<Result<ExecutionTerminalSnapshot>>;
+  readExecutionTerminal(
+    ticketId: string,
+    workspaceId: string,
+  ): Promise<Result<ExecutionTerminalSnapshot>>;
+  writeExecutionTerminal(
+    ticketId: string,
+    workspaceId: string,
+    data: string,
+  ): Promise<Result<null>>;
+  resizeExecutionTerminal(
+    ticketId: string,
+    workspaceId: string,
+    cols: number,
+    rows: number,
+  ): Promise<Result<null>>;
+  stopExecutionTerminal(
+    ticketId: string,
+    workspaceId: string,
+  ): Promise<Result<ExecutionTerminalSnapshot>>;
+  onExecutionTerminal(listener: (event: ExecutionTerminalEvent) => void): () => void;
   /** Write a ticket down in the workspace's project, as a draft. */
   writeTicket(workspaceId: string, draft: TicketDraft): Promise<Result<Ticket>>;
   /**
