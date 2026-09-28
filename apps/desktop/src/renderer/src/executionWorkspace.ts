@@ -13,6 +13,84 @@ export interface ExecutionWorkspaceView {
   preview: { url: string } | null;
 }
 
+export interface ExecutionDiffLine {
+  kind: 'meta' | 'hunk' | 'context' | 'added' | 'removed';
+  text: string;
+  oldLine: number | null;
+  newLine: number | null;
+}
+
+export interface ExecutionDiffFile {
+  path: string;
+  lines: ExecutionDiffLine[];
+}
+
+/** Parse unified diff hunks so review comments can target the new-file line. */
+export function executionDiffFiles(diff: string): ExecutionDiffFile[] {
+  const files: ExecutionDiffFile[] = [];
+  let current: ExecutionDiffFile | null = null;
+  let oldLine: number | null = null;
+  let newLine: number | null = null;
+
+  for (const text of diff.split('\n')) {
+    if (text.startsWith('diff --git ')) {
+      current = { path: 'unknown file', lines: [] };
+      files.push(current);
+      oldLine = null;
+      newLine = null;
+      current.lines.push({ kind: 'meta', text, oldLine: null, newLine: null });
+      continue;
+    }
+    if (current === null) continue;
+
+    if (text.startsWith('--- ')) {
+      if (current.path === 'unknown file' && text !== '--- /dev/null') {
+        current.path = diffPath(text.slice(4));
+      }
+      current.lines.push({ kind: 'meta', text, oldLine: null, newLine: null });
+      continue;
+    }
+    if (text.startsWith('+++ ')) {
+      if (text !== '+++ /dev/null') current.path = diffPath(text.slice(4));
+      current.lines.push({ kind: 'meta', text, oldLine: null, newLine: null });
+      continue;
+    }
+
+    const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(text);
+    if (hunk !== null) {
+      oldLine = Number(hunk[1]);
+      newLine = Number(hunk[2]);
+      current.lines.push({ kind: 'hunk', text, oldLine: null, newLine: null });
+      continue;
+    }
+
+    if (oldLine === null || newLine === null) {
+      current.lines.push({ kind: 'meta', text, oldLine: null, newLine: null });
+    } else if (text.startsWith('+')) {
+      current.lines.push({ kind: 'added', text: text.slice(1), oldLine: null, newLine });
+      newLine += 1;
+    } else if (text.startsWith('-')) {
+      current.lines.push({ kind: 'removed', text: text.slice(1), oldLine, newLine: null });
+      oldLine += 1;
+    } else if (text.startsWith('\\')) {
+      current.lines.push({ kind: 'meta', text, oldLine: null, newLine: null });
+    } else if (text.startsWith(' ')) {
+      current.lines.push({ kind: 'context', text: text.slice(1), oldLine, newLine });
+      oldLine += 1;
+      newLine += 1;
+    } else {
+      current.lines.push({ kind: 'meta', text, oldLine: null, newLine: null });
+    }
+  }
+
+  return files.filter((file) => file.lines.some((line) => line.kind === 'hunk'));
+}
+
+function diffPath(header: string): string {
+  const path = header.replace(/^([ab])\//, '');
+  return path.startsWith('"') ? path.slice(1, -1) : path;
+}
+
 /**
  * The issue-facing reading of an execution workspace.
  *

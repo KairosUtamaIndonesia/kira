@@ -15,6 +15,7 @@ import type {
   TicketSaid,
 } from '../../preload/bridge.ts';
 import {
+  executionDiffFiles,
   executionPreviewLabel,
   executionStatusLabel,
   executionWorkspaceView,
@@ -221,8 +222,7 @@ function WorkspaceDetails({
   const [said, setSaid] = useState<TicketSaid[] | null>(null);
   const [trouble, setTrouble] = useState<string | null>(null);
   const [review, setReview] = useState<ExecutionReview | null>(null);
-  const [path, setPath] = useState('');
-  const [line, setLine] = useState('1');
+  const [commentTarget, setCommentTarget] = useState<{ path: string; line: number } | null>(null);
   const [comment, setComment] = useState('');
   const [feedback, setFeedback] = useState('');
   const [diff, setDiff] = useState<string | null>(null);
@@ -259,9 +259,10 @@ function WorkspaceDetails({
   };
 
   const addComment = async (): Promise<void> => {
+    if (commentTarget === null) return;
     const answer = await window.kira.addReviewComment(ticket.id, workspaceId, {
-      path,
-      line: Number(line),
+      path: commentTarget.path,
+      line: commentTarget.line,
       side: 'right',
       body: comment,
     });
@@ -270,6 +271,7 @@ function WorkspaceDetails({
       return;
     }
     setComment('');
+    setCommentTarget(null);
     await readReview();
   };
 
@@ -282,6 +284,8 @@ function WorkspaceDetails({
     setFeedback('');
     await readReview();
   };
+
+  const changedFiles = diff === null ? [] : executionDiffFiles(diff);
 
   return (
     <>
@@ -412,16 +416,32 @@ function WorkspaceDetails({
             ))}
           </>
         )}
-        <TextInput label="Changed file" value={path} onChange={setPath} size="sm" />
-        <TextInput label="Line" value={line} onChange={setLine} size="sm" />
-        <TextArea label="Inline comment" value={comment} onChange={setComment} rows={3} />
-        <Button
-          label="Add comment"
-          size="sm"
-          variant="secondary"
-          isDisabled={path.trim() === '' || comment.trim() === ''}
-          onClick={() => void addComment()}
-        />
+        {commentTarget !== null && (
+          <div {...stylex.props(styles.form)}>
+            <Text type="supporting" color="secondary">
+              Comment on {commentTarget.path}:{commentTarget.line}
+            </Text>
+            <TextArea label="Inline comment" value={comment} onChange={setComment} rows={3} />
+            <div {...stylex.props(styles.choices)}>
+              <Button
+                label="Add comment"
+                size="sm"
+                variant="secondary"
+                isDisabled={comment.trim() === ''}
+                onClick={() => void addComment()}
+              />
+              <Button
+                label="Cancel comment"
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setCommentTarget(null);
+                  setComment('');
+                }}
+              />
+            </div>
+          </div>
+        )}
         <TextArea label="Feedback for the agent" value={feedback} onChange={setFeedback} rows={3} />
         <Button
           label="Send feedback"
@@ -451,7 +471,39 @@ function WorkspaceDetails({
               No tracked changes from the base branch.
             </Text>
           ) : (
-            <pre {...stylex.props(styles.diff)}>{diff}</pre>
+            <div {...stylex.props(styles.diff)}>
+              {changedFiles.map((file) => (
+                <section key={file.path} {...stylex.props(styles.diffFile)} aria-label={file.path}>
+                  <Text type="code">{file.path}</Text>
+                  {file.lines.map((line, index) => (
+                    <div
+                      key={`${index}:${line.kind}`}
+                      {...stylex.props(
+                        styles.diffLine,
+                        line.kind === 'added' && styles.diffAdded,
+                        line.kind === 'removed' && styles.diffRemoved,
+                        line.kind === 'hunk' && styles.diffHunk,
+                      )}
+                    >
+                      <span {...stylex.props(styles.diffNumber)}>{line.oldLine ?? ''}</span>
+                      <span {...stylex.props(styles.diffNumber)}>{line.newLine ?? ''}</span>
+                      <code {...stylex.props(styles.diffText)}>{line.text || ' '}</code>
+                      {(line.kind === 'added' || line.kind === 'context') &&
+                        line.newLine !== null && (
+                          <Button
+                            label={`Comment on line ${line.newLine}`}
+                            size="sm"
+                            variant="ghost"
+                            onClick={() =>
+                              setCommentTarget({ path: file.path, line: line.newLine! })
+                            }
+                          />
+                        )}
+                    </div>
+                  ))}
+                </section>
+              ))}
+            </div>
           ))}
       </div>
 
@@ -486,15 +538,30 @@ const styles = stylex.create({
   form: { display: 'grid', gap: 'var(--spacing-2)' },
   reviewItem: { display: 'grid', gap: 'var(--spacing-1)', paddingBlock: 'var(--spacing-2)' },
   diff: {
-    overflowX: 'auto',
+    display: 'grid',
+    gap: 'var(--spacing-3)',
+    overflow: 'auto',
     maxHeight: 480,
     padding: 'var(--spacing-3)',
     borderRadius: 'var(--radius-md)',
     backgroundColor: 'var(--color-background-muted)',
     fontFamily: 'var(--font-family-mono)',
     fontSize: 'var(--font-size-sm)',
+  },
+  diffFile: { display: 'grid', gap: 'var(--spacing-1)', minWidth: 'max-content' },
+  diffLine: {
+    display: 'grid',
+    gridTemplateColumns: '3em 3em minmax(0, 1fr) auto',
+    alignItems: 'center',
+    gap: 'var(--spacing-1)',
+    minHeight: 28,
     whiteSpace: 'pre',
   },
+  diffNumber: { color: 'var(--color-text-secondary)', textAlign: 'end' },
+  diffText: { whiteSpace: 'pre' },
+  diffAdded: { backgroundColor: 'var(--color-background-success-subtle)' },
+  diffRemoved: { backgroundColor: 'var(--color-background-danger-subtle)' },
+  diffHunk: { color: 'var(--color-text-secondary)' },
   output: {
     display: 'grid',
     gap: 'var(--spacing-2)',

@@ -4,6 +4,7 @@ import type { ExecutionWorkspace, Ticket, TicketRun } from '../../preload/bridge
 import {
   executionPreviewLabel,
   executionStatusLabel,
+  executionDiffFiles,
   executionWorkspaceView,
 } from './executionWorkspace.ts';
 
@@ -98,4 +99,56 @@ test('a workspace with no preview says so instead of presenting stale success', 
 
   assert.equal(view.preview, null);
   assert.equal(executionPreviewLabel(view.preview), 'No development preview is available.');
+});
+
+test('unified diffs are grouped by file and assign reviewable new-side line numbers', () => {
+  const cases = [
+    {
+      name: 'added and context lines',
+      diff: [
+        'diff --git a/src/a.ts b/src/a.ts',
+        '--- a/src/a.ts',
+        '+++ b/src/a.ts',
+        '@@ -4,2 +4,3 @@',
+        ' kept',
+        '-old',
+        '+new',
+      ].join('\n'),
+      want: [
+        {
+          path: 'src/a.ts',
+          lines: [
+            ['context', 4],
+            ['removed', null],
+            ['added', 5],
+          ],
+        },
+      ],
+    },
+    {
+      name: 'new file with no old-side path',
+      diff: [
+        'diff --git a/new.ts b/new.ts',
+        '--- /dev/null',
+        '+++ b/new.ts',
+        '@@ -0,0 +1,1 @@',
+        '+hello',
+      ].join('\n'),
+      want: [{ path: 'new.ts', lines: [['added', 1]] }],
+    },
+    { name: 'empty diff', diff: '', want: [] },
+  ];
+
+  for (const testCase of cases) {
+    assert.deepEqual(
+      executionDiffFiles(testCase.diff).map((file) => ({
+        path: file.path,
+        lines: file.lines
+          .filter((line) => ['context', 'added', 'removed'].includes(line.kind))
+          .map((line) => [line.kind, line.newLine]),
+      })),
+      testCase.want,
+      testCase.name,
+    );
+  }
 });
