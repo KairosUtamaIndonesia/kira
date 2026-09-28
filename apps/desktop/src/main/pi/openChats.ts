@@ -77,6 +77,8 @@ export interface OpenChats {
   send(text: string): Promise<void>;
   /** Change the current chat's mode, refusing a switch while Kira is writing. */
   setMode(mode: ChatMode): Promise<void>;
+  /** Attach or detach project tickets from the current chat. */
+  setWorkTicketIds(workTicketIds: string[]): Promise<void>;
   /**
    * Approve a waiting proposal in the chat on screen, writing it through the
    * person-owned tracker seam. A breakdown is published and marked ready in one
@@ -523,6 +525,8 @@ export function openChats(
         chats: listChats(store),
         workspaces: listWorkspaces(store),
         currentId: id,
+        workTicketIds:
+          conversation === null ? (draft?.workTicketIds ?? []) : store.getThread(id).workTicketIds,
         mode: conversation === null ? (draft?.mode ?? 'build') : store.getThread(id).mode,
         draftId: draft?.id ?? null,
         transcript: conversation?.transcript() ?? {
@@ -582,6 +586,20 @@ export function openChats(
         throw new Error('Wait for Kira to finish before changing chat mode.');
       }
       await conversation.setMode(mode);
+    },
+    setWorkTicketIds: async (workTicketIds) => {
+      const ids = [...new Set(workTicketIds)];
+      if (shown === null) {
+        if (draft === null) throw new Error('No chat is open.');
+        draft = { ...draft, workTicketIds: ids };
+        return;
+      }
+
+      const conversation = current();
+      if (conversation.isRunning()) {
+        throw new Error('Wait for Kira to finish before changing attached tickets.');
+      }
+      store.setThreadWorkTicketIds(conversation.threadId, ids);
     },
 
     approveProposal: async (proposalId) => {

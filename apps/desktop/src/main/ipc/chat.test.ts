@@ -42,6 +42,7 @@ const surface: ChatState = {
   ],
   workspaces: [],
   currentId: 'first',
+  workTicketIds: [],
   mode: 'build',
   draftId: null,
   transcript: { messages: [line], trailing: [], headId: 'entry-1' },
@@ -615,6 +616,7 @@ for (const testCase of CASES) {
       load: () => handlers.load(),
       send: () => handlers.send(testCase.argument),
       setMode: () => handlers.setMode(testCase.argument as ChatMode),
+      setWorkTicketIds: () => handlers.setWorkTicketIds(testCase.argument),
       queue: () => handlers.queue(testCase.argument, testCase.lane),
       unqueue: () => handlers.unqueue(),
       stop: () => handlers.stop(),
@@ -664,6 +666,40 @@ test('changing mode validates and forwards the selected mode', async () => {
     error: 'A chat mode must be Build or Spec.',
   });
   assert.deepEqual(calls, ['mode spec']);
+});
+
+test('attached ticket changes validate the list before updating the current chat', async () => {
+  const cases: Array<{ input: unknown; want: unknown; wantCalls: string[] }> = [
+    {
+      input: ['DEMO-1', 'DEMO-2'],
+      want: { ok: true, value: null },
+      wantCalls: ['tickets DEMO-1,DEMO-2'],
+    },
+    {
+      input: ['DEMO-1', 'DEMO-1'],
+      want: { ok: false, error: 'A chat can hold up to 20 distinct ticket references.' },
+      wantCalls: [],
+    },
+    {
+      input: ['DEMO-1', 4],
+      want: { ok: false, error: 'A chat can hold up to 20 distinct ticket references.' },
+      wantCalls: [],
+    },
+  ];
+
+  for (const { input, want, wantCalls } of cases) {
+    const calls: string[] = [];
+    const handlers = chatHandlers(
+      deps(calls, {
+        setWorkTicketIds: async (ids) => {
+          calls.push(`tickets ${ids.join(',')}`);
+        },
+      }),
+    );
+
+    assert.deepEqual(await handlers.setWorkTicketIds(input), want);
+    assert.deepEqual(calls, wantCalls);
+  }
 });
 
 test('approving and rejecting a proposal are person actions routed through the chat seam', async () => {

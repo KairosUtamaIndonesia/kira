@@ -82,6 +82,8 @@ const bridge: KiraBridge = {
 
   loadChat: () => ask<ChatState>(CHAT_CHANNELS.load),
   setChatMode: (mode: ChatMode) => ask<null>(CHAT_CHANNELS.setMode, mode),
+  setChatWorkTicketIds: (workTicketIds) =>
+    ask<null>(CHAT_CHANNELS.setWorkTicketIds, workTicketIds),
 
   approveProposal: (proposalId) => ask<null>(CHAT_CHANNELS.proposalApprove, proposalId),
 

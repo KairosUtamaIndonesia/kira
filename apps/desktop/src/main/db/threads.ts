@@ -992,6 +992,13 @@ export class ThreadStore {
     this.db.prepare('UPDATE threads SET mode = ? WHERE id = ?').run(mode, threadId);
   }
 
+  /** Persist the project tickets a chat is attached to. */
+  setThreadWorkTicketIds(threadId: string, workTicketIds: string[]): void {
+    this.db
+      .prepare('UPDATE threads SET work_ticket_ids_json = ? WHERE id = ?')
+      .run(JSON.stringify([...new Set(workTicketIds)]), threadId);
+  }
+
   /** Persist the shaping offer and current proposal without touching chat activity. */
   setThreadShaping(threadId: string, shaping: ShapingState): void {
     this.db

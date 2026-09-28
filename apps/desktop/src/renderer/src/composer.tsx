@@ -1,6 +1,7 @@
 import { Button } from '@astryxdesign/core/Button';
 import {
   ChatComposer,
+  ChatComposerDrawer,
   ChatComposerInput,
   ChatSendButton,
   type ChatComposerProps,
@@ -14,6 +15,7 @@ import { Text } from '@astryxdesign/core/Text';
 import { Popover } from '@astryxdesign/core/Popover';
 import { Tooltip } from '@astryxdesign/core/Tooltip';
 import { VStack } from '@astryxdesign/core/VStack';
+import { Token } from '@astryxdesign/core/Token';
 import { borderVars, colorVars, spacingVars } from '@astryxdesign/core/theme/tokens.stylex';
 import { useAui, useAuiState } from '@assistant-ui/react';
 import { ChevronDown, Gauge, X } from 'lucide-react';
@@ -64,6 +66,8 @@ export function Composer({
   isEditing = false,
   browserElements = [],
   onBrowserElementsChange,
+  workTicketIds = [],
+  onRemoveWorkTicket,
 }: {
   placeholder: string;
   error?: string | null;
@@ -87,6 +91,8 @@ export function Composer({
   isEditing?: boolean;
   browserElements?: BrowserElementSelection[];
   onBrowserElementsChange?: (browserElements: BrowserElementSelection[]) => void;
+  workTicketIds?: string[];
+  onRemoveWorkTicket?: (ticketId: string) => void;
 }): ReactNode {
   const aui = useAui();
   const text = useAuiState((state) => state.composer.text);
@@ -100,6 +106,7 @@ export function Composer({
   // on its way out. An edit is the exception: it replaces a message *and* sends
   // the replacement, so it still waits for a turn that is running to finish.
   const canSend = useAuiState((state) => state.composer.canSend) && !(isEditing && isRunning);
+  const attachmentCount = browserElements.length + workTicketIds.length;
   const sendDraft = (steer: boolean = true): void => {
     if (isEditing || browserElements.length === 0) {
       if (steer) aui.composer.send();
@@ -224,14 +231,6 @@ export function Composer({
     />
   ) : (
     <div className="composer-stack">
-      {browserElements.length > 0 && (
-        <BrowserElementAttachments
-          selections={browserElements}
-          onRemove={(index) =>
-            onBrowserElementsChange?.(browserElements.filter((_, each) => each !== index))
-          }
-        />
-      )}
       {queued.length > 0 && (
         <div className="waiting" aria-label="Waiting to be read">
           {queued.map((line, index) => (
@@ -256,6 +255,28 @@ export function Composer({
       )}
       <ChatComposer
         {...composer}
+        drawer={
+          attachmentCount === 0 ? undefined : (
+            <ChatComposerDrawer count={attachmentCount} label="Attachments">
+              {workTicketIds.map((ticketId) => (
+                <Token
+                  key={ticketId}
+                  label={ticketId}
+                  size="sm"
+                  onRemove={() => onRemoveWorkTicket?.(ticketId)}
+                />
+              ))}
+              {browserElements.length > 0 && (
+                <BrowserElementAttachments
+                  selections={browserElements}
+                  onRemove={(index) =>
+                    onBrowserElementsChange?.(browserElements.filter((_, each) => each !== index))
+                  }
+                />
+              )}
+            </ChatComposerDrawer>
+          )
+        }
         footerActions={pickerFor(models, modelId, onChoose, isRunning)}
       />
       {isRunning && (

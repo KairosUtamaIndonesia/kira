@@ -119,6 +119,7 @@ function registerChatChannels(): void {
     state: () => chats.state(),
     send: (text) => chats.send(text),
     setMode: (mode) => chats.setMode(mode),
+    setWorkTicketIds: (workTicketIds) => chats.setWorkTicketIds(workTicketIds),
     approveProposal: (proposalId) => chats.approveProposal(proposalId),
     rejectProposal: (proposalId) => chats.rejectProposal(proposalId),
     sendBackOutcome: (proposalId) => chats.sendBackOutcome(proposalId),
@@ -130,7 +131,7 @@ function registerChatChannels(): void {
     takeQueuedBack: () => chats.takeQueuedBack(),
     stop: () => chats.stop(),
     compact: () => chats.compact(),
-    start: (projectId) => chats.start(projectId),
+    start: (projectId, workTicketIds) => chats.start(projectId, workTicketIds),
     open: (threadId) => chats.open(threadId),
     branch: (messageId) => chats.branch(messageId),
     edit: (messageId) => chats.edit(messageId),
@@ -142,6 +143,9 @@ function registerChatChannels(): void {
 
   ipcMain.handle(CHAT_CHANNELS.load, () => handlers.load());
   ipcMain.handle(CHAT_CHANNELS.setMode, (_event, mode: unknown) => handlers.setMode(mode));
+  ipcMain.handle(CHAT_CHANNELS.setWorkTicketIds, (_event, workTicketIds: unknown) =>
+    handlers.setWorkTicketIds(workTicketIds),
+  );
   // A turn that has just finished is what moves the month's number, so the
   // reading is asked for again the moment one ends — here and on a stop, the two
   // ways a turn ends as far as this process can see. A turn carried on by words

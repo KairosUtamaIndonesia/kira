@@ -51,6 +51,9 @@ test('an ordinary chat remembers its attached project tickets without becoming a
   assert.deepEqual(chat.workTicketIds, ['ticket-a', 'ticket-b']);
   assert.deepEqual(store.getThread(chat.id).workTicketIds, ['ticket-a', 'ticket-b']);
 
+  store.setThreadWorkTicketIds(chat.id, ['ticket-b', 'ticket-c', 'ticket-b']);
+  assert.deepEqual(store.getThread(chat.id).workTicketIds, ['ticket-b', 'ticket-c']);
+
   store.close();
 });
 

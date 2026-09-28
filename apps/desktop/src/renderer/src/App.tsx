@@ -163,6 +163,8 @@ const PARKED_PANE: ComponentProps<typeof ChatPane> = {
   browserElements: [],
   onBrowserElementsChange: NOTHING,
   onAddBrowserElement: NOTHING,
+  workTicketIds: [],
+  onRemoveWorkTicket: NOTHING,
   onAnswerQuestionnaire: async () => null,
   onCancelQuestionnaire: async () => null,
   questionnaireDraft: undefined,
@@ -242,6 +244,7 @@ export default function App() {
   const [specQueue, setSpecQueue] = useState<TicketQueue | null>(null);
   const [specQueueChatId, setSpecQueueChatId] = useState<string | null>(null);
   const [draftId, setDraftId] = useState<string | null>(null);
+  const [workTicketIds, setWorkTicketIds] = useState<string[]>([]);
   const [chatSort, setChatSort] = useState<ChatSort>(readChatSort);
   const [transcript, setTranscript] = useState<ChatTranscript>({
     messages: [],
@@ -323,6 +326,7 @@ export default function App() {
       setChats(result.value.chats);
       setWorkspaces(result.value.workspaces);
       setCurrentId(result.value.currentId);
+      setWorkTicketIds(result.value.workTicketIds);
       setMode(result.value.mode);
       setDraftId(result.value.draftId);
       setTranscript(result.value.transcript);
@@ -564,6 +568,20 @@ export default function App() {
         return;
       }
       setMode(next);
+      setError(null);
+    },
+    [currentId],
+  );
+
+  /** Keep the visible composer attachments and the saved chat context in sync. */
+  const changeWorkTicketIds = useCallback(
+    async (next: string[]): Promise<void> => {
+      const result = await window.kira.setChatWorkTicketIds(next);
+      if (!result.ok) {
+        setError({ chatId: currentId, message: result.error });
+        return;
+      }
+      setWorkTicketIds(next);
       setError(null);
     },
     [currentId],
@@ -1047,6 +1065,9 @@ export default function App() {
         ...held,
         [currentId]: [...(held[currentId] ?? []), selection],
       })),
+    workTicketIds,
+    onRemoveWorkTicket: (ticketId) =>
+      void changeWorkTicketIds(workTicketIds.filter((id) => id !== ticketId)),
   };
 
   /**
@@ -1304,9 +1325,9 @@ export default function App() {
                 <Text type="label" weight="medium" maxLines={1}>
                   {currentChat?.title ?? 'New chat'}
                 </Text>
-                {(currentChat?.workTicketIds.length ?? 0) > 0 && (
+                {workTicketIds.length > 0 && (
                   <Text type="supporting" color="secondary">
-                    Working with {currentChat!.workTicketIds.length} attached project {currentChat!.workTicketIds.length === 1 ? 'ticket' : 'tickets'}
+                    Working with {workTicketIds.length} attached project {workTicketIds.length === 1 ? 'ticket' : 'tickets'}
                   </Text>
                 )}
               </div>
@@ -1774,6 +1795,8 @@ function ChatPane({
   browserElements,
   onBrowserElementsChange,
   onAddBrowserElement,
+  workTicketIds,
+  onRemoveWorkTicket,
   queued,
   restored,
   onTakeBack,
@@ -1812,6 +1835,8 @@ function ChatPane({
   browserElements: BrowserElementSelection[];
   onBrowserElementsChange: (browserElements: BrowserElementSelection[]) => void;
   onAddBrowserElement: (selection: BrowserElementSelection) => void;
+  workTicketIds: string[];
+  onRemoveWorkTicket: (ticketId: string) => void;
   // Whatever the runtime asks of a window that owns its own messages: the
   // shapes are the adapter's, so there is one place they can drift from.
   onNew: NonNullable<ExternalStoreAdapter<ChatLine>['onNew']>;
@@ -1913,6 +1938,8 @@ function ChatPane({
             onRestored={onRestored}
             browserElements={browserElements}
             onBrowserElementsChange={onBrowserElementsChange}
+            workTicketIds={workTicketIds}
+            onRemoveWorkTicket={onRemoveWorkTicket}
           />
         </ThreadPrimitive.ViewportFooter>
       </ThreadPrimitive.Root>

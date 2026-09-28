@@ -430,6 +430,8 @@ export interface ChatState {
   /** Every workspace, in the order it was opened. A workspace outlives its chats. */
   workspaces: WorkspaceSummary[];
   currentId: string;
+  /** Project tickets attached to the current chat, including a new draft. */
+  workTicketIds: string[];
   /** Whether the current chat is planning or can make workspace changes. */
   mode: ChatMode;
   /**
@@ -576,6 +578,7 @@ export type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 export const CHAT_CHANNELS = {
   load: 'chat:load',
   setMode: 'chat:set-mode',
+  setWorkTicketIds: 'chat:set-work-ticket-ids',
   proposalApprove: 'chat:proposal-approve',
   proposalReject: 'chat:proposal-reject',
   outcomeSendBack: 'chat:outcome-send-back',
@@ -1381,6 +1384,7 @@ export interface KiraBridge {
   loadChat(): Promise<Result<ChatState>>;
   /** Change the current chat between direct building and planning-only Spec mode. */
   setChatMode(mode: ChatMode): Promise<Result<null>>;
+  setChatWorkTicketIds(workTicketIds: string[]): Promise<Result<null>>;
   /**
    * Send a message to the current chat. Resolves when Kira's turn has finished,
    * which may be long after the window has moved to another chat.

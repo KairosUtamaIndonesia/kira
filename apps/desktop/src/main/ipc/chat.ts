@@ -24,6 +24,7 @@ export interface ChatDeps {
   state(): ChatState;
   send(text: string): Promise<void>;
   setMode?(mode: ChatMode): Promise<void>;
+  setWorkTicketIds?(workTicketIds: string[]): Promise<void>;
   approveProposal?(proposalId: string): Promise<void>;
   rejectProposal?(proposalId: string): Promise<void>;
   sendBackOutcome?(proposalId: string): Promise<void>;
@@ -53,6 +54,7 @@ export interface ChatHandlers {
   load(): Promise<Result<ChatState>>;
   send(text: unknown): Promise<Result<null>>;
   setMode(mode: unknown): Promise<Result<null>>;
+  setWorkTicketIds(workTicketIds: unknown): Promise<Result<null>>;
   queue(text: unknown, lane: unknown): Promise<Result<null>>;
   unqueue(): Promise<Result<QueuedLine[]>>;
   stop(): Promise<Result<QueuedLine[]>>;
@@ -84,6 +86,7 @@ export function chatHandlers({
   state,
   send,
   setMode,
+  setWorkTicketIds,
   approveProposal,
   rejectProposal,
   sendBackOutcome,
@@ -114,6 +117,23 @@ export function chatHandlers({
         return Promise.resolve({ ok: false, error: 'Changing chat mode is unavailable.' });
       }
       return nothing(() => setMode(mode));
+    },
+
+    setWorkTicketIds: (workTicketIds) => {
+      if (
+        !validWorkTicketIds(workTicketIds) ||
+        workTicketIds.length > 20 ||
+        new Set(workTicketIds).size !== workTicketIds.length
+      ) {
+        return Promise.resolve({
+          ok: false,
+          error: 'A chat can hold up to 20 distinct ticket references.',
+        });
+      }
+      if (setWorkTicketIds === undefined) {
+        return Promise.resolve({ ok: false, error: 'Changing attached tickets is unavailable.' });
+      }
+      return nothing(() => setWorkTicketIds(workTicketIds));
     },
 
     send: (text) => {
@@ -257,6 +277,13 @@ export function chatHandlers({
 /** A lane as it arrives from the renderer: only the two turns there are. */
 function isLane(value: unknown): value is QueuedLine['lane'] {
   return value === 'next' || value === 'later';
+}
+
+function validWorkTicketIds(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.every((id) => typeof id === 'string' && id.trim() !== '')
+  );
 }
 
 /** The workspace an incoming start files a chat under: an id, or nothing at all. */

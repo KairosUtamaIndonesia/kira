@@ -645,6 +645,22 @@ test('deleting the last chat leaves a new chat to compose in', async () => {
   store.close();
 });
 
+test('a draft chat exposes its attached tickets to the composer before the first message', async () => {
+  const store = new ThreadStore(join(tempDir('kira-open-store-'), 'threads.db'));
+  const workspaces = newWorkspaces();
+  const chats = openChats(store, () => {}, workspaces.make, MODELS);
+
+  await chats.start(null, ['DEMO-1', 'DEMO-2']);
+
+  assert.deepEqual(chats.state().workTicketIds, ['DEMO-1', 'DEMO-2']);
+  await chats.setWorkTicketIds(['DEMO-2']);
+  assert.deepEqual(chats.state().workTicketIds, ['DEMO-2']);
+  assert.equal(store.listThreads().length, 0);
+
+  chats.closeAll();
+  store.close();
+});
+
 test('putting away or deleting a chat that is already gone is not a failure', async () => {
   const fixture = storedChats();
   const workspaces = newWorkspaces();
