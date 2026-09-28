@@ -486,6 +486,143 @@
   tab-size: 2;
 }
 
+.file-viewer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  color: var(--color-text-primary);
+}
+
+.file-viewer-fullscreen {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  padding: var(--spacing-4);
+  background: var(--color-background-surface);
+}
+
+.file-viewer-toolbar,
+.file-viewer-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.file-viewer-toolbar {
+  justify-content: space-between;
+  min-height: 40px;
+  padding-block-end: var(--spacing-2);
+  border-block-end: 1px solid var(--color-border);
+}
+
+.file-viewer-toolbar > *:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-viewer-actions {
+  flex: 0 0 auto;
+}
+
+.file-viewer-error {
+  padding-block: var(--spacing-2);
+  color: var(--color-text-secondary);
+}
+
+.file-viewer-content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding-block-start: var(--spacing-3);
+}
+
+.file-viewer-editor {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  resize: none;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font-family: var(--font-family-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 13px;
+  line-height: 1.55;
+  tab-size: 2;
+  white-space: pre;
+}
+
+.file-preview-html,
+.file-preview-document {
+  width: 100%;
+  height: 100%;
+  min-height: 360px;
+  border: 0;
+  background: var(--color-background-surface);
+}
+
+.file-preview-image {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  margin-inline: auto;
+  object-fit: contain;
+}
+
+.file-preview-media {
+  display: block;
+  width: min(100%, 720px);
+  max-height: 100%;
+  margin-inline: auto;
+}
+
+.file-preview-font {
+  padding: var(--spacing-4);
+}
+
+.file-preview-font p {
+  margin-block: var(--spacing-4);
+  font-size: 2rem;
+}
+
+.file-preview-table-wrap {
+  max-width: 100%;
+  overflow: auto;
+}
+
+.file-preview-table-meta {
+  margin: 0;
+  padding-block-end: var(--spacing-2);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.file-preview-table {
+  border-collapse: collapse;
+  min-width: 100%;
+  font-size: 13px;
+}
+
+.file-preview-table th,
+.file-preview-table td {
+  border: 1px solid var(--color-border);
+  padding: var(--spacing-2) var(--spacing-3);
+  text-align: start;
+  white-space: pre-wrap;
+}
+
+.file-preview-table th {
+  position: sticky;
+  inset-block-start: 0;
+  background: var(--color-background-muted);
+  font-weight: 600;
+}
+
 /*
  * The way out of a file's tab with a pointer. A span rather than a button,
  * because a tab is a button and a button inside one is invalid markup; the

@@ -32,6 +32,7 @@ import {
   type TicketRun,
   type TicketSaid,
   type WorkspaceSummary,
+  type WorkspaceAsset,
   type WorkerStanding,
   type QueuedLine,
   type Usage,
@@ -152,6 +153,11 @@ const bridge: KiraBridge = {
     ask<FolderListing | null>(FILE_CHANNELS.list, chatId, path),
 
   readWorkspaceFile: (chatId, path) => ask<string>(FILE_CHANNELS.read, chatId, path),
+
+  writeWorkspaceFile: (chatId, path, expected, content) =>
+    ask<null>(FILE_CHANNELS.write, chatId, path, expected, content),
+
+  readWorkspaceAsset: (chatId, path) => ask<WorkspaceAsset>(FILE_CHANNELS.asset, chatId, path),
 
   watchWorkspace: (chatId, folders) => ask<null>(FILE_CHANNELS.watch, chatId, folders),
 

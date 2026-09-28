@@ -9,6 +9,7 @@ import {
   WORKSPACE,
   closed,
   contentsOf,
+  assetContentsOf,
   nameOf,
   opened,
   shown,
@@ -304,3 +305,18 @@ for (const testCase of READ_CASES) {
     assert.deepEqual(contentsOf(testCase.result), testCase.want);
   });
 }
+
+test('a previewable asset comes back with its content type and size', () => {
+  assert.deepEqual(
+    assetContentsOf({
+      ok: true,
+      value: { dataUrl: 'data:image/png;base64,AQID', mimeType: 'image/png', sizeBytes: 3 },
+    }),
+    {
+      kind: 'asset',
+      dataUrl: 'data:image/png;base64,AQID',
+      mimeType: 'image/png',
+      sizeBytes: 3,
+    },
+  );
+});

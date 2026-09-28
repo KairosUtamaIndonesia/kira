@@ -41,7 +41,7 @@ import { runWorktrees } from './workspace/worktrees.ts';
 import { workerFor, type Worker } from './worker.ts';
 import { type OpenChats, openChats } from './pi/openChats.ts';
 import { listFolder } from './workspace/listing.ts';
-import { readWorkspaceFile } from './workspace/reading.ts';
+import { readWorkspaceAsset, readWorkspaceFile, writeWorkspaceFile } from './workspace/reading.ts';
 import { watchFolders } from './workspace/watching.ts';
 import { mcpManager, type McpManager } from './mcp/servers.ts';
 import { mcpSecretStore } from './mcp/secrets.ts';
@@ -356,6 +356,8 @@ function registerFileChannels(): void {
     workspaceOf: (chatId) => store.findThread(chatId)?.cwd ?? null,
     list: listFolder,
     read: readWorkspaceFile,
+    write: writeWorkspaceFile,
+    asset: readWorkspaceAsset,
     watch: watchFolders,
   });
 
@@ -367,6 +369,14 @@ function registerFileChannels(): void {
   );
   ipcMain.handle(FILE_CHANNELS.read, (_event, chatId: unknown, path: unknown) =>
     handlers.read(chatId, path),
+  );
+  ipcMain.handle(
+    FILE_CHANNELS.write,
+    (_event, chatId: unknown, path: unknown, expected: unknown, content: unknown) =>
+      handlers.write(chatId, path, expected, content),
+  );
+  ipcMain.handle(FILE_CHANNELS.asset, (_event, chatId: unknown, path: unknown) =>
+    handlers.asset(chatId, path),
   );
   ipcMain.handle(FILE_CHANNELS.watch, (event, chatId: unknown, paths: unknown) => {
     const window = event.sender;

@@ -15,7 +15,12 @@
  * moving rather than a second folder to keep up with.
  */
 import { resolve, sep } from 'node:path';
-import { FILE_CHANNELS, type FolderListing, type Result } from '../../preload/bridge.ts';
+import {
+  FILE_CHANNELS,
+  type FolderListing,
+  type Result,
+  type WorkspaceAsset,
+} from '../../preload/bridge.ts';
 import { envelope } from './result.ts';
 
 export { FILE_CHANNELS };
@@ -37,6 +42,10 @@ export interface FileDeps {
   list(root: string, path: string): Promise<FolderListing>;
   /** One file's text, by a path from the workspace root. */
   read(root: string, path: string): Promise<string>;
+  /** Replace a text file only if it still holds what the window opened. */
+  write(root: string, path: string, expected: string, content: string): Promise<void>;
+  /** One allowlisted binary asset for a native preview. */
+  asset(root: string, path: string): Promise<WorkspaceAsset>;
   /**
    * Watch the levels named — each one a folder — answering a way to stop, or
    * null when the platform will not watch any of them, which is not a failure to
@@ -48,6 +57,8 @@ export interface FileDeps {
 export interface FileHandlers {
   list(chatId: unknown, path: unknown): Promise<Result<FolderListing | null>>;
   read(chatId: unknown, path: unknown): Promise<Result<string>>;
+  write(chatId: unknown, path: unknown, expected: unknown, content: unknown): Promise<Result<null>>;
+  asset(chatId: unknown, path: unknown): Promise<Result<WorkspaceAsset>>;
   /**
    * Watch the levels of the chat's workspace that one window is showing, so
    * changes reach the tree. `key` is which window, and one set of levels per
@@ -59,7 +70,14 @@ export interface FileHandlers {
   unwatch(key: number): Promise<Result<null>>;
 }
 
-export function fileHandlers({ workspaceOf, list, read, watch }: FileDeps): FileHandlers {
+export function fileHandlers({
+  workspaceOf,
+  list,
+  read,
+  write,
+  asset,
+  watch,
+}: FileDeps): FileHandlers {
   /** What each window is watching, if anything. */
   const watching = new Map<number, Watching>();
 
@@ -120,6 +138,30 @@ export function fileHandlers({ workspaceOf, list, read, watch }: FileDeps): File
         if (asked.path === '') throw new Error('A file has to be named to be read.');
 
         return read(asked.root, asked.path);
+      }),
+
+    write: (chatId, path, expected, content) =>
+      envelope(async () => {
+        const asked = target(chatId, path);
+
+        if (asked === null) throw new Error('This chat has no workspace yet.');
+        if (asked.path === '') throw new Error('A file has to be named to be written.');
+        if (typeof expected !== 'string' || typeof content !== 'string') {
+          throw new Error('The workbench can only write text files.');
+        }
+
+        await write(asked.root, asked.path, expected, content);
+        return null;
+      }),
+
+    asset: (chatId, path) =>
+      envelope(async () => {
+        const asked = target(chatId, path);
+
+        if (asked === null) throw new Error('This chat has no workspace yet.');
+        if (asked.path === '') throw new Error('A file has to be named to be previewed.');
+
+        return asset(asked.root, asked.path);
       }),
 
     watch: (key, chatId, paths, changed) =>

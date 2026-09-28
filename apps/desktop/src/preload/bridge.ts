@@ -377,6 +377,13 @@ export interface WorkspaceEntry {
   kind: 'folder' | 'file';
 }
 
+/** A small, allowlisted binary workspace file ready for an in-window preview. */
+export interface WorkspaceAsset {
+  dataUrl: string;
+  mimeType: string;
+  sizeBytes: number;
+}
+
 /**
  * One folder of a workspace, as the window receives it.
  *
@@ -945,6 +952,8 @@ export interface TicketChange {
 export const FILE_CHANNELS = {
   list: 'file:list',
   read: 'file:read',
+  write: 'file:write',
+  asset: 'file:asset',
   watch: 'file:watch',
   unwatch: 'file:unwatch',
   changed: 'file:changed',
@@ -1430,6 +1439,15 @@ export interface KiraBridge {
    * rather than answered with something that would read as its contents.
    */
   readWorkspaceFile(chatId: string, path: string): Promise<Result<string>>;
+  /** Save a text file if it still matches the contents the window opened. */
+  writeWorkspaceFile(
+    chatId: string,
+    path: string,
+    expected: string,
+    content: string,
+  ): Promise<Result<null>>;
+  /** Read an allowlisted image, document, media, or font preview asset. */
+  readWorkspaceAsset(chatId: string, path: string): Promise<Result<WorkspaceAsset>>;
   /**
    * Watch the levels of the chat's workspace the pane is showing, so a file Kira
    * writes reaches the tree without anyone asking again. One set per window:

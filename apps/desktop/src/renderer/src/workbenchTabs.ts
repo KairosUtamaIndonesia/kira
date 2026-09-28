@@ -10,7 +10,7 @@
  * a click does — opens, selects, closes and chooses the neighbouring file — is
  * checkable without a DOM.
  */
-import type { Result } from '../../preload/bridge';
+import type { Result, WorkspaceAsset } from '../../preload/bridge';
 
 /** What Kira is holding for the chat, which is the tab the pane opens on. */
 export const CONTEXT = 'context';
@@ -114,6 +114,7 @@ export function closed(all: ByChat, chatId: string, path: string): ByChat {
 /** What a file turned out to hold, once it has been read. */
 export type Reading =
   | { kind: 'text'; text: string }
+  | { kind: 'asset'; dataUrl: string; mimeType: string; sizeBytes: number }
   /** Refused: too large to read, or not text. Said where the contents would be. */
   | { kind: 'refused'; reason: string };
 
@@ -122,6 +123,11 @@ export function contentsOf(result: Result<string>): Reading {
   return result.ok
     ? { kind: 'text', text: result.value }
     : { kind: 'refused', reason: result.error };
+}
+
+/** A binary preview asset, or its refusal, held beside the text readings. */
+export function assetContentsOf(result: Result<WorkspaceAsset>): Reading {
+  return result.ok ? { kind: 'asset', ...result.value } : { kind: 'refused', reason: result.error };
 }
 
 /** The tab that takes the place of the one closed at `at`. */

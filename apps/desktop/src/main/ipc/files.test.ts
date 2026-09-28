@@ -39,6 +39,8 @@ function deps(calls: string[], overrides: Partial<FileDeps> = {}): FileDeps {
       calls.push(`read ${root}:${path}`);
       return 'const one = 1;\n';
     },
+    write: async () => {},
+    asset: async () => ({ dataUrl: '', mimeType: 'image/png', sizeBytes: 0 }),
     watch: (folders) => {
       calls.push(`watch ${folders.join(' ')}`);
       return watching(calls, folders.join(' '));
@@ -207,6 +209,41 @@ for (const testCase of CASES) {
     assert.deepEqual(calls, testCase.wantCalls);
   });
 }
+
+test('write sends only a workspace-relative file and its expected contents to the workspace', async () => {
+  const calls: string[] = [];
+  const handlers = fileHandlers(
+    deps(calls, {
+      write: async (root, path, expected, content) => {
+        calls.push(`write ${root}:${path}:${expected}=>${content}`);
+      },
+    }),
+  );
+
+  assert.deepEqual(await handlers.write('c1', 'src/a.ts', 'old text', 'new text'), {
+    ok: true,
+    value: null,
+  });
+  assert.deepEqual(calls, ['workspace of c1', 'write /work/api:src/a.ts:old text=>new text']);
+});
+
+test('asset reads a previewable file from only the named workspace', async () => {
+  const calls: string[] = [];
+  const handlers = fileHandlers(
+    deps(calls, {
+      asset: async (root, path) => {
+        calls.push(`asset ${root}:${path}`);
+        return { dataUrl: 'data:image/png;base64,AQID', mimeType: 'image/png', sizeBytes: 3 };
+      },
+    }),
+  );
+
+  assert.deepEqual(await handlers.asset('c1', 'assets/logo.png'), {
+    ok: true,
+    value: { dataUrl: 'data:image/png;base64,AQID', mimeType: 'image/png', sizeBytes: 3 },
+  });
+  assert.deepEqual(calls, ['workspace of c1', 'asset /work/api:assets/logo.png']);
+});
 
 interface WatchStep {
   call: 'watch' | 'unwatch';

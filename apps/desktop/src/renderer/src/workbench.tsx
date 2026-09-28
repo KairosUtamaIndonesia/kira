@@ -50,6 +50,7 @@ import {
   TICKETS,
   type Reading,
   WORKSPACE,
+  assetContentsOf,
   closed,
   contentsOf,
   nameOf,
@@ -59,6 +60,7 @@ import {
   valueOf,
 } from './workbenchTabs';
 import { WorkspaceTab } from './workspaceTab';
+import { fileKindOf } from './filePreview';
 
 /** Where the window's width and whether it is showing are remembered. */
 const WORKBENCH_STORAGE_KEY = 'kira.workbench';
@@ -176,9 +178,13 @@ export function Workbench({
    */
   function openFile(path: string) {
     setTabs(opened(tabs, chatId, path));
+    const kind = fileKindOf(path);
+    const answer = ['image', 'svg', 'pdf', 'audio', 'video', 'font'].includes(kind)
+      ? window.kira.readWorkspaceAsset(chatId, path).then(assetContentsOf)
+      : window.kira.readWorkspaceFile(chatId, path).then(contentsOf);
 
-    void window.kira.readWorkspaceFile(chatId, path).then((result) => {
-      setReadings((held) => new Map(held).set(readingKey(path), contentsOf(result)));
+    void answer.then((reading) => {
+      setReadings((held) => new Map(held).set(readingKey(path), reading));
     });
   }
 
@@ -378,7 +384,12 @@ export function Workbench({
                     className="workbench-editor-page"
                     hidden={selectedFile !== path}
                   >
-                    <FileTab reading={readings.get(readingKey(path))} />
+                    <FileTab
+                      key={`${path}:${JSON.stringify(readings.get(readingKey(path)))}`}
+                      chatId={chatId}
+                      path={path}
+                      reading={readings.get(readingKey(path))}
+                    />
                   </div>
                 ))}
               </div>
