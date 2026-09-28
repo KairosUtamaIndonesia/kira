@@ -86,6 +86,7 @@ import type {
   ChatUsage,
   ModelOption,
   ShapingState,
+  Ticket as WorkTicket,
   TicketQueue,
   WorkspaceSummary,
   QueuedLine,
@@ -164,6 +165,7 @@ const PARKED_PANE: ComponentProps<typeof ChatPane> = {
   onBrowserElementsChange: NOTHING,
   onAddBrowserElement: NOTHING,
   workTicketIds: [],
+  workTicketDetails: {},
   onRemoveWorkTicket: NOTHING,
   onAnswerQuestionnaire: async () => null,
   onCancelQuestionnaire: async () => null,
@@ -245,6 +247,9 @@ export default function App() {
   const [specQueueChatId, setSpecQueueChatId] = useState<string | null>(null);
   const [draftId, setDraftId] = useState<string | null>(null);
   const [workTicketIds, setWorkTicketIds] = useState<string[]>([]);
+  const [workTicketDetails, setWorkTicketDetails] = useState<
+    Record<string, Pick<WorkTicket, 'name' | 'title'>>
+  >({});
   const [chatSort, setChatSort] = useState<ChatSort>(readChatSort);
   const [transcript, setTranscript] = useState<ChatTranscript>({
     messages: [],
@@ -339,15 +344,19 @@ export default function App() {
       setSpecQueueChatId(null);
       const currentChat = result.value.chats.find((chat) => chat.id === result.value.currentId);
       const workspaceId = currentChat?.workspaceId;
+      const proposalTicket = approvedSpecTicket(nextShaping);
       if (
         workspaceId !== null &&
         workspaceId !== undefined &&
-        approvedSpecTicket(nextShaping) !== null
+        (proposalTicket !== null || result.value.workTicketIds.length > 0)
       ) {
         const queue = await window.kira.loadQueue(workspaceId);
         if (queue.ok) {
-          setSpecQueue(queue.value);
-          setSpecQueueChatId(result.value.currentId);
+          rememberWorkTicketDetails(queue.value, result.value.workTicketIds);
+          if (proposalTicket !== null) {
+            setSpecQueue(queue.value);
+            setSpecQueueChatId(result.value.currentId);
+          }
         }
       }
       setRunning(result.value.running);
@@ -849,7 +858,27 @@ export default function App() {
    * point of one: the same files, the same instructions beside them.
    */
   async function startChat(workspaceId: string | null, workTicketIds?: string[]): Promise<void> {
+    const ticketQueue =
+      workspaceId !== null && workTicketIds !== undefined && workTicketIds.length > 0
+        ? window.kira.loadQueue(workspaceId)
+        : null;
     await switchChat(() => window.kira.startChat(workspaceId, workTicketIds));
+    if (ticketQueue !== null) {
+      const queue = await ticketQueue;
+      if (queue.ok) rememberWorkTicketDetails(queue.value, workTicketIds ?? []);
+    }
+  }
+
+  function rememberWorkTicketDetails(queue: TicketQueue, ticketIds: string[]): void {
+    const attachedIds = new Set(ticketIds);
+    setWorkTicketDetails((details) => ({
+      ...details,
+      ...Object.fromEntries(
+        queue.tickets
+          .filter((ticket) => attachedIds.has(ticket.id))
+          .map((ticket) => [ticket.id, { name: ticket.name, title: ticket.title }]),
+      ),
+    }));
   }
 
   /**
@@ -1066,6 +1095,7 @@ export default function App() {
         [currentId]: [...(held[currentId] ?? []), selection],
       })),
     workTicketIds,
+    workTicketDetails,
     onRemoveWorkTicket: (ticketId) =>
       void changeWorkTicketIds(workTicketIds.filter((id) => id !== ticketId)),
   };
@@ -1796,6 +1826,7 @@ function ChatPane({
   onBrowserElementsChange,
   onAddBrowserElement,
   workTicketIds,
+  workTicketDetails,
   onRemoveWorkTicket,
   queued,
   restored,
@@ -1836,6 +1867,7 @@ function ChatPane({
   onBrowserElementsChange: (browserElements: BrowserElementSelection[]) => void;
   onAddBrowserElement: (selection: BrowserElementSelection) => void;
   workTicketIds: string[];
+  workTicketDetails: Record<string, Pick<WorkTicket, 'name' | 'title'>>;
   onRemoveWorkTicket: (ticketId: string) => void;
   // Whatever the runtime asks of a window that owns its own messages: the
   // shapes are the adapter's, so there is one place they can drift from.
@@ -1939,6 +1971,7 @@ function ChatPane({
             browserElements={browserElements}
             onBrowserElementsChange={onBrowserElementsChange}
             workTicketIds={workTicketIds}
+            workTicketDetails={workTicketDetails}
             onRemoveWorkTicket={onRemoveWorkTicket}
           />
         </ThreadPrimitive.ViewportFooter>

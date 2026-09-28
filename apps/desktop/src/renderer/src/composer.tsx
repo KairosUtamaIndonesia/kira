@@ -18,7 +18,7 @@ import { VStack } from '@astryxdesign/core/VStack';
 import { Token } from '@astryxdesign/core/Token';
 import { borderVars, colorVars, spacingVars } from '@astryxdesign/core/theme/tokens.stylex';
 import { useAui, useAuiState } from '@assistant-ui/react';
-import { ChevronDown, Gauge, X } from 'lucide-react';
+import { ChevronDown, Gauge, Ticket as TicketIcon, X } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import * as stylex from '@stylexjs/stylex';
 import type { ChatMode, ChatUsage, ModelOption, QueuedLine, Usage } from '../../preload/bridge';
@@ -67,6 +67,7 @@ export function Composer({
   browserElements = [],
   onBrowserElementsChange,
   workTicketIds = [],
+  workTicketDetails = {},
   onRemoveWorkTicket,
 }: {
   placeholder: string;
@@ -92,6 +93,7 @@ export function Composer({
   browserElements?: BrowserElementSelection[];
   onBrowserElementsChange?: (browserElements: BrowserElementSelection[]) => void;
   workTicketIds?: string[];
+  workTicketDetails?: Record<string, { name: string; title: string }>;
   onRemoveWorkTicket?: (ticketId: string) => void;
 }): ReactNode {
   const aui = useAui();
@@ -258,14 +260,30 @@ export function Composer({
         drawer={
           attachmentCount === 0 ? undefined : (
             <ChatComposerDrawer count={attachmentCount} label="Attachments">
-              {workTicketIds.map((ticketId) => (
-                <Token
-                  key={ticketId}
-                  label={ticketId}
-                  size="sm"
-                  onRemove={() => onRemoveWorkTicket?.(ticketId)}
-                />
-              ))}
+              {workTicketIds.map((ticketId) => {
+                const ticket = workTicketDetails[ticketId];
+                const label = ticket?.name ?? `Ticket ${ticketId.slice(0, 8)}`;
+                return (
+                  <Token
+                    key={ticketId}
+                    label={label}
+                    description={ticket?.title}
+                    size="sm"
+                    icon={<Icon icon={TicketIcon} size="sm" />}
+                    endContent={
+                      ticket?.title ? (
+                        <span
+                          {...stylex.props(styles.workTicketTitle)}
+                          title={ticket.title}
+                        >
+                          · {ticket.title}
+                        </span>
+                      ) : undefined
+                    }
+                    onRemove={() => onRemoveWorkTicket?.(ticketId)}
+                  />
+                );
+              })}
               {browserElements.length > 0 && (
                 <BrowserElementAttachments
                   selections={browserElements}
@@ -318,6 +336,14 @@ const styles = stylex.create({
   // The chat's own numbers are a separate reading from the bar above them, so they
   // are set apart from it rather than running on from it.
   chatUsage: { marginBlockStart: 8 },
+  workTicketTitle: {
+    minWidth: 0,
+    maxWidth: 'min(24ch, 45vw)',
+    overflow: 'hidden',
+    color: colorVars['--color-text-secondary'],
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
   browserElements: {
     display: 'flex',
     flexWrap: 'wrap',
