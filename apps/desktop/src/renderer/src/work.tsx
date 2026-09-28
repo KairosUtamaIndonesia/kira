@@ -17,8 +17,8 @@
  * one takes its place rather than covering it: a ticket is written in the project
  * it is read in, and there is nothing to interrupt to do it.
  *
- * Prototype question: which of three read-only ticket summaries makes the point
- * clearest, switchable with `?ticketView=brief|outcome|reader` on this surface?
+ * Ticket details lead with the purpose and finish line; operational context stays
+ * close by, but behind a disclosure.
  */
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
@@ -57,10 +57,9 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { useCallback, useEffect, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
   ArrowLeft,
-  ArrowRight,
   ArrowUp,
   CircleAlert,
   CircleCheck,
@@ -103,7 +102,6 @@ import type {
   AuthState,
   Band,
   ChatSummary,
-  Gate,
   JoinRequest,
   NamedTicket,
   ProjectSummary,
@@ -189,25 +187,6 @@ const KIND_VARIANT: Record<TicketKind, 'neutral' | 'info' | 'warning' | 'success
   spec: 'success',
   map: 'purple',
 };
-
-const GATE_LABEL: Record<Gate, string> = {
-  draft: 'Draft',
-  'ready-for-agent': 'Ready for an agent',
-  'ready-for-human': 'Ready for a person',
-};
-
-const TICKET_DETAIL_VARIANTS = [
-  { id: 'brief', name: 'Skim-first brief' },
-  { id: 'outcome', name: 'Structured outcome' },
-  { id: 'reader', name: 'Clean document' },
-] as const;
-
-type TicketDetailVariant = (typeof TICKET_DETAIL_VARIANTS)[number]['id'];
-
-function readTicketDetailVariant(search: string): TicketDetailVariant {
-  const asked = new URLSearchParams(search).get('ticketView');
-  return TICKET_DETAIL_VARIANTS.find((variant) => variant.id === asked)?.id ?? 'brief';
-}
 
 const KINDS: TicketKind[] = [
   'prototype',
@@ -444,9 +423,9 @@ const styles = stylex.create({
   panelHead: {
     display: 'flex',
     flexDirection: 'column',
-    gap: spacingVars['--spacing-2'],
+    gap: spacingVars['--spacing-3'],
     flexShrink: 0,
-    padding: spacingVars['--spacing-3'],
+    padding: spacingVars['--spacing-4'],
     borderBlockEndWidth: borderVars['--border-width'],
     borderBlockEndStyle: 'solid',
     borderBlockEndColor: colorVars['--color-background-muted'],
@@ -457,9 +436,12 @@ const styles = stylex.create({
     gap: spacingVars['--spacing-4'],
     flex: 1,
     minHeight: 0,
+    width: '100%',
+    boxSizing: 'border-box',
     overflowY: 'auto',
     padding: spacingVars['--spacing-4'],
     maxWidth: 860,
+    marginInline: 'auto',
   },
   panelFoot: {
     display: 'flex',
@@ -478,117 +460,83 @@ const styles = stylex.create({
     gap: spacingVars['--spacing-2'],
     minWidth: 0,
   },
-  prototypeStack: {
+  ticketHeader: {
     display: 'flex',
     flexDirection: 'column',
-    gap: spacingVars['--spacing-4'],
+    gap: spacingVars['--spacing-2'],
     minWidth: 0,
   },
-  prototypeKicker: {
+  ticketIdentity: {
     display: 'flex',
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: spacingVars['--spacing-2'],
   },
-  prototypeLead: {
-    paddingInlineStart: spacingVars['--spacing-3'],
-    borderInlineStartWidth: 2,
-    borderInlineStartStyle: 'solid',
-    borderInlineStartColor: colorVars['--color-icon-accent'],
-  },
-  prototypeSteps: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: spacingVars['--spacing-2'],
-    margin: 0,
-    padding: 0,
-    listStyle: 'none',
-  },
-  prototypeStep: {
-    display: 'flex',
-    alignItems: 'flex-start',
-    gap: spacingVars['--spacing-2'],
-    padding: spacingVars['--spacing-2'],
-    borderRadius: 8,
+  ticketStatus: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    paddingBlock: spacingVars['--spacing-0-5'],
+    paddingInline: spacingVars['--spacing-2'],
+    borderRadius: 999,
     backgroundColor: colorVars['--color-background-muted'],
   },
-  prototypeStepNumber: {
-    flexShrink: 0,
-    color: colorVars['--color-text-secondary'],
-    fontVariantNumeric: 'tabular-nums',
+  ticketTitle: {
+    marginBlock: 0,
+    color: colorVars['--color-text-primary'],
+    fontFamily: 'inherit',
+    fontSize: '1.375rem',
+    fontWeight: 600,
+    letterSpacing: '-0.025em',
+    lineHeight: 1.25,
+    overflowWrap: 'anywhere',
   },
-  prototypeDisclosure: {
-    paddingBlockStart: spacingVars['--spacing-3'],
-    borderBlockStartWidth: borderVars['--border-width'],
-    borderBlockStartStyle: 'solid',
-    borderBlockStartColor: colorVars['--color-background-muted'],
+  ticketBodyText: {
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
+    lineHeight: 1.6,
   },
-  prototypeDisclosureSummary: {
-    color: colorVars['--color-text-secondary'],
-    cursor: 'pointer',
-  },
-  prototypeFacts: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: spacingVars['--spacing-2'],
-    paddingBlockStart: spacingVars['--spacing-3'],
-  },
-  prototypeFact: {
+  ticketSectionHeading: {
     display: 'flex',
     alignItems: 'baseline',
     justifyContent: 'space-between',
     gap: spacingVars['--spacing-3'],
   },
-  prototypeReader: {
+  ticketCriteria: {
     display: 'flex',
     flexDirection: 'column',
-    gap: spacingVars['--spacing-4'],
-    maxWidth: '58ch',
-    marginInline: 'auto',
+    margin: 0,
+    padding: 0,
+    listStyle: 'none',
   },
-  prototypeReaderTitle: {
-    fontSize: '1.25rem',
-    lineHeight: 1.35,
+  ticketCriterion: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: spacingVars['--spacing-3'],
+    minWidth: 0,
+    paddingBlock: spacingVars['--spacing-2'],
+    borderBlockEndWidth: borderVars['--border-width'],
+    borderBlockEndStyle: 'solid',
+    borderBlockEndColor: colorVars['--color-background-muted'],
   },
-  prototypeReaderBody: {
-    fontSize: '1rem',
-    lineHeight: 1.65,
-    whiteSpace: 'pre-wrap',
+  ticketCriterionIcon: {
+    flexShrink: 0,
+    marginBlockStart: 2,
+    color: colorVars['--color-icon-accent'],
   },
-  prototypeReaderCriteria: {
-    paddingBlockStart: spacingVars['--spacing-3'],
+  ticketCriterionText: {
+    flex: 1,
+    minWidth: 0,
+    lineHeight: 1.5,
+  },
+  ticketDetails: {
     borderBlockStartWidth: borderVars['--border-width'],
     borderBlockStartStyle: 'solid',
     borderBlockStartColor: colorVars['--color-background-muted'],
   },
-  prototypeSwitcher: {
-    position: 'fixed',
-    insetInlineStart: '50%',
-    insetBlockEnd: 16,
-    zIndex: 1000,
-    display: 'flex',
-    alignItems: 'center',
-    gap: spacingVars['--spacing-2'],
-    padding: spacingVars['--spacing-1'],
-    transform: 'translateX(-50%)',
-    borderWidth: borderVars['--border-width'],
-    borderStyle: 'solid',
-    borderColor: colorVars['--color-background-muted'],
-    borderRadius: 999,
-    backgroundColor: colorVars['--color-background-surface'],
-    boxShadow: '0 8px 28px rgba(0, 0, 0, 0.32)',
-  },
-  prototypeSwitcherArrow: {
-    all: 'unset',
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: 32,
-    height: 32,
-    borderRadius: 999,
+  ticketDetailsSummary: {
+    paddingBlock: spacingVars['--spacing-3'],
     color: colorVars['--color-text-primary'],
     cursor: 'pointer',
-    ':hover': { backgroundColor: colorVars['--color-background-muted'] },
     ':focus-visible': {
       outlineWidth: focusVars['--focus-outline-width'],
       outlineStyle: focusVars['--focus-outline-style'],
@@ -596,10 +544,33 @@ const styles = stylex.create({
       outlineOffset: focusVars['--focus-outline-offset'],
     },
   },
-  prototypeSwitcherLabel: {
-    minWidth: 148,
-    textAlign: 'center',
-    whiteSpace: 'nowrap',
+  ticketDetailsSummaryText: {
+    display: 'inline-flex',
+    flexDirection: 'column',
+    gap: spacingVars['--spacing-0-5'],
+    marginInlineStart: spacingVars['--spacing-2'],
+    verticalAlign: 'middle',
+  },
+  ticketDetailsContent: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: spacingVars['--spacing-4'],
+    paddingBlockEnd: spacingVars['--spacing-4'],
+  },
+  ticketFacts: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: spacingVars['--spacing-2'],
+  },
+  ticketFact: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(88px, 0.7fr) minmax(0, 1.3fr)',
+    alignItems: 'baseline',
+    gap: spacingVars['--spacing-3'],
+  },
+  ticketFactValue: {
+    minWidth: 0,
+    overflowWrap: 'anywhere',
   },
   refusal: {
     flexShrink: 0,
@@ -775,9 +746,6 @@ export function WorkSurface({
   const [trouble, setTrouble] = useState<string | null>(null);
   const [view, setView] = useState<View>(readView);
   const [openId, setOpenId] = useState<string | null>(initialTicketId ?? null);
-  const [ticketDetailVariant, setTicketDetailVariant] = useState<TicketDetailVariant>(() =>
-    readTicketDetailVariant(window.location.search),
-  );
   const [display, setDisplay] = useState<WorkDisplay>(() =>
     readWorkDisplay(window.location.search),
   );
@@ -815,13 +783,6 @@ export function WorkSurface({
       );
       return next;
     });
-  }
-
-  function chooseTicketDetailVariant(variant: TicketDetailVariant): void {
-    setTicketDetailVariant(variant);
-    const params = new URLSearchParams(window.location.search);
-    params.set('ticketView', variant);
-    window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`);
   }
 
   const projectId = workspace?.projectId ?? null;
@@ -988,41 +949,6 @@ export function WorkSurface({
     setIsWriting(false);
     setOpenId(id);
   };
-  const cycleTicketDetailVariant = (direction: -1 | 1): void => {
-    const currentIndex = TICKET_DETAIL_VARIANTS.findIndex(
-      (variant) => variant.id === ticketDetailVariant,
-    );
-    const nextIndex =
-      (currentIndex + direction + TICKET_DETAIL_VARIANTS.length) % TICKET_DETAIL_VARIANTS.length;
-    const next = TICKET_DETAIL_VARIANTS[nextIndex];
-    if (next !== undefined) chooseTicketDetailVariant(next.id);
-  };
-  const handlePrototypeKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
-    if (
-      !import.meta.env.DEV ||
-      open === null ||
-      isWriting ||
-      event.altKey ||
-      event.ctrlKey ||
-      event.metaKey
-    ) {
-      return;
-    }
-
-    const target = event.target;
-    if (
-      target instanceof HTMLElement &&
-      target.closest('input, textarea, [contenteditable="true"]') !== null
-    ) {
-      return;
-    }
-
-    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-      event.preventDefault();
-      cycleTicketDetailVariant(event.key === 'ArrowLeft' ? -1 : 1);
-    }
-  };
-
   const panel = isWriting ? (
     <TicketForm
       placement={placement}
@@ -1041,7 +967,6 @@ export function WorkSurface({
   ) : open === null ? null : (
     <TicketReading
       ticket={open}
-      prototypeVariant={import.meta.env.DEV ? ticketDetailVariant : null}
       repository={workspace.folder}
       executionWorkspaces={executionWorkspaces[open.id] ?? []}
       placement={placement}
@@ -1086,7 +1011,7 @@ export function WorkSurface({
   );
 
   return (
-    <div role="presentation" {...stylex.props(styles.root)} onKeyDown={handlePrototypeKeyDown}>
+    <div role="presentation" {...stylex.props(styles.root)}>
       <div {...stylex.props(styles.top)}>
         <div {...stylex.props(styles.topTitles)}>
           {onBack !== undefined && (
@@ -1337,13 +1262,6 @@ export function WorkSurface({
           onOpen={openTicket}
           panel={panel}
           onLeave={closePanel}
-        />
-      )}
-
-      {import.meta.env.DEV && open !== null && !isWriting && (
-        <TicketDetailPrototypeSwitcher
-          value={ticketDetailVariant}
-          onChange={chooseTicketDetailVariant}
         />
       )}
     </div>
@@ -1974,271 +1892,9 @@ function TicketPanel({
   );
 }
 
-/** A temporary, read-only comparison of how much of a ticket needs to be in view. */
-function PrototypeTicketReading({
-  ticket,
-  variant,
-  placement,
-  onLeave,
-}: {
-  ticket: Ticket;
-  variant: TicketDetailVariant;
-  placement: 'inline' | 'over' | 'beside';
-  onLeave: () => void;
-}) {
-  const description = ticket.body.trim() || 'No description has been added yet.';
-  const criteria = ticket.criteria.map((line) => line.trim() || 'Not specified');
-  const dependencies = [
-    ...ticket.gates.map((each) => `${each.name} ${each.closed ? '· closed' : '· still open'}`),
-    ...ticket.children.map((each) => `${each.name} ${each.closed ? '· closed' : '· still open'}`),
-  ];
-
-  if (variant === 'brief') {
-    return (
-      <TicketPanel
-        placement={placement}
-        onLeave={onLeave}
-        refusal={null}
-        head={
-          <>
-            <div {...stylex.props(styles.prototypeKicker)}>
-              <Text type="code">{ticket.name}</Text>
-              <KindTag kind={ticket.kind} />
-              <Holding ticket={ticket} />
-            </div>
-            <Text type="large" weight="medium">
-              {ticket.title || 'Untitled'}
-            </Text>
-          </>
-        }
-      >
-        <div {...stylex.props(styles.prototypeStack)}>
-          <section {...stylex.props(styles.section)}>
-            <Text type="label" weight="medium">
-              About
-            </Text>
-            <Text type="body">{description}</Text>
-          </section>
-          <section {...stylex.props(styles.section)}>
-            <Text type="label" weight="medium">
-              Done when
-            </Text>
-            {criteria.length === 0 ? (
-              <Text type="supporting" color="secondary">
-                No finish line has been written yet.
-              </Text>
-            ) : (
-              <ul {...stylex.props(styles.lines)}>
-                {criteria.map((line, index) => (
-                  <li key={`${index}-${line}`} {...stylex.props(styles.line)}>
-                    <Icon icon={CircleDashed} size="sm" />
-                    <Text type="supporting">{line}</Text>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-          <details {...stylex.props(styles.prototypeDisclosure)}>
-            <summary {...stylex.props(styles.prototypeDisclosureSummary)}>
-              More ticket details
-            </summary>
-            <div {...stylex.props(styles.prototypeFacts)}>
-              <PrototypeFact label="Readiness" value={GATE_LABEL[ticket.gate]} />
-              <PrototypeFact label="Branch" value={ticket.branch} code />
-              {ticket.author !== null && (
-                <PrototypeFact label="Written by" value={ticket.author.name} />
-              )}
-              {dependencies.length > 0 && (
-                <PrototypeFact label="Related work" value={dependencies.join(', ')} />
-              )}
-              <PrototypeFact label="Last changed" value={when(ticket.updatedAt)} />
-            </div>
-          </details>
-        </div>
-      </TicketPanel>
-    );
-  }
-
-  if (variant === 'outcome') {
-    return (
-      <TicketPanel
-        placement={placement}
-        onLeave={onLeave}
-        refusal={null}
-        head={
-          <>
-            <div {...stylex.props(styles.prototypeKicker)}>
-              <Text type="code">{ticket.name}</Text>
-              <Text type="supporting" color="secondary">
-                {GATE_LABEL[ticket.gate]}
-              </Text>
-            </div>
-            <Text type="large" weight="medium">
-              {ticket.title || 'Untitled'}
-            </Text>
-          </>
-        }
-      >
-        <div {...stylex.props(styles.prototypeStack)}>
-          <section {...stylex.props(styles.prototypeLead)}>
-            <Text type="label" weight="medium">
-              The goal
-            </Text>
-            <Text type="body">{description}</Text>
-          </section>
-          <section {...stylex.props(styles.section)}>
-            <Text type="label" weight="medium">
-              A good result looks like
-            </Text>
-            {criteria.length === 0 ? (
-              <Text type="supporting" color="secondary">
-                The ticket has no completion checks yet.
-              </Text>
-            ) : (
-              <ol {...stylex.props(styles.prototypeSteps)}>
-                {criteria.map((line, index) => (
-                  <li key={`${index}-${line}`} {...stylex.props(styles.prototypeStep)}>
-                    <Text type="supporting" {...stylex.props(styles.prototypeStepNumber)}>
-                      {String(index + 1).padStart(2, '0')}
-                    </Text>
-                    <Text type="supporting">{line}</Text>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </section>
-          <div {...stylex.props(styles.prototypeKicker)}>
-            <KindTag kind={ticket.kind} />
-            <Holding ticket={ticket} />
-          </div>
-          {dependencies.length > 0 && (
-            <section {...stylex.props(styles.section)}>
-              <Text type="label" weight="medium">
-                Connected work
-              </Text>
-              <Text type="supporting">{dependencies.join(' · ')}</Text>
-            </section>
-          )}
-        </div>
-      </TicketPanel>
-    );
-  }
-
-  return (
-    <TicketPanel
-      placement={placement}
-      onLeave={onLeave}
-      refusal={null}
-      head={
-        <div {...stylex.props(styles.prototypeKicker)}>
-          <Text type="code">{ticket.name}</Text>
-          <Holding ticket={ticket} />
-        </div>
-      }
-    >
-      <article {...stylex.props(styles.prototypeReader)}>
-        <Text type="large" weight="medium" {...stylex.props(styles.prototypeReaderTitle)}>
-          {ticket.title || 'Untitled'}
-        </Text>
-        <Text type="body" {...stylex.props(styles.prototypeReaderBody)}>
-          {description}
-        </Text>
-        <section {...stylex.props(styles.prototypeReaderCriteria)}>
-          <Text type="label" weight="medium">
-            Done when
-          </Text>
-          {criteria.length === 0 ? (
-            <Text type="supporting" color="secondary">
-              No finish line has been written yet.
-            </Text>
-          ) : (
-            <ul {...stylex.props(styles.lines)}>
-              {criteria.map((line, index) => (
-                <li key={`${index}-${line}`} {...stylex.props(styles.line)}>
-                  <Icon icon={CircleCheck} size="sm" />
-                  <Text type="supporting">{line}</Text>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-        <Text type="supporting" color="secondary">
-          {ticket.kind} · {when(ticket.createdAt)}
-        </Text>
-      </article>
-    </TicketPanel>
-  );
-}
-
-function PrototypeFact({
-  label,
-  value,
-  code = false,
-}: {
-  label: string;
-  value: string;
-  code?: boolean;
-}) {
-  return (
-    <div {...stylex.props(styles.prototypeFact)}>
-      <Text type="supporting" color="secondary">
-        {label}
-      </Text>
-      <Text type={code ? 'code' : 'supporting'}>{value}</Text>
-    </div>
-  );
-}
-
-function TicketDetailPrototypeSwitcher({
-  value,
-  onChange,
-}: {
-  value: TicketDetailVariant;
-  onChange: (variant: TicketDetailVariant) => void;
-}) {
-  const index = TICKET_DETAIL_VARIANTS.findIndex((variant) => variant.id === value);
-  const current = TICKET_DETAIL_VARIANTS[index];
-  const previous =
-    TICKET_DETAIL_VARIANTS[
-      (index - 1 + TICKET_DETAIL_VARIANTS.length) % TICKET_DETAIL_VARIANTS.length
-    ];
-  const next = TICKET_DETAIL_VARIANTS[(index + 1) % TICKET_DETAIL_VARIANTS.length];
-
-  if (current === undefined || previous === undefined || next === undefined) return null;
-
-  return (
-    <div {...stylex.props(styles.prototypeSwitcher)} aria-label="Ticket detail prototypes">
-      <button
-        type="button"
-        aria-label="Previous ticket detail prototype"
-        title="Previous prototype (←)"
-        {...stylex.props(styles.prototypeSwitcherArrow)}
-        onClick={() => onChange(previous.id)}
-      >
-        <Icon icon={ArrowLeft} size="sm" />
-      </button>
-      <span {...stylex.props(styles.prototypeSwitcherLabel)} aria-live="polite">
-        <Text type="supporting" weight="medium">
-          {String.fromCharCode(65 + index)} · {current.name}
-        </Text>
-      </span>
-      <button
-        type="button"
-        aria-label="Next ticket detail prototype"
-        title="Next prototype (→)"
-        {...stylex.props(styles.prototypeSwitcherArrow)}
-        onClick={() => onChange(next.id)}
-      >
-        <Icon icon={ArrowRight} size="sm" />
-      </button>
-    </div>
-  );
-}
-
 /** One ticket in full, with everything that can be done to it. */
 function TicketReading({
   ticket,
-  prototypeVariant,
   repository,
   executionWorkspaces,
   placement,
@@ -2261,7 +1917,6 @@ function TicketReading({
   onResolve,
 }: {
   ticket: Ticket;
-  prototypeVariant: TicketDetailVariant | null;
   repository: string;
   executionWorkspaces: ExecutionWorkspace[];
   placement: 'inline' | 'over' | 'beside';
@@ -2288,22 +1943,12 @@ function TicketReading({
   const [named, setNamed] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
+  const hasDescription = ticket.body.trim().length > 0;
 
   async function run(act: () => Promise<unknown>): Promise<void> {
     setIsBusy(true);
     await act();
     setIsBusy(false);
-  }
-
-  if (prototypeVariant !== null) {
-    return (
-      <PrototypeTicketReading
-        ticket={ticket}
-        variant={prototypeVariant}
-        placement={placement}
-        onLeave={onLeave}
-      />
-    );
   }
 
   return (
@@ -2312,28 +1957,16 @@ function TicketReading({
       onLeave={onLeave}
       refusal={refusal}
       head={
-        <>
-          <Text type="label" weight="medium">
-            {ticket.name}
-          </Text>
-          <Text type="supporting" color="secondary" maxLines={2}>
-            {ticket.title || 'Untitled'}
-          </Text>
-          <div {...stylex.props(styles.meta)}>
+        <div {...stylex.props(styles.ticketHeader)}>
+          <div {...stylex.props(styles.ticketIdentity)}>
+            <Text type="code">{ticket.name}</Text>
             <KindTag kind={ticket.kind} />
-            <Text type="supporting" color="secondary">
-              {GATE_LABEL[ticket.gate]}
-            </Text>
-            <Text type="supporting" color="secondary">
-              rank {ticket.rank}
-            </Text>
-            {ticket.author !== null && (
-              <Text type="supporting" color="secondary">
-                written by {ticket.author.name}
-              </Text>
-            )}
+            <span {...stylex.props(styles.ticketStatus)}>
+              <Holding ticket={ticket} />
+            </span>
           </div>
-        </>
+          <h2 {...stylex.props(styles.ticketTitle)}>{ticket.title || 'Untitled'}</h2>
+        </div>
       }
       foot={
         ticket.closedAt !== null || isEditing ? undefined : isClosing ? (
@@ -2501,26 +2134,46 @@ function TicketReading({
         <>
           <section {...stylex.props(styles.section)}>
             <Text type="label" weight="medium">
-              Description
+              About
             </Text>
-            <Text type="body">{ticket.body === '' ? 'Nothing written yet.' : ticket.body}</Text>
+            {hasDescription ? (
+              <Text type="body" {...stylex.props(styles.ticketBodyText)}>
+                {ticket.body}
+              </Text>
+            ) : (
+              <Text type="supporting" color="secondary">
+                No description has been added yet.
+              </Text>
+            )}
           </section>
 
           <section {...stylex.props(styles.section)}>
-            <Text type="label" weight="medium">
-              Acceptance criteria
-            </Text>
+            <div {...stylex.props(styles.ticketSectionHeading)}>
+              <Text type="label" weight="medium">
+                Done when
+              </Text>
+              {ticket.criteria.length > 0 && (
+                <Text type="supporting" color="secondary">
+                  {ticket.criteria.length} {ticket.criteria.length === 1 ? 'check' : 'checks'}
+                </Text>
+              )}
+            </div>
             {ticket.criteria.length === 0 ? (
               <Text type="supporting" color="secondary">
-                Nothing says how this is known to be done — so it cannot be marked ready for an
-                agent.
+                No finish line has been written yet. Add one before marking this ready for an agent.
               </Text>
             ) : (
-              <ul {...stylex.props(styles.lines)}>
+              <ul {...stylex.props(styles.ticketCriteria)}>
                 {ticket.criteria.map((line, at) => (
-                  <li key={`${at}-${line}`} {...stylex.props(styles.line)}>
-                    <Icon icon={CircleDashed} size="sm" />
-                    <Text type="supporting">{line === '' ? '(an empty line)' : line}</Text>
+                  <li key={`${at}-${line}`} {...stylex.props(styles.ticketCriterion)}>
+                    <Icon
+                      icon={CircleDashed}
+                      size="sm"
+                      {...stylex.props(styles.ticketCriterionIcon)}
+                    />
+                    <Text type="supporting" {...stylex.props(styles.ticketCriterionText)}>
+                      {line === '' ? '(an empty line)' : line}
+                    </Text>
                   </li>
                 ))}
               </ul>
@@ -2543,169 +2196,204 @@ function TicketReading({
             </section>
           )}
 
-          {/* What a run made of it, above the queue's own facts: on a ticket somebody or
-              something has worked, this is what the ticket is waiting on. */}
-          <RunHistory ticket={ticket} chatIds={chatIds} onOpenChat={onOpenChat} />
-
-          <ExecutionWorkspacePanel
-            ticket={ticket}
-            workspaces={executionWorkspaces}
-            repository={repository}
-            onStart={onRun}
-            onDeliver={onDeliver}
-            onChanged={onChanged}
-          />
-
-          <section {...stylex.props(styles.section)}>
-            <Text type="label" weight="medium">
-              What gates it
-            </Text>
-            {ticket.children.length === 0 ? (
-              <Text type="supporting" color="secondary">
-                Nothing gates this. A ticket names the tickets that hold it up, and a parent names
-                its slices.
-              </Text>
-            ) : (
-              <>
-                <Text type="supporting" color="secondary">
-                  {ticket.children.filter((each) => each.closed).length} of {ticket.children.length}{' '}
-                  closed
+          <details {...stylex.props(styles.ticketDetails)}>
+            <summary {...stylex.props(styles.ticketDetailsSummary)}>
+              <span {...stylex.props(styles.ticketDetailsSummaryText)}>
+                <Text type="label" weight="medium">
+                  More ticket details
                 </Text>
-                <ul {...stylex.props(styles.lines)}>
-                  {ticket.children.map((each) => (
-                    <li key={each.id} {...stylex.props(styles.line)}>
-                      <NamedGlyph ticket={each} />
-                      <button
-                        type="button"
-                        {...stylex.props(styles.gateName)}
-                        onClick={() => onOpen(each.id)}
-                      >
-                        <Text type="supporting">
-                          {each.name}
-                          {each.closure === 'wontfix' ? ' — closed without being done' : ''}
-                        </Text>
-                      </button>
-                      <IconButton
-                        label={`Take ${each.name} off what gates this`}
-                        icon={<Icon icon={X} size="sm" />}
-                        isDisabled={isBusy}
-                        onClick={() => void run(() => onUngate(each.id))}
-                      />
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
+                <Text type="supporting" color="secondary">
+                  Runs, dependencies, and branch
+                </Text>
+              </span>
+            </summary>
+            <div {...stylex.props(styles.ticketDetailsContent)}>
+              <div {...stylex.props(styles.ticketFacts)}>
+                <div {...stylex.props(styles.ticketFact)}>
+                  <Text type="supporting" color="secondary">
+                    Rank
+                  </Text>
+                  <Text type="supporting" {...stylex.props(styles.ticketFactValue)}>
+                    {ticket.rank}
+                  </Text>
+                </div>
+                {ticket.author !== null && (
+                  <div {...stylex.props(styles.ticketFact)}>
+                    <Text type="supporting" color="secondary">
+                      Written by
+                    </Text>
+                    <Text type="supporting" {...stylex.props(styles.ticketFactValue)}>
+                      {ticket.author.name}
+                    </Text>
+                  </div>
+                )}
+              </div>
 
-            {isGating ? (
-              <>
-                <div {...stylex.props(styles.field)}>
-                  <div {...stylex.props(styles.fieldGrow)}>
-                    <TextInput
-                      label="Which issue blocks this one"
-                      value={named}
-                      onChange={setNamed}
-                      description="By its name — FND-12 — or by anything else the server knows it as."
+              {/* What a run made of it, above the queue's own facts: on a ticket somebody or
+                  something has worked, this is what the ticket is waiting on. */}
+              <RunHistory ticket={ticket} chatIds={chatIds} onOpenChat={onOpenChat} />
+
+              <ExecutionWorkspacePanel
+                ticket={ticket}
+                workspaces={executionWorkspaces}
+                repository={repository}
+                onStart={onRun}
+                onDeliver={onDeliver}
+                onChanged={onChanged}
+              />
+
+              <section {...stylex.props(styles.section)}>
+                <Text type="label" weight="medium">
+                  What gates it
+                </Text>
+                {ticket.children.length === 0 ? (
+                  <Text type="supporting" color="secondary">
+                    Nothing gates this. A ticket names the tickets that hold it up, and a parent
+                    names its slices.
+                  </Text>
+                ) : (
+                  <>
+                    <Text type="supporting" color="secondary">
+                      {ticket.children.filter((each) => each.closed).length} of{' '}
+                      {ticket.children.length} closed
+                    </Text>
+                    <ul {...stylex.props(styles.lines)}>
+                      {ticket.children.map((each) => (
+                        <li key={each.id} {...stylex.props(styles.line)}>
+                          <NamedGlyph ticket={each} />
+                          <button
+                            type="button"
+                            {...stylex.props(styles.gateName)}
+                            onClick={() => onOpen(each.id)}
+                          >
+                            <Text type="supporting">
+                              {each.name}
+                              {each.closure === 'wontfix' ? ' — closed without being done' : ''}
+                            </Text>
+                          </button>
+                          <IconButton
+                            label={`Take ${each.name} off what gates this`}
+                            icon={<Icon icon={X} size="sm" />}
+                            isDisabled={isBusy}
+                            onClick={() => void run(() => onUngate(each.id))}
+                          />
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+
+                {isGating ? (
+                  <>
+                    <div {...stylex.props(styles.field)}>
+                      <div {...stylex.props(styles.fieldGrow)}>
+                        <TextInput
+                          label="Which issue blocks this one"
+                          value={named}
+                          onChange={setNamed}
+                          description="By its name — FND-12 — or by anything else the server knows it as."
+                          size="sm"
+                        />
+                      </div>
+                    </div>
+                    <div {...stylex.props(styles.actions)}>
+                      <Button
+                        label="Add the gate"
+                        size="sm"
+                        variant="secondary"
+                        isDisabled={isBusy || named.trim() === ''}
+                        onClick={() =>
+                          void run(async () => {
+                            const held = await onGate(named.trim());
+                            if (held !== null) {
+                              setNamed('');
+                              setIsGating(false);
+                            }
+                          })
+                        }
+                      />
+                      <Button
+                        label="Cancel"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setIsGating(false);
+                          onRefuse(null);
+                        }}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <div>
+                    <Button
+                      label="Add a gate"
+                      icon={<Icon icon={Plus} size="sm" />}
                       size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setIsGating(true);
+                        onRefuse(null);
+                      }}
                     />
                   </div>
-                </div>
-                <div {...stylex.props(styles.actions)}>
-                  <Button
-                    label="Add the gate"
-                    size="sm"
-                    variant="secondary"
-                    isDisabled={isBusy || named.trim() === ''}
-                    onClick={() =>
-                      void run(async () => {
-                        const held = await onGate(named.trim());
-                        if (held !== null) {
-                          setNamed('');
-                          setIsGating(false);
-                        }
-                      })
-                    }
-                  />
-                  <Button
-                    label="Cancel"
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      setIsGating(false);
-                      onRefuse(null);
-                    }}
-                  />
-                </div>
-              </>
-            ) : (
-              <div>
-                <Button
-                  label="Add a gate"
-                  icon={<Icon icon={Plus} size="sm" />}
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    setIsGating(true);
-                    onRefuse(null);
-                  }}
-                />
-              </div>
-            )}
-          </section>
+                )}
+              </section>
 
-          {ticket.gates.length > 0 && (
-            <section {...stylex.props(styles.section)}>
-              <Text type="label" weight="medium">
-                What it gates
-              </Text>
-              <ul {...stylex.props(styles.lines)}>
-                {ticket.gates.map((each) => (
-                  <li key={each.id} {...stylex.props(styles.line)}>
-                    <Icon icon={ArrowUp} size="sm" />
-                    <button
-                      type="button"
-                      {...stylex.props(styles.gateName)}
-                      onClick={() => onOpen(each.id)}
-                    >
-                      <Text type="supporting">
-                        {each.name}
-                        {each.closed ? ' — closed' : ' — still open'}
-                      </Text>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
+              {ticket.gates.length > 0 && (
+                <section {...stylex.props(styles.section)}>
+                  <Text type="label" weight="medium">
+                    What it gates
+                  </Text>
+                  <ul {...stylex.props(styles.lines)}>
+                    {ticket.gates.map((each) => (
+                      <li key={each.id} {...stylex.props(styles.line)}>
+                        <Icon icon={ArrowUp} size="sm" />
+                        <button
+                          type="button"
+                          {...stylex.props(styles.gateName)}
+                          onClick={() => onOpen(each.id)}
+                        >
+                          <Text type="supporting">
+                            {each.name}
+                            {each.closed ? ' — closed' : ' — still open'}
+                          </Text>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
 
-          <section {...stylex.props(styles.section)}>
-            <Text type="label" weight="medium">
-              The branch
-            </Text>
-            <div {...stylex.props(styles.branch)}>
-              <Text type="code">{ticket.branch}</Text>
-              <IconButton
-                label={`Copy ${ticket.branch}`}
-                icon={<Icon icon={Copy} size="sm" />}
-                onClick={() => copyText(ticket.branch)}
-              />
+              <section {...stylex.props(styles.section)}>
+                <Text type="label" weight="medium">
+                  The branch
+                </Text>
+                <div {...stylex.props(styles.branch)}>
+                  <Text type="code">{ticket.branch}</Text>
+                  <IconButton
+                    label={`Copy ${ticket.branch}`}
+                    icon={<Icon icon={Copy} size="sm" />}
+                    onClick={() => copyText(ticket.branch)}
+                  />
+                </div>
+                <Text type="supporting" color="secondary">
+                  {branchNote(ticket)}
+                </Text>
+              </section>
+
+              <section {...stylex.props(styles.section)}>
+                <Text type="label" weight="medium">
+                  Written and changed
+                </Text>
+                <Text type="supporting" color="secondary">
+                  written {when(ticket.createdAt)} · last changed {when(ticket.updatedAt)}
+                  {ticket.closedAt === null
+                    ? ''
+                    : ` · closed ${when(ticket.closedAt)} as ${ticket.closure === 'wontfix' ? 'something that will not be done' : 'done'}`}
+                </Text>
+              </section>
             </div>
-            <Text type="supporting" color="secondary">
-              {branchNote(ticket)}
-            </Text>
-          </section>
-
-          <section {...stylex.props(styles.section)}>
-            <Text type="label" weight="medium">
-              Written and changed
-            </Text>
-            <Text type="supporting" color="secondary">
-              written {when(ticket.createdAt)} · last changed {when(ticket.updatedAt)}
-              {ticket.closedAt === null
-                ? ''
-                : ` · closed ${when(ticket.closedAt)} as ${ticket.closure === 'wontfix' ? 'something that will not be done' : 'done'}`}
-            </Text>
-          </section>
+          </details>
         </>
       )}
     </TicketPanel>
