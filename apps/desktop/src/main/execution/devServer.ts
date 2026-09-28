@@ -16,8 +16,11 @@ const MAX_LOG_LENGTH = 100_000;
 /** Owns the dev-server children for this desktop process, one per execution workspace. */
 export class ExecutionDevServers {
   private readonly held = new Map<string, HeldProcess>();
+  private readonly changed: (event: ExecutionProcessEvent) => void;
 
-  constructor(private readonly changed: (event: ExecutionProcessEvent) => void = () => {}) {}
+  constructor(changed: (event: ExecutionProcessEvent) => void = () => {}) {
+    this.changed = changed;
+  }
 
   start(workspaceId: string, checkout: string, command: string): ExecutionProcessSnapshot {
     const current = this.held.get(workspaceId);
