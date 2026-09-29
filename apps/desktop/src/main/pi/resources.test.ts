@@ -21,7 +21,7 @@ const EXPECTED_SKILLS = [
   'to-tickets',
   'wayfinder',
 ];
-const FORBIDDEN_HOST_WORDS = /\bgh\b|github|labels?|\.scratch|pull request|\bPR\b/i;
+const FORBIDDEN_HOST_SPECIFIC_WORDS = /\bgh\b|github|labels?|\.scratch/i;
 const desktopRoot = join(dirname(fileURLToPath(import.meta.url)), '../../../');
 // Keep this loader test independent from skills installed on the developer's machine.
 process.env['HOME'] = mkdtempSync(join(tmpdir(), 'kira-resource-home-'));
@@ -77,7 +77,7 @@ test('a packaged resource copy loads beside workspace .agents skills', async () 
     if (skill.name === 'workspace-only') continue;
     assert.equal(skill.filePath.startsWith(shippedSkills), true, skill.filePath);
     const text = await readFile(skill.filePath, 'utf8');
-    assert.doesNotMatch(text, FORBIDDEN_HOST_WORDS, skill.filePath);
+    assert.doesNotMatch(text, FORBIDDEN_HOST_SPECIFIC_WORDS, skill.filePath);
   }
 });
 

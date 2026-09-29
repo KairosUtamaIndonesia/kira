@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Kira workflow router
 
-Use Kira's tracker and run surfaces as the source of truth. A ticket has a kind, acceptance criteria, dependencies and a current band; a run is the conversation that works on one ticket. Keep proposals and decisions in the linked chat until the person approves them.
+Use Kira's tracker as the source of truth. Tickets have acceptance criteria, dependencies and a status; Blocked is derived from open blockers. A chat may link several tickets, and those links define which tickets the agent may change.
 
 ## Idea to shipped work
 
@@ -14,7 +14,7 @@ Use Kira's tracker and run surfaces as the source of truth. A ticket has a kind,
 2. **Prototype** with `/prototype` when a state model or interface needs to be tried rather than debated.
 3. **Map a large effort** with `/wayfinder`; resolve the map's decision tickets before building.
 4. **Break the approved spec** into dependency-ordered tickets with `/to-tickets`.
-5. **Build one ticket** with `/implement`. The run should drive tests, typechecks and the ticket's acceptance criteria.
+5. **Build** in Build mode. For an approved spec, work its linked tickets in dependency order on one spec branch. Confirm creating or continuing that branch from `main` before changing branches or editing code. For a standalone ticket, follow the repository's branch workflow and Kira's implementation guidance.
 
 ## On-ramps
 
@@ -25,6 +25,6 @@ Use Kira's tracker and run surfaces as the source of truth. A ticket has a kind,
 
 ## Kira rules
 
-Prefer the existing tracker and Work surface over new files or parallel records. Let the server own ticket bands, dependencies, readiness, runs and Outcomes. Do not claim a ticket is ready, publish a proposal, approve an Outcome or close work by editing storage directly; use the corresponding Kira action and its refusal text.
+Prefer the existing tracker over parallel records. Change only linked tickets through Kira actions: an agent sets Running when work starts and Needs review after opening a PR; a person handles Ready, Done after merge, and Won’t do. Agents cannot delete tickets or write tracker storage directly.
 
-A small, single-session change can go straight to `/implement`. A multi-session change should pass through `/to-spec` and `/to-tickets` so every run has a bounded ticket and explicit blockers.
+A small change with a linked ticket can go straight to Build mode. A larger effort should pass through `/to-spec` and `/to-tickets` so each ticket has clear criteria and blockers.

@@ -6,30 +6,18 @@ disable-model-invocation: true
 
 You have been provided a spec. This spec should have tickets associated with it, describing how to implement the spec.
 
-The goal is a PR which implements the entire spec on a single branch.
-
-The tickets are not a list of steps. They are a **task graph** with blocking relationships between them. This means there is always a **frontier** of tickets which are ready to be grabbed.
-
-Communication to and from subagents should be sparse. Communicate primarily through **context pointers**: to the spec, tickets, research notes, and previous commits. Don't duplicate information already available via pointers.
-
-**Implementer subagents** should be run in the background where possible for **maximum concurrency**.
+Implement the whole spec on one branch based on the repository's `main` branch. Use the ticket dependencies to order the work, and leave review, merge, and Done status to a person.
 
 ## Steps
 
-1. Read the spec and tickets. Read enough to understand the task graph.
+1. Read the spec and every linked ticket. Understand acceptance criteria and blockers. If the linked tickets do not cover the spec, ask for the missing tickets before starting. Read the repository's instructions and inspect the worktree and `main` branch. Choose a branch such as `spec/<spec-id>-<slug>`.
 
-2. (optional) Use an **exploration subagent** to conduct any exploration required by the tickets - relevant codebase files or external documentation. Ensure the exploration subagent can save files - it should save its markdown notes in a directory outside the repo, accessible by all future subagents. This lets **implementer subagents** focus on implementation rather than exploration.
+2. Before changing branches or editing code, ask the user to confirm creating or continuing that branch from `main` and keeping all spec work on it. Wait for explicit approval. Preserve existing work; if changing branches would carry or overwrite it, use an isolated worktree when supported or ask how to proceed.
 
-3. Create a branch, and a draft PR. The PR should be marked as 'closing' the spec issue and tickets.
+3. After approval, use the repository's documented version-control workflow to create or check out the spec branch from `main`. Verify its base before editing. Work through tickets in dependency order and commit each ticket's changes on this branch; do not create a branch per ticket.
 
-4. Use **implementer subagents** to implement each ticket. Each implementer subagent should work in its own worktree, on its own branch.
+4. Set each linked ticket to Running before working on it. Implement its criteria, using `/tdd` at suitable seams, and commit its work on the spec branch. Keep unfinished tickets Running. Set a ticket back to Running before changing work that is already in Needs review. Update only tickets linked to this chat, and never mark one Done.
 
-5. Once an **implementer subagent** completes, merge its work to the PR branch with a **merger subagent**.
+5. Once every ticket is implemented, run the full relevant tests and typechecks, then run `/code-review` against the spec branch. Keep tickets Running while resolving findings; commit fixes on the same branch and rerun affected checks.
 
-6. If this changes the **frontier** of available tickets, kick off more **implementer subagents** to work on the new tickets. This allows for maximum concurrency.
-
-7. Once all tickets are complete, run /code-review on the PR branch. Fix all issues raised by the code review in a single **implementer subagent**.
-
-8. Mark the PR as ready for review.
-
-9. Clean up all **implementer subagent** worktrees.
+6. If the repository has a configured remote, publish the branch and open one ready-for-review PR for the whole spec, linking the spec and tickets. After it opens, set the linked tickets to Needs review. If there is no remote or publishing fails, leave tickets Running and report why. Do not merge or mark tickets Done; a person reviews and merges, then marks them Done.
