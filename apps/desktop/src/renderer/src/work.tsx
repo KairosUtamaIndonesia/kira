@@ -28,6 +28,7 @@ import { EmptyState } from '@astryxdesign/core/EmptyState';
 import { Icon } from '@astryxdesign/core/Icon';
 import { IconButton } from '@astryxdesign/core/IconButton';
 import { Item } from '@astryxdesign/core/Item';
+import { edgeCompSlot } from '@astryxdesign/core/Layout';
 import { List } from '@astryxdesign/core/List';
 import { Selector } from '@astryxdesign/core/Selector';
 import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl';
@@ -41,6 +42,7 @@ import {
   focusVars,
   radiusVars,
   shadowVars,
+  sizeVars,
   spacingVars,
   textSizeVars,
   typographyVars,
@@ -766,6 +768,15 @@ const styles = stylex.create({
     borderBlockEndStyle: 'solid',
     borderBlockEndColor: colorVars['--color-background-muted'],
   },
+  /*
+   * An icon button at the end of a header: its icon lines up with the header's padding and
+   * its transparent box hangs into the gutter. IconButton carries no edge-compensation
+   * marker, so this is Astryx's rule said by hand: half the box the 16px icon sits in.
+   */
+  edgeEndIcon: {
+    display: 'inline-flex',
+    marginInlineEnd: `calc((${sizeVars['--size-element-md']} - 16px) / -2)`,
+  },
   panelHeadBar: {
     display: 'flex',
     alignItems: 'center',
@@ -1231,6 +1242,14 @@ const styles = stylex.create({
   },
 });
 
+/**
+ * A ghost text button at the start of a header lines its icon up with the text under it:
+ * Astryx's own edge compensation, which pulls a marked button out by its 12px padding so
+ * the padding hangs into the gutter instead of indenting the button at rest. Astryx's
+ * containers apply it themselves; these headers are ours, so they ask for it.
+ */
+const EDGE_TEXT_BUTTON = edgeCompSlot.inset(spacingVars['--spacing-3']);
+
 /* ── The surface ────────────────────────────────────────────────────────── */
 
 /**
@@ -1645,13 +1664,15 @@ export function WorkSurface({
       <div {...stylex.props(styles.top)}>
         <div {...stylex.props(styles.topTitles)}>
           {onBack !== undefined && (
-            <Button
-              label="Back to projects"
-              icon={<Icon icon={ArrowLeft} size="sm" />}
-              variant="ghost"
-              size="sm"
-              onClick={onBack}
-            />
+            <span {...stylex.props(EDGE_TEXT_BUTTON)}>
+              <Button
+                label="Back to projects"
+                icon={<Icon icon={ArrowLeft} size="sm" />}
+                variant="ghost"
+                size="sm"
+                onClick={onBack}
+              />
+            </span>
           )}
           <Text type="label" weight="medium" maxLines={1}>
             {queue?.project.name ?? workspace.name}
@@ -3080,19 +3101,23 @@ function TicketPanel({
             {onCollapse !== undefined && (
               // Back to the Work surface, board or list, with this ticket in its drawer —
               // said the way the header's "Back to projects" is, and not as Expand's mirror.
-              <Button
-                label="Back to Work"
-                icon={<Icon icon={ArrowLeft} size="sm" />}
-                variant="ghost"
-                size="sm"
-                onClick={onCollapse}
-              />
+              <span {...stylex.props(EDGE_TEXT_BUTTON)}>
+                <Button
+                  label="Back to Work"
+                  icon={<Icon icon={ArrowLeft} size="sm" />}
+                  variant="ghost"
+                  size="sm"
+                  onClick={onCollapse}
+                />
+              </span>
             )}
             <Text type="supporting" color="secondary" maxLines={1}>
               {crumb}
             </Text>
           </span>
-          <IconButton label="Close issue" icon={<Icon icon={X} size="sm" />} onClick={onLeave} />
+          <span {...stylex.props(styles.edgeEndIcon)}>
+            <IconButton label="Close issue" icon={<Icon icon={X} size="sm" />} onClick={onLeave} />
+          </span>
         </div>
         {banner}
         <div {...stylex.props(styles.fullScroll)}>
@@ -3115,20 +3140,24 @@ function TicketPanel({
     <div {...stylex.props(styles.panel)}>
       <div {...stylex.props(styles.panelHead)}>
         <div {...stylex.props(styles.panelHeadBar)}>
-          <Button
-            label={placement === 'inline' ? 'Back to the queue' : 'Close issue'}
-            icon={<Icon icon={placement === 'inline' ? ArrowLeft : X} size="sm" />}
-            variant="ghost"
-            size="sm"
-            onClick={onLeave}
-          />
-          {onExpand !== undefined && (
-            <IconButton
-              label="Open the full view"
-              tooltip="Open the full view"
-              icon={<Icon icon={Maximize2} size="sm" />}
-              onClick={onExpand}
+          <span {...stylex.props(EDGE_TEXT_BUTTON)}>
+            <Button
+              label={placement === 'inline' ? 'Back to the queue' : 'Close issue'}
+              icon={<Icon icon={placement === 'inline' ? ArrowLeft : X} size="sm" />}
+              variant="ghost"
+              size="sm"
+              onClick={onLeave}
             />
+          </span>
+          {onExpand !== undefined && (
+            <span {...stylex.props(styles.edgeEndIcon)}>
+              <IconButton
+                label="Open the full view"
+                tooltip="Open the full view"
+                icon={<Icon icon={Maximize2} size="sm" />}
+                onClick={onExpand}
+              />
+            </span>
           )}
         </div>
         {head}
