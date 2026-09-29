@@ -918,7 +918,7 @@
   min-height: 0;
   background: radial-gradient(
     140% 100% at 50% -10%,
-    light-dark(#ffffff, #362929) 0%,
+    light-dark(#ffffff, #1c1a18) 0%,
     var(--color-background-surface) 60%
   );
 }

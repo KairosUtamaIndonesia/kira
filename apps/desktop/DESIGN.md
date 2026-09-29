@@ -2,9 +2,10 @@
 name: Kira Desktop
 description: A calm, exact visual system for local-first coding work.
 colors:
-  primary: 'light-dark(#C80033, #FFB2B2)'
-  neutral-bg: 'light-dark(#FCEEED, #190E0E)'
-  neutral-surface: 'light-dark(#FFFBFB, #231919)'
+  primary: 'light-dark(#D4203F, #FF3859)'
+  neutral-body: 'light-dark(#F7F6F4, #171615)'
+  neutral-bg: 'light-dark(#FDFCFA, #120F0E)'
+  neutral-surface: 'light-dark(#F8F7F5, #181715)'
 typography:
   display:
     fontFamily: '"Satoshi Variable", "Inter Variable", system-ui, sans-serif'
@@ -107,26 +108,28 @@ components:
 
 Kira Desktop is calm and exact: a warm, low-glare workspace where project context, conversation, and the state of active work stay legible without decorative noise. The system pairs tonal surfaces and fine borders with restrained elevation; controls feel crisp and lightly lifted rather than glossy or ornamental.
 
-Signal rose is the semantic action and focus accent. It is derived for light and dark themes, with its foreground chosen by the theme for contrast. Typography and spacing do the routine work of hierarchy; color is reserved for actions, focus, and meaningful state.
+Kira red is the semantic action and focus accent, authored separately for light and dark themes with a foreground that clears 4.5:1 in each. Typography and spacing do the routine work of hierarchy; color is reserved for actions, focus, and meaningful state.
 
 **Key Characteristics:**
 
-- Warm charcoal and rose-tinted neutrals in both color schemes.
-- A rose signal for primary actions, selected states, and keyboard focus.
+- Warm ink and warm paper neutrals with no accent hue in them.
+- Kira red for primary actions, selected states, and keyboard focus.
 - Compact, keyboard-friendly controls inside a persistent desktop shell.
 
 ## Colors
 
-The palette is warm-neutral rather than blue-grey; light and dark modes are paired by semantic tokens so components keep the same role in either scheme.
+The palette is warm ink (dark) and warm paper (light): low-chroma, faintly brown neutrals with no accent hue in them, modeled on OpenChamber's default theme. Light and dark modes are paired by semantic tokens so components keep the same role in either scheme. Every color is authored per role in `packages/theme/src/kiraTheme.ts`; don't reintroduce the `color.accent` seed, which bleeds the accent's hue into the neutrals.
 
 ### Primary
 
-- **Signal rose** (`colors.primary`): the theme-derived accent for primary actions, selected emphasis, and focus. Use the semantic accent token so its light/dark contrast pairing stays intact.
+- **Kira red** (`colors.primary`): the brand red `#FF3859` in dark mode with near-black text on it; a deeper `#D4203F` in light mode so white text clears 4.5:1. Used for primary actions, selected emphasis, and focus. Use the semantic accent token so its light/dark contrast pairing stays intact.
 
 ### Neutral
 
-- **Warm canvas** (`colors.neutral-bg`): the app's base background, with a subtle red warmth rather than a neutral gray.
-- **Raised surface** (`colors.neutral-surface`): cards, panels, and controls that sit one step above the canvas.
+- **Frame** (`colors.neutral-body`): the sidebar and app frame, one small step off the canvas.
+- **Canvas** (`colors.neutral-bg`): the working area where chats and boards sit.
+- **Raised surface** (`colors.neutral-surface`): cards and controls. Steps between surfaces are deliberately small (≈1.05:1); borders do most of the separating.
+- **Hover and pressed**: translucent overlays of the foreground (white in dark, black in light), not separate fills.
 - **Primary and secondary text** (`--color-text-primary`, `--color-text-secondary`): use the semantic text pair for readable hierarchy; do not approximate secondary text with opacity.
 - **Borders** (`--color-border`, `--color-border-emphasized`): quiet separators at rest, stronger strokes for focus and interactive boundaries.
 - **Status colors** (`--color-success`, `--color-warning`, `--color-error`): reserve semantic green, amber, and red for their corresponding outcomes rather than using them as decoration.
@@ -171,14 +174,14 @@ Components are crisp and lightly lifted. Prefer Astryx primitives and Kira theme
 ### Buttons
 
 - **Shape:** gently rounded controls (4px); standard height is 32px, with the shared small and large sizes at 28px and 36px.
-- **Primary:** semantic rose fill with the theme-selected on-accent text; standard horizontal padding is 12px.
+- **Primary:** semantic Kira red fill with the theme-selected on-accent text; standard horizontal padding is 12px.
 - **Hover / Focus:** use Astryx's restrained interaction overlay and the 2px accent focus outline with 3px offset.
 - **Secondary / Ghost / Destructive:** secondary uses a neutral fill, ghost stays transparent until interaction, and destructive is reserved for consequential removal or closure.
 
 ### Chips
 
 - **Style:** compact, full-pill badges; use semantic status variants or neutral treatment for counts and supporting labels.
-- **State:** status color identifies meaning; selection and action emphasis use Signal rose instead of introducing another brand accent.
+- **State:** status color identifies meaning; selection and action emphasis use Kira red instead of introducing another brand accent.
 
 ### Cards / Containers
 
@@ -207,13 +210,13 @@ The Work board is a Kira-native triage surface laid out as a ledger: review and 
 ### Do:
 
 - **Do** use Kira's semantic color, type, radius, and spacing tokens so light and dark themes stay coordinated.
-- **Do** reserve Signal rose for primary actions, selection, and focus; use status colors only for status.
+- **Do** reserve Kira red for primary actions, selection, and focus; use status colors only for status.
 - **Do** preserve keyboard-visible focus, readable labels, and the shared compact control sizes.
 - **Do** keep Work's board interactions action-based; the server remains authoritative for ticket lanes.
 
 ### Don't:
 
-- **Don't** substitute Astryx Neutral's default blue accent for Kira's semantic rose accent.
+- **Don't** substitute Astryx Neutral's default blue accent for Kira's semantic red accent.
 - **Don't** add shadows to every card; keep resting surfaces tonal and lightly bordered.
 - **Don't** copy Linear's visual identity into Work; use familiar issue-tracker interactions in Kira's own visual language.
 - **Don't** communicate disabled, selected, or status states by color alone.

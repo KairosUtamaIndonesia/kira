@@ -129,6 +129,7 @@
 
 ### Changed
 
+- Kira has a new color theme: warm, neutral ink and paper grays instead of rose-tinted ones, with Kira red as the single accent in both light and dark mode, plus matching code highlighting.
 - A folder is a workspace, and it works a project. What you add a folder as was called a project,
   which is now the name for the shared body of work its tickets belong to: a workspace is where the
   work happens, several workspaces can work one project, and a chat stays filed under the folder it
