@@ -4,6 +4,8 @@
 
 ### Added
 
+- Work's wording is clearer and consistent: tickets, blockers, sessions, and workspaces are named the same way everywhere, and refusals such as two tickets blocking each other say what to do next.
+
 - Work now opens with a clearer project-to-workspace chooser and a horizontal six-lane Kanban board, drawn as ruled lanes of compact ticket rows with kind icons, status, and tags; a row's actions appear on hover or keyboard focus. Dragging within Ready changes priority; dropping between lanes asks for a supported action—such as choosing a gate, editing a blocker, starting or answering a run, or closing a ticket—and then rereads the server-derived queue.
 
 - Work's search has a magnifier, a clear button, and `/` to jump into it. Filter is a menu of Status, Kind (with icons), and Owner, active filters show as removable chips, and Display sets grouping, order, and whether done tickets show.

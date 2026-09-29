@@ -215,6 +215,10 @@ direction is in `apps/desktop/DESIGN.md` (Work), and this is where its pieces li
   editor it uses for About (Tiptap with `@tiptap/markdown`). The editor's document elements
   are styled by `.rich-editor` in `styles.css`, the one place StyleX cannot reach; it offers
   only what markdown can say, so nothing typed is lost on save.
+- **`workCopy.ts`** is the single home for everything a person reads on Work (labels, notes,
+  toasts, empty states, aria-labels, tooltips); its header holds the vocabulary and voice
+  rules. New Work wording goes there, never inline. Server refusals that reach the desktop
+  are worded in `apps/server/src/messages.ts` by the same rule.
 - **`workspaceSetup.tsx`** is the "No workspace yet" row and the setup dialog. The dialog is
   drawn only while wanted, so drawing it is opening it. It reads a checkout's branches and
   asks for a folder through `window.kira.listCheckoutBranches` and `chooseCheckout`
