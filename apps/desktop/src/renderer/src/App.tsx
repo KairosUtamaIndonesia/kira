@@ -104,6 +104,7 @@ import { WorkSurface } from './work';
 import { WorkHome } from './workHome';
 import SettingsPage, { type Setting } from './settings';
 import type { ProposalVerdict } from './proposalCard';
+import { MoveToProjectPrototype } from './moveToProjectPrototype';
 import { approvedSpecTicket } from './specPane';
 
 /**
@@ -277,6 +278,8 @@ export default function App() {
   const [error, setError] = useState<Trouble | null>(null);
   /** The chat a delete is being confirmed for, or null when none is. */
   const [deleting, setDeleting] = useState<ChatSummary | null>(null);
+  // PROTOTYPE: what is being approved in a chat that is in no project (moveToProjectPrototype.tsx).
+  const [moving, setMoving] = useState<'spec' | 'tickets' | null>(null);
   const toast = useToast();
 
   /*
@@ -729,6 +732,19 @@ export default function App() {
   }
 
   function decideProposal(proposalId: string, verdict: ProposalVerdict): Promise<string | null> {
+    // PROTOTYPE: ask where the chat should live instead of being refused by the server.
+    const kind = shaping.proposals.find((each) => each.id === proposalId)?.kind;
+    const chatProject = workspaces.find((each) => each.id === currentChat?.workspaceId)?.projectId;
+    if (
+      import.meta.env.DEV &&
+      verdict === 'approve' &&
+      (kind === 'spec' || kind === 'breakdown') &&
+      (chatProject ?? null) === null
+    ) {
+      setMoving(kind === 'spec' ? 'spec' : 'tickets');
+      return Promise.resolve(null);
+    }
+
     return answer(() =>
       verdict === 'approve'
         ? window.kira.approveProposal(proposalId)
@@ -1435,6 +1451,15 @@ export default function App() {
           </div>
         )}
       </AppShell>
+
+      {moving !== null && (
+        <MoveToProjectPrototype
+          what={moving}
+          workspaces={workspaces}
+          onCancel={() => setMoving(null)}
+          onMove={() => setMoving(null)}
+        />
+      )}
 
       {/*
        * Throwing a chat away cannot be taken back, so it is asked about first —
