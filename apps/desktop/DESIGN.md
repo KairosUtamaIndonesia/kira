@@ -204,11 +204,37 @@ Components are crisp and lightly lifted. Prefer Astryx primitives and Kira theme
 
 - **Style:** keep the app's persistent navigation quiet at rest; use primary text for the active destination, secondary text for inactive items, and a muted accent surface for selected emphasis. Preserve keyboard focus and the compact mobile navigation affordance.
 
-### Work Board
+### Work
 
-The Work board is a Kira-native triage surface laid out as a ledger: review and Ready appear before running, blocked, draft, and done work. Lanes are ruled columns — no box, a hairline between lanes, and a 2px status-colored rule under each header with a zero-padded mono count. Tickets are ruled rows, not cards: kind shape icon, mono name, and short age on the top line with the holder's initials at the right; the title; the one-line status in its lane's color; then small tags for kind (hue dot), blockers closed, runs, linked chats, and chat context. Kinds read apart by shape first and hue second; kind hues avoid the status colors except bug's orange. A row's actions — Start, move to the front of Ready, attach, and the drag handle — float in one small raised strip over its top line on hover or focus; it is the only raised thing on the board. The whole row drags by pointer; the handle is the keyboard's way to move it. The inspector stays beside the board on wide windows and covers it on narrow ones. Cross-lane drops request supported ticket actions; they do not write a band directly.
+Work is the reference for how Kira draws dense, task-shaped UI. The rules below are the direction that produced it; hold new Work UI to them rather than to what looks plausible.
 
-The List view is the same tickets as one table: a pinned heading row (Ticket, Status, Kind, Blockers, Sessions, Owner, Updated) and groups by status or kind, each a foldable row with its lane's dot, name, count, and note. Every group and row is a subgrid of one grid, so columns line up down the whole list; rows are 40px with the board row's icon, name, status, and tag vocabulary. Rows drag between status groups and within Ready exactly as board rows drag between lanes, and the ticket's drawer sits beside the table as it does beside the board.
+**Voice and vocabulary.** People see **Ticket**, **Blocker**, and **Session**; the code's `gate` and `run` never reach the screen (`CONTEXT.md`). The same action has the same name everywhere. **Close** puts a panel away; **Resolve…** closes a ticket (Mark done or Won't do). Buttons say what they do ("Start agent", "Set up workspace"), states are short lowercase phrases ("ready for an agent", "0 of 1 closed"), and empty states say what the thing is for, in a sentence, not "No data". Server error text is shown as it comes; the copy we own must not say "issue" or "gate".
+
+**Ledger, not cards.** Work is ruled, not boxed: hairlines, rows, and columns carry structure. Rows have no corners and no resting shadow. The only raised things are floating layers (menus, dialogs, the row's hover strip, the ticket's floating box), and a raised surface takes no border, because its shadow's inset ring is the edge. Reach for a rule or spacing before a box.
+
+**Signal rose.** Kira red is for the one primary action, selection, and focus. Lane color (warning amber for Needs review, accent for Ready, blue Running, orange Blocked, muted Draft, green Done) marks status and nothing else. Kind is shape first (icon) and hue second (a dot), and kind hues avoid the status colors except bug's orange. Won't do is orange, never red or green; a blocker closed as won't do is a warning, not a success, and the blockers' progress bar turns orange to say so.
+
+**Board.** Lanes are ruled columns: a hairline between lanes and a 2px status-colored rule under each header with a zero-padded mono count. A ticket is a ruled row: kind icon, mono name, and short age on the top line with the holder's initials at the right; the title; the one-line status in its lane's color; then small tags (kind dot, blockers closed, sessions, linked chats). A row's actions (Start, move to front of Ready, attach, drag handle) float in one raised strip on hover or focus. The whole row drags by pointer; the handle is the keyboard's way. The drawer sits beside the board on wide windows and covers it on narrow ones. Cross-lane drops request supported ticket actions through the confirmation bar; they never write a band directly.
+
+**List.** The same tickets as one table: a pinned heading row (Ticket, Status, Kind, Blockers, Sessions, Owner, Updated) and groups by status or kind, each a foldable, sticky row with its lane's dot, name, count, and note. The table is one CSS grid and every group and row is a subgrid of it, so every column, heading included, lines up down the whole list; the first and last tracks are the rows' side padding, because a subgrid row cannot pad itself without squeezing its columns. Rows are 40px and reuse the board row's vocabulary. Drag works exactly as on the board (status groups and Ready order; grouped by kind nothing drags, since a drop would mean nothing), and the drawer sits beside the table. With the drawer open the table scrolls sideways rather than hiding columns.
+
+**Toolbar: search, Filter, Display.** Search has a magnifier, a clear button, and `/` to jump into it (Escape clears and leaves). **Filter** narrows which tickets show (Status with counts, Kind with icons, Owner); **Display** says how they are arranged (Group by, Order by, Show done tickets). Never mix the two. Every option is a menu row with a check on the current one; nothing cycles its value on click. A filtered view shows removable chips and "N of M tickets" under the header, and that row exists only while something is filtered. A control that differs from its default is drawn filled (secondary), not ghost.
+
+**Ticket, drawer and full view.** The drawer and the full view share one header: mono name, an outlined kind tag, and a state line (toned icon plus words), then the title. The full view is a document with a floating box: the box holds the next step, Edit, a More menu (Back to draft, Stop working on it, Resolve…), then the facts, the branch, and linked chats. It sits on the same canvas as the board and list (`--color-background-surface`), so moving between them does not change the ground. A ticket offers one next step, never several equal buttons. About and Done when render Markdown (About compact, headings starting at level 4; Done when inline) and links open externally.
+
+**Blockers.** "Blocked by" and "Blocking" are ledger rows in four aligned columns (state icon, mono name, title, where it stands) on one grid, ruled and sized like the Done-when checks above them. Above the rows, one sentence says what the blockers mean for this ticket now (waiting on N; can start; or "was closed as won't do, check it still makes sense"). Removing a blocker replaces its state word on hover rather than reserving room. Adding picks from open tickets that would not be a duplicate; a refusal (a circle of tickets) stays visible and leaves the picker open.
+
+**Workspace setup.** A ticket without a workspace shows a dashed "No workspace yet" row; setting up opens a dialog. Choices with known answers are pickers (the checkout, the branch it starts from, the agent) and only the new branch's name is typed, with a suggest button inside the field. A route line (from branch → new branch in checkout) shows the result before it is made. A folder that is not a git checkout says so and disables Create.
+
+**Spacing and alignment are the craft.** These are measured, not eyeballed.
+
+- Use the 4px rhythm: 4–8 inside a group, 12–16 between related sections, 24+ between regions. Rows are 40px on the board and list; controls are 28 (small) or 32.
+- Text starts at one left edge down a whole surface: the filter bar's first word, the column headings, the group heads, and row text share a left edge (16px gutter). A ghost button at an edge is compensated so its words, not its box, sit on that line (`docs/internal/desktop-conventions.md`).
+- One grid per list, so columns cannot drift. If two things are the same kind of item (a check and a blocker), they share padding, divider, size, and text weight.
+- Numbers use tabular mono figures and align right or in their column.
+- Truncate with an ellipsis and put the full text in `title`; never let a long title reflow a row.
+
+**Verify before calling it done.** Screenshot the running app, in both themes when color changed, at a narrow and a wide window; measure the left edges and gaps with `getBoundingClientRect` rather than trusting the picture; test pointer and keyboard drag, focus rings, and the empty, loading, and refused states. The procedure is `docs/internal/frontend-debugging.md`.
 
 ## Do's and Don'ts
 
@@ -218,10 +244,13 @@ The List view is the same tickets as one table: a pinned heading row (Ticket, St
 - **Do** reserve Kira red for primary actions, selection, and focus; use status colors only for status.
 - **Do** preserve keyboard-visible focus, readable labels, and the shared compact control sizes.
 - **Do** keep Work's board interactions action-based; the server remains authoritative for ticket lanes.
+- **Do** measure alignment in the running app; spacing and cohesion are the point of this system.
+- **Do** say Ticket, Blocker, and Session on screen, and name the same action the same way everywhere.
 
 ### Don't:
 
 - **Don't** substitute Astryx Neutral's default blue accent for Kira's semantic red accent.
 - **Don't** add shadows to every card; keep resting surfaces tonal and lightly bordered.
 - **Don't** copy Linear's visual identity into Work; use familiar issue-tracker interactions in Kira's own visual language.
+- **Don't** box Work rows in cards, add a border to a shadowed surface, or cycle a filter's value on click.
 - **Don't** communicate disabled, selected, or status states by color alone.

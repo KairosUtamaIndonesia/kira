@@ -198,6 +198,47 @@ projects already do, and a workspace Kira made for the chat says so in words, be
 name is a UUID. An empty folder gets a sentence rather than a blank panel, and anything that
 fails is shown in the pane that failed, so a refusal never reads as an empty folder.
 
+## The Work surface
+
+`renderer/src/work.tsx` draws the board, list, drawer, and full ticket view; the design
+direction is in `apps/desktop/DESIGN.md` (Work), and this is where its pieces live.
+
+- **`work.tsx`** owns the queue, the view, drag and drop, the drawer and full view, and the
+  confirmation bar. It stays one file because these share state; pieces that stand alone
+  (they take props and own their own styles) move out beside it.
+- **`workFilters.tsx`** is the search, Filter, and Display toolbar and the chip row. It
+  drives `WorkDisplay` (`workDisplay.ts`) and knows nothing else; the kind icons come in as
+  a prop so it does not import `work.tsx`.
+- **`workBlockers.tsx`** is a ticket's Blocked by and Blocking ledgers. It gets `onGate` and
+  `onUngate` and reports a refusal by the parent's `wrote` returning null.
+- **`workspaceSetup.tsx`** is the "No workspace yet" row and the setup dialog. The dialog is
+  drawn only while wanted, so drawing it is opening it. It reads a checkout's branches and
+  asks for a folder through `window.kira.listCheckoutBranches` and `chooseCheckout`
+  (`EXECUTION_CHANNELS`, `main/ipc/execution.ts`); choosing a checkout there does not register
+  a Kira workspace.
+- **`workRows.ts`** and **`workDisplay.ts`** hold the pure words and rules (age, what a row
+  says, filtering and order) with tests beside them. New wording for a status goes there, not
+  inline in a component.
+
+Working rules for changes here:
+
+- **Tables and ledgers are one grid.** Make the list a `display: grid` and each row
+  `grid-template-columns: subgrid`; do not size columns per row. A subgrid row cannot pad
+  itself, so the outer grid's first and last tracks are the side padding.
+- **Ghost buttons at an edge are compensated** (see Where a style goes), including the filter
+  bar and the header's right end. Check with a text range's `getBoundingClientRect().left`.
+- **On screen: Ticket, Blocker, Session.** Code and IPC keep `gate` and `run`. When a
+  component's copy changes, grep for the old word: the same action must not have two names.
+- **A prototype is a switch, not a fork.** Variants of a design live behind a development-only
+  switcher (`import.meta.env.DEV`) in the real app, on their own branch, so they can be judged
+  with real data. When one wins, rewrite it as real code, remove the losers, the switcher and
+  the file's "PROTOTYPE" header in the same change, and update DESIGN.md.
+- **Delete what a change makes dead**: styles, imports, and helpers, checked with
+  `oxlint` and a scan of `styles.<key>` uses. Leave already-dead code alone and mention it.
+- **Test in the running app** as `docs/internal/frontend-debugging.md` describes. Drag by
+  pointer and by keyboard (Space, arrows, Space), and cancel the confirmation bar rather than
+  confirming against sample tickets you do not own.
+
 ## Folders are kinds of code, not features
 
 One folder per kind of code. Every file in a folder is that kind, whichever feature it
