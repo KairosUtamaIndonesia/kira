@@ -6,8 +6,10 @@
  * Only what markdown can say is offered — bold, italic, code, lists, a quote, a code
  * block — so nothing typed here is lost when the text is saved.
  */
+import { Button } from '@astryxdesign/core/Button';
 import { Icon } from '@astryxdesign/core/Icon';
 import { IconButton } from '@astryxdesign/core/IconButton';
+import { TextInput } from '@astryxdesign/core/TextInput';
 import {
   borderVars,
   colorVars,
@@ -19,8 +21,18 @@ import Placeholder from '@tiptap/extension-placeholder';
 import { EditorContent, useEditor, useEditorState, type Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import * as stylex from '@stylexjs/stylex';
+import { useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { Bold, Code, Italic, List, ListOrdered, Quote, SquareCode } from 'lucide-react';
+import {
+  Bold,
+  Code,
+  Italic,
+  Link as LinkIcon,
+  List,
+  ListOrdered,
+  Quote,
+  SquareCode,
+} from 'lucide-react';
 
 interface Action {
   label: string;
@@ -116,30 +128,120 @@ export function MarkdownEditor({
   );
 }
 
+/** A link's address as the editor will keep it: web and mail addresses only. */
+function linkAddress(typed: string): string | null {
+  const text = typed.trim();
+  if (text === '') return null;
+  const address = /^[a-z][a-z0-9+.-]*:/i.test(text) ? text : `https://${text}`;
+  return /^(https?:|mailto:)/i.test(address) ? address : null;
+}
+
 function Toolbar({ editor }: { editor: Editor }) {
-  const active = useEditorState({
+  const { active, link } = useEditorState({
     editor,
-    selector: ({ editor: current }) => ACTIONS.map((action) => action.isActive(current)),
+    selector: ({ editor: current }) => ({
+      active: ACTIONS.map((action) => action.isActive(current)),
+      link: current.isActive('link'),
+    }),
   });
+  const [linking, setLinking] = useState(false);
+  const [address, setAddress] = useState('');
+
+  const openLink = (): void => {
+    setAddress(editor.getAttributes('link')['href'] ?? '');
+    setLinking(true);
+  };
+  const closeLink = (): void => {
+    setLinking(false);
+    editor.commands.focus();
+  };
+  const applyLink = (): void => {
+    const href = linkAddress(address);
+    if (href === null) return;
+    const chain = editor.chain().focus();
+    if (editor.state.selection.empty && !link) {
+      chain
+        .insertContent({ type: 'text', text: href, marks: [{ type: 'link', attrs: { href } }] })
+        .run();
+    } else {
+      chain.extendMarkRange('link').setLink({ href }).run();
+    }
+    setLinking(false);
+  };
 
   return (
-    <div {...stylex.props(styles.toolbar)} role="toolbar" aria-label="Formatting">
-      {ACTIONS.map((action, at) => (
+    <>
+      <div {...stylex.props(styles.toolbar)} role="toolbar" aria-label="Formatting">
+        {ACTIONS.map((action, at) => (
+          <IconButton
+            key={action.label}
+            label={action.label}
+            tooltip={action.label}
+            icon={<Icon icon={action.icon} size="sm" />}
+            size="sm"
+            variant={active[at] ? 'secondary' : 'ghost'}
+            onClick={() => action.run(editor)}
+          />
+        ))}
         <IconButton
-          key={action.label}
-          label={action.label}
-          tooltip={action.label}
-          icon={<Icon icon={action.icon} size="sm" />}
+          label="Link"
+          tooltip="Link"
+          icon={<Icon icon={LinkIcon} size="sm" />}
           size="sm"
-          variant={active[at] ? 'secondary' : 'ghost'}
-          onClick={() => action.run(editor)}
+          variant={link || linking ? 'secondary' : 'ghost'}
+          onClick={() => (linking ? closeLink() : openLink())}
         />
-      ))}
-    </div>
+      </div>
+      {linking && (
+        <div {...stylex.props(styles.linkRow)}>
+          <div {...stylex.props(styles.linkField)}>
+            <TextInput
+              label="Link address"
+              isLabelHidden
+              placeholder="https://"
+              size="sm"
+              value={address}
+              onChange={setAddress}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  applyLink();
+                } else if (event.key === 'Escape') {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  closeLink();
+                }
+              }}
+            />
+          </div>
+          <Button
+            label="Apply"
+            size="sm"
+            variant="secondary"
+            isDisabled={linkAddress(address) === null}
+            onClick={applyLink}
+          />
+          {link && (
+            <Button
+              label="Remove link"
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                editor.chain().focus().extendMarkRange('link').unsetLink().run();
+                setLinking(false);
+              }}
+            />
+          )}
+        </div>
+      )}
+    </>
   );
 }
 
 const styles = stylex.create({
+  linkRow: { display: 'flex', alignItems: 'center', gap: spacingVars['--spacing-2'] },
+  linkField: { flex: 1, minWidth: 0 },
   frame: {
     display: 'flex',
     flexDirection: 'column',
