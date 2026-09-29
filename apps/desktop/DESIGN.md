@@ -37,6 +37,7 @@ typography:
     fontWeight: 400
     lineHeight: 1.4286
 rounded:
+  none: '0px'
   inner: '2px'
   element: '4px'
   container: '6px'
@@ -91,11 +92,11 @@ components:
     rounded: '{rounded.full}'
     height: '20px'
     padding: '2px 8px'
-  work-ticket-card:
-    backgroundColor: '{colors.neutral-surface}'
+  work-ticket-row:
+    backgroundColor: 'transparent'
     textColor: 'var(--color-text-primary)'
-    rounded: '{rounded.container}'
-    padding: '12px'
+    rounded: '{rounded.none}'
+    padding: '10px 16px'
 ---
 
 # Design System: Kira Desktop
@@ -181,7 +182,7 @@ Components are crisp and lightly lifted. Prefer Astryx primitives and Kira theme
 
 ### Cards / Containers
 
-- **Corner Style:** 6px by default; Work chooser rows and Kanban lanes use 10px.
+- **Corner Style:** 6px by default; Work chooser rows use 10px. Work board lanes and rows have no corners: they are ruled, not boxed.
 - **Background:** use the surface token for primary cards and the muted token for secondary groupings.
 - **Shadow Strategy:** flat at rest; reserve the low and medium theme shadows for genuinely floating layers.
 - **Border:** a 1px semantic border; selected, focused, or hovered states may strengthen it.
@@ -199,7 +200,7 @@ Components are crisp and lightly lifted. Prefer Astryx primitives and Kira theme
 
 ### Work Board
 
-The Work board is a Kira-native triage surface: review and Ready appear before running, blocked, draft, and done work. Lane accents and counts make state scannable without turning the board into a catalog of equally urgent cards. Cards keep the ticket title, kind, and next action close together; the inspector stays beside the board on wide windows and covers it on narrow ones. Cross-lane drops request supported ticket actions; they do not write a band directly.
+The Work board is a Kira-native triage surface laid out as a ledger: review and Ready appear before running, blocked, draft, and done work. Lanes are ruled columns — no box, a hairline between lanes, and a 2px status-colored rule under each header with a zero-padded mono count. Tickets are ruled rows, not cards: kind shape icon, mono name, and short age on the top line with the holder's initials at the right; the title; the one-line status in its lane's color; then small tags for kind (hue dot), blockers closed, runs, linked chats, and chat context. Kinds read apart by shape first and hue second; kind hues avoid the status colors except bug's orange. A row's actions — Start, move to the front of Ready, attach, and the drag handle — float in one small raised strip over its top line on hover or focus; it is the only raised thing on the board. The whole row drags by pointer; the handle is the keyboard's way to move it. The inspector stays beside the board on wide windows and covers it on narrow ones. Cross-lane drops request supported ticket actions; they do not write a band directly.
 
 ## Do's and Don'ts
 

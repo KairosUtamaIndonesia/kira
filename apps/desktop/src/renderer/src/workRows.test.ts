@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import type { Ticket, TicketRun } from '../../preload/bridge.ts';
 import {
+  age,
   bandIcon,
   branchNote,
   byName,
@@ -245,6 +246,24 @@ test('when something happened is said in the unit that reads best', () => {
   // Older than a day is a date rather than a count of hours, which is the point at
   // which "37 hours ago" stops being easier to read than the day itself.
   assert.match(when('2026-02-20T12:00:00.000Z', now), /\d/);
+});
+
+test('an age fits a board row: the largest whole unit, in one or two characters', () => {
+  const now = Date.parse('2026-03-01T12:00:00.000Z');
+  const cases: { name: string; at: string; want: string }[] = [
+    { name: 'this minute', at: '2026-03-01T11:59:30.000Z', want: 'now' },
+    { name: 'a clock slightly ahead', at: '2026-03-01T12:00:30.000Z', want: 'now' },
+    { name: 'one minute ago', at: '2026-03-01T11:59:00.000Z', want: '1m' },
+    { name: 'fifty-nine minutes ago', at: '2026-03-01T11:01:00.000Z', want: '59m' },
+    { name: 'one hour ago', at: '2026-03-01T11:00:00.000Z', want: '1h' },
+    { name: 'twenty-three hours ago', at: '2026-02-28T13:00:00.000Z', want: '23h' },
+    { name: 'one day ago', at: '2026-02-28T12:00:00.000Z', want: '1d' },
+    { name: 'forty days ago', at: '2026-01-20T12:00:00.000Z', want: '40d' },
+  ];
+
+  for (const testCase of cases) {
+    assert.equal(age(testCase.at, now), testCase.want, testCase.name);
+  }
 });
 
 test('a ticket is opened by saying its name, however it is said', () => {

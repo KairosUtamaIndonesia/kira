@@ -23,7 +23,6 @@
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
-import { ClickableCard } from '@astryxdesign/core/ClickableCard';
 import { Divider } from '@astryxdesign/core/Divider';
 import { EmptyState } from '@astryxdesign/core/EmptyState';
 import { Icon } from '@astryxdesign/core/Icon';
@@ -40,12 +39,16 @@ import {
   borderVars,
   colorVars,
   focusVars,
+  shadowVars,
   spacingVars,
+  textSizeVars,
+  typographyVars,
 } from '@astryxdesign/core/theme/tokens.stylex';
 import * as stylex from '@stylexjs/stylex';
 import {
   closestCenter,
   DndContext,
+  DragOverlay,
   KeyboardSensor,
   PointerSensor,
   useDroppable,
@@ -59,27 +62,46 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type PointerEventHandler,
+  type ReactNode,
+} from 'react';
 import {
   ArrowLeft,
   ArrowUp,
+  Bug,
   CircleAlert,
   CircleCheck,
   CircleDashed,
+  CircleHelp,
   Copy,
   FileText,
+  FlaskConical,
   FolderOpen,
+  GitBranch,
   GripVertical,
+  History,
+  Map as MapIcon,
+  MessageSquare,
+  Paperclip,
   Play,
   Plus,
   Rows3,
+  Search,
   SlidersHorizontal,
+  Sparkles,
   SquareKanban,
-  X,
   Ticket as TicketIcon,
+  Wrench,
+  X,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import {
+  age,
   bandIcon,
   branchNote,
   holding,
@@ -189,6 +211,18 @@ const KIND_VARIANT: Record<TicketKind, 'neutral' | 'info' | 'warning' | 'success
   research: 'info',
   spec: 'success',
   map: 'purple',
+};
+
+/** Each kind's shape, drawn before its name on the board so kinds read apart at a glance. */
+const KIND_ICON: Record<TicketKind, LucideIcon> = {
+  prototype: FlaskConical,
+  bug: Bug,
+  feature: Sparkles,
+  refactor: Wrench,
+  question: CircleHelp,
+  research: Search,
+  spec: FileText,
+  map: MapIcon,
 };
 
 const KINDS: TicketKind[] = [
@@ -321,11 +355,9 @@ const styles = stylex.create({
     display: 'flex',
     flexDirection: 'row',
     alignItems: 'stretch',
-    gap: spacingVars['--spacing-3'],
     flex: 1,
     minWidth: 0,
     minHeight: 0,
-    padding: spacingVars['--spacing-4'],
     overflowX: 'auto',
     overflowY: 'hidden',
     scrollSnapType: 'x proximity',
@@ -338,141 +370,299 @@ const styles = stylex.create({
       backgroundColor: colorVars['--color-accent'],
     },
   },
+  /* A lane is a ruled column: no box of its own, a hairline between it and the next. */
   column: {
     display: 'flex',
     flexDirection: 'column',
-    flexShrink: 0,
-    flexBasis: 272,
-    minWidth: 256,
-    maxWidth: 320,
+    flex: '0 0 296px',
+    minWidth: 0,
     minHeight: 0,
-    padding: spacingVars['--spacing-2'],
-    borderWidth: borderVars['--border-width'],
-    borderStyle: 'solid',
-    borderColor: colorVars['--color-border'],
-    borderBlockStartWidth: 2,
-    borderBlockStartColor: colorVars['--color-border'],
-    borderRadius: 10,
-    backgroundColor: colorVars['--color-background-muted'],
+    borderInlineEndWidth: borderVars['--border-width'],
+    borderInlineEndStyle: 'solid',
+    borderInlineEndColor: colorVars['--color-border'],
     scrollSnapAlign: 'start',
-    transitionProperty: 'border-color, background-color',
+    transitionProperty: 'background-color',
     transitionDuration: '160ms',
   },
-  columnOver: {
-    borderColor: colorVars['--color-icon-accent'],
-    backgroundColor: colorVars['--color-background-surface'],
-  },
-  columnNeedsYou: { borderBlockStartColor: colorVars['--color-warning'] },
-  columnReady: { borderBlockStartColor: colorVars['--color-icon-accent'] },
-  columnRunning: { borderBlockStartColor: colorVars['--color-icon-accent'] },
-  columnBlocked: { borderBlockStartColor: colorVars['--color-warning'] },
-  columnDraft: { borderBlockStartColor: colorVars['--color-border-emphasized'] },
-  columnDone: { borderBlockStartColor: colorVars['--color-success'] },
-  columnHead: {
+  columnOver: { backgroundColor: colorVars['--color-overlay-hover'] },
+  laneHead: {
     display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'stretch',
-    justifyContent: 'flex-start',
-    gap: spacingVars['--spacing-1'],
-    paddingInline: spacingVars['--spacing-2'],
-    paddingBlock: spacingVars['--spacing-2'],
-    borderBlockEndWidth: borderVars['--border-width'],
-    borderBlockEndStyle: 'solid',
-    borderBlockEndColor: colorVars['--color-border'],
-    backgroundColor: 'transparent',
-  },
-  laneTitleRow: {
-    display: 'flex',
-    alignItems: 'center',
+    alignItems: 'baseline',
     justifyContent: 'space-between',
     gap: spacingVars['--spacing-2'],
-    minWidth: 0,
+    flexShrink: 0,
+    paddingBlock: spacingVars['--spacing-3'],
+    paddingInline: spacingVars['--spacing-4'],
+    borderBlockEndWidth: 2,
+    borderBlockEndStyle: 'solid',
+  },
+  laneNeedsYou: { borderBlockEndColor: colorVars['--color-warning'] },
+  laneReady: { borderBlockEndColor: colorVars['--color-accent'] },
+  laneRunning: { borderBlockEndColor: colorVars['--color-icon-blue'] },
+  laneBlocked: { borderBlockEndColor: colorVars['--color-icon-orange'] },
+  laneDraft: { borderBlockEndColor: colorVars['--color-border-emphasized'] },
+  laneDone: { borderBlockEndColor: colorVars['--color-success'] },
+  laneLabel: {
+    fontSize: '0.8125rem',
+    fontWeight: 600,
+    color: colorVars['--color-text-primary'],
   },
   laneCount: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 22,
-    height: 20,
-    paddingInline: spacingVars['--spacing-1'],
-    borderRadius: 999,
+    fontFamily: typographyVars['--font-family-code'],
+    fontSize: textSizeVars['--font-size-sm'],
     color: colorVars['--color-text-secondary'],
-    backgroundColor: colorVars['--color-background-muted'],
     fontVariantNumeric: 'tabular-nums',
   },
-  cards: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: spacingVars['--spacing-2'],
-    flex: 1,
-    overflowY: 'auto',
+  rows: {
+    flex: '0 1 auto',
     minHeight: 0,
-    paddingBlockEnd: spacingVars['--spacing-1'],
+    margin: 0,
+    padding: 0,
+    listStyle: 'none',
+    overflowY: 'auto',
     overscrollBehaviorY: 'contain',
   },
   laneEmpty: {
-    display: 'flex',
-    minHeight: 76,
-    alignItems: 'center',
-    padding: spacingVars['--spacing-3'],
-    borderWidth: borderVars['--border-width'],
-    borderStyle: 'dashed',
-    borderColor: colorVars['--color-background-muted'],
-    borderRadius: 8,
+    margin: 0,
+    paddingBlock: spacingVars['--spacing-3'],
+    paddingInline: spacingVars['--spacing-4'],
+    fontSize: '0.8125rem',
+    color: colorVars['--color-text-secondary'],
   },
-  cardBody: {
+
+  /* A ticket on the board: one ruled row, its actions raised over it on hover or focus. */
+  row: {
+    '--row-reveal': { default: '0', ':hover': '1', ':focus-within': '1' },
+    position: 'relative',
     display: 'flex',
     flexDirection: 'column',
-    gap: spacingVars['--spacing-2'],
-    minWidth: 0,
-  },
-  chatLinks: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'stretch',
     gap: spacingVars['--spacing-1'],
-    width: '100%',
-    minWidth: 0,
+    paddingBlock: 10,
+    paddingInline: spacingVars['--spacing-4'],
+    borderBlockEndWidth: borderVars['--border-width'],
+    borderBlockEndStyle: 'solid',
+    borderBlockEndColor: colorVars['--color-border'],
+    backgroundColor: {
+      default: 'transparent',
+      ':hover': colorVars['--color-overlay-hover'],
+    },
+    touchAction: 'manipulation',
   },
-  chatButton: {
-    width: '100%',
-    minWidth: 0,
-    justifyContent: 'flex-start',
+  rowSelected: {
+    backgroundColor: {
+      default: colorVars['--color-accent-muted'],
+      ':hover': colorVars['--color-accent-muted'],
+    },
   },
-  chatButtonLabel: {
-    display: 'block',
+  rowDragging: { opacity: 0.4 },
+  rowOverlay: {
+    width: 295,
+    borderWidth: borderVars['--border-width'],
+    borderStyle: 'solid',
+    borderColor: colorVars['--color-border-emphasized'],
+    borderRadius: 6,
+    backgroundColor: colorVars['--color-background-popover'],
+    boxShadow: shadowVars['--shadow-med'],
+    cursor: 'grabbing',
+  },
+  rowOpen: {
+    position: 'absolute',
+    inset: 0,
+    zIndex: 0,
+    padding: 0,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    cursor: 'pointer',
+    outlineStyle: { default: 'none', ':focus-visible': focusVars['--focus-outline-style'] },
+    outlineWidth: focusVars['--focus-outline-width'],
+    outlineColor: focusVars['--focus-outline-color'],
+    outlineOffset: '-2px',
+  },
+  rowTop: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: spacingVars['--spacing-2'],
+    minHeight: 22,
+  },
+  rowKind: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    flexShrink: 0,
+    color: colorVars['--color-icon-secondary'],
+  },
+  rowName: {
+    fontFamily: typographyVars['--font-family-code'],
+    fontSize: textSizeVars['--font-size-sm'],
+    letterSpacing: '0.01em',
+    color: colorVars['--color-text-secondary'],
+    fontVariantNumeric: 'tabular-nums',
+    whiteSpace: 'nowrap',
+  },
+  rowAge: {
+    flex: 1,
+    fontSize: textSizeVars['--font-size-sm'],
+    color: colorVars['--color-text-secondary'],
+    whiteSpace: 'nowrap',
+  },
+  rowPerson: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    width: 20,
+    height: 20,
+    borderRadius: 999,
+    fontSize: textSizeVars['--font-size-xs'],
+    fontWeight: 600,
+    color: colorVars['--color-text-primary'],
+    backgroundColor: colorVars['--color-neutral'],
+    opacity: 'calc(1 - var(--row-reveal, 0))',
+    transitionProperty: 'opacity',
+    transitionDuration: '120ms',
+  },
+  rowTitle: {
+    fontSize: textSizeVars['--font-size-base'],
+    fontWeight: 500,
+    lineHeight: 1.4,
+    color: colorVars['--color-text-primary'],
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical',
+    overflow: 'hidden',
+    overflowWrap: 'anywhere',
+  },
+  rowState: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: spacingVars['--spacing-1-5'],
+    minWidth: 0,
+    fontSize: textSizeVars['--font-size-sm'],
+    color: colorVars['--color-text-secondary'],
+  },
+  rowStateIcon: { display: 'inline-flex', alignItems: 'center', flexShrink: 0 },
+  rowStateWords: {
     minWidth: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
-  cardFoot: {
+  toneNeedsYou: { color: colorVars['--color-text-yellow'] },
+  toneReady: { color: colorVars['--color-text-accent'] },
+  toneRunning: { color: colorVars['--color-text-blue'] },
+  toneBlocked: { color: colorVars['--color-text-orange'] },
+  toneDraft: { color: colorVars['--color-text-secondary'] },
+  toneDone: { color: colorVars['--color-text-green'] },
+  rowTags: { display: 'flex', flexWrap: 'wrap', gap: spacingVars['--spacing-1'] },
+  rowTag: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 4,
+    height: 20,
+    paddingInline: 6,
+    borderWidth: borderVars['--border-width'],
+    borderStyle: 'solid',
+    borderColor: colorVars['--color-border'],
+    borderRadius: 999,
+    backgroundColor: 'transparent',
+    fontSize: '0.6875rem',
+    color: colorVars['--color-text-secondary'],
+    fontVariantNumeric: 'tabular-nums',
+    whiteSpace: 'nowrap',
+  },
+  rowTagAttached: {
+    borderColor: colorVars['--color-accent-muted'],
+    color: colorVars['--color-text-accent'],
+  },
+  rowTagButton: {
+    position: 'relative',
+    zIndex: 1,
+    cursor: 'pointer',
+    borderColor: {
+      default: colorVars['--color-border'],
+      ':hover': colorVars['--color-border-emphasized'],
+    },
+    color: {
+      default: colorVars['--color-text-secondary'],
+      ':hover': colorVars['--color-text-primary'],
+    },
+    outlineStyle: { default: 'none', ':focus-visible': focusVars['--focus-outline-style'] },
+    outlineWidth: focusVars['--focus-outline-width'],
+    outlineColor: focusVars['--focus-outline-color'],
+    outlineOffset: 1,
+  },
+  kindDot: { width: 6, height: 6, borderRadius: 999, flexShrink: 0 },
+  kindCyan: { backgroundColor: colorVars['--color-icon-cyan'] },
+  kindOrange: { backgroundColor: colorVars['--color-icon-orange'] },
+  kindPurple: { backgroundColor: colorVars['--color-icon-purple'] },
+  kindTeal: { backgroundColor: colorVars['--color-icon-teal'] },
+  kindPink: { backgroundColor: colorVars['--color-icon-pink'] },
+  kindGray: { backgroundColor: colorVars['--color-icon-secondary'] },
+  strip: {
+    position: 'absolute',
+    insetBlockStart: 6,
+    insetInlineEnd: 12,
+    zIndex: 1,
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacingVars['--spacing-2'],
+    gap: 2,
+    padding: 2,
+    borderWidth: borderVars['--border-width'],
+    borderStyle: 'solid',
+    borderColor: colorVars['--color-border'],
+    borderRadius: 6,
+    backgroundColor: colorVars['--color-background-popover'],
+    boxShadow: shadowVars['--shadow-low'],
+    opacity: 'var(--row-reveal, 0)',
+    transform: 'translateY(calc((1 - var(--row-reveal, 0)) * 3px))',
+    transitionProperty: 'opacity, transform',
+    transitionDuration: '140ms',
+    transitionTimingFunction: 'cubic-bezier(0.22, 1, 0.36, 1)',
   },
-  dragHandle: {
+  stripStart: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 4,
+    height: 22,
+    paddingInline: 7,
+    borderWidth: 0,
+    borderRadius: 4,
+    backgroundColor: colorVars['--color-accent'],
+    color: colorVars['--color-on-accent'],
+    fontSize: textSizeVars['--font-size-sm'],
+    fontWeight: 600,
+    cursor: 'pointer',
+    outlineStyle: { default: 'none', ':focus-visible': focusVars['--focus-outline-style'] },
+    outlineWidth: focusVars['--focus-outline-width'],
+    outlineColor: focusVars['--focus-outline-color'],
+    outlineOffset: 1,
+  },
+  stripButton: {
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    width: 24,
-    height: 24,
+    width: 22,
+    height: 22,
     padding: 0,
     borderWidth: 0,
-    backgroundColor: 'transparent',
-    color: colorVars['--color-text-secondary'],
-    cursor: 'grab',
-    ':active': { cursor: 'grabbing' },
-    ':focus-visible': {
-      outlineWidth: focusVars['--focus-outline-width'],
-      outlineStyle: focusVars['--focus-outline-style'],
-      outlineColor: focusVars['--focus-outline-color'],
-      outlineOffset: focusVars['--focus-outline-offset'],
+    borderRadius: 4,
+    backgroundColor: {
+      default: 'transparent',
+      ':hover': colorVars['--color-overlay-hover'],
     },
+    color: {
+      default: colorVars['--color-icon-secondary'],
+      ':hover': colorVars['--color-text-primary'],
+    },
+    cursor: 'pointer',
+    outlineStyle: { default: 'none', ':focus-visible': focusVars['--focus-outline-style'] },
+    outlineWidth: focusVars['--focus-outline-width'],
+    outlineColor: focusVars['--focus-outline-color'],
+    outlineOffset: 1,
   },
-  cardDragging: {
-    opacity: 0.55,
+  stripOn: { color: colorVars['--color-text-accent'] },
+  stripHandle: {
+    cursor: { default: 'grab', ':active': 'grabbing' },
+    touchAction: 'none',
   },
   dropAction: {
     display: 'flex',
@@ -2114,11 +2304,14 @@ function BoardView({
   onOpenChat: (chatId: string) => void;
   onToggleAttached: (id: string) => void;
 }) {
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const dragging = tickets.find((ticket) => ticket.id === draggingId) ?? null;
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
   const handleDragEnd = ({ active, over }: DragEndEvent): void => {
+    setDraggingId(null);
     if (over === null || active.id === over.id) return;
     const activeTicket = tickets.find((ticket) => ticket.id === active.id);
     if (activeTicket === undefined) return;
@@ -2136,9 +2329,17 @@ function BoardView({
 
     onDrop(activeTicket.id, targetBand);
   };
+  const chatsFor = (ticket: Ticket): ChatSummary[] =>
+    chatSummaries.filter((chat) => chat.workTicketIds.includes(ticket.id));
 
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={({ active }) => setDraggingId(String(active.id))}
+      onDragCancel={() => setDraggingId(null)}
+      onDragEnd={handleDragEnd}
+    >
       <div {...stylex.props(styles.board)}>
         <section
           aria-label="Issue lanes; scroll horizontally to see all states"
@@ -2160,7 +2361,7 @@ function BoardView({
                 onRequestRun={(ticketId) => onDrop(ticketId, 'running')}
                 attachedIds={attachedIds}
                 onToggleAttached={onToggleAttached}
-                chatSummaries={chatSummaries}
+                chatsFor={chatsFor}
                 onOpenChat={onOpenChat}
               />
             );
@@ -2168,9 +2369,55 @@ function BoardView({
         </section>
         {panel !== null && <div {...stylex.props(styles.boardDrawer)}>{panel}</div>}
       </div>
+      {/* The row being dragged is drawn above every lane, so it can leave the one it
+          scrolls in; the row it came from stays behind, faded, until the drop. */}
+      <DragOverlay dropAnimation={null}>
+        {dragging !== null && (
+          <div {...stylex.props(styles.row, styles.rowOverlay)}>
+            <TicketRowBody
+              ticket={dragging}
+              attached={attachedIds.includes(dragging.id)}
+              linkedChats={chatsFor(dragging)}
+            />
+          </div>
+        )}
+      </DragOverlay>
     </DndContext>
   );
 }
+
+const LANE_RULE = {
+  'needs-you': styles.laneNeedsYou,
+  ready: styles.laneReady,
+  running: styles.laneRunning,
+  blocked: styles.laneBlocked,
+  draft: styles.laneDraft,
+  done: styles.laneDone,
+} satisfies Record<Band, stylex.StyleXStyles>;
+
+const BAND_TONE = {
+  'needs-you': styles.toneNeedsYou,
+  ready: styles.toneReady,
+  running: styles.toneRunning,
+  blocked: styles.toneBlocked,
+  draft: styles.toneDraft,
+  done: styles.toneDone,
+} satisfies Record<Band, stylex.StyleXStyles>;
+
+/**
+ * A kind's hue on its tag. Hues no lane uses for status, except bug's orange; kinds that
+ * share a hue are told apart by the shape before their name.
+ */
+const KIND_HUE = {
+  feature: styles.kindCyan,
+  bug: styles.kindOrange,
+  refactor: styles.kindPurple,
+  prototype: styles.kindTeal,
+  question: styles.kindGray,
+  research: styles.kindGray,
+  spec: styles.kindPink,
+  map: styles.kindPink,
+} satisfies Record<TicketKind, stylex.StyleXStyles>;
 
 function BoardLane({
   band,
@@ -2184,7 +2431,7 @@ function BoardLane({
   onRequestRun,
   attachedIds,
   onToggleAttached,
-  chatSummaries,
+  chatsFor,
   onOpenChat,
 }: {
   band: (typeof BANDS)[number];
@@ -2198,78 +2445,58 @@ function BoardLane({
   onRequestRun: (id: string) => void;
   attachedIds: string[];
   onToggleAttached: (id: string) => void;
-  chatSummaries: ChatSummary[];
+  chatsFor: (ticket: Ticket) => ChatSummary[];
   onOpenChat: (chatId: string) => void;
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: `lane:${band.id}` });
-  const emptyCopy =
-    band.id === 'done' && !showDone
-      ? 'Done tickets are hidden in Filters.'
-      : 'Drop a ticket here to request a supported action.';
 
   return (
-    <div
-      ref={setNodeRef}
-      {...stylex.props(
-        styles.column,
-        band.id === 'needs-you' && styles.columnNeedsYou,
-        band.id === 'ready' && styles.columnReady,
-        band.id === 'running' && styles.columnRunning,
-        band.id === 'blocked' && styles.columnBlocked,
-        band.id === 'draft' && styles.columnDraft,
-        band.id === 'done' && styles.columnDone,
-        isOver && styles.columnOver,
-      )}
-    >
-      <div {...stylex.props(styles.bandHead, styles.columnHead)}>
-        <div {...stylex.props(styles.laneTitleRow)}>
-          <Text type="label" weight="medium">
-            {band.label}
-          </Text>
-          <span {...stylex.props(styles.laneCount)}>{count}</span>
-        </div>
-        <Text type="supporting" color="secondary">
-          {band.note}
-        </Text>
-      </div>
-      <div {...stylex.props(styles.cards)}>
+    <div ref={setNodeRef} {...stylex.props(styles.column, isOver && styles.columnOver)}>
+      <header title={band.note} {...stylex.props(styles.laneHead, LANE_RULE[band.id])}>
+        <span {...stylex.props(styles.laneLabel)}>{band.label}</span>
+        <span {...stylex.props(styles.laneCount)}>{String(count).padStart(2, '0')}</span>
+      </header>
+      <ol aria-label={band.label} {...stylex.props(styles.rows)}>
         <SortableContext
           items={tickets.map((ticket) => ticket.id)}
           strategy={verticalListSortingStrategy}
         >
           {tickets.map((ticket) => (
-            <SortableTicketCard
+            <SortableTicketRow
               key={ticket.id}
               ticket={ticket}
               selected={ticket.id === selected}
-              canDrag
               canReorder={canReorder}
               onOpen={onOpen}
               onPromote={onPromote}
               onRequestRun={onRequestRun}
               attached={attachedIds.includes(ticket.id)}
               onToggleAttached={onToggleAttached}
-              linkedChats={chatSummaries.filter((chat) => chat.workTicketIds.includes(ticket.id))}
+              linkedChats={chatsFor(ticket)}
               onOpenChat={onOpenChat}
             />
           ))}
         </SortableContext>
-        {tickets.length === 0 && (
-          <div {...stylex.props(styles.laneEmpty)}>
-            <Text type="supporting" color="secondary">
-              {emptyCopy}
-            </Text>
-          </div>
-        )}
-      </div>
+      </ol>
+      {tickets.length === 0 && (
+        <p {...stylex.props(styles.laneEmpty)}>
+          {band.id === 'done' && !showDone
+            ? 'Done tickets are hidden in Filters.'
+            : 'Nothing here.'}
+        </p>
+      )}
     </div>
   );
 }
 
-function SortableTicketCard({
+/**
+ * One ticket on the board. The whole row opens it and can be dragged by pointer; the
+ * handle in its action strip is the keyboard's way to move it, because Enter and Space on
+ * the row belong to opening it.
+ */
+function SortableTicketRow({
   ticket,
   selected,
-  canDrag,
   canReorder,
   onOpen,
   onPromote,
@@ -2281,7 +2508,6 @@ function SortableTicketCard({
 }: {
   ticket: Ticket;
   selected: boolean;
-  canDrag: boolean;
   canReorder: boolean;
   onOpen: (id: string) => void;
   onPromote: (id: string) => void;
@@ -2291,106 +2517,196 @@ function SortableTicketCard({
   linkedChats: ChatSummary[];
   onOpenChat: (chatId: string) => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: ticket.id,
-    disabled: !canDrag,
-  });
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: ticket.id });
   const transformStyle =
-    transform === null
-      ? undefined
-      : `translate3d(${transform.x}px, ${transform.y}px, 0) scaleX(${transform.scaleX}) scaleY(${transform.scaleY})`;
+    transform === null ? undefined : `translate3d(${transform.x}px, ${transform.y}px, 0)`;
+  const canStart = planTicketDrop(ticket, 'running')?.kind === 'start-run';
 
   return (
-    <div
+    <li
       ref={setNodeRef}
       style={{ transform: transformStyle, transition }}
-      {...stylex.props(isDragging && styles.cardDragging)}
+      onPointerDown={listeners?.onPointerDown as PointerEventHandler<HTMLLIElement> | undefined}
+      {...stylex.props(
+        styles.row,
+        selected && styles.rowSelected,
+        isDragging && styles.rowDragging,
+      )}
     >
-      <ClickableCard
-        label={`Open issue ${ticket.name}`}
-        padding={2}
-        variant={selected ? 'muted' : 'default'}
+      <button
+        type="button"
+        aria-label={`Open issue ${ticket.name}: ${ticket.title || 'Untitled'}`}
+        aria-current={selected || undefined}
+        {...stylex.props(styles.rowOpen)}
         onClick={() => onOpen(ticket.id)}
-      >
-        <span {...stylex.props(styles.cardBody)}>
-          <Text type="label" weight="medium" maxLines={2}>
-            {ticket.title || 'Untitled'}
-          </Text>
-          {planTicketDrop(ticket, 'running')?.kind === 'start-run' && (
-            <Button
-              label="Start agent"
-              size="sm"
-              variant="primary"
-              onClick={(event) => {
-                event.stopPropagation();
-                onRequestRun(ticket.id);
-              }}
-            />
-          )}
-          <span {...stylex.props(styles.meta)}>
-            <Text type="supporting" color="secondary">
-              {ticket.name}
-            </Text>
-            <KindTag kind={ticket.kind} />
-          </span>
-          <span {...stylex.props(styles.cardFoot)}>
-            <Holding ticket={ticket} />
-            <span {...stylex.props(styles.meta)}>
-              <IconButton
-                label={`${attached ? 'Remove' : 'Attach'} ${ticket.name} ${attached ? 'from' : 'to'} chat context`}
-                icon={<Icon icon={attached ? CircleCheck : Plus} size="sm" />}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onToggleAttached(ticket.id);
-                }}
-              />
-              <button
-                type="button"
-                aria-label={`Move ${ticket.name} to another lane`}
-                title={canReorder ? 'Reorder or move to another lane' : 'Move to another lane'}
-                {...stylex.props(styles.dragHandle)}
-                {...attributes}
-                {...listeners}
-                onClick={(event) => event.stopPropagation()}
-              >
-                <Icon icon={GripVertical} size="sm" />
-              </button>
-              {ticket.band === 'ready' && (
-                <IconButton
-                  label={`Move issue ${ticket.name} to the front of Ready`}
-                  icon={<Icon icon={ArrowUp} size="sm" />}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onPromote(ticket.id);
-                  }}
-                />
-              )}
-            </span>
-          </span>
-          {linkedChats.length > 0 && (
-            <span {...stylex.props(styles.chatLinks)}>
-              {linkedChats.map((chat) => (
-                <Button
-                  key={chat.id}
-                  label={`Open chat: ${chat.title}`}
-                  size="sm"
-                  variant="ghost"
-                  width="100%"
-                  xstyle={styles.chatButton}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onOpenChat(chat.id);
-                  }}
-                >
-                  <span {...stylex.props(styles.chatButtonLabel)}>Open chat: {chat.title}</span>
-                </Button>
-              ))}
-            </span>
-          )}
-        </span>
-      </ClickableCard>
-    </div>
+      />
+      <TicketRowBody
+        ticket={ticket}
+        attached={attached}
+        linkedChats={linkedChats}
+        onOpenChat={onOpenChat}
+      />
+      <span {...stylex.props(styles.strip)}>
+        {canStart && (
+          <button
+            type="button"
+            aria-label={`Start agent on ${ticket.name}`}
+            {...stylex.props(styles.stripStart)}
+            onClick={() => onRequestRun(ticket.id)}
+          >
+            <Icon icon={Play} size="xsm" />
+            Start
+          </button>
+        )}
+        {ticket.band === 'ready' && (
+          <StripButton
+            label={`Move issue ${ticket.name} to the front of Ready`}
+            icon={ArrowUp}
+            onClick={() => onPromote(ticket.id)}
+          />
+        )}
+        <StripButton
+          label={`${attached ? 'Remove' : 'Attach'} ${ticket.name} ${attached ? 'from' : 'to'} chat context`}
+          icon={attached ? CircleCheck : Paperclip}
+          isOn={attached}
+          onClick={() => onToggleAttached(ticket.id)}
+        />
+        <button
+          ref={setActivatorNodeRef}
+          type="button"
+          {...attributes}
+          {...listeners}
+          aria-label={`Move ${ticket.name} to another lane`}
+          title={canReorder ? 'Reorder or move to another lane' : 'Move to another lane'}
+          {...stylex.props(styles.stripButton, styles.stripHandle)}
+        >
+          <Icon icon={GripVertical} size="sm" />
+        </button>
+      </span>
+    </li>
   );
+}
+
+function StripButton({
+  label,
+  icon,
+  isOn = false,
+  onClick,
+}: {
+  label: string;
+  icon: LucideIcon;
+  isOn?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-pressed={isOn || undefined}
+      title={label}
+      {...stylex.props(styles.stripButton, isOn && styles.stripOn)}
+      onClick={onClick}
+    >
+      <Icon icon={icon} size="sm" />
+    </button>
+  );
+}
+
+/** What a board row says, shared by the row in its lane and the copy that follows a drag. */
+function TicketRowBody({
+  ticket,
+  attached,
+  linkedChats,
+  onOpenChat,
+}: {
+  ticket: Ticket;
+  attached: boolean;
+  linkedChats: ChatSummary[];
+  onOpenChat?: (chatId: string) => void;
+}) {
+  const said = holding(ticket);
+  const person = ticket.claim?.holder.name ?? ticket.author?.name ?? null;
+  const openChildren = ticket.children.filter((child) => !child.closed).length;
+  const firstChat = linkedChats[0];
+
+  return (
+    <>
+      <span {...stylex.props(styles.rowTop)}>
+        <span {...stylex.props(styles.rowKind)} title={ticket.kind}>
+          <Icon icon={KIND_ICON[ticket.kind]} size="xsm" />
+        </span>
+        <span {...stylex.props(styles.rowName)}>{ticket.name}</span>
+        <span {...stylex.props(styles.rowAge)} title={`Updated ${when(ticket.updatedAt)}`}>
+          {age(ticket.updatedAt)}
+        </span>
+        {person !== null && (
+          <span {...stylex.props(styles.rowPerson)} title={person}>
+            {initials(person)}
+          </span>
+        )}
+      </span>
+      <span {...stylex.props(styles.rowTitle)}>{ticket.title || 'Untitled'}</span>
+      <span {...stylex.props(styles.rowState, ticket.closure === 'wontfix' && styles.abandoned)}>
+        <span {...stylex.props(styles.rowStateIcon, BAND_TONE[ticket.band])}>
+          <Icon icon={said.icon} size="xsm" />
+        </span>
+        <span {...stylex.props(styles.rowStateWords)}>{said.words}</span>
+      </span>
+      <span {...stylex.props(styles.rowTags)}>
+        <span {...stylex.props(styles.rowTag)}>
+          <span {...stylex.props(styles.kindDot, KIND_HUE[ticket.kind])} />
+          {ticket.kind}
+        </span>
+        {ticket.children.length > 0 && (
+          <span {...stylex.props(styles.rowTag)} title="Blocking issues closed">
+            <Icon icon={GitBranch} size="xsm" />
+            {ticket.children.length - openChildren}/{ticket.children.length}
+          </span>
+        )}
+        {ticket.runs.length > 0 && (
+          <span {...stylex.props(styles.rowTag)} title="Runs">
+            <Icon icon={History} size="xsm" />
+            {ticket.runs.length}
+          </span>
+        )}
+        {firstChat !== undefined && (
+          <button
+            type="button"
+            aria-label={`Open chat: ${firstChat.title}${linkedChats.length > 1 ? `, and ${linkedChats.length - 1} more linked` : ''}`}
+            title={`Open chat: ${firstChat.title}`}
+            {...stylex.props(styles.rowTag, styles.rowTagButton)}
+            onClick={() => onOpenChat?.(firstChat.id)}
+          >
+            <Icon icon={MessageSquare} size="xsm" />
+            {linkedChats.length}
+          </button>
+        )}
+        {attached && (
+          <span {...stylex.props(styles.rowTag, styles.rowTagAttached)}>
+            <Icon icon={CircleCheck} size="xsm" />
+            in chat context
+          </span>
+        )}
+      </span>
+    </>
+  );
+}
+
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .map((part) => part[0] ?? '')
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
 }
 
 /* ── Leaves the views share: what a thing is, not where it goes ─────────── */

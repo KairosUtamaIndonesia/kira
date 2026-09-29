@@ -166,6 +166,24 @@ export function when(iso: string, now: number = Date.now()): string {
 }
 
 /**
+ * How long ago, in the one or two characters a board row has room for: "31m", "10h", "3d".
+ *
+ * `when` is the phrase for anywhere with room to say it; a row puts this beside the ticket's
+ * name and keeps the phrase on its tooltip. A clock slightly ahead of the server reads as now.
+ */
+export function age(iso: string, now: number = Date.now()): string {
+  const minutes = Math.floor((now - new Date(iso).getTime()) / 60000);
+
+  if (minutes < 1) return 'now';
+  if (minutes < 60) return `${minutes}m`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+
+  return `${Math.floor(hours / 24)}d`;
+}
+
+/**
  * How a run stands, in a word: what it is doing, or what became of it.
  *
  * Ended and unanswered is the state a ticket is waiting in, so it says so in words rather
