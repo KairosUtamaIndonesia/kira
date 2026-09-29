@@ -303,7 +303,9 @@ function LedgerBlockers(props: Shared) {
 
       <header {...stylex.props(ui.head, ui.headGap)}>
         <h3 {...stylex.props(ui.heading)}>Blocking</h3>
-        <span {...stylex.props(ui.count)}>{blocking.length}</span>
+        <span {...stylex.props(ui.count)}>
+          {blocking.length} {blocking.length === 1 ? 'ticket' : 'tickets'}
+        </span>
       </header>
       {blocking.length === 0 ? (
         <p {...stylex.props(ui.muted)}>No other ticket waits on {ticket.name}.</p>
@@ -344,12 +346,11 @@ const ui = stylex.create({
     gap: spacingVars['--spacing-2'],
     margin: 0,
     fontSize: textSizeVars['--font-size-base'],
-    fontWeight: 600,
+    fontWeight: 500,
+    color: colorVars['--color-text-primary'],
   },
   count: {
-    fontFamily: typographyVars['--font-family-code'],
     fontSize: textSizeVars['--font-size-sm'],
-    fontWeight: 400,
     color: colorVars['--color-text-secondary'],
   },
   progress: {
@@ -392,28 +393,36 @@ const ui = stylex.create({
     color: colorVars['--color-text-green'],
     backgroundColor: colorVars['--color-success-muted'],
   },
-  list: { display: 'flex', flexDirection: 'column', margin: 0, padding: 0, listStyle: 'none' },
+  // One grid for the whole list, so every row's name column is as wide as the longest name
+  // and the titles start on one line down the list.
+  list: {
+    display: 'grid',
+    gridTemplateColumns: '16px max-content minmax(0, 1fr) auto',
+    columnGap: spacingVars['--spacing-3'],
+    margin: 0,
+    padding: 0,
+    listStyle: 'none',
+  },
+  // Ruled like the finish line's checks above it: same divider, same padding, same text.
   row: {
     '--row-reveal': { default: '0', ':hover': '1', ':focus-within': '1' },
     position: 'relative',
     display: 'grid',
-    gridTemplateColumns: '16px 64px minmax(0, 1fr) auto',
+    gridTemplateColumns: 'subgrid',
+    gridColumn: '1 / -1',
     alignItems: 'center',
-    columnGap: spacingVars['--spacing-3'],
-    minHeight: 40,
-    paddingInline: spacingVars['--spacing-2'],
-    marginInline: `calc(-1 * ${spacingVars['--spacing-2']})`,
-    borderRadius: radiusVars['--radius-element'],
+    paddingBlock: spacingVars['--spacing-2'],
+    borderBlockEndWidth: 1,
+    borderBlockEndStyle: 'solid',
+    borderBlockEndColor: colorVars['--color-background-muted'],
     backgroundColor: { default: 'transparent', ':hover': colorVars['--color-overlay-hover'] },
   },
-  // On a removable row, where the ticket stands gives way to the remove button on hover.
   rowRemovable: { '--removable': '1' },
   rowOpen: {
     position: 'absolute',
     inset: 0,
     padding: 0,
     borderWidth: 0,
-    borderRadius: 'inherit',
     backgroundColor: 'transparent',
     cursor: 'pointer',
     outlineStyle: { default: 'none', ':focus-visible': focusVars['--focus-outline-style'] },
