@@ -47,6 +47,7 @@ import { holding, runTelling, when } from './workRows.ts';
 
 export const TICKET_VARIANTS = [
   { id: 'rail', label: 'Document + rail' },
+  { id: 'float', label: 'Document + floating box' },
   { id: 'ledger', label: 'Ledger page' },
   { id: 'tabs', label: 'Tabbed workbench' },
 ] as const;
@@ -121,6 +122,7 @@ export interface TicketViewProps {
 export function TicketFullPrototype(props: TicketViewProps & { variant: TicketVariant }) {
   if (props.variant === 'ledger') return <LedgerPage {...props} />;
   if (props.variant === 'tabs') return <TabbedPage {...props} />;
+  if (props.variant === 'float') return <RailPage {...props} floating />;
   return <RailPage {...props} />;
 }
 
@@ -383,51 +385,54 @@ function RailPage({
   onCollapse,
   onClose,
   onStub,
-}: TicketViewProps) {
+  floating = false,
+}: TicketViewProps & { floating?: boolean }) {
   return (
     <div {...stylex.props(ui.page)}>
       <PageBar ticket={ticket} laneLabel={laneLabel} onCollapse={onCollapse} onClose={onClose} />
-      <div {...stylex.props(rail.grid)}>
-        <article {...stylex.props(rail.doc)}>
-          <header {...stylex.props(rail.header)}>
-            <StateLine ticket={ticket} />
-            <h1 {...stylex.props(ui.title)}>{ticket.title || 'Untitled'}</h1>
-          </header>
-          <Section title="About">
-            <About ticket={ticket} />
-          </Section>
-          <Section title="Done when" count={ticket.criteria.length}>
-            <DoneWhen ticket={ticket} />
-          </Section>
-          <Section title="Runs" count={ticket.runs.length}>
-            <Runs ticket={ticket} />
-          </Section>
-          <Section title="What gates it" count={ticket.children.length}>
-            <Named tickets={ticket.children} empty="Nothing gates this." />
-          </Section>
-          {ticket.gates.length > 0 && (
-            <Section title="What it gates" count={ticket.gates.length}>
-              <Named tickets={ticket.gates} empty="" />
+      <div {...stylex.props(rail.grid, floating && float.scroll)}>
+        <div {...stylex.props(floating && float.grid)}>
+          <article {...stylex.props(rail.doc, floating && float.doc)}>
+            <header {...stylex.props(rail.header)}>
+              <StateLine ticket={ticket} />
+              <h1 {...stylex.props(ui.title)}>{ticket.title || 'Untitled'}</h1>
+            </header>
+            <Section title="About">
+              <About ticket={ticket} />
             </Section>
-          )}
-        </article>
-        <aside {...stylex.props(rail.rail)} aria-label="Ticket properties">
-          <Actions ticket={ticket} onStub={onStub} vertical />
-          <dl {...stylex.props(rail.props)}>
-            {facts(ticket, laneLabel).map((fact) => (
-              <div key={fact.label} {...stylex.props(rail.prop)}>
-                <dt {...stylex.props(ui.secondary)}>{fact.label}</dt>
-                <dd {...stylex.props(rail.propValue)}>{fact.value}</dd>
-              </div>
-            ))}
-          </dl>
-          <RailGroup title="Branch and workspace">
-            <Workspaces ticket={ticket} workspaces={workspaces} onStub={onStub} />
-          </RailGroup>
-          <RailGroup title="Linked chats">
-            <Chats chats={chats} onStub={onStub} />
-          </RailGroup>
-        </aside>
+            <Section title="Done when" count={ticket.criteria.length}>
+              <DoneWhen ticket={ticket} />
+            </Section>
+            <Section title="Runs" count={ticket.runs.length}>
+              <Runs ticket={ticket} />
+            </Section>
+            <Section title="What gates it" count={ticket.children.length}>
+              <Named tickets={ticket.children} empty="Nothing gates this." />
+            </Section>
+            {ticket.gates.length > 0 && (
+              <Section title="What it gates" count={ticket.gates.length}>
+                <Named tickets={ticket.gates} empty="" />
+              </Section>
+            )}
+          </article>
+          <aside {...stylex.props(rail.rail, floating && float.box)} aria-label="Ticket properties">
+            <Actions ticket={ticket} onStub={onStub} vertical />
+            <dl {...stylex.props(rail.props)}>
+              {facts(ticket, laneLabel).map((fact) => (
+                <div key={fact.label} {...stylex.props(rail.prop)}>
+                  <dt {...stylex.props(ui.secondary)}>{fact.label}</dt>
+                  <dd {...stylex.props(rail.propValue)}>{fact.value}</dd>
+                </div>
+              ))}
+            </dl>
+            <RailGroup title="Branch and workspace">
+              <Workspaces ticket={ticket} workspaces={workspaces} onStub={onStub} />
+            </RailGroup>
+            <RailGroup title="Linked chats">
+              <Chats chats={chats} onStub={onStub} />
+            </RailGroup>
+          </aside>
+        </div>
       </div>
     </div>
   );
@@ -1006,6 +1011,47 @@ const rail = stylex.create({
     fontSize: textSizeVars['--font-size-sm'],
     fontWeight: 600,
     color: colorVars['--color-text-secondary'],
+  },
+});
+
+/* The rail as a box floating beside the document: one scroll for the page, the box
+   holding its place while the document scrolls past it. */
+const float = stylex.create({
+  scroll: {
+    display: 'block',
+    overflowY: 'auto',
+    backgroundColor: colorVars['--color-background-body'],
+  },
+  grid: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) 300px',
+    alignItems: 'start',
+    gap: spacingVars['--spacing-8'],
+    maxWidth: 1180,
+    marginInline: 'auto',
+    paddingBlock: spacingVars['--spacing-6'],
+    paddingInline: spacingVars['--spacing-6'],
+    '@media (max-width: 860px)': { gridTemplateColumns: 'minmax(0, 1fr)' },
+  },
+  doc: {
+    overflowY: 'visible',
+    minHeight: 'auto',
+    paddingBlock: 0,
+    paddingInline: 0,
+  },
+  box: {
+    position: 'sticky',
+    insetBlockStart: spacingVars['--spacing-6'],
+    maxHeight: 'calc(100vh - 200px)',
+    padding: spacingVars['--spacing-4'],
+    borderInlineStartWidth: 1,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: colorVars['--color-border'],
+    borderRadius: 10,
+    backgroundColor: colorVars['--color-background-popover'],
+    boxShadow: shadowVars['--shadow-low'],
+    '@media (max-width: 860px)': { position: 'static', maxHeight: 'none' },
   },
 });
 
