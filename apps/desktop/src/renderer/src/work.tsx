@@ -1020,14 +1020,6 @@ const styles = stylex.create({
     flexWrap: 'wrap',
     gap: spacingVars['--spacing-2'],
   },
-  ticketStatus: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    paddingBlock: spacingVars['--spacing-0-5'],
-    paddingInline: spacingVars['--spacing-2'],
-    borderRadius: 999,
-    backgroundColor: colorVars['--color-background-muted'],
-  },
   ticketTitle: {
     marginBlock: 0,
     color: colorVars['--color-text-primary'],
@@ -2934,6 +2926,23 @@ function TicketRowBody({
   );
 }
 
+/**
+ * Where a ticket stands, said the way its board row says it: small, with the icon in its
+ * lane's color. Beside the name and kind it is one more fact, not a badge of its own.
+ */
+function TicketState({ ticket }: { ticket: Ticket }) {
+  const said = holding(ticket);
+
+  return (
+    <span {...stylex.props(styles.rowState, ticket.closure === 'wontfix' && styles.abandoned)}>
+      <span {...stylex.props(styles.rowStateIcon, BAND_TONE[ticket.band])}>
+        <Icon icon={said.icon} size="xsm" />
+      </span>
+      <span {...stylex.props(styles.rowStateWords)}>{said.words}</span>
+    </span>
+  );
+}
+
 function initials(name: string): string {
   return name
     .split(/\s+/)
@@ -3483,10 +3492,11 @@ function TicketReading({
         <div {...stylex.props(styles.ticketHeader)}>
           <div {...stylex.props(styles.ticketIdentity)}>
             <Text type="code">{ticket.name}</Text>
-            <KindTag kind={ticket.kind} />
-            <span {...stylex.props(styles.ticketStatus)}>
-              <Holding ticket={ticket} />
+            <span {...stylex.props(styles.rowTag)}>
+              <span {...stylex.props(styles.kindDot, KIND_HUE[ticket.kind])} />
+              {ticket.kind}
             </span>
+            <TicketState ticket={ticket} />
           </div>
           <h2 {...stylex.props(styles.ticketTitle)}>{ticket.title || 'Untitled'}</h2>
         </div>
