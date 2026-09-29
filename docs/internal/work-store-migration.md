@@ -7,8 +7,8 @@ when the last slice lands, and let the ADR and `CONTEXT.md` carry what stays tru
 ## The target, in six lines
 
 - A ticket is draft, ready, running or closed. Blocked is derived from open blockers.
-- **Work on this** opens a chat in the project's folder with the ticket attached and its kind's
-  skill, and marks the ticket running (who, since when). Only a person starts it.
+- **Work on this** assigns the ticket to the person and starts a chat with the ticket attached,
+  both of which the app can already do. Running means open and assigned. Only a person presses it.
 - **Resolve…** (Mark done, Won't do) is the only way a ticket closes. Nothing merges on accept.
 - Kira keeps no claim, lease, worker, run, branch, worktree, remote or pull request.
 - The board, list, filters, ticket editor, blockers, approval cards (spec, tickets, Outcome,
@@ -32,10 +32,11 @@ them as size, not as a savings promise.
 | Desktop bridge   | types `TicketRun`, `TicketClaim`, `WorkerStanding`, `ExecutionWorkspace`, `ExecutionReview`, `ReviewComment`, `ReviewFeedback`, `DeliveryAudit`, `DeliveryPath`; channels `WORKER`, `RUN`, `EXECUTION`, `DELIVERY`, and the claim and workspace parts of `TRACKER` | 300           |
 | Wording          | `workCopy.ts` groups `drop`, `setup`, `branch`, `sessions`, `holding`, `workspace`                                                                                                                                                                                 | 150           |
 
-That is roughly 10,000 lines out of a much larger codebase. **What replaces it is small**, about
-400 to 600 lines by estimate: a start and stop route and a `startedAt` column on the server, a
-`startWork` action in the desktop that generalises `startQuestion` and reuses the brief that
-`runChat.ts` builds, and a Work on this button.
+That is roughly 10,000 lines out of a much larger codebase. **What replaces it is tiny**, by
+estimate under 100 lines: the server derives a ticket's status from its blockers, assignee and
+readiness; the desktop's `TicketChange` gains `assigneeId`, which the server's PATCH already
+accepts; and a Work on this button calls that and then the existing `startChat` with the ticket
+attached. No new column, route, main-process action or brief.
 
 ## What stays, and what shrinks
 
@@ -48,13 +49,13 @@ That is roughly 10,000 lines out of a much larger codebase. **What replaces it i
 
 ## Data
 
-| Today                                              | After                                                                        |
-| -------------------------------------------------- | ---------------------------------------------------------------------------- |
-| closed, done or won't do                           | unchanged                                                                    |
-| an open claim, or a run with no verdict            | **running**; assignee is the claim's holder; `startedAt` is the claim's time |
-| readiness `draft`                                  | draft                                                                        |
-| readiness `ready-for-agent` or `ready-for-human`   | ready                                                                        |
-| runs, transcripts, workspaces, reviews, deliveries | dropped                                                                      |
+| Today                                              | After                                       |
+| -------------------------------------------------- | ------------------------------------------- |
+| closed, done or won't do                           | unchanged                                   |
+| an open claim, or a run with no verdict            | **running**; assignee is the claim's holder |
+| readiness `draft`                                  | draft                                       |
+| readiness `ready-for-agent` or `ready-for-human`   | ready                                       |
+| runs, transcripts, workspaces, reviews, deliveries | dropped                                     |
 
 Dropping run transcripts on the server cannot be undone. Before the migration runs anywhere but a
 development database, check that nobody needs what is in them. Desktop chats that were a run's
@@ -66,14 +67,15 @@ was a run of.
 Each slice ends with the tests and typecheck green and can be committed on its own. Tests come
 first in every slice.
 
-1. **Running, beside the old path (the tracer bullet).** Server: `startedAt`, start and stop
-   routes, `running` derived from them. Desktop: `startWork` and a Work on this button. Verify on a
-   new project in an empty folder with no git: spec, tickets, Work on this, the chat opens with
-   the ticket and its skill, the ticket reads running, Mark done closes it.
+1. **Running, beside the old path (the tracer bullet).** Server: derive `running` from an open,
+   assigned ticket. Desktop: `assigneeId` in `TicketChange` and its IPC check, and a Work on this
+   button. Verify on a new project in an empty folder with no git: spec, tickets, Work on this,
+   the chat opens with the ticket attached, the ticket reads running, Mark done closes it.
 2. **The board reads five statuses.** Remove the Needs review lane; simplify `planTicketDrop`;
    remove the run, branch and accept or send back parts of the panel.
-3. **Remove the desktop run machinery:** `runs.ts`, `worker.ts`, their IPC, `runChat.ts` (after
-   its brief moves into `startWork`), and the registrations in `main/index.ts` and the preload.
+3. **Remove the desktop run machinery:** `runs.ts`, `worker.ts`, `runChat.ts`, their IPC, and the
+   registrations in `main/index.ts` and the preload. Nothing moves out first: a chat with a ticket
+   attached is already given its body and checks.
 4. **Remove the execution workspace:** the panel, setup dialog, `execution/`, `delivery/`,
    `worktrees.ts`, their IPC and bridge types.
 5. **Remove the server layer:** routes, helpers, tables, the two files, the tests, and the
@@ -89,9 +91,8 @@ first in every slice.
    Changes tab for any chat can come back later on its own merits.
 2. **The `gate` column.** Keep the column and collapse its values to `draft` and `ready`; rename
    it later so the migration runs once.
-3. **Who is running a ticket.** `assigneeId` already exists on the ticket, so reuse it and add
-   `startedAt`, rather than adding a second person column.
-4. **The author-owned question chat** (`startQuestion`, `/question-chat`) becomes the general
-   Work on this, and its route goes.
-5. **The allowance's "in flight" number** in ADR 0005 becomes chats running at once, or goes.
+3. **The author-owned question chat** (`startQuestion`, `/question-chat`): a question ticket's
+   chat is linked to it through the server. Drop it, and let a question be worked like any
+   ticket, unless something needs its author-only rule.
+4. **The allowance's "in flight" number** in ADR 0005 becomes chats running at once, or goes.
    Decide before slice 3, since that is where runs stop being counted.

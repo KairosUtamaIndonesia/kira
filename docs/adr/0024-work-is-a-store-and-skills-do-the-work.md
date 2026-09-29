@@ -33,16 +33,17 @@ by Kira through her tools. It is GitHub Issues, in Kira. Nothing in it runs anyt
 (ADR 0017), and closed is Done or Won't do. There is no Needs review, and ready no longer says
 whether an agent or a person picks it up: anyone can work a ready ticket.
 
-**Running is the whole claim.** A ticket is running when a person has started work on it, and it
-records who and since when. There is no claim record, lease, heartbeat, worker, run or takeover.
-A running ticket nobody is working shows how long it has been running, and any person can stop
-it, which returns it to ready. Staleness is displayed and never acted on by a clock, as
-ADR 0012 already said.
+**Running is an assignee.** A ticket is running when it is open and someone is assigned to it, as
+in GitHub Issues. There is no claim record, lease, heartbeat, worker, run or takeover, and no
+new column or route: the ticket already has an assignee that the server can set. Stopping is
+unassigning. A running ticket nobody is working shows in the list with its last update, and
+staleness is never acted on by a clock, as ADR 0012 already said.
 
-**Working a ticket is a chat.** "Work on this" opens a chat in the project's folder with the
-ticket attached and the skill its kind names (ADR 0022's table), and marks the ticket running.
-Only a person starts it, and it spends their allowance like any chat (ADR 0005). The ticket lists
-its chats. Kira has no tool to start a ticket herself.
+**Working a ticket is a chat.** "Work on this" assigns the ticket to the person and starts an
+ordinary chat in the project's folder with the ticket attached, which the app already does: the
+chat is given the ticket's body and checks each turn, and Kira picks the skill from its kind
+(ADR 0022). Only a person presses it, and it spends their allowance like any chat (ADR 0005).
+Kira has no tool to start a ticket herself.
 
 **Done is a person's press.** A person closes a ticket (Resolve…, then Mark done or Won't do)
 when they are satisfied. Nothing merges on acceptance: the skills branch and commit in the

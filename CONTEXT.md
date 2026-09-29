@@ -105,10 +105,9 @@ drawn twice, so that reach is where it was first worked out.
 _Avoid_: Reflection (what the code says), insight, summary (that is the compaction's own)
 
 **Running**:
-What a ticket is while a person is working it: they pressed Work on this, so it records who and
-since when, and it is theirs until they close it or stop. There is nothing to expire. A running
-ticket nobody is working shows how long it has been running, and anyone can stop it (ADR 0024).
-_Avoid_: Claim, lease, lock, assignment
+What a ticket is while it is open and assigned to someone: they pressed Work on this, and it is
+theirs until they close it or unassign it. There is nothing to expire (ADR 0024).
+_Avoid_: Claim, lease, lock
 
 **Ticket**:
 One unit of work on a project, written so that whoever works it needs nothing else to hand:
