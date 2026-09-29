@@ -17,21 +17,26 @@ import { Button } from '@astryxdesign/core/Button';
 import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog';
 import { Icon } from '@astryxdesign/core/Icon';
 import { IconButton } from '@astryxdesign/core/IconButton';
-import { InputGroup, InputGroupText } from '@astryxdesign/core/InputGroup';
+import {
+  Field,
+  inputStatusBorderStyles,
+  inputStatusFocusWithinStyles,
+  inputWrapperStyles,
+} from '@astryxdesign/core/Field';
 import { Selector } from '@astryxdesign/core/Selector';
 import { Text } from '@astryxdesign/core/Text';
-import { TextInput } from '@astryxdesign/core/TextInput';
 import {
   borderVars,
   colorVars,
   radiusVars,
+  sizeVars,
   spacingVars,
   textSizeVars,
   typographyVars,
 } from '@astryxdesign/core/theme/tokens.stylex';
 import * as stylex from '@stylexjs/stylex';
 import { ArrowRight, Folder, Plus, Sparkles } from 'lucide-react';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import type { ModelOption, Ticket } from '../../preload/bridge.ts';
 import { fromHome, shortenMiddle } from './executionWorkspace.ts';
 
@@ -69,6 +74,7 @@ export function WorkspaceSetupPrototype({ ticket, initial }: { ticket: Ticket; i
     });
   });
 
+  const branchId = useId();
   const trouble = branchTrouble(choices.branch, choices.baseBranch);
   const startsNow = ticket.band === 'ready';
   const close = (): void => {
@@ -155,27 +161,49 @@ export function WorkspaceSetupPrototype({ ticket, initial }: { ticket: Ticket; i
               value={choices.baseBranch}
               onChange={(baseBranch) => setChoices({ ...choices, baseBranch })}
             />
-            <InputGroup
+            <Field
               label="New branch"
               description="Suggested from the ticket."
-              status={trouble === null ? undefined : { type: 'error', message: trouble }}
+              inputID={branchId}
+              descriptionID={`${branchId}-description`}
+              status={
+                trouble === null
+                  ? undefined
+                  : { type: 'error', message: trouble, messageID: `${branchId}-trouble` }
+              }
             >
-              <TextInput
-                label="Name"
-                value={choices.branch}
-                onChange={(branch) => setChoices({ ...choices, branch })}
-              />
-              <InputGroupText>
+              <div
+                {...stylex.props(
+                  inputWrapperStyles.base,
+                  trouble !== null && inputStatusBorderStyles.error,
+                  trouble !== null && inputStatusFocusWithinStyles.error,
+                  styles.branchField,
+                )}
+              >
+                <input
+                  id={branchId}
+                  value={choices.branch}
+                  spellCheck={false}
+                  aria-invalid={trouble !== null || undefined}
+                  aria-describedby={
+                    trouble === null
+                      ? `${branchId}-description`
+                      : `${branchId}-description ${branchId}-trouble`
+                  }
+                  {...stylex.props(styles.branchInput)}
+                  onChange={(event) => setChoices({ ...choices, branch: event.target.value })}
+                />
                 <IconButton
                   label="Use the suggested name"
                   tooltip="Use the suggested name"
                   icon={<Icon icon={Sparkles} size="sm" />}
+                  variant="ghost"
                   size="sm"
                   isDisabled={choices.branch === initial.branch}
                   onClick={() => setChoices({ ...choices, branch: initial.branch })}
                 />
-              </InputGroupText>
-            </InputGroup>
+              </div>
+            </Field>
           </div>
 
           <Selector
@@ -283,6 +311,28 @@ const styles = stylex.create({
     gridTemplateColumns: 'minmax(0, 0.8fr) minmax(0, 1.2fr)',
     gap: spacingVars['--spacing-3'],
     alignItems: 'start',
+  },
+  /*
+   * The name field is drawn from Astryx's own input pieces (Field and the input wrapper
+   * styles TextInput is built from) so the suggest button can sit inside its border:
+   * TextInput has no end slot, and InputGroup draws the button as a second box.
+   */
+  branchField: {
+    height: sizeVars['--size-element-md'],
+    paddingInlineStart: spacingVars['--spacing-3'],
+    paddingInlineEnd: spacingVars['--spacing-1'],
+  },
+  branchInput: {
+    flex: 1,
+    minWidth: 0,
+    height: '100%',
+    padding: 0,
+    borderWidth: 0,
+    outline: 'none',
+    backgroundColor: 'transparent',
+    color: colorVars['--color-text-primary'],
+    fontFamily: typographyVars['--font-family-body'],
+    fontSize: textSizeVars['--font-size-base'],
   },
   foot: {
     display: 'flex',
