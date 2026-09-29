@@ -156,6 +156,12 @@ import type {
 import { ExecutionWorkspacePanel } from './executionWorkspace.tsx';
 import { BlockersPrototype } from './workBlockersPrototype.tsx';
 import {
+  FilterBar,
+  FilterSwitcher,
+  FilterToolbar,
+  type FilterVariant,
+} from './workFiltersPrototype.tsx';
+import {
   executionWorkspaceView,
   fromHome,
   shortenMiddle,
@@ -1414,6 +1420,8 @@ export function WorkSurface({
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [attachedIds, setAttachedIds] = useState<string[]>([]);
   const [isFull, setIsFull] = useState(false);
+  // PROTOTYPE: filter layouts (workFiltersPrototype.tsx); development builds only.
+  const [filterVariant, setFilterVariant] = useState<FilterVariant>('menu');
   const [executionWorkspaces, setExecutionWorkspaces] = useState<
     Record<string, ExecutionWorkspace[]>
   >({});
@@ -1816,24 +1824,38 @@ export function WorkSurface({
               />
             ))}
           </SegmentedControl>
-          <TextInput
-            label="Search tickets"
-            isLabelHidden
-            size="sm"
-            width={190}
-            value={display.search}
-            placeholder="Search tickets"
-            isDisabled={queue === null}
-            disabledMessage={trouble === null ? 'Work is loading.' : undefined}
-            onChange={(next) => updateDisplay((current) => ({ ...current, search: next }))}
-          />
-          <Button
-            label={filtersOpen ? 'Hide filters' : 'Filters'}
-            icon={<Icon icon={SlidersHorizontal} size="sm" />}
-            size="sm"
-            variant={filtersOpen ? 'secondary' : 'ghost'}
-            onClick={() => setFiltersOpen((open) => !open)}
-          />
+          {import.meta.env.DEV ? (
+            // PROTOTYPE: search, filters and display (workFiltersPrototype.tsx).
+            <FilterToolbar
+              variant={filterVariant}
+              display={display}
+              onChange={updateDisplay}
+              tickets={tickets}
+              lanes={BANDS}
+              isDisabled={queue === null}
+            />
+          ) : (
+            <>
+              <TextInput
+                label="Search tickets"
+                isLabelHidden
+                size="sm"
+                width={190}
+                value={display.search}
+                placeholder="Search tickets"
+                isDisabled={queue === null}
+                disabledMessage={trouble === null ? 'Work is loading.' : undefined}
+                onChange={(next) => updateDisplay((current) => ({ ...current, search: next }))}
+              />
+              <Button
+                label={filtersOpen ? 'Hide filters' : 'Filters'}
+                icon={<Icon icon={SlidersHorizontal} size="sm" />}
+                size="sm"
+                variant={filtersOpen ? 'secondary' : 'ghost'}
+                onClick={() => setFiltersOpen((open) => !open)}
+              />
+            </>
+          )}
           <Button
             label="New ticket"
             icon={<Icon icon={Plus} size="sm" />}
@@ -1858,7 +1880,22 @@ export function WorkSurface({
         </div>
       </div>
 
-      {filtersOpen && (
+      {import.meta.env.DEV && (
+        <>
+          <FilterBar
+            variant={filterVariant}
+            display={display}
+            onChange={updateDisplay}
+            tickets={tickets}
+            lanes={BANDS}
+            isDisabled={queue === null}
+            shown={visibleTickets.length}
+            total={tickets.filter((each) => display.showDone || each.band !== 'done').length}
+          />
+          <FilterSwitcher variant={filterVariant} onChange={setFilterVariant} />
+        </>
+      )}
+      {!import.meta.env.DEV && filtersOpen && (
         <div {...stylex.props(styles.filterBar)} aria-label="Ticket filters">
           <Button
             label={`Status: ${display.band === 'all' ? 'all' : BANDS.find((each) => each.id === display.band)?.label}`}
