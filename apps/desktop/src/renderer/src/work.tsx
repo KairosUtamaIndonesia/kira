@@ -30,6 +30,7 @@ import { IconButton } from '@astryxdesign/core/IconButton';
 import { Item } from '@astryxdesign/core/Item';
 import { edgeCompSlot } from '@astryxdesign/core/Layout';
 import { List } from '@astryxdesign/core/List';
+import { Markdown } from '@astryxdesign/core/Markdown';
 import { MoreMenu } from '@astryxdesign/core/MoreMenu';
 import { Selector } from '@astryxdesign/core/Selector';
 import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl';
@@ -1034,11 +1035,6 @@ const styles = stylex.create({
     letterSpacing: '-0.025em',
     lineHeight: 1.25,
     overflowWrap: 'anywhere',
-  },
-  ticketBodyText: {
-    whiteSpace: 'pre-wrap',
-    wordBreak: 'break-word',
-    lineHeight: 1.6,
   },
   ticketSectionHeading: {
     display: 'flex',
@@ -3411,7 +3407,7 @@ function TicketReading({
   // In the full view, what the drawer lists under its disclosure sits in the floating
   // box instead: the facts a person scans, then the branch, then the chats it came from.
   const facts: { label: string; value: string }[] = [
-    { label: 'Status', value: bandLabel(ticket.band) },
+    { label: 'Status', value: ticket.band === 'draft' ? 'Draft' : bandLabel(ticket.band) },
     {
       label: 'Ready for',
       value:
@@ -3703,9 +3699,14 @@ function TicketReading({
               About
             </Text>
             {hasDescription ? (
-              <Text type="body" {...stylex.props(styles.ticketBodyText)}>
+              <Markdown
+                density="compact"
+                headingLevelStart={4}
+                contentWidth="100%"
+                onLinkClick={openLink}
+              >
                 {ticket.body}
-              </Text>
+              </Markdown>
             ) : (
               <Text type="supporting" color="secondary">
                 No description yet.
@@ -3738,7 +3739,13 @@ function TicketReading({
                       {...stylex.props(styles.ticketCriterionIcon)}
                     />
                     <Text type="body" {...stylex.props(styles.ticketCriterionText)}>
-                      {line === '' ? '(an empty line)' : line}
+                      {line === '' ? (
+                        '(an empty line)'
+                      ) : (
+                        <Markdown display="inline" onLinkClick={openLink}>
+                          {line}
+                        </Markdown>
+                      )}
                     </Text>
                   </li>
                 ))}
@@ -4372,6 +4379,15 @@ function readView(): View {
  * is served from `file://`, which is not a secure context, so the older selection
  * route is kept as the way that always works.
  */
+/**
+ * A link in a ticket's words opens in the system browser, as every link in the window does:
+ * `window.open` reaches the main process's open handler, and the window itself stays put.
+ */
+function openLink(href: string): false {
+  window.open(href, '_blank', 'noopener');
+  return false;
+}
+
 function copyText(text: string): void {
   void navigator.clipboard?.writeText(text).catch(() => {
     const held = document.createElement('textarea');
