@@ -155,6 +155,7 @@ import type {
   WorkspaceSummary,
 } from '../../preload/bridge.ts';
 import { ExecutionWorkspacePanel } from './executionWorkspace.tsx';
+import { BlockersPrototype } from './workBlockersPrototype.tsx';
 import {
   executionWorkspaceView,
   fromHome,
@@ -1612,6 +1613,7 @@ export function WorkSurface({
       onExpand={() => setIsFull(true)}
       onCollapse={() => setIsFull(false)}
       linkedChats={chatSummaries.filter((chat) => chat.workTicketIds.includes(open.id))}
+      tickets={tickets}
       refusal={refusal}
       chatIds={chatIds}
       onLeave={closePanel}
@@ -3202,6 +3204,7 @@ function TicketReading({
   onExpand,
   onCollapse,
   linkedChats = [],
+  tickets = [],
 }: {
   ticket: Ticket;
   repository: string;
@@ -3228,6 +3231,7 @@ function TicketReading({
   onExpand?: () => void;
   onCollapse?: () => void;
   linkedChats?: ChatSummary[];
+  tickets?: Ticket[];
 }) {
   const [isClosing, setIsClosing] = useState(false);
   const [isGating, setIsGating] = useState(false);
@@ -3382,6 +3386,15 @@ function TicketReading({
           </ul>
         </section>
       )}
+    </>
+  );
+  // PROTOTYPE: ways to draw blockers (workBlockersPrototype.tsx); development builds only.
+  const blockers = import.meta.env.DEV ? (
+    <BlockersPrototype ticket={ticket} tickets={tickets} onOpen={onOpen} />
+  ) : (
+    <>
+      {gatedBy}
+      {gating}
     </>
   );
   const branch = (
@@ -3772,8 +3785,7 @@ function TicketReading({
             <>
               {runs}
               {workspace}
-              {gatedBy}
-              {gating}
+              {blockers}
             </>
           ) : (
             <details {...stylex.props(styles.ticketDetails)}>
@@ -3813,9 +3825,7 @@ function TicketReading({
 
                 {workspace}
 
-                {gatedBy}
-
-                {gating}
+                {blockers}
 
                 {branch}
 
