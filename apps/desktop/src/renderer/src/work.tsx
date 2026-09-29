@@ -148,6 +148,13 @@ import type {
   WorkspaceSummary,
 } from '../../preload/bridge.ts';
 import { ExecutionWorkspacePanel } from './executionWorkspace.tsx';
+import {
+  BranchBlockPrototype,
+  BranchPrototypeSwitcher,
+  withBranchState,
+  type BranchState,
+  type BranchVariant,
+} from './workBranchPrototype.tsx';
 
 /** Two readings of the same issues. */
 type View = 'board' | 'list';
@@ -3084,6 +3091,9 @@ function TicketReading({
   const [named, setNamed] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
+  const [branchVariant, setBranchVariant] = useState<BranchVariant>('card');
+  const [branchState, setBranchState] = useState<BranchState>('real');
+  const [branchBlockNote, setBranchBlockNote] = useState<string | null>(null);
   const hasDescription = ticket.body.trim().length > 0;
 
   async function run(act: () => Promise<unknown>): Promise<void> {
@@ -3289,7 +3299,30 @@ function TicketReading({
             </div>
           ))}
         </dl>
-        <div {...stylex.props(styles.fullGroup)}>{branch}</div>
+        {import.meta.env.DEV ? (
+          // PROTOTYPE: the branch-and-workspace block (workBranchPrototype.tsx).
+          <div {...stylex.props(styles.fullGroup)}>
+            <BranchBlockPrototype
+              variant={branchVariant}
+              {...withBranchState(ticket, executionWorkspaces, branchState)}
+              onJump={() =>
+                document
+                  .querySelector('[aria-label="Execution workspaces"]')
+                  ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }
+              onStub={(action) => setBranchBlockNote(`“${action}” is stubbed in the prototype.`)}
+            />
+            <BranchPrototypeSwitcher
+              variant={branchVariant}
+              state={branchState}
+              note={branchBlockNote}
+              onVariant={setBranchVariant}
+              onState={setBranchState}
+            />
+          </div>
+        ) : (
+          <div {...stylex.props(styles.fullGroup)}>{branch}</div>
+        )}
         <section {...stylex.props(styles.fullGroup)}>
           <Text type="label" weight="medium">
             Linked chats
