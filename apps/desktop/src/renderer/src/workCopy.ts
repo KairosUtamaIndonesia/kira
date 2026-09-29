@@ -472,7 +472,7 @@ export const copy = {
     topNote: 'this folder isn’t linked to a project yet',
     title: 'Which project is this folder for?',
     intro:
-      'A project keeps a team’s tickets and outlives any one folder. Join an existing project, or start a new one here. Nothing is written to the folder, and its chats stay where they are.',
+      'A project keeps a team’s tickets and outlives any one folder. Join an existing project, or start a new one here.',
     loading: 'Loading projects',
     existing: 'Existing projects',
     noneYet: 'There are no projects yet. This folder can be the first.',
