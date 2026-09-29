@@ -35,6 +35,7 @@ import {
   executionWorkspaceView,
   type ExecutionWorkspaceView,
 } from './executionWorkspace.ts';
+import { WorkspaceSetupPrototype } from './workSetupPrototype.tsx';
 
 export function ExecutionWorkspacePanel({
   ticket,
@@ -73,6 +74,22 @@ export function ExecutionWorkspacePanel({
   };
 
   if (selected === undefined) {
+    if (import.meta.env.DEV) {
+      // PROTOTYPE: ways to set up a workspace (workSetupPrototype.tsx).
+      return (
+        <section {...stylex.props(styles.section)} aria-label="Execution workspaces">
+          <WorkspaceSetupPrototype
+            ticket={ticket}
+            initial={{
+              repository,
+              baseBranch: 'main',
+              branch: suggestExecutionBranch(ticket.branch, []),
+              agentConfig: 'default',
+            }}
+          />
+        </section>
+      );
+    }
     return (
       <section {...stylex.props(styles.section)} aria-label="Execution workspaces">
         <WorkspaceForm
