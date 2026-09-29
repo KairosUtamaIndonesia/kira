@@ -139,7 +139,6 @@ import type {
   ProjectSummary,
   Ticket,
   TicketChange,
-  TicketDraft,
   TicketKind,
   TicketQueue,
   TicketRun,
@@ -152,7 +151,7 @@ import type {
 } from '../../preload/bridge.ts';
 import { ExecutionWorkspacePanel } from './executionWorkspace.tsx';
 import { Blockers } from './workBlockers.tsx';
-import { NewTicketPrototype } from './workNewTicketPrototype.tsx';
+import { NewTicketDialog } from './workNewTicket.tsx';
 import { FilterBar, FilterToolbar } from './workFilters.tsx';
 import {
   executionWorkspaceView,
@@ -1661,73 +1660,57 @@ export function WorkSurface({
     setIsWriting(false);
     setOpenId(id);
   };
-  // PROTOTYPE: the new-ticket dialog (workNewTicketPrototype.tsx) in development builds.
-  const inDrawer = isWriting && !import.meta.env.DEV;
-  const panel = inDrawer ? (
-    <TicketForm
-      placement={placement}
-      refusal={refusal}
-      trouble={trouble}
-      onRetry={() => void read()}
-      onLeave={closePanel}
-      onWrite={async (draft) => {
-        const written = await wrote(() => window.kira.writeTicket(workspace.id, draft));
-        if (written !== null) {
-          setIsWriting(false);
-          setOpenId(written.id);
+  const panel =
+    open === null ? null : (
+      <TicketReading
+        ticket={open}
+        repository={workspace.folder}
+        executionWorkspaces={executionWorkspaces[open.id] ?? []}
+        placement={isFull ? 'full' : placement}
+        onExpand={() => setIsFull(true)}
+        onCollapse={() => setIsFull(false)}
+        linkedChats={chatSummaries.filter((chat) => chat.workTicketIds.includes(open.id))}
+        tickets={tickets}
+        refusal={refusal}
+        chatIds={chatIds}
+        onLeave={closePanel}
+        onOpen={openTicket}
+        onOpenChat={onOpenChat}
+        onChanged={read}
+        onRefuse={setRefusal}
+        onWrite={(change) => wrote(() => window.kira.changeTicket(open.id, change))}
+        onGate={(gatedBy) => wrote(() => window.kira.gateTicket(open.id, gatedBy))}
+        onUngate={(gatedBy) => wrote(() => window.kira.ungateTicket(open.id, gatedBy))}
+        onRun={(executionWorkspaceId, followUp) =>
+          acted(() => window.kira.startRun(workspace.id, open.id, executionWorkspaceId, followUp))
         }
-      }}
-    />
-  ) : open === null ? null : (
-    <TicketReading
-      ticket={open}
-      repository={workspace.folder}
-      executionWorkspaces={executionWorkspaces[open.id] ?? []}
-      placement={isFull ? 'full' : placement}
-      onExpand={() => setIsFull(true)}
-      onCollapse={() => setIsFull(false)}
-      linkedChats={chatSummaries.filter((chat) => chat.workTicketIds.includes(open.id))}
-      tickets={tickets}
-      refusal={refusal}
-      chatIds={chatIds}
-      onLeave={closePanel}
-      onOpen={openTicket}
-      onOpenChat={onOpenChat}
-      onChanged={read}
-      onRefuse={setRefusal}
-      onWrite={(change) => wrote(() => window.kira.changeTicket(open.id, change))}
-      onGate={(gatedBy) => wrote(() => window.kira.gateTicket(open.id, gatedBy))}
-      onUngate={(gatedBy) => wrote(() => window.kira.ungateTicket(open.id, gatedBy))}
-      onRun={(executionWorkspaceId, followUp) =>
-        acted(() => window.kira.startRun(workspace.id, open.id, executionWorkspaceId, followUp))
-      }
-      onRequestRun={() => beginTicketDrop(open.id, 'running')}
-      onDeliver={(workspaceId, path) =>
-        window.kira.deliverExecutionWorkspace(open.id, workspaceId, path)
-      }
-      onQuestion={() => acted(() => window.kira.openQuestion(workspace.id, open.id))}
-      onTakeOver={() => acted(() => window.kira.takeOverClaim(open.id))}
-      onLetGo={() => acted(() => window.kira.releaseClaim(open.id))}
-      onResolve={() =>
-        acted(() =>
-          window.kira.resolveRun(
-            workspace.id,
-            open.id,
-            refusal?.replace(/^Merge conflict:\s*/, '') ?? 'The spec branch has conflicts.',
-          ),
-        )
-      }
-      onJudge={(verdict) => {
-        // The newest run is the one with something to answer: a ticket waits on a person
-        // because of what its last run did.
-        const last = open.runs[0];
+        onRequestRun={() => beginTicketDrop(open.id, 'running')}
+        onDeliver={(workspaceId, path) =>
+          window.kira.deliverExecutionWorkspace(open.id, workspaceId, path)
+        }
+        onQuestion={() => acted(() => window.kira.openQuestion(workspace.id, open.id))}
+        onTakeOver={() => acted(() => window.kira.takeOverClaim(open.id))}
+        onLetGo={() => acted(() => window.kira.releaseClaim(open.id))}
+        onResolve={() =>
+          acted(() =>
+            window.kira.resolveRun(
+              workspace.id,
+              open.id,
+              refusal?.replace(/^Merge conflict:\s*/, '') ?? 'The spec branch has conflicts.',
+            ),
+          )
+        }
+        onJudge={(verdict) => {
+          // The newest run is the one with something to answer: a ticket waits on a person
+          // because of what its last run did.
+          const last = open.runs[0];
 
-        return last === undefined
-          ? Promise.resolve(false)
-          : acted(() => window.kira.judgeRun(open.id, last.id, verdict, workspace.id));
-      }}
-    />
-  );
+          return last === undefined
+            ? Promise.resolve(false)
+            : acted(() => window.kira.judgeRun(open.id, last.id, verdict, workspace.id));
+        }}
+      />
+    );
 
   return (
     <div role="presentation" {...stylex.props(styles.root)}>
@@ -1820,8 +1803,8 @@ export function WorkSurface({
         total={tickets.filter((each) => display.showDone || each.band !== 'done').length}
       />
 
-      {isWriting && import.meta.env.DEV && (
-        <NewTicketPrototype
+      {isWriting && (
+        <NewTicketDialog
           kinds={KINDS}
           kindIcons={KIND_ICON}
           refusal={refusal}
@@ -1859,11 +1842,11 @@ export function WorkSurface({
         />
       )}
 
-      {trouble !== null && !inDrawer ? (
+      {trouble !== null && !isWriting ? (
         <div {...stylex.props(styles.scroll)}>
           <QueueReadFailure trouble={trouble} onRetry={() => void read()} />
         </div>
-      ) : queue === null && !inDrawer ? (
+      ) : queue === null && !isWriting ? (
         // The shape of what is coming, rather than a spinner in the middle of
         // nothing: a queue is rows, and three of them say so while it is read.
         <div {...stylex.props(styles.waiting)} aria-busy="true" aria-label="Loading tickets">
@@ -1872,7 +1855,7 @@ export function WorkSurface({
           <Skeleton width="65%" height={14} index={2} />
           <Skeleton width="70%" height={14} index={3} />
         </div>
-      ) : tickets.length === 0 && !inDrawer ? (
+      ) : tickets.length === 0 && !isWriting ? (
         <div {...stylex.props(styles.scroll)}>
           <EmptyState
             title="No tickets yet"
@@ -1889,7 +1872,7 @@ export function WorkSurface({
             }
           />
         </div>
-      ) : visibleTickets.length === 0 && !inDrawer ? (
+      ) : visibleTickets.length === 0 && !isWriting ? (
         <div {...stylex.props(styles.scroll)}>
           <EmptyState
             title="No matching tickets"
@@ -1905,7 +1888,7 @@ export function WorkSurface({
             }
           />
         </div>
-      ) : isFull && open !== null && !inDrawer ? (
+      ) : isFull && open !== null && !isWriting ? (
         panel
       ) : view === 'board' ? (
         <BoardView
@@ -4169,121 +4152,6 @@ function RunReading({
 }
 
 /* ── Writing one down, and correcting it ────────────────────────────────── */
-
-/**
- * The form, in the place a ticket is read.
- *
- * Four things and no more: what kind of work it is, what it is called, what to
- * build, and how it is known to be done. A ticket is written as a draft, so
- * nothing here insists on the criteria — a draft is what a ticket is before
- * anybody has said what it owes, and the refusal that matters comes when it is
- * marked ready for an agent, in the server's own words.
- */
-function TicketForm({
-  placement,
-  refusal,
-  trouble,
-  onRetry,
-  onLeave,
-  onWrite,
-}: {
-  placement: 'inline' | 'over' | 'beside';
-  refusal: string | null;
-  trouble: string | null;
-  onRetry: () => void;
-  onLeave: () => void;
-  onWrite: (draft: TicketDraft) => Promise<void>;
-}) {
-  const [kind, setKind] = useState<TicketKind>('feature');
-  const [title, setTitle] = useState('');
-  const [body, setBody] = useState('');
-  const [criteria, setCriteria] = useState<string[]>(['']);
-  const [isBusy, setIsBusy] = useState(false);
-
-  return (
-    <TicketPanel
-      placement={placement}
-      onLeave={onLeave}
-      refusal={refusal}
-      head={
-        <>
-          <Text type="label" weight="medium">
-            New ticket
-          </Text>
-          <Text type="supporting" color="secondary">
-            New tickets start as drafts. Make one ready when it is clear enough to start.
-          </Text>
-        </>
-      }
-      foot={
-        <>
-          <Button
-            label={isBusy ? 'Creating ticket' : 'Create ticket'}
-            size="sm"
-            variant="primary"
-            isDisabled={isBusy}
-            onClick={() => {
-              setIsBusy(true);
-              void onWrite({ kind, title, body, criteria }).finally(() => setIsBusy(false));
-            }}
-          />
-          <Button label="Cancel" size="sm" variant="ghost" onClick={onLeave} />
-        </>
-      }
-    >
-      {trouble !== null && <QueueReadFailure trouble={trouble} onRetry={onRetry} />}
-      <section {...stylex.props(styles.section)}>
-        <Text type="label" weight="medium">
-          What kind of work
-        </Text>
-        <div>
-          <SegmentedControl
-            value={kind}
-            onChange={(next) => {
-              if (KINDS.some((each) => each === next)) setKind(next as TicketKind);
-            }}
-            label="What kind of work this is"
-            size="sm"
-          >
-            {KINDS.map((each) => (
-              <SegmentedControlItem key={each} value={each} label={each} />
-            ))}
-          </SegmentedControl>
-        </div>
-        <Text type="supporting" color="secondary">
-          The kind decides what an agent's session on this ticket has to deliver, and it can't
-          change once the ticket is written.
-        </Text>
-      </section>
-
-      <div {...stylex.props(styles.formFields)}>
-        <TextInput
-          label="Title"
-          value={title}
-          onChange={setTitle}
-          description="What the ticket is called. Its branch name is suggested from the title."
-        />
-        <TextArea
-          label="Description"
-          value={body}
-          onChange={setBody}
-          description="Everything the agent or a teammate needs to do it."
-          rows={6}
-        />
-      </div>
-
-      <section {...stylex.props(styles.section)}>
-        <Text type="label" weight="medium">
-          Acceptance criteria
-        </Text>
-        <Text type="supporting" color="secondary">
-          One line each. An agent's ticket needs at least one that says something.
-        </Text>
-        <CriteriaFields criteria={criteria} onChange={setCriteria} />
-      </section>
-    </TicketPanel>
-  );
-}
 
 /** Correcting what a ticket says, in the place it is read. */
 function TicketEdit({

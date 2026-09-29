@@ -8,6 +8,8 @@
 
 - Work's search has a magnifier, a clear button, and `/` to jump into it. Filter is a menu of Status, Kind (with icons), and Owner, active filters show as removable chips, and Display sets grouping, order, and whether done tickets show.
 
+- New ticket opens as a dialog with a rich markdown editor for its description.
+
 - The List view is a table with a pinned column heading, foldable status or kind groups, and the same drag-and-drop as the board; a ticket's drawer opens beside it.
 
 - A ticket's drawer can expand into a full view: the ticket reads as a document, with its actions, facts, branch, and linked chats in a box that stays beside it while the document scrolls.

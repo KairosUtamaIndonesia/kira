@@ -211,6 +211,10 @@ direction is in `apps/desktop/DESIGN.md` (Work), and this is where its pieces li
   a prop so it does not import `work.tsx`.
 - **`workBlockers.tsx`** is a ticket's Blocked by and Blocking ledgers. It gets `onGate` and
   `onUngate` and reports a refusal by the parent's `wrote` returning null.
+- **`workNewTicket.tsx`** is the New ticket dialog; **`markdownEditor.tsx`** is the rich
+  editor it uses for About (Tiptap with `@tiptap/markdown`). The editor's document elements
+  are styled by `.rich-editor` in `styles.css`, the one place StyleX cannot reach; it offers
+  only what markdown can say, so nothing typed is lost on save.
 - **`workspaceSetup.tsx`** is the "No workspace yet" row and the setup dialog. The dialog is
   drawn only while wanted, so drawing it is opening it. It reads a checkout's branches and
   asks for a folder through `window.kira.listCheckoutBranches` and `chooseCheckout`
