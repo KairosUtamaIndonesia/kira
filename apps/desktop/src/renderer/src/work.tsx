@@ -152,6 +152,7 @@ import type {
 } from '../../preload/bridge.ts';
 import { ExecutionWorkspacePanel } from './executionWorkspace.tsx';
 import { Blockers } from './workBlockers.tsx';
+import { NewTicketPrototype } from './workNewTicketPrototype.tsx';
 import { FilterBar, FilterToolbar } from './workFilters.tsx';
 import {
   executionWorkspaceView,
@@ -1660,7 +1661,9 @@ export function WorkSurface({
     setIsWriting(false);
     setOpenId(id);
   };
-  const panel = isWriting ? (
+  // PROTOTYPE: the new-ticket dialog (workNewTicketPrototype.tsx) in development builds.
+  const inDrawer = isWriting && !import.meta.env.DEV;
+  const panel = inDrawer ? (
     <TicketForm
       placement={placement}
       refusal={refusal}
@@ -1817,6 +1820,22 @@ export function WorkSurface({
         total={tickets.filter((each) => display.showDone || each.band !== 'done').length}
       />
 
+      {isWriting && import.meta.env.DEV && (
+        <NewTicketPrototype
+          kinds={KINDS}
+          kindIcons={KIND_ICON}
+          refusal={refusal}
+          onCancel={closePanel}
+          onWrite={async (draft) => {
+            const written = await wrote(() => window.kira.writeTicket(workspace.id, draft));
+            if (written !== null) {
+              setIsWriting(false);
+              setOpenId(written.id);
+            }
+          }}
+        />
+      )}
+
       {dropIntent !== null && (
         <DropActionBar
           intent={dropIntent}
@@ -1840,11 +1859,11 @@ export function WorkSurface({
         />
       )}
 
-      {trouble !== null && !isWriting ? (
+      {trouble !== null && !inDrawer ? (
         <div {...stylex.props(styles.scroll)}>
           <QueueReadFailure trouble={trouble} onRetry={() => void read()} />
         </div>
-      ) : queue === null && !isWriting ? (
+      ) : queue === null && !inDrawer ? (
         // The shape of what is coming, rather than a spinner in the middle of
         // nothing: a queue is rows, and three of them say so while it is read.
         <div {...stylex.props(styles.waiting)} aria-busy="true" aria-label="Loading tickets">
@@ -1853,7 +1872,7 @@ export function WorkSurface({
           <Skeleton width="65%" height={14} index={2} />
           <Skeleton width="70%" height={14} index={3} />
         </div>
-      ) : tickets.length === 0 && !isWriting ? (
+      ) : tickets.length === 0 && !inDrawer ? (
         <div {...stylex.props(styles.scroll)}>
           <EmptyState
             title="No tickets yet"
@@ -1870,7 +1889,7 @@ export function WorkSurface({
             }
           />
         </div>
-      ) : visibleTickets.length === 0 && !isWriting ? (
+      ) : visibleTickets.length === 0 && !inDrawer ? (
         <div {...stylex.props(styles.scroll)}>
           <EmptyState
             title="No matching tickets"
@@ -1886,7 +1905,7 @@ export function WorkSurface({
             }
           />
         </div>
-      ) : isFull && open !== null && !isWriting ? (
+      ) : isFull && open !== null && !inDrawer ? (
         panel
       ) : view === 'board' ? (
         <BoardView
