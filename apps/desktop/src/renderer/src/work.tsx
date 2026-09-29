@@ -779,6 +779,10 @@ const styles = stylex.create({
     marginInlineEnd: `calc((${sizeVars['--size-element-md']} - 16px) / -2)`,
   },
   footTail: { display: 'inline-flex', alignItems: 'center', gap: spacingVars['--spacing-1'] },
+  edgeEndIconSm: {
+    display: 'inline-flex',
+    marginInlineEnd: `calc((${sizeVars['--size-element-sm']} - 16px) / -2)`,
+  },
   panelHeadBar: {
     display: 'flex',
     alignItems: 'center',
@@ -997,7 +1001,8 @@ const styles = stylex.create({
     justifyContent: 'flex-end',
     gap: spacingVars['--spacing-2'],
     flexShrink: 0,
-    padding: spacingVars['--spacing-3'],
+    paddingBlock: spacingVars['--spacing-3'],
+    paddingInline: spacingVars['--spacing-4'],
     borderBlockStartWidth: borderVars['--border-width'],
     borderBlockStartStyle: 'solid',
     borderBlockStartColor: colorVars['--color-background-muted'],
@@ -3615,7 +3620,9 @@ function TicketReading({
             {/* Then editing, and the rarer moves behind More: taking readiness back, letting
                 go of a ticket held by hand, and resolving it. Resolving closes the ticket for
                 good; "Close" is the panel's word for putting it away, so this one is not. */}
-            <span {...stylex.props(styles.footTail)}>
+            {/* In the box, Edit starts the row and lines up with the box's edge; in the
+                drawer's footer it sits between buttons and keeps its box. */}
+            <span {...stylex.props(styles.footTail, placement === 'full' && EDGE_TEXT_BUTTON)}>
               <Button
                 label="Edit"
                 size="sm"
@@ -3626,43 +3633,45 @@ function TicketReading({
                   onRefuse(null);
                 }}
               />
-              <MoreMenu
-                label="More ticket actions"
-                size="sm"
-                alignment="end"
-                placement={placement === 'full' ? 'below' : 'above'}
-                isDisabled={isBusy}
-                items={[
-                  ...(ticket.gate === 'draft'
-                    ? []
-                    : [
-                        {
-                          label: 'Back to draft',
-                          description: 'Stop it being picked up until it is ready again.',
-                          onClick: () => void run(() => onWrite({ gate: 'draft' })),
-                        },
-                      ]),
-                  // A claim held by hand is held by a person: only they can let it go, and
-                  // without this a ticket taken over would sit in Running for good.
-                  ...(ticket.claim !== null && ticket.claim.workerId === null
-                    ? [
-                        {
-                          label: 'Stop working on it',
-                          description: 'Put it back in its column for someone else.',
-                          onClick: () => void run(onLetGo),
-                        },
-                      ]
-                    : []),
-                  {
-                    label: 'Resolve…',
-                    description: 'Close it as done, or as something that won’t be done.',
-                    onClick: () => {
-                      setIsClosing(true);
-                      onRefuse(null);
+              <span {...stylex.props(styles.edgeEndIconSm)}>
+                <MoreMenu
+                  label="More ticket actions"
+                  size="sm"
+                  alignment="end"
+                  placement={placement === 'full' ? 'below' : 'above'}
+                  isDisabled={isBusy}
+                  items={[
+                    ...(ticket.gate === 'draft'
+                      ? []
+                      : [
+                          {
+                            label: 'Back to draft',
+                            description: 'Stop it being picked up until it is ready again.',
+                            onClick: () => void run(() => onWrite({ gate: 'draft' })),
+                          },
+                        ]),
+                    // A claim held by hand is held by a person: only they can let it go, and
+                    // without this a ticket taken over would sit in Running for good.
+                    ...(ticket.claim !== null && ticket.claim.workerId === null
+                      ? [
+                          {
+                            label: 'Stop working on it',
+                            description: 'Put it back in its column for someone else.',
+                            onClick: () => void run(onLetGo),
+                          },
+                        ]
+                      : []),
+                    {
+                      label: 'Resolve…',
+                      description: 'Close it as done, or as something that won’t be done.',
+                      onClick: () => {
+                        setIsClosing(true);
+                        onRefuse(null);
+                      },
                     },
-                  },
-                ]}
-              />
+                  ]}
+                />
+              </span>
             </span>
           </>
         )
@@ -3728,7 +3737,7 @@ function TicketReading({
                       size="sm"
                       {...stylex.props(styles.ticketCriterionIcon)}
                     />
-                    <Text type="supporting" {...stylex.props(styles.ticketCriterionText)}>
+                    <Text type="body" {...stylex.props(styles.ticketCriterionText)}>
                       {line === '' ? '(an empty line)' : line}
                     </Text>
                   </li>
@@ -3872,6 +3881,7 @@ function BranchLine({
         <IconButton
           label={`Copy ${branch}`}
           icon={<Icon icon={Copy} size="sm" />}
+          variant="ghost"
           size="sm"
           onClick={() => copyText(branch)}
         />

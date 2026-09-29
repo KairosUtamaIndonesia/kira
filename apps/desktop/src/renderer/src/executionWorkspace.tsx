@@ -932,7 +932,8 @@ function WorkspaceDetails({
 }
 
 const styles = stylex.create({
-  section: { display: 'grid', gap: 'var(--spacing-3)', paddingBlock: 'var(--spacing-4)' },
+  // No padding of its own: the ticket around it sets the rhythm between sections.
+  section: { display: 'grid', gap: 'var(--spacing-3)' },
   heading: {
     display: 'flex',
     alignItems: 'flex-start',
