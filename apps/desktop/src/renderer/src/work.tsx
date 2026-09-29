@@ -92,7 +92,6 @@ import {
   Map as MapIcon,
   Maximize2,
   MessageSquare,
-  Minimize2,
   Paperclip,
   Play,
   Plus,
@@ -1594,6 +1593,7 @@ export function WorkSurface({
       placement={isFull ? 'full' : placement}
       onExpand={() => setIsFull(true)}
       onCollapse={() => setIsFull(false)}
+      collapseTo={view}
       linkedChats={chatSummaries.filter((chat) => chat.workTicketIds.includes(open.id))}
       refusal={refusal}
       chatIds={chatIds}
@@ -3044,6 +3044,7 @@ function TicketPanel({
   onLeave,
   onExpand,
   onCollapse,
+  collapseTo = 'board',
   crumb,
   refusal,
   head,
@@ -3055,6 +3056,7 @@ function TicketPanel({
   onLeave: () => void;
   onExpand?: () => void;
   onCollapse?: () => void;
+  collapseTo?: View;
   crumb?: string;
   refusal: string | null;
   head: ReactNode;
@@ -3077,9 +3079,12 @@ function TicketPanel({
           </Text>
           <span {...stylex.props(styles.fullBarTools)}>
             {onCollapse !== undefined && (
+              // Named for where it goes back to — the board or the list, with the ticket
+              // in its drawer — so it does not read as the mirror of Expand.
               <IconButton
-                label="Collapse to the drawer"
-                icon={<Icon icon={Minimize2} size="sm" />}
+                label={collapseTo === 'list' ? 'Back to the list' : 'Back to the board'}
+                tooltip={collapseTo === 'list' ? 'Back to the list' : 'Back to the board'}
+                icon={<Icon icon={collapseTo === 'list' ? Rows3 : SquareKanban} size="sm" />}
                 onClick={onCollapse}
               />
             )}
@@ -3116,7 +3121,8 @@ function TicketPanel({
           />
           {onExpand !== undefined && (
             <IconButton
-              label="Expand to the full view"
+              label="Open the full view"
+              tooltip="Open the full view"
               icon={<Icon icon={Maximize2} size="sm" />}
               onClick={onExpand}
             />
@@ -3157,6 +3163,7 @@ function TicketReading({
   onRequestRun,
   onExpand,
   onCollapse,
+  collapseTo,
   linkedChats = [],
 }: {
   ticket: Ticket;
@@ -3183,6 +3190,7 @@ function TicketReading({
   onRequestRun: () => void;
   onExpand?: () => void;
   onCollapse?: () => void;
+  collapseTo?: View;
   linkedChats?: ChatSummary[];
 }) {
   const [isClosing, setIsClosing] = useState(false);
@@ -3441,6 +3449,7 @@ function TicketReading({
       onLeave={onLeave}
       onExpand={onExpand}
       onCollapse={onCollapse}
+      collapseTo={collapseTo}
       crumb={`${bandLabel(ticket.band)} / ${ticket.name}`}
       aside={aside}
       refusal={refusal}
