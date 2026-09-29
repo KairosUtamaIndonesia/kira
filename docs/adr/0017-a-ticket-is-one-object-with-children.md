@@ -6,6 +6,8 @@ Amended by ADR 0021: spec and map are kinds rather than shapes of a body.
 
 Amended 2026-09-29: Kanban drops may invoke real ticket actions across bands; a band is still never set directly.
 
+Amended by ADR 0024: a ticket is draft, ready, running or closed, and blocked is derived; there is no claim or verdict.
+
 ## Context
 
 The skills already publish three things to a tracker, and they are nearly the same thing.

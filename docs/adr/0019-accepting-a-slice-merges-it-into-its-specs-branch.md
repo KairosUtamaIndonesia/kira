@@ -2,6 +2,8 @@
 
 Date: 2026-09-23
 
+Superseded by ADR 0024: nothing merges on acceptance, and Kira keeps no spec branch. The person closes a ticket.
+
 ## Context
 
 ADR 0010 and the glossary say accepting a run is a verdict rather than a merge: nothing a run

@@ -42,9 +42,9 @@ _Avoid_: Model list, registry, models file
 
 **Allowance**:
 What one user may take from the pool, in two numbers: tokens spent in a WIB calendar month,
-and runs in flight at once. A default applies to everyone and a per-user override replaces
+and chats running at once. A default applies to everyone and a per-user override replaces
 both, so nobody is ever unbudgeted. Everything the person spends comes out of it, whether
-they typed it or a run of theirs did. It exists so one person cannot take the pool from
+they typed it or a session of theirs did. It exists so one person cannot take the pool from
 everybody else, not to charge anyone for what they use.
 _Avoid_: Quota, budget, limit, plan, tier
 
@@ -66,14 +66,14 @@ A shared body of work, held by the server and worked by anyone signed in to Kira
 home of one queue of tickets. Kira itself is one. A project is not a place on disk, and
 it may be worked in from any number of folders at once. Opening a folder joins it to a
 project — an existing one or a new one — and that link is what makes the project's tickets
-runnable on that machine (ADR 0010).
+workable on that machine (ADR 0010).
 _Avoid_: Repo, repository, codebase, folder — a project is not one repository, and it
 outlives whichever checkout someone happens to have.
 
 **Workspace**:
-A folder on someone's own machine that work runs in. One project is worked in from many
-workspaces, because each agent working at the same time needs a checkout of its own. A
-workspace is where a run happens; it is never what a ticket belongs to.
+A folder on someone's own machine that chats work in, filed under a project. One project is
+worked in from many folders, and a chat can be moved from one to another. It is never what a
+ticket belongs to.
 _Avoid_: Project (the word it replaces), checkout, working directory
 
 **Workbench**:
@@ -86,7 +86,7 @@ workbench is showing)
 **Subagent**:
 A separate agent Kira delegates a bounded piece of work from one chat. It belongs to that chat: its
 activity and conversation are shown in that chat's Workbench, and Kira receives its outcome there.
-_Avoid_: Worker (the desktop app that offers itself for ticket work), Run (an agent's attempt at a ticket)
+_Avoid_: Worker, Run
 
 **Context**:
 What Kira is holding for one chat: the goal, the files she touched, the commits, and what the
@@ -104,40 +104,29 @@ read when it was drawn, so how far back it reaches is visible; the same conclusi
 drawn twice, so that reach is where it was first worked out.
 _Avoid_: Reflection (what the code says), insight, summary (that is the compaction's own)
 
-**Claim**:
-A ticket held while someone works it: a worker holds one with a lease and a heartbeat, a
-person holds one with neither, and a claimed ticket is ready for nobody else. A claim left
-behind shows its age and is taken over by hand rather than released by a clock (ADR 0017).
-_Avoid_: Lock, assignment — nobody is assigned work, since only the person a ticket is for
-starts a run of it
-
-**Worker**:
-A desktop app that has offered itself for work: it is online, it holds the workspaces it can
-run in, and it holds a claim for as long as it runs one. It runs what its own person starts
-and nothing else — the server says what is ready, and a worker never takes work on its own
-(ADR 0012).
-_Avoid_: Daemon, runner, host, node, agent (an agent is what a run is of, not what holds it)
+**Running**:
+What a ticket is while a person is working it: they pressed Work on this, so it records who and
+since when, and it is theirs until they close it or stop. There is nothing to expire. A running
+ticket nobody is working shows how long it has been running, and anyone can stop it (ADR 0024).
+_Avoid_: Claim, lease, lock, assignment
 
 **Ticket**:
-One unit of work on a project, written so that whoever runs it needs nothing else to hand:
-what to build, how it is known to be done, and the other tickets that gate it. A ticket may
-have children, and a child blocks its parent, so a ticket is ready to be run only when
-nothing under it and nothing gating it is open, nobody holds a claim on it, and it has been
-marked ready for an agent.
-Its **kind** — prototype, bug, feature, refactor, question, research, spec or map — is set when it is written and
-decides what a run of it owes before that run's output counts as a proposal (ADR 0011). Its
-**rank** orders it within a band of the queue, which is the only ordering there is: the bands
-are derived, never set (ADR 0017).
+One unit of work on a project, written so that whoever works it needs nothing else to hand:
+what to build, how it is known to be done, and the other tickets that block it. A ticket may
+have children, and a child blocks its parent, so a ticket can be worked only when nothing
+under it and nothing blocking it is open and it has been marked ready. It is draft, ready,
+running or closed; blocked is derived from open blockers, never set (ADR 0017, ADR 0024).
+Its **kind** — prototype, bug, feature, refactor, question, research, spec or map — is set when
+it is written and names the skill that works it and what that leaves behind. Its **rank**
+orders it within a status, which is the only ordering there is.
 _Avoid_: Issue, task, card
 
 **Spec**:
 A ticket of kind spec: an idea worked out with a person — the problem, the solution, and the
 stories it must satisfy — whose children are the tickets that build it. Kira writes it from an
 interview the person has confirmed, and it stays a draft until the person approves it. It is a
-ticket rather than a thing of its own, so it sits in the same queue; its own run comes last,
-once every child is done, and checks the children together against what the spec asked for.
-A spec has a branch of its own: its children's runs start from it and their accepted work is
-merged into it, and a person lands it on the project's main line.
+ticket rather than a thing of its own, so it sits in the same queue; its own session comes last,
+once every child is done, and reviews the children together against what the spec asked for.
 _Avoid_: PRD, epic, plan, parent ticket
 
 **Map**:
@@ -166,60 +155,38 @@ belongs to the project rather than to a repository. Kira sharpens it as an inter
 terms, without waiting for approval, and every change keeps who made it and in which chat.
 _Avoid_: Context (what Kira holds for one chat), dictionary, vocabulary
 
-**Run**:
-One agent's attempt at a ticket, in one workspace, from a claim to an end. It is a chat with a
-ticket behind it, so it can be watched and steered while it runs, and only the person the
-ticket is for starts and steers it. A ticket has many runs, and a run is never a ticket's
-state: it ends as a proposal — a diff, its tests, what a review made of it — which that person
-accepts or sends back. Accepting closes the ticket as done; for a ticket in a spec it also
-merges the run's work into the spec's branch, and nothing lands on the project's main line
-without a person. Its transcript belongs to the ticket, while the driver keeps it in their own
-chat list until it ends (ADR 0012).
-_Avoid_: Attempt, job, execution, task
-
 ## Project Work vocabulary
 
-Project Work is Kira's focused flow for turning a planned piece of work into a reviewable coding-agent result.
+Project Work is Kira's store of specs and tickets: a board to plan, list and keep them, with a chat to work each one (ADR 0024).
 
 **Organization**:
 The shared account boundary for people, projects, and permissions. It is not the place where code runs.
-_Avoid_: Execution Workspace, repository, project
+_Avoid_: repository, project
 
 **Blocker**:
-A ticket that must close before another can be run: a child blocks its parent, and a ticket
+A ticket that must close before another can be started: a child blocks its parent, and a ticket
 can name others it waits on. A blocked ticket sits in Blocked until its blockers close.
 _Avoid_: Gate, dependency, prerequisite
 
 **Status**:
-The human-facing column a ticket appears in on the kanban board.
+The column a ticket appears in on the board: Draft, Ready, Running, Blocked or Done. Derived from
+the ticket, never set directly.
 _Avoid_: Readiness, execution state, claim
 
-**Execution Workspace**:
-A space attached to a ticket with the repository checkout, branch, agent session, tools, and review surface needed to do the work. One ticket may have multiple execution workspaces.
-_Avoid_: Organization, Project, folder when referring to the shared planning scope
-
 **Session**:
-One coding-agent conversation running inside an execution workspace: a run, as a person sees
-it. Starting the agent starts a session, and a ticket keeps every session it has had.
+A chat working a ticket: Work on this opens one in the project's folder with the ticket attached
+and the skill its kind names. A ticket lists every session it has had, and only a person starts one.
 _Avoid_: Run (in anything a person reads), Worker, job
-
-**Review**:
-The human inspection and feedback loop over an execution workspace's changes.
-_Avoid_: Acceptance, status
-
-**Pull request**:
-The optional external delivery record created from an execution workspace branch.
-_Avoid_: Run, merge
 
 The central relationship is:
 
 ```text
 Ticket = what should be done
-Execution Workspace = where an agent does it
+Session = a chat doing it
 ```
 
 The product optimizes for:
 
 ```text
-plan → execute → inspect → feedback → execute again → merge
+shape → ready → work → close
 ```

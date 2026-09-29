@@ -4,6 +4,8 @@ Date: 2026-09-21
 
 Amended by ADR 0021: `decision` becomes `question`, and research, spec and map are added.
 
+Amended by ADR 0024: a kind names the skill that works a ticket and what it leaves behind; there is no run, proposal or tail to clear.
+
 ## Context
 
 ADR 0010 settles that a run ends as a proposal a person accepts, and that nothing lands on
