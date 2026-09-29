@@ -248,7 +248,6 @@ const styles = stylex.create({
     display: 'flex',
     alignItems: 'center',
     gap: spacingVars['--spacing-3'],
-    maxWidth: 680,
     padding: spacingVars['--spacing-4'],
     borderWidth: borderVars['--border-width'],
     borderStyle: 'dashed',
