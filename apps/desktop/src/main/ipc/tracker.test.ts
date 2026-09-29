@@ -264,12 +264,12 @@ const CASES: Case[] = [
     makeDeps: (calls) =>
       deps(calls, {
         gate: async () => {
-          throw new Error('That gate would close a circle of tickets.');
+          throw new Error('That blocker would close a circle of tickets.');
         },
       }),
     call: 'gate',
     args: ['ticket-1', 'FND-2'],
-    want: { ok: false, error: 'That gate would close a circle of tickets.' },
+    want: { ok: false, error: 'That blocker would close a circle of tickets.' },
     wantCalls: [],
   },
   {

@@ -1988,7 +1988,7 @@ describe('a run', () => {
     const twice = await judged(app, person.key, ticket.id, made.id, { verdict: 'sent-back' });
     expect(twice.status).toBe(400);
     expect(await twice.json()).toEqual({
-      error: { code: 'RUN_JUDGED', message: 'That run has already been judged.' },
+      error: { code: 'RUN_JUDGED', message: 'That session has already been judged.' },
     });
 
     // A closed ticket cannot be retried, and this refusal also comes from the server.
@@ -2045,7 +2045,7 @@ describe('a run', () => {
     const answer = await judged(app, person.key, ticket.id, made.id, { verdict: 'accepted' });
     expect(answer.status).toBe(400);
     expect(await answer.json()).toEqual({
-      error: { code: 'RUN_UNFINISHED', message: 'That run has not ended yet.' },
+      error: { code: 'RUN_UNFINISHED', message: 'That session has not ended yet.' },
     });
   });
 

@@ -83,7 +83,7 @@ describe('spec breakdown publication', () => {
     expect(response.status).toBe(400);
     expect((await response.json()).error).toEqual({
       code: 'GATE_CIRCLE',
-      message: 'That gate would close a circle of tickets.',
+      message: 'That blocker would close a circle of tickets.',
     });
 
     const queue = await send(made.app, `/api/projects/${made.projectId}`, {

@@ -436,7 +436,13 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
           .orderBy(desc(run.startedAt), desc(run.id))
           .limit(1);
         if (!approved || approved.branch !== workspace.branch) {
-          return status(400, refusal('DELIVERY_NOT_APPROVED', 'Only the approved workspace branch can be delivered.'));
+          return status(
+            400,
+            refusal(
+              'DELIVERY_NOT_APPROVED',
+              'Only the approved workspace branch can be delivered.',
+            ),
+          );
         }
 
         const made = await database.transaction(async (transaction) => {
@@ -463,7 +469,10 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
           return written!;
         });
 
-        return { delivery: asDelivery(made), ticket: await one(database, found.project, found.ticket) };
+        return {
+          delivery: asDelivery(made),
+          ticket: await one(database, found.project, found.ticket),
+        };
       },
       {
         params: t.Object({ ref: t.String() }),
@@ -475,7 +484,12 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
           url: t.Optional(t.String()),
           details: t.Optional(t.String()),
         }),
-        response: { 200: t.Object({ delivery: DELIVERY, ticket: TICKET }), 400: REFUSAL, 401: REFUSAL, 404: REFUSAL },
+        response: {
+          200: t.Object({ delivery: DELIVERY, ticket: TICKET }),
+          400: REFUSAL,
+          401: REFUSAL,
+          404: REFUSAL,
+        },
         detail: { summary: 'Record a conflict-safe local merge or pull request delivery' },
       },
     )
@@ -577,7 +591,10 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
           return status(400, refusal('KIND_UNKNOWN', `A ticket is one of ${KINDS.join(', ')}.`));
         }
         if (!isOneOf(STATUSES, body.status ?? 'backlog')) {
-          return status(400, refusal('STATUS_UNKNOWN', `A status is one of ${STATUSES.join(', ')}.`));
+          return status(
+            400,
+            refusal('STATUS_UNKNOWN', `A status is one of ${STATUSES.join(', ')}.`),
+          );
         }
         if (!isOneOf(PRIORITIES, body.priority ?? 'none')) {
           return status(
@@ -586,7 +603,7 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
           );
         }
         if (body.tags?.some((tag) => tag.trim() === '')) {
-          return status(400, refusal('TAG_INVALID', 'Issue tags cannot be empty.'));
+          return status(400, refusal('TAG_INVALID', 'Ticket tags cannot be empty.'));
         }
         if (body.assigneeId !== undefined && body.assigneeId !== null) {
           const [assignee] = await database
@@ -668,8 +685,16 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
           agentConfig: body.agentConfig.trim(),
           creatorId: held.user.id,
         };
-        if (Object.values(values).some((value) => typeof value === 'string' && value.trim() === '')) {
-          return status(400, refusal('WORKSPACE_INVALID', 'An execution workspace needs repository, branches, and an agent configuration.'));
+        if (
+          Object.values(values).some((value) => typeof value === 'string' && value.trim() === '')
+        ) {
+          return status(
+            400,
+            refusal(
+              'WORKSPACE_INVALID',
+              'An execution workspace needs repository, branches, and an agent configuration.',
+            ),
+          );
         }
 
         const [made] = await database.insert(executionWorkspace).values(values).returning();
@@ -683,7 +708,12 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
           branch: t.String(),
           agentConfig: t.String(),
         }),
-        response: { 200: t.Object({ workspace: EXECUTION_WORKSPACE }), 400: REFUSAL, 401: REFUSAL, 404: REFUSAL },
+        response: {
+          200: t.Object({ workspace: EXECUTION_WORKSPACE }),
+          400: REFUSAL,
+          401: REFUSAL,
+          404: REFUSAL,
+        },
         detail: { summary: 'Link an execution workspace to an issue' },
       },
     )
@@ -703,7 +733,8 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
             ),
           )
           .returning({ id: executionWorkspace.id });
-        if (!removed) return status(404, refusal('WORKSPACE_NOT_FOUND', 'No such execution workspace.'));
+        if (!removed)
+          return status(404, refusal('WORKSPACE_NOT_FOUND', 'No such execution workspace.'));
         return { workspace: null };
       },
       {
@@ -720,7 +751,8 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
         const found = await resolve(database, params.ref);
         if (!found) return status(404, refusal('TICKET_NOT_FOUND', 'No such ticket.'));
         const workspace = await workspaceOn(database, found.ticket.id, params.workspaceId);
-        if (!workspace) return status(404, refusal('WORKSPACE_NOT_FOUND', 'No such execution workspace.'));
+        if (!workspace)
+          return status(404, refusal('WORKSPACE_NOT_FOUND', 'No such execution workspace.'));
 
         const [comments, feedback] = await Promise.all([
           database
@@ -738,10 +770,16 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
         ]);
         return {
           comments: comments.map(({ comment, authorId, authorName }) =>
-            asReviewComment(comment, authorId === null || authorName === null ? null : { id: authorId, name: authorName }),
+            asReviewComment(
+              comment,
+              authorId === null || authorName === null ? null : { id: authorId, name: authorName },
+            ),
           ),
           feedback: feedback.map(({ feedback: item, authorId, authorName }) =>
-            asReviewFeedback(item, authorId === null || authorName === null ? null : { id: authorId, name: authorName }),
+            asReviewFeedback(
+              item,
+              authorId === null || authorName === null ? null : { id: authorId, name: authorName },
+            ),
           ),
         };
       },
@@ -759,9 +797,13 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
         const found = await resolve(database, params.ref);
         if (!found) return status(404, refusal('TICKET_NOT_FOUND', 'No such ticket.'));
         const workspace = await workspaceOn(database, found.ticket.id, params.workspaceId);
-        if (!workspace) return status(404, refusal('WORKSPACE_NOT_FOUND', 'No such execution workspace.'));
+        if (!workspace)
+          return status(404, refusal('WORKSPACE_NOT_FOUND', 'No such execution workspace.'));
         if (body.line < 1 || body.path.trim() === '' || body.body.trim() === '') {
-          return status(400, refusal('REVIEW_COMMENT_INVALID', 'A review comment needs a file, line, and message.'));
+          return status(
+            400,
+            refusal('REVIEW_COMMENT_INVALID', 'A review comment needs a file, line, and message.'),
+          );
         }
         const [made] = await database
           .insert(reviewComment)
@@ -787,7 +829,12 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
           side: t.String(),
           body: t.String(),
         }),
-        response: { 200: t.Object({ comment: REVIEW_COMMENT }), 400: REFUSAL, 401: REFUSAL, 404: REFUSAL },
+        response: {
+          200: t.Object({ comment: REVIEW_COMMENT }),
+          400: REFUSAL,
+          401: REFUSAL,
+          404: REFUSAL,
+        },
         detail: { summary: 'Add an inline review comment' },
       },
     )
@@ -799,12 +846,19 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
         const found = await resolve(database, params.ref);
         if (!found) return status(404, refusal('TICKET_NOT_FOUND', 'No such ticket.'));
         const workspace = await workspaceOn(database, found.ticket.id, params.workspaceId);
-        if (!workspace) return status(404, refusal('WORKSPACE_NOT_FOUND', 'No such execution workspace.'));
+        if (!workspace)
+          return status(404, refusal('WORKSPACE_NOT_FOUND', 'No such execution workspace.'));
         const [existing] = await database
           .select()
           .from(reviewComment)
-          .where(and(eq(reviewComment.id, params.commentId), eq(reviewComment.workspaceId, workspace.id)));
-        if (!existing) return status(404, refusal('REVIEW_COMMENT_NOT_FOUND', 'No such review comment.'));
+          .where(
+            and(
+              eq(reviewComment.id, params.commentId),
+              eq(reviewComment.workspaceId, workspace.id),
+            ),
+          );
+        if (!existing)
+          return status(404, refusal('REVIEW_COMMENT_NOT_FOUND', 'No such review comment.'));
         const addressedAt = body.status === 'addressed' ? new Date() : null;
         const [updated] = await database
           .update(reviewComment)
@@ -828,8 +882,10 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
         const found = await resolve(database, params.ref);
         if (!found) return status(404, refusal('TICKET_NOT_FOUND', 'No such ticket.'));
         const workspace = await workspaceOn(database, found.ticket.id, params.workspaceId);
-        if (!workspace) return status(404, refusal('WORKSPACE_NOT_FOUND', 'No such execution workspace.'));
-        if (body.body.trim() === '') return status(400, refusal('REVIEW_FEEDBACK_INVALID', 'Feedback needs a message.'));
+        if (!workspace)
+          return status(404, refusal('WORKSPACE_NOT_FOUND', 'No such execution workspace.'));
+        if (body.body.trim() === '')
+          return status(400, refusal('REVIEW_FEEDBACK_INVALID', 'Feedback needs a message.'));
         const [made] = await database
           .insert(reviewFeedback)
           .values({
@@ -845,7 +901,12 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
       {
         params: t.Object({ ref: t.String(), workspaceId: t.String() }),
         body: t.Object({ runId: t.Optional(t.Union([t.String(), t.Null()])), body: t.String() }),
-        response: { 200: t.Object({ feedback: REVIEW_FEEDBACK }), 400: REFUSAL, 401: REFUSAL, 404: REFUSAL },
+        response: {
+          200: t.Object({ feedback: REVIEW_FEEDBACK }),
+          400: REFUSAL,
+          401: REFUSAL,
+          404: REFUSAL,
+        },
         detail: { summary: 'Send feedback for an execution workspace run' },
       },
     )
@@ -1040,7 +1101,7 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
             return status(400, refusal('KIND_UNKNOWN', `A ticket is one of ${KINDS.join(', ')}.`));
           }
           if (child.dependsOn.includes(child.id)) {
-            return status(400, refusal('GATE_SELF', 'A ticket cannot gate itself.'));
+            return status(400, refusal('GATE_SELF', 'A ticket cannot block itself.'));
           }
           if (
             child.dependsOn.some(
@@ -1073,7 +1134,10 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
           return false;
         };
         if (body.children.some((child) => cycle(child.id))) {
-          return status(400, refusal('GATE_CIRCLE', 'That gate would close a circle of tickets.'));
+          return status(
+            400,
+            refusal('GATE_CIRCLE', 'That blocker would close a circle of tickets.'),
+          );
         }
 
         const made: Row[] = [];
@@ -1295,7 +1359,7 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
         if (found.ticket.kind !== 'research') {
           return status(
             400,
-            refusal('OUTCOME_RESEARCH_ONLY', 'Only research runs record an Outcome directly.'),
+            refusal('OUTCOME_RESEARCH_ONLY', 'Only research sessions record an Outcome directly.'),
           );
         }
         const checked = outcomeInput(body);
@@ -1442,7 +1506,10 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
           );
         }
         if (body.status !== undefined && !isOneOf(STATUSES, body.status)) {
-          return status(400, refusal('STATUS_UNKNOWN', `A status is one of ${STATUSES.join(', ')}.`));
+          return status(
+            400,
+            refusal('STATUS_UNKNOWN', `A status is one of ${STATUSES.join(', ')}.`),
+          );
         }
         if (body.priority !== undefined && !isOneOf(PRIORITIES, body.priority)) {
           return status(
@@ -1451,7 +1518,7 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
           );
         }
         if (body.tags?.some((tag) => tag.trim() === '')) {
-          return status(400, refusal('TAG_INVALID', 'Issue tags cannot be empty.'));
+          return status(400, refusal('TAG_INVALID', 'Ticket tags cannot be empty.'));
         }
         if (body.assigneeId !== undefined && body.assigneeId !== null) {
           const [assignee] = await database
@@ -1566,7 +1633,8 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
         if (!found) return status(404, refusal('TICKET_NOT_FOUND', 'No such ticket.'));
 
         const names = await resolve(database, body.gatedBy);
-        if (!names) return status(404, refusal('TICKET_NOT_FOUND', 'No such ticket to gate on.'));
+        if (!names)
+          return status(404, refusal('TICKET_NOT_FOUND', 'No such ticket to add as a blocker.'));
 
         const refused = await whyNot(database, found, names);
         if (refused) return status(400, refused);
@@ -1623,20 +1691,26 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
         if (!isOneOf(RELATIONSHIPS, body.type)) {
           return status(
             400,
-            refusal('RELATIONSHIP_UNKNOWN', `A relationship is one of ${RELATIONSHIPS.join(', ')}.`),
+            refusal(
+              'RELATIONSHIP_UNKNOWN',
+              `A relationship is one of ${RELATIONSHIPS.join(', ')}.`,
+            ),
           );
         }
 
         const names = await resolve(database, body.ticket);
-        if (!names) return status(404, refusal('TICKET_NOT_FOUND', 'No such related issue.'));
+        if (!names) return status(404, refusal('TICKET_NOT_FOUND', 'No such related ticket.'));
         if (names.project.id !== found.project.id) {
           return status(
             400,
-            refusal('RELATIONSHIP_OTHER_PROJECT', 'An issue relationship stays inside its project.'),
+            refusal(
+              'RELATIONSHIP_OTHER_PROJECT',
+              'A ticket relationship stays inside its project.',
+            ),
           );
         }
         if (names.ticket.id === found.ticket.id) {
-          return status(400, refusal('RELATIONSHIP_SELF', 'An issue cannot relate to itself.'));
+          return status(400, refusal('RELATIONSHIP_SELF', 'A ticket cannot relate to itself.'));
         }
         if (body.type === 'parent') {
           const [existing] = await database
@@ -1649,7 +1723,7 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
               ),
             );
           if (existing && existing.relatedIssueId !== names.ticket.id) {
-            return status(400, refusal('PARENT_EXISTS', 'An issue can have only one parent.'));
+            return status(400, refusal('PARENT_EXISTS', 'A ticket can have only one parent.'));
           }
         }
 
@@ -1679,7 +1753,10 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
         const found = await resolve(database, params.ref);
         if (!found) return status(404, refusal('TICKET_NOT_FOUND', 'No such ticket.'));
         if (!isOneOf(RELATIONSHIPS, params.type)) {
-          return status(400, refusal('RELATIONSHIP_UNKNOWN', 'That relationship is not supported.'));
+          return status(
+            400,
+            refusal('RELATIONSHIP_UNKNOWN', 'That relationship is not supported.'),
+          );
         }
         const names = await resolve(database, params.ticket);
         if (names) {
@@ -1894,7 +1971,7 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
 
         const open = (await runsFor(database, [found.ticket.id])).get(found.ticket.id) ?? [];
         if (open.some((each) => each.endedAt === null)) {
-          return status(400, refusal('RUN_OPEN', 'That ticket is already being run.'));
+          return status(400, refusal('RUN_OPEN', 'That ticket already has a session running.'));
         }
 
         // The contract is copied rather than read through, so what this run verified
@@ -1935,13 +2012,13 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
         if ('refused' in held) return status(401, held.refused);
 
         const found = await runOn(database, params.ref, params.runId);
-        if (!found) return status(404, refusal('RUN_NOT_FOUND', 'No such run.'));
+        if (!found) return status(404, refusal('RUN_NOT_FOUND', 'No such session.'));
 
         const refused = whyNotTheirs(found.run, held.user);
         if (refused) return status(400, refused);
 
         if (found.run.endedAt !== null) {
-          return status(400, refusal('RUN_ENDED', 'That run has already ended.'));
+          return status(400, refusal('RUN_ENDED', 'That session has already ended.'));
         }
 
         const after: RunRow = {
@@ -1966,13 +2043,13 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
         if ('refused' in held) return status(401, held.refused);
 
         const found = await runOn(database, params.ref, params.runId);
-        if (!found) return status(404, refusal('RUN_NOT_FOUND', 'No such run.'));
+        if (!found) return status(404, refusal('RUN_NOT_FOUND', 'No such session.'));
 
         const refused = whyNotTheirs(found.run, held.user);
         if (refused) return status(400, refused);
 
         if (found.run.endedAt !== null) {
-          return status(400, refusal('RUN_ENDED', 'That run has already ended.'));
+          return status(400, refusal('RUN_ENDED', 'That session has already ended.'));
         }
 
         const after: RunRow = {
@@ -2019,7 +2096,7 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
         if ('refused' in held) return status(401, held.refused);
 
         const found = await runOn(database, params.ref, params.runId);
-        if (!found) return status(404, refusal('RUN_NOT_FOUND', 'No such run.'));
+        if (!found) return status(404, refusal('RUN_NOT_FOUND', 'No such session.'));
 
         const refused = whyNotTheirs(found.run, held.user);
         if (refused) return status(400, refused);
@@ -2031,11 +2108,11 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
         }
 
         if (found.run.endedAt === null) {
-          return status(400, refusal('RUN_UNFINISHED', 'That run has not ended yet.'));
+          return status(400, refusal('RUN_UNFINISHED', 'That session has not ended yet.'));
         }
 
         if (found.run.verdict !== null) {
-          return status(400, refusal('RUN_JUDGED', 'That run has already been judged.'));
+          return status(400, refusal('RUN_JUDGED', 'That session has already been judged.'));
         }
 
         const judgedAt = new Date();
@@ -2078,7 +2155,7 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
         if ('refused' in held) return status(401, held.refused);
 
         const found = await runOn(database, params.ref, params.runId);
-        if (!found) return status(404, refusal('RUN_NOT_FOUND', 'No such run.'));
+        if (!found) return status(404, refusal('RUN_NOT_FOUND', 'No such session.'));
 
         return { transcript: await saidIn(database, found.run.id) };
       },
@@ -2095,7 +2172,7 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
         if ('refused' in held) return status(401, held.refused);
 
         const found = await runOn(database, params.ref, params.runId);
-        if (!found) return status(404, refusal('RUN_NOT_FOUND', 'No such run.'));
+        if (!found) return status(404, refusal('RUN_NOT_FOUND', 'No such session.'));
 
         const refused = whyNotTheirs(found.run, held.user);
         if (refused) return status(400, refused);
@@ -2187,7 +2264,10 @@ async function queue(database: Database, held: typeof project.$inferSelect) {
     database,
     rows.map((each) => each.id),
   );
-  const workspaces = await workspacesFor(database, rows.map((each) => each.id));
+  const workspaces = await workspacesFor(
+    database,
+    rows.map((each) => each.id),
+  );
   const named = new Map<string, Named>(rows.map((row) => [row.id, asNamed(row, held.prefix)]));
 
   const tickets = rows.map((row) =>
@@ -2329,7 +2409,7 @@ async function whyNot(
   names: { project: typeof project.$inferSelect; ticket: Row },
 ) {
   if (names.ticket.id === held.ticket.id) {
-    return refusal('GATE_SELF', 'A ticket cannot gate itself.');
+    return refusal('GATE_SELF', 'A ticket cannot block itself.');
   }
   if (names.project.id !== held.project.id) {
     return refusal(
@@ -2351,7 +2431,7 @@ async function whyNot(
       .filter((each) => !seen.has(each));
 
     if (next.includes(held.ticket.id)) {
-      return refusal('GATE_CIRCLE', 'That gate would close a circle of tickets.');
+      return refusal('GATE_CIRCLE', 'That blocker would close a circle of tickets.');
     }
 
     for (const each of next) seen.add(each);
@@ -2422,10 +2502,7 @@ async function planningFor(database: Database, rows: Row[], prefix: string) {
     .select()
     .from(ticketRelationship)
     .where(
-      or(
-        inArray(ticketRelationship.issueId, ids),
-        inArray(ticketRelationship.relatedIssueId, ids),
-      ),
+      or(inArray(ticketRelationship.issueId, ids), inArray(ticketRelationship.relatedIssueId, ids)),
     );
   const touched = [...new Set(edges.flatMap((edge) => [edge.issueId, edge.relatedIssueId]))];
   const related = await database.select().from(ticket).where(inArray(ticket.id, touched));
@@ -2719,7 +2796,7 @@ async function whyNotClaimable(
   who: HeldUser,
 ): Promise<ReturnType<typeof refusal> | null> {
   if (found.ticket.authorId !== who.id) {
-    return refusal('CLAIM_NOT_YOURS', 'A ticket is run by the person it is for.');
+    return refusal('CLAIM_NOT_YOURS', 'A ticket is worked by the person it is for.');
   }
 
   if ((await claimOn(database, found.ticket.id)) !== null) {
@@ -3021,7 +3098,7 @@ function whyNotRunnable(
   workerId: string | null,
 ): ReturnType<typeof refusal> | null {
   if (taken === null) {
-    return refusal('CLAIM_NONE', 'A run happens on a ticket somebody has claimed.');
+    return refusal('CLAIM_NONE', 'A session happens on a ticket somebody has claimed.');
   }
 
   if (taken.holder.id !== who.id || taken.workerId !== workerId) {
@@ -3040,7 +3117,7 @@ function whyNotRunnable(
 function whyNotTheirs(held: RunRow, who: HeldUser): ReturnType<typeof refusal> | null {
   return held.driverId === who.id
     ? null
-    : refusal('RUN_NOT_YOURS', 'That run is not yours to say anything about.');
+    : refusal('RUN_NOT_YOURS', 'That session is not yours to say anything about.');
 }
 
 /** A ticket row as a client reads it, with the band read off what it is made of. */
