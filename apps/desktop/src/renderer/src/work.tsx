@@ -156,6 +156,7 @@ import type {
 } from '../../preload/bridge.ts';
 import { ExecutionWorkspacePanel } from './executionWorkspace.tsx';
 import { BlockersPrototype } from './workBlockersPrototype.tsx';
+import { ListPrototype } from './workListPrototype.tsx';
 import {
   executionWorkspaceView,
   fromHome,
@@ -1929,6 +1930,17 @@ export function WorkSurface({
               current.includes(id) ? current.filter((each) => each !== id) : [...current, id],
             )
           }
+        />
+      ) : import.meta.env.DEV ? (
+        // PROTOTYPE: list layouts (workListPrototype.tsx); development builds only.
+        <ListPrototype
+          tickets={visibleTickets}
+          lanes={visibleBands}
+          group={display.group}
+          selected={openId}
+          chatSummaries={chatSummaries}
+          onOpen={openTicket}
+          panel={panel}
         />
       ) : (
         <QueueView
