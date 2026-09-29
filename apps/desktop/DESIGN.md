@@ -230,6 +230,8 @@ Work is the reference for how Kira draws dense, task-shaped UI. The rules below 
 
 **Workspace setup.** A ticket without a workspace shows a dashed "No workspace yet" row; setting up opens a dialog. Choices with known answers are pickers (the checkout, the branch it starts from, the agent) and only the new branch's name is typed, with a suggest button inside the field. A route line (from branch → new branch in checkout) shows the result before it is made. A folder that is not a git checkout says so and disables Create.
 
+**Moving a chat into a project.** Approving anything Kira proposed writes to a project, so a chat in no project is asked where to go instead of being refused. The dialog is a ruled list of the folders already in a project (folder name and path, with the project's prefix and name at the right) and a last row that starts a new project in a folder the person picks; selection is the accent radio, and nothing is preselected, so Move stays disabled until a choice is made. A line above the buttons says what the choice means ("Kira will work in ~/Workspace/pomodoro from now on."). Leaving is always free and changes nothing: Cancel, Escape and the close button all put the question away and leave the proposal waiting; only a move in flight holds them back. A refusal (a taken prefix, Kira writing in the chat) shows in the dialog, which stays open.
+
 **Spacing and alignment are the craft.** These are measured, not eyeballed.
 
 - Use the 4px rhythm: 4–8 inside a group, 12–16 between related sections, 24+ between regions. Rows are 40px on the board and list; controls are 28 (small) or 32.

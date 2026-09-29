@@ -224,6 +224,12 @@ direction is in `apps/desktop/DESIGN.md` (Work), and this is where its pieces li
   asks for a folder through `window.kira.listCheckoutBranches` and `chooseCheckout`
   (`EXECUTION_CHANNELS`, `main/ipc/execution.ts`); choosing a checkout there does not register
   a Kira workspace.
+- **`moveToProject.tsx`** is the dialog that files a chat under a project's folder, and
+  **`moveToProject.ts`** holds when a chat needs one (`needsProject`) and which folders it could
+  go to (`placesOf`). `App.tsx` opens it when an Approve would otherwise be refused for want of
+  a project, and from a chat row's "Move to project…". Filing goes through
+  `window.kira.fileChat` (`CHAT_CHANNELS.file`, `openChats.fileChat`): it repoints the chat's
+  stored folder and reopens the session on screen, so the chat and its words are the same.
 - **`workRows.ts`** and **`workDisplay.ts`** hold the pure words and rules (age, what a row
   says, filtering and order) with tests beside them. New wording for a status goes there, not
   inline in a component.

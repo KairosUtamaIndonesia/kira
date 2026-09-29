@@ -4,6 +4,8 @@
 
 ### Added
 
+- Approving a spec or its tickets in a chat that isn't in a project now asks where it should live, instead of refusing: choose a folder that is already in a project, or start a new project in a folder you pick. The chat moves to that folder and keeps its history. A chat can also be moved from its row's menu ("Move to project…"), and leaving the dialog changes nothing.
+
 - Work's wording is clearer and consistent: tickets, blockers, sessions, and workspaces are named the same way everywhere, and refusals such as two tickets blocking each other say what to do next.
 
 - Work now opens with a clearer project-to-workspace chooser and a horizontal six-lane Kanban board, drawn as ruled lanes of compact ticket rows with kind icons, status, and tags; a row's actions appear on hover or keyboard focus. Dragging within Ready changes priority; dropping between lanes asks for a supported action—such as choosing a gate, editing a blocker, starting or answering a run, or closing a ticket—and then rereads the server-derived queue.

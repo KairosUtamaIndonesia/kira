@@ -1,7 +1,8 @@
 /**
  * The single home for Work's wording: every sentence, label, tooltip, and aria-label a person
  * reads on the Work surface (board, list, drawer, full ticket view, New ticket, workspace
- * setup, blockers, filters, toasts, banners, empty states). Components import `copy` and
+ * setup, blockers, filters, toasts, banners, empty states, and moving a chat into a
+ * project). Components import `copy` and
  * never write a user-visible literal of their own, so wording can be read and changed here.
  * Words the server sends back on a refusal are shown as they come; the server words those in
  * `apps/server/src/messages.ts`.
@@ -514,5 +515,40 @@ export const copy = {
     folderHeading: (project: string) => `Choose a folder for ${project}`,
     folderNote:
       'Tickets are shared across folders. Your choice sets where agents work on this machine.',
+  },
+
+  /* ── Moving a chat into a project ─────────────────────────────────────── */
+  filing: {
+    menu: 'Move to project…',
+    menuNote: 'Work in a project’s folder from now on.',
+    /** What is being approved, as the title asks about it. */
+    these: {
+      spec: 'this spec',
+      map: 'this map',
+      decision: 'this Decision',
+      outcome: 'this Outcome',
+      breakdown: 'these tickets',
+    },
+    title: (these: string) => `Where should ${these} live?`,
+    moveTitle: 'Move this chat to a project',
+    subtitle: 'Approving writes to a project, and this chat isn’t in one yet.',
+    moveSubtitle: 'Kira works in the folder you choose from now on.',
+    group: 'Where this chat goes',
+    noneYet: 'No folder is in a project yet. Start one from a folder.',
+    newProject: 'Start a new project',
+    newProjectNote: 'in a folder you choose',
+    noFolder: 'No folder chosen',
+    chooseFolder: 'Choose folder…',
+    changeFolder: 'Change',
+    prefixHelp:
+      'The prefix is two to six letters or digits, starting with a letter. Tickets are named with it, like POMO-1, and it can’t change later.',
+    folderInProject: (name: string) =>
+      `${name} already works a project. Choose it from the list, or pick another folder.`,
+    willWork: (folder: string) => `Kira will work in ${folder} from now on.`,
+    chooseToContinue: 'Choose a folder for this chat.',
+    moveAndApprove: 'Move chat and approve',
+    move: 'Move chat',
+    moving: 'Moving…',
+    refusedTitle: 'Couldn’t move this chat',
   },
 } as const;
