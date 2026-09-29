@@ -786,7 +786,12 @@ const styles = stylex.create({
     borderBlockEndColor: colorVars['--color-border'],
     backgroundColor: colorVars['--color-background-surface'],
   },
-  fullBarTools: { display: 'flex', alignItems: 'center', gap: spacingVars['--spacing-1'] },
+  fullBarStart: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: spacingVars['--spacing-2'],
+    minWidth: 0,
+  },
   fullScroll: { flex: 1, minHeight: 0, overflowY: 'auto' },
   fullGrid: {
     display: 'grid',
@@ -1593,7 +1598,6 @@ export function WorkSurface({
       placement={isFull ? 'full' : placement}
       onExpand={() => setIsFull(true)}
       onCollapse={() => setIsFull(false)}
-      collapseTo={view}
       linkedChats={chatSummaries.filter((chat) => chat.workTicketIds.includes(open.id))}
       refusal={refusal}
       chatIds={chatIds}
@@ -3044,7 +3048,6 @@ function TicketPanel({
   onLeave,
   onExpand,
   onCollapse,
-  collapseTo = 'board',
   crumb,
   refusal,
   head,
@@ -3056,7 +3059,6 @@ function TicketPanel({
   onLeave: () => void;
   onExpand?: () => void;
   onCollapse?: () => void;
-  collapseTo?: View;
   crumb?: string;
   refusal: string | null;
   head: ReactNode;
@@ -3074,22 +3076,23 @@ function TicketPanel({
     return (
       <div {...stylex.props(styles.panel, styles.fullPage)}>
         <div {...stylex.props(styles.fullBar)}>
-          <Text type="supporting" color="secondary" maxLines={1}>
-            {crumb}
-          </Text>
-          <span {...stylex.props(styles.fullBarTools)}>
+          <span {...stylex.props(styles.fullBarStart)}>
             {onCollapse !== undefined && (
-              // Named for where it goes back to — the board or the list, with the ticket
-              // in its drawer — so it does not read as the mirror of Expand.
-              <IconButton
-                label={collapseTo === 'list' ? 'Back to the list' : 'Back to the board'}
-                tooltip={collapseTo === 'list' ? 'Back to the list' : 'Back to the board'}
-                icon={<Icon icon={collapseTo === 'list' ? Rows3 : SquareKanban} size="sm" />}
+              // Back to the Work surface, board or list, with this ticket in its drawer —
+              // said the way the header's "Back to projects" is, and not as Expand's mirror.
+              <Button
+                label="Back to Work"
+                icon={<Icon icon={ArrowLeft} size="sm" />}
+                variant="ghost"
+                size="sm"
                 onClick={onCollapse}
               />
             )}
-            <IconButton label="Close issue" icon={<Icon icon={X} size="sm" />} onClick={onLeave} />
+            <Text type="supporting" color="secondary" maxLines={1}>
+              {crumb}
+            </Text>
           </span>
+          <IconButton label="Close issue" icon={<Icon icon={X} size="sm" />} onClick={onLeave} />
         </div>
         {banner}
         <div {...stylex.props(styles.fullScroll)}>
@@ -3163,7 +3166,6 @@ function TicketReading({
   onRequestRun,
   onExpand,
   onCollapse,
-  collapseTo,
   linkedChats = [],
 }: {
   ticket: Ticket;
@@ -3190,7 +3192,6 @@ function TicketReading({
   onRequestRun: () => void;
   onExpand?: () => void;
   onCollapse?: () => void;
-  collapseTo?: View;
   linkedChats?: ChatSummary[];
 }) {
   const [isClosing, setIsClosing] = useState(false);
@@ -3449,7 +3450,6 @@ function TicketReading({
       onLeave={onLeave}
       onExpand={onExpand}
       onCollapse={onCollapse}
-      collapseTo={collapseTo}
       crumb={`${bandLabel(ticket.band)} / ${ticket.name}`}
       aside={aside}
       refusal={refusal}
