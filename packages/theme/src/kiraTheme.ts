@@ -63,6 +63,18 @@ export const kiraTheme = defineTheme({
     '--color-track': ['#CBC7C2', '#3A3836'],
     '--color-shadow': ['#1A18151A', '#00000066'],
 
+    // Elevation. Light mode keeps Neutral's shadows; dark mode halves their black,
+    // because 25–70% black halos read as smudges on a near-black canvas. The 1px
+    // white inset ring is what separates a raised surface in the dark, so a raised
+    // surface needs no border of its own. Written whole rather than as a [light, dark]
+    // pair: `light-dark()` takes colors, not shadow lists.
+    '--shadow-low':
+      '0 2px 4px light-dark(oklch(0 0 0 / 5%), oklch(0 0 0 / 12%)), 0 4px 8px light-dark(oklch(0 0 0 / 10%), oklch(0 0 0 / 18%)), inset 0 0 0 1px light-dark(transparent, oklch(1 0 0 / 7%))',
+    '--shadow-med':
+      '0 2px 4px light-dark(oklch(0 0 0 / 5%), oklch(0 0 0 / 18%)), 0 4px 12px light-dark(oklch(0 0 0 / 10%), oklch(0 0 0 / 28%)), inset 0 0 0 1px light-dark(transparent, oklch(1 0 0 / 9%))',
+    '--shadow-high':
+      '0 4px 6px light-dark(oklch(0 0 0 / 10%), oklch(0 0 0 / 30%)), 0 12px 24px light-dark(oklch(0 0 0 / 15%), oklch(0 0 0 / 45%)), inset 0 0 0 1px light-dark(transparent, oklch(1 0 0 / 11%))',
+
     // Status.
     '--color-success': ['#5F8D3D', '#76AD4F'],
     '--color-success-muted': ['#5F8D3D20', '#76AD4F20'],

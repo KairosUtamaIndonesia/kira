@@ -161,6 +161,8 @@ Responsive layouts preserve the same task order: panels move beside content on w
 
 Depth is lightly lifted and mostly tonal. Canvas, surface, muted, and popover tokens establish the resting hierarchy; borders define cards and controls. Use the existing low-to-high shadow tokens for floating layers such as menus, dialogs, or popovers, not as a permanent halo around every card. Work lanes and ticket cards remain quiet at rest, with surface contrast and a fine border carrying most of their separation.
 
+In dark mode the shadow tokens carry about half the black of Astryx Neutral's, and each ends in a faint 1px light inset ring; that ring is the raised surface's edge, so a raised surface takes no border of its own.
+
 **The Quiet Surface Rule.** Keep resting cards tonal and lightly bordered; use shadow only when a floating layer needs separation.
 
 ## Shapes
