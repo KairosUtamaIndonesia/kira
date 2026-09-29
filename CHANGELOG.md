@@ -6,6 +6,8 @@
 
 - Work now opens with a clearer project-to-workspace chooser and a horizontal six-lane Kanban board, drawn as ruled lanes of compact ticket rows with kind icons, status, and tags; a row's actions appear on hover or keyboard focus. Dragging within Ready changes priority; dropping between lanes asks for a supported action—such as choosing a gate, editing a blocker, starting or answering a run, or closing a ticket—and then rereads the server-derived queue.
 
+- The List view is a table with a pinned column heading, foldable status or kind groups, and the same drag-and-drop as the board; a ticket's drawer opens beside it.
+
 - A ticket's drawer can expand into a full view: the ticket reads as a document, with its actions, facts, branch, and linked chats in a box that stays beside it while the document scrolls.
 
 - Work is organized around tickets with Board and List views, search, and collapsible filters. Each ticket can have an execution workspace with its own repository, base branch, and working branch; agents start in that persistent checkout, where tracked changes can be reviewed as a diff and work can continue between sessions.

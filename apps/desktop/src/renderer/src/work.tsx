@@ -20,7 +20,6 @@
  * Ticket details lead with the purpose and finish line; operational context stays
  * close by, but behind a disclosure.
  */
-import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { Divider } from '@astryxdesign/core/Divider';
@@ -81,6 +80,7 @@ import {
   ArrowRight,
   ArrowUp,
   Bug,
+  ChevronDown,
   CircleAlert,
   CircleCheck,
   CircleDashed,
@@ -111,7 +111,6 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import {
   age,
-  bandIcon,
   branchNote,
   holding,
   inBand,
@@ -156,7 +155,6 @@ import type {
 } from '../../preload/bridge.ts';
 import { ExecutionWorkspacePanel } from './executionWorkspace.tsx';
 import { BlockersPrototype } from './workBlockersPrototype.tsx';
-import { ListPrototype } from './workListPrototype.tsx';
 import {
   executionWorkspaceView,
   fromHome,
@@ -218,17 +216,6 @@ const BANDS: { id: Band; label: string; note: string }[] = [
  * starts looking for what it does not have (GH #75).
  */
 const READ_AGAIN_MS = 5_000;
-
-const KIND_VARIANT: Record<TicketKind, 'neutral' | 'info' | 'warning' | 'success' | 'purple'> = {
-  prototype: 'neutral',
-  bug: 'warning',
-  feature: 'info',
-  refactor: 'purple',
-  question: 'neutral',
-  research: 'info',
-  spec: 'success',
-  map: 'purple',
-};
 
 /** Each kind's shape, drawn before its name on the board so kinds read apart at a glance. */
 const KIND_ICON: Record<TicketKind, LucideIcon> = {
@@ -304,7 +291,9 @@ const styles = stylex.create({
     flexWrap: 'wrap',
     gap: spacingVars['--spacing-1'],
     paddingBlock: spacingVars['--spacing-2'],
-    paddingInline: spacingVars['--spacing-4'],
+    // The filters are ghost buttons edge to edge: the bar's 16px less their own 12px, so
+    // the first filter's words line up with the table's and the board's (desktop-conventions).
+    paddingInline: `calc(${spacingVars['--spacing-4']} - ${spacingVars['--spacing-3']})`,
     borderBlockEndWidth: borderVars['--border-width'],
     borderBlockEndStyle: 'solid',
     borderBlockEndColor: colorVars['--color-background-muted'],
@@ -314,31 +303,11 @@ const styles = stylex.create({
     minHeight: 0,
     overflowY: 'auto',
   },
-  listView: { position: 'relative' },
   waiting: {
     display: 'flex',
     flexDirection: 'column',
     gap: spacingVars['--spacing-3'],
     padding: spacingVars['--spacing-4'],
-  },
-  bandHead: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: spacingVars['--spacing-0-5'],
-    paddingBlockStart: spacingVars['--spacing-3'],
-    paddingBlockEnd: spacingVars['--spacing-1'],
-    paddingInline: spacingVars['--spacing-4'],
-    backgroundColor: colorVars['--color-background-muted'],
-  },
-  count: {
-    color: colorVars['--color-text-secondary'],
-    fontVariantNumeric: 'tabular-nums',
-  },
-  tag: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: spacingVars['--spacing-1'],
-    color: colorVars['--color-text-secondary'],
   },
   abandoned: {
     color: colorVars['--color-text-orange'],
@@ -348,15 +317,7 @@ const styles = stylex.create({
     alignItems: 'center',
     color: colorVars['--color-text-secondary'],
   },
-  glyphReady: { color: colorVars['--color-icon-accent'] },
   glyphAbandoned: { color: colorVars['--color-text-orange'] },
-  meta: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: spacingVars['--spacing-2'],
-    flexWrap: 'wrap',
-    minWidth: 0,
-  },
 
   /* The board, and the ticket over it. */
   board: {
@@ -445,6 +406,174 @@ const styles = stylex.create({
     paddingInline: spacingVars['--spacing-4'],
     fontSize: '0.8125rem',
     color: colorVars['--color-text-secondary'],
+  },
+
+  /* The List view's table: one grid, every group and row a subgrid of it. */
+  tableScroll: { flex: 1, minWidth: 0, minHeight: 0, overflow: 'auto' },
+  table: {
+    display: 'grid',
+    gridTemplateColumns:
+      '4px 16px max-content minmax(160px, 1fr) minmax(120px, 200px) 88px 64px 64px minmax(80px, 140px) 56px 4px',
+    columnGap: spacingVars['--spacing-3'],
+    // Wide enough for every column at its narrowest; past that the table scrolls sideways.
+    minWidth: 850,
+  },
+  tableHead: {
+    display: 'grid',
+    gridTemplateColumns: 'subgrid',
+    gridColumn: '1 / -1',
+    alignItems: 'center',
+    height: 32,
+    position: 'sticky',
+    insetBlockStart: 0,
+    zIndex: 2,
+    borderBlockEndWidth: borderVars['--border-width'],
+    borderBlockEndStyle: 'solid',
+    borderBlockEndColor: colorVars['--color-border'],
+    backgroundColor: colorVars['--color-background-surface'],
+  },
+  tableHeadCell: {
+    fontSize: textSizeVars['--font-size-sm'],
+    fontWeight: 500,
+    color: colorVars['--color-text-secondary'],
+    whiteSpace: 'nowrap',
+  },
+  tableHeadTicket: { gridColumn: '2 / 5' },
+  tableHeadEnd: { textAlign: 'end' },
+  tableSection: {
+    display: 'grid',
+    gridTemplateColumns: 'subgrid',
+    gridColumn: '1 / -1',
+    transitionProperty: 'background-color',
+    transitionDuration: '160ms',
+  },
+  tableGroup: {
+    gridColumn: '1 / -1',
+    position: 'sticky',
+    insetBlockStart: 32,
+    zIndex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    gap: spacingVars['--spacing-2'],
+    height: 40,
+    paddingInline: spacingVars['--spacing-4'],
+    borderWidth: 0,
+    borderBlockEndWidth: borderVars['--border-width'],
+    borderBlockEndStyle: 'solid',
+    borderBlockEndColor: colorVars['--color-border'],
+    backgroundColor: colorVars['--color-background-body'],
+    color: colorVars['--color-text-primary'],
+    textAlign: 'start',
+    cursor: 'pointer',
+    outlineStyle: { default: 'none', ':focus-visible': focusVars['--focus-outline-style'] },
+    outlineWidth: focusVars['--focus-outline-width'],
+    outlineColor: focusVars['--focus-outline-color'],
+    outlineOffset: '-2px',
+  },
+  tableChevron: {
+    display: 'inline-flex',
+    color: colorVars['--color-icon-secondary'],
+    transitionProperty: 'transform',
+    transitionDuration: '120ms',
+  },
+  tableChevronFolded: { transform: 'rotate(-90deg)' },
+  tableGroupDot: { width: 8, height: 8, flexShrink: 0, borderRadius: radiusVars['--radius-full'] },
+  tableGroupLabel: { fontSize: textSizeVars['--font-size-base'], fontWeight: 500 },
+  tableGroupNote: {
+    minWidth: 0,
+    marginInlineStart: spacingVars['--spacing-2'],
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: textSizeVars['--font-size-sm'],
+    color: colorVars['--color-text-secondary'],
+  },
+  laneFillNeedsYou: { backgroundColor: colorVars['--color-warning'] },
+  laneFillReady: { backgroundColor: colorVars['--color-accent'] },
+  laneFillRunning: { backgroundColor: colorVars['--color-icon-blue'] },
+  laneFillBlocked: { backgroundColor: colorVars['--color-icon-orange'] },
+  laneFillDraft: { backgroundColor: colorVars['--color-border-emphasized'] },
+  laneFillDone: { backgroundColor: colorVars['--color-success'] },
+  // A board row's look, laid into the table's columns: the subgrid's own gaps, no padding.
+  tableRow: {
+    display: 'grid',
+    gridTemplateColumns: 'subgrid',
+    gridColumn: '1 / -1',
+    alignItems: 'center',
+    height: 40,
+    padding: 0,
+    columnGap: spacingVars['--spacing-3'],
+    rowGap: 0,
+  },
+  tableTitle: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: textSizeVars['--font-size-base'],
+    fontWeight: 500,
+    color: colorVars['--color-text-primary'],
+  },
+  tableKind: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: spacingVars['--spacing-1-5'],
+    fontSize: textSizeVars['--font-size-sm'],
+    color: colorVars['--color-text-secondary'],
+  },
+  tableNumber: {
+    fontFamily: typographyVars['--font-family-code'],
+    fontSize: textSizeVars['--font-size-sm'],
+    color: colorVars['--color-text-secondary'],
+    fontVariantNumeric: 'tabular-nums',
+  },
+  tableOwner: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: textSizeVars['--font-size-sm'],
+    color: colorVars['--color-text-secondary'],
+  },
+  tableAge: {
+    textAlign: 'end',
+    whiteSpace: 'nowrap',
+    fontSize: textSizeVars['--font-size-sm'],
+    color: colorVars['--color-text-secondary'],
+    fontVariantNumeric: 'tabular-nums',
+  },
+  tableHandle: {
+    position: 'absolute',
+    insetBlock: 0,
+    insetInlineStart: 0,
+    zIndex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 16,
+    padding: 0,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    color: colorVars['--color-icon-secondary'],
+    cursor: { default: 'grab', ':active': 'grabbing' },
+    touchAction: 'none',
+    opacity: 'var(--row-reveal, 0)',
+    outlineStyle: { default: 'none', ':focus-visible': focusVars['--focus-outline-style'] },
+    outlineWidth: focusVars['--focus-outline-width'],
+    outlineColor: focusVars['--focus-outline-color'],
+    outlineOffset: '-2px',
+  },
+  tableOverlay: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: spacingVars['--spacing-3'],
+    width: 520,
+    height: 40,
+    paddingInline: spacingVars['--spacing-4'],
+    borderRadius: 6,
+    backgroundColor: colorVars['--color-background-popover'],
+    boxShadow: shadowVars['--shadow-med'],
+    cursor: 'grabbing',
   },
 
   /* A ticket on the board: one ruled row, its actions raised over it on hover or focus. */
@@ -708,26 +837,6 @@ const styles = stylex.create({
   dropSelector: {
     minWidth: 220,
     maxWidth: 320,
-  },
-  scrim: {
-    position: 'absolute',
-    inset: 0,
-    padding: 0,
-    borderWidth: 0,
-    backgroundColor: colorVars['--color-overlay'],
-    cursor: 'default',
-  },
-  drawer: {
-    position: 'absolute',
-    insetBlock: 0,
-    insetInlineEnd: 0,
-    display: 'flex',
-    flexDirection: 'column',
-    width: 'min(460px, 100%)',
-    backgroundColor: colorVars['--color-background-surface'],
-    borderInlineStartWidth: borderVars['--border-width'],
-    borderInlineStartStyle: 'solid',
-    borderInlineStartColor: colorVars['--color-background-muted'],
   },
   boardDrawer: {
     display: 'flex',
@@ -1578,7 +1687,7 @@ export function WorkSurface({
   const visibleBands = BANDS;
   const readyCanReorder = canReorderReady(display);
   const open = tickets.find((each) => each.id === openId) ?? null;
-  const placement = view === 'board' ? 'beside' : 'over';
+  const placement = 'beside';
   const closePanel = (): void => {
     setIsFull(false);
     setIsWriting(false);
@@ -1931,29 +2040,17 @@ export function WorkSurface({
             )
           }
         />
-      ) : import.meta.env.DEV ? (
-        // PROTOTYPE: list layouts (workListPrototype.tsx); development builds only.
-        <ListPrototype
-          tickets={visibleTickets}
-          lanes={visibleBands}
-          group={display.group}
-          selected={openId}
-          chatSummaries={chatSummaries}
-          onOpen={openTicket}
-          panel={panel}
-          canReorder={readyCanReorder}
-          onReorder={(activeId, overId) => void reorder(activeId, overId)}
-          onDrop={beginTicketDrop}
-        />
       ) : (
-        <QueueView
+        <TicketTable
           tickets={visibleTickets}
           bands={visibleBands}
           group={display.group}
           selected={openId}
           onOpen={openTicket}
           panel={panel}
-          onLeave={closePanel}
+          canReorder={readyCanReorder}
+          onReorder={(activeId, overId) => void reorder(activeId, overId)}
+          onDrop={beginTicketDrop}
         />
       )}
     </div>
@@ -2165,70 +2262,307 @@ interface ViewProps {
   panel: ReactNode;
 }
 
-function QueueView({
+/**
+ * The List view: every ticket in one table, grouped by status (or by kind), with the
+ * ticket's drawer beside it the way the board has it. Rows drag between status groups and
+ * within Ready exactly as board rows drag between lanes — a drop asks for an action and
+ * the server's answer moves the row. Grouped by kind, nothing a drop could mean, so rows
+ * stay put.
+ *
+ * The table is one CSS grid and every group and row is a subgrid of it, so each column
+ * lines up down the whole list, headings included. The first and last tracks are the
+ * rows' side padding: a subgrid row cannot pad itself without squeezing its columns.
+ */
+function TicketTable({
   tickets,
   bands,
   group,
+  selected,
   onOpen,
   panel,
-  onLeave,
-}: ViewProps & { bands: typeof BANDS; group: WorkGroup; onLeave: () => void }) {
-  const content =
-    group === 'kind' ? (
-      <>
-        {groupedWork(tickets, 'kind').map((section) => (
-          <div key={section.key}>
-            <div {...stylex.props(styles.bandHead)}>
-              <Text type="label" weight="medium">
-                {section.label}{' '}
-                <span {...stylex.props(styles.count)}>{section.tickets.length}</span>
-              </Text>
-            </div>
-            <List density="compact" hasDividers>
-              {section.tickets.map((ticket) => (
-                <Item
-                  key={ticket.id}
-                  as="li"
-                  startContent={<StateGlyph ticket={ticket} />}
-                  label={ticket.title || 'Untitled'}
-                  labelLines={1}
-                  description={
-                    <span {...stylex.props(styles.meta)}>
-                      <Text type="supporting" color="secondary">
-                        {ticket.name}
-                      </Text>
-                      <Holding ticket={ticket} />
-                    </span>
-                  }
-                  onClick={() => onOpen(ticket.id)}
-                />
-              ))}
-            </List>
-          </div>
-        ))}
-      </>
-    ) : (
-      <>
-        {bands.map((band) => (
-          <Band key={band.id} band={band} tickets={inBand(tickets, band.id)} onOpen={onOpen} />
-        ))}
-      </>
-    );
+  canReorder,
+  onReorder,
+  onDrop,
+}: ViewProps & {
+  bands: typeof BANDS;
+  group: WorkGroup;
+  canReorder: boolean;
+  onReorder: (activeId: string, overId: string) => void;
+  onDrop: (ticketId: string, target: Band) => void;
+}) {
+  const [folded, setFolded] = useState<string[]>([]);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const dragging = tickets.find((each) => each.id === draggingId) ?? null;
+  const canDrag = group === 'status';
+  const groups: TableGroup[] =
+    group === 'kind'
+      ? groupedWork(tickets, 'kind').map((each) => ({
+          key: each.key,
+          label: each.label,
+          tickets: each.tickets,
+          kind: each.key as TicketKind,
+        }))
+      : bands
+          .map((band) => ({
+            key: band.id,
+            label: band.label,
+            note: band.note,
+            band: band.id,
+            tickets: inBand(tickets, band.id),
+          }))
+          .filter((each) => each.tickets.length > 0);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  const handleDragEnd = ({ active, over }: DragEndEvent): void => {
+    setDraggingId(null);
+    if (over === null || active.id === over.id) return;
+    const moved = tickets.find((each) => each.id === active.id);
+    if (moved === undefined) return;
+
+    const overId = String(over.id);
+    const target = overId.startsWith('lane:')
+      ? bands.find((band) => band.id === overId.slice('lane:'.length))?.id
+      : tickets.find((each) => each.id === overId)?.band;
+    if (target === undefined) return;
+
+    if (moved.band === target) {
+      if (canReorder && target === 'ready') onReorder(moved.id, overId);
+      return;
+    }
+
+    onDrop(moved.id, target);
+  };
 
   return (
-    <div {...stylex.props(styles.scroll, styles.listView)}>
-      {content}
-      {panel !== null && <IssueDrawer panel={panel} onLeave={onLeave} />}
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={({ active }) => setDraggingId(String(active.id))}
+      onDragCancel={() => setDraggingId(null)}
+      onDragEnd={handleDragEnd}
+    >
+      <div {...stylex.props(styles.board)}>
+        <div {...stylex.props(styles.tableScroll)}>
+          <div {...stylex.props(styles.table)}>
+            <div {...stylex.props(styles.tableHead)}>
+              <span />
+              <span {...stylex.props(styles.tableHeadCell, styles.tableHeadTicket)}>Ticket</span>
+              <span {...stylex.props(styles.tableHeadCell)}>Status</span>
+              <span {...stylex.props(styles.tableHeadCell)}>Kind</span>
+              <span {...stylex.props(styles.tableHeadCell)}>Blockers</span>
+              <span {...stylex.props(styles.tableHeadCell)}>Sessions</span>
+              <span {...stylex.props(styles.tableHeadCell)}>Owner</span>
+              <span {...stylex.props(styles.tableHeadCell, styles.tableHeadEnd)}>Updated</span>
+            </div>
+            {groups.map((each) => (
+              <TableSection
+                key={each.key}
+                group={each}
+                canDrag={canDrag}
+                isFolded={folded.includes(each.key)}
+                onToggle={() =>
+                  setFolded((current) =>
+                    current.includes(each.key)
+                      ? current.filter((key) => key !== each.key)
+                      : [...current, each.key],
+                  )
+                }
+                selected={selected}
+                onOpen={onOpen}
+              />
+            ))}
+          </div>
+        </div>
+        {panel !== null && <div {...stylex.props(styles.boardDrawer)}>{panel}</div>}
+      </div>
+      <DragOverlay dropAnimation={null}>
+        {dragging !== null && (
+          <div {...stylex.props(styles.tableOverlay)}>
+            <span {...stylex.props(styles.rowKind)}>
+              <Icon icon={KIND_ICON[dragging.kind]} size="xsm" />
+            </span>
+            <span {...stylex.props(styles.rowName)}>{dragging.name}</span>
+            <span {...stylex.props(styles.tableTitle)}>{dragging.title || 'Untitled'}</span>
+          </div>
+        )}
+      </DragOverlay>
+    </DndContext>
+  );
+}
+
+interface TableGroup {
+  key: string;
+  label: string;
+  note?: string;
+  band?: Band;
+  kind?: TicketKind;
+  tickets: Ticket[];
+}
+
+/** One group: a heading that folds it, and its rows. A status group takes drops. */
+function TableSection({
+  group,
+  canDrag,
+  isFolded,
+  onToggle,
+  selected,
+  onOpen,
+}: {
+  group: TableGroup;
+  canDrag: boolean;
+  isFolded: boolean;
+  onToggle: () => void;
+  selected: string | null;
+  onOpen: (id: string) => void;
+}) {
+  const { isOver, setNodeRef } = useDroppable({
+    id: `lane:${group.key}`,
+    disabled: !canDrag || group.band === undefined,
+  });
+
+  return (
+    <div ref={setNodeRef} {...stylex.props(styles.tableSection, isOver && styles.columnOver)}>
+      <button
+        type="button"
+        aria-expanded={!isFolded}
+        title={group.note}
+        {...stylex.props(styles.tableGroup)}
+        onClick={onToggle}
+      >
+        <span {...stylex.props(styles.tableChevron, isFolded && styles.tableChevronFolded)}>
+          <Icon icon={ChevronDown} size="xsm" />
+        </span>
+        <span
+          aria-hidden
+          {...stylex.props(
+            styles.tableGroupDot,
+            group.band !== undefined
+              ? LANE_FILL[group.band]
+              : group.kind !== undefined && KIND_HUE[group.kind],
+          )}
+        />
+        <span {...stylex.props(styles.tableGroupLabel)}>{group.label}</span>
+        <span {...stylex.props(styles.laneCount)}>{group.tickets.length}</span>
+        {group.note !== undefined && (
+          <span {...stylex.props(styles.tableGroupNote)}>{group.note}</span>
+        )}
+      </button>
+      {!isFolded && (
+        <SortableContext
+          items={group.tickets.map((each) => each.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          {group.tickets.map((ticket) => (
+            <TableRow
+              key={ticket.id}
+              ticket={ticket}
+              canDrag={canDrag}
+              isSelected={ticket.id === selected}
+              onOpen={onOpen}
+            />
+          ))}
+        </SortableContext>
+      )}
     </div>
   );
 }
 
-function IssueDrawer({ panel, onLeave }: { panel: ReactNode; onLeave: () => void }) {
+/**
+ * One ticket as a table row. The whole row opens it and drags by pointer; the handle in
+ * its left gutter, shown on hover or focus, is the keyboard's way to move it.
+ */
+function TableRow({
+  ticket,
+  canDrag,
+  isSelected,
+  onOpen,
+}: {
+  ticket: Ticket;
+  canDrag: boolean;
+  isSelected: boolean;
+  onOpen: (id: string) => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: ticket.id, disabled: !canDrag });
+  const said = holding(ticket);
+  const openBlockers = ticket.children.filter((child) => !child.closed).length;
+  const owner = ticket.claim?.holder.name ?? ticket.author?.name ?? null;
+
   return (
-    <>
-      <button type="button" aria-label="Close" {...stylex.props(styles.scrim)} onClick={onLeave} />
-      <div {...stylex.props(styles.drawer)}>{panel}</div>
-    </>
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: transform === null ? undefined : `translate3d(0, ${transform.y}px, 0)`,
+        transition,
+      }}
+      onPointerDown={listeners?.onPointerDown as PointerEventHandler<HTMLDivElement> | undefined}
+      {...stylex.props(
+        styles.row,
+        styles.tableRow,
+        isSelected && styles.rowSelected,
+        isDragging && styles.rowDragging,
+      )}
+    >
+      <button
+        type="button"
+        aria-label={`Open ticket ${ticket.name}: ${ticket.title || 'Untitled'}`}
+        aria-current={isSelected || undefined}
+        {...stylex.props(styles.rowOpen)}
+        onClick={() => onOpen(ticket.id)}
+      />
+      <span />
+      <span {...stylex.props(styles.rowKind)} title={ticket.kind}>
+        <Icon icon={KIND_ICON[ticket.kind]} size="xsm" />
+      </span>
+      <span {...stylex.props(styles.rowName)}>{ticket.name}</span>
+      <span {...stylex.props(styles.tableTitle)}>{ticket.title || 'Untitled'}</span>
+      <span {...stylex.props(styles.rowState, ticket.closure === 'wontfix' && styles.abandoned)}>
+        <span {...stylex.props(styles.rowStateIcon, BAND_TONE[ticket.band])}>
+          <Icon icon={said.icon} size="xsm" />
+        </span>
+        <span {...stylex.props(styles.rowStateWords)}>{said.words}</span>
+      </span>
+      <span {...stylex.props(styles.tableKind)}>
+        <span {...stylex.props(styles.kindDot, KIND_HUE[ticket.kind])} />
+        {ticket.kind}
+      </span>
+      <span {...stylex.props(styles.tableNumber)}>
+        {ticket.children.length === 0
+          ? '—'
+          : `${ticket.children.length - openBlockers}/${ticket.children.length}`}
+      </span>
+      <span {...stylex.props(styles.tableNumber)}>
+        {ticket.runs.length === 0 ? '—' : ticket.runs.length}
+      </span>
+      <span {...stylex.props(styles.tableOwner)} title={owner ?? undefined}>
+        {owner ?? '—'}
+      </span>
+      <span {...stylex.props(styles.tableAge)} title={`Updated ${when(ticket.updatedAt)}`}>
+        {age(ticket.updatedAt)}
+      </span>
+      {canDrag && (
+        <button
+          ref={setActivatorNodeRef}
+          type="button"
+          {...attributes}
+          {...listeners}
+          aria-label={`Move ${ticket.name} to another group`}
+          title="Drag to reorder or move to another group"
+          {...stylex.props(styles.tableHandle)}
+        >
+          <Icon icon={GripVertical} size="xsm" />
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -2638,6 +2972,15 @@ const LANE_RULE = {
   done: styles.laneDone,
 } satisfies Record<Band, stylex.StyleXStyles>;
 
+const LANE_FILL = {
+  'needs-you': styles.laneFillNeedsYou,
+  ready: styles.laneFillReady,
+  running: styles.laneFillRunning,
+  blocked: styles.laneFillBlocked,
+  draft: styles.laneFillDraft,
+  done: styles.laneFillDone,
+} satisfies Record<Band, stylex.StyleXStyles>;
+
 const BAND_TONE = {
   'needs-you': styles.toneNeedsYou,
   ready: styles.toneReady,
@@ -2970,110 +3313,6 @@ function initials(name: string): string {
 }
 
 /* ── Leaves the views share: what a thing is, not where it goes ─────────── */
-
-function KindTag({ kind }: { kind: TicketKind }) {
-  return <Badge variant={KIND_VARIANT[kind]} label={kind} />;
-}
-
-/**
- * What a ticket is waiting on, in one line, wherever it is drawn small.
- *
- * The icon and the words come from one place (`workRows.ts`), so a row cannot end
- * up with a clock beside "ready to run".
- */
-function Holding({ ticket }: { ticket: Ticket }) {
-  const said = holding(ticket);
-
-  return (
-    <span {...stylex.props(styles.tag, ticket.closure === 'wontfix' && styles.abandoned)}>
-      <Icon icon={said.icon} size="sm" />
-      {said.words}
-    </span>
-  );
-}
-
-function StateGlyph({ ticket }: { ticket: Ticket }) {
-  return (
-    <span
-      {...stylex.props(
-        styles.glyph,
-        ticket.band === 'ready' && styles.glyphReady,
-        ticket.closure === 'wontfix' && styles.glyphAbandoned,
-      )}
-    >
-      <Icon icon={bandIcon(ticket)} size="sm" />
-    </span>
-  );
-}
-
-function BandHead({
-  band,
-  count,
-  showNote = true,
-}: {
-  band: { label: string; note: string };
-  count: number;
-  showNote?: boolean;
-}) {
-  return (
-    <>
-      <Text type="label" weight="medium">
-        {band.label} <span {...stylex.props(styles.count)}>{count}</span>
-      </Text>
-      {showNote && (
-        <Text type="supporting" color="secondary">
-          {band.note}
-        </Text>
-      )}
-    </>
-  );
-}
-
-function Band({
-  band,
-  tickets,
-  onOpen,
-}: {
-  band: { id: Band | 'draft'; label: string; note: string };
-  tickets: Ticket[];
-  onOpen: (id: string) => void;
-}) {
-  if (tickets.length === 0) return null;
-
-  return (
-    <div>
-      <div {...stylex.props(styles.bandHead)}>
-        <BandHead band={band} count={tickets.length} />
-      </div>
-      <List density="compact" hasDividers>
-        {tickets.map((ticket) => (
-          <Item
-            key={ticket.id}
-            as="li"
-            startContent={<StateGlyph ticket={ticket} />}
-            label={ticket.title || 'Untitled'}
-            labelLines={1}
-            description={
-              <span {...stylex.props(styles.meta)}>
-                <Text type="supporting" color="secondary">
-                  {ticket.name}
-                </Text>
-                {band.id !== 'draft' && <KindTag kind={ticket.kind} />}
-                <Holding ticket={ticket} />
-              </span>
-            }
-            endContent={
-              <Text type="supporting" color="secondary">
-                {ticket.author?.name ?? 'nobody'}
-              </Text>
-            }
-            onClick={() => onOpen(ticket.id)}
-          />
-        ))}
-      </List>
-    </div>
-  );
-}
 
 /* ── The ticket — one panel, drawn in one of three places ───────────────── */
 

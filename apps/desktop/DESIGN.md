@@ -208,6 +208,8 @@ Components are crisp and lightly lifted. Prefer Astryx primitives and Kira theme
 
 The Work board is a Kira-native triage surface laid out as a ledger: review and Ready appear before running, blocked, draft, and done work. Lanes are ruled columns — no box, a hairline between lanes, and a 2px status-colored rule under each header with a zero-padded mono count. Tickets are ruled rows, not cards: kind shape icon, mono name, and short age on the top line with the holder's initials at the right; the title; the one-line status in its lane's color; then small tags for kind (hue dot), blockers closed, runs, linked chats, and chat context. Kinds read apart by shape first and hue second; kind hues avoid the status colors except bug's orange. A row's actions — Start, move to the front of Ready, attach, and the drag handle — float in one small raised strip over its top line on hover or focus; it is the only raised thing on the board. The whole row drags by pointer; the handle is the keyboard's way to move it. The inspector stays beside the board on wide windows and covers it on narrow ones. Cross-lane drops request supported ticket actions; they do not write a band directly.
 
+The List view is the same tickets as one table: a pinned heading row (Ticket, Status, Kind, Blockers, Sessions, Owner, Updated) and groups by status or kind, each a foldable row with its lane's dot, name, count, and note. Every group and row is a subgrid of one grid, so columns line up down the whole list; rows are 40px with the board row's icon, name, status, and tag vocabulary. Rows drag between status groups and within Ready exactly as board rows drag between lanes, and the ticket's drawer sits beside the table as it does beside the board.
+
 ## Do's and Don'ts
 
 ### Do:
