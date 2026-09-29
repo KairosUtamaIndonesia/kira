@@ -270,7 +270,7 @@ export function openChats(
     return proposal;
   }
 
-  /** The spec a person approved last in this chat, which its breakdown and runs hang from. */
+  /** The spec a person approved last in this chat, whose breakdown belongs to it. */
   function approvedSpecTicket(state: ShapingState): string | null {
     const spec = state.proposals.findLast(
       (each) => each.kind === 'spec' && each.status === 'approved',
@@ -650,8 +650,10 @@ export function openChats(
           // same server transaction, so changing them again would break atomicity.
           const blocked =
             destination === undefined
-              ? await tracker.change(ticket.id, { gate: 'ready-for-agent' })
+              ? await tracker.change(ticket.id, { status: 'ready' })
               : ticket;
+          const linked = store.getThread(threadId).workTicketIds;
+          store.setThreadWorkTicketIds(threadId, [...new Set([...linked, blocked.id])]);
           settle(threadId, proposal.id, { ...proposal, status: 'approved', ticketId: blocked.id });
           await conversation.send(
             'The person approved the spec proposal. Kira recorded it. Immediately propose its ticket breakdown with shape_breakdown_proposal. Do not publish the tickets; wait for the person to approve the breakdown.',
@@ -789,7 +791,7 @@ export function openChats(
             store,
             workspace.folder,
             models,
-            { id: chatId, workspaceId, ticketId },
+            { id: chatId, workspaceId, workTicketIds: [ticketId] },
             memorySettings,
             tracker,
             mcp,

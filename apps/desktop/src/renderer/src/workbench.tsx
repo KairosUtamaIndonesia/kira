@@ -61,6 +61,7 @@ import {
 } from './workbenchTabs';
 import { WorkspaceTab } from './workspaceTab';
 import { fileKindOf } from './filePreview';
+import { copy } from './workCopy.ts';
 
 /** Where the window's width and whether it is showing are remembered. */
 const WORKBENCH_STORAGE_KEY = 'kira.workbench';
@@ -514,7 +515,7 @@ function TicketsTab({
                   {ticket.name} · {ticket.title}
                 </Text>
                 <Text type="supporting" color="secondary">
-                  {ticket.band}
+                  {copy.statusWord[ticket.blocked ? 'blocked' : ticket.status]}
                 </Text>
               </VStack>
               <Button

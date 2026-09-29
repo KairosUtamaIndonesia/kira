@@ -25,9 +25,10 @@ in a session the person is in, in their own checkout, and a tracker is where the
 down. They were written against several trackers (local files, GitHub Issues), so what Kira owes
 them is one more: a store with the same few operations.
 
-The server already holds most of it. A ticket has a stored `status` (`backlog`, `todo`,
-`in-progress`, `in-review`, `done`, `cancelled`), an assignee, tags, blockers and children. The
-desktop ignores the status and derives its own bands from claims and runs.
+At the time this decision was made, the server already held most of the store. Tickets had a
+stored `status` (`backlog`, `todo`, `in-progress`, `in-review`, `done`, `cancelled`), an assignee,
+tags, blockers and children. The desktop ignored that status and derived its own bands from claims
+and runs.
 
 ## Decision
 
@@ -35,33 +36,33 @@ desktop ignores the status and derives its own bands from claims and runs.
 Kira's server for the team (ADR 0010, ADR 0020), read and written by people through the board and
 by Kira through her tools. It is GitHub Issues, in Kira. Nothing in it runs anything.
 
-**A ticket has one stored status, and an assignee.** The status is Draft, Ready, Running, In
-review, Done or Won't do (the server's `backlog`, `todo`, `in-progress`, `in-review`, `done`,
-`cancelled`). People and agents set it; it is never derived from claims or runs. Blocked is shown
-for a ticket with an open blocker, whatever its status. `gate`, `closure` and the derived band go.
+**A ticket has one stored status, and an assignee.** The status is Draft, Ready, Running, Needs
+review, Done or Won't do (the server's `draft`, `ready`, `running`, `needs-review`, `done`,
+`wont-do`). People may set any status; an open blocker adds a Blocked marker without changing it.
+`gate`, `closure` and the derived band go.
 
-**Linking a ticket is starting it.** A person links a ticket in the composer, which the app already
-allows, and the agent works it with the skill its kind names (ADR 0022). When it begins it sets the
-ticket Running and assigns the chat's person. There is no Work on this button, and no claim, lease,
-heartbeat, worker or run. A ticket stays Running until someone changes it. Staleness is displayed
-and never acted on by a clock, as ADR 0012 already said.
+**Linking a ticket is starting it.** A person links a ticket in the composer, and the agent works
+it with the skill its kind names (ADR 0022). When it begins it sets the ticket Running and assigns
+the chat's person. There is no separate Start action, and no claim, lease, heartbeat, worker or run.
+A ticket stays Running until someone changes it.
 
-**The agent moves only its own ticket.** Kira gives it one tool for status and assignee. The tool
-acts only on tickets linked in the agent's own chat, and only between Ready, Running and In review.
-Publishing tickets, approving a spec or a Decision, and setting Done or Won't do stay a person's
-press (ADR 0022).
+**The agent changes only tickets linked in its chat.** Kira's ticket tools create, read and update
+tickets and edit blockers; it cannot delete tickets. A ticket created by the agent is Draft and
+linked to that chat. A person makes it Ready when it is ready to start. Updates are limited to linked tickets, and the agent may set only Running or
+Needs review as a status. Done and Won't do, publishing tickets, and approving a spec or Decision
+stay a person's press (ADR 0022).
 
 **A pull request is the review.** When the work is done the agent opens a pull request with the
-`pr` skill and sets the ticket In review. The chat that opened it is linked to the ticket. Review
+`pr` skill and sets the ticket Needs review. The chat that opened it is linked to the ticket. Review
 and merge happen where pull requests already are, and Kira has no diff pane, review comments,
 delivery or merge of its own. Where a project has no remote or no `gh`, the agent commits on a
-branch and sets In review anyway, and the person merges with git. The person sets Done once it has
+branch and sets Needs review anyway, and the person merges with git. The person sets Done once it has
 merged.
 
-**Each ticket is its own branch off the default branch.** A ticket blocked by another can start
+**Each ticket is its own branch off the default branch.** A ticket blocked by another should start
 when its blocker is Done, which means merged, so it branches from the merged work. There is no spec
-branch. A spec's integration pass is a session on the spec ticket, started once its children are
-Done, that reviews them together against the spec.
+branch. A chat works the spec ticket after its children are Done and reviews them together against
+the spec.
 
 **A kind names a skill and what it leaves behind, and nothing more.** A question or research
 ticket still ends in an Outcome the person approves.
@@ -88,8 +89,8 @@ ticket still ends in an Outcome the person approves.
   running tickets colliding in one folder becomes a real complaint, not before.
 - **The per-run record goes.** A ticket keeps its linked chats, a chat is its transcript, and the
   pull request is the record of the change. Runs, verdicts and deliveries are not kept.
-- **An agent can now change a ticket's status.** The tool is bounded to the tickets linked in its
-  own chat and to the states between Ready and In review.
+- **An agent can update only linked tickets.** It may set Running or Needs review; the person sets
+  Done or Won't do.
 - **Done after a merge is manual.** Nothing tells Kira a pull request merged, so the person sets
   Done. If that is forgotten often, the smallest fix is for the agent to check its pull request
   when its chat is reopened and offer to close the ticket.

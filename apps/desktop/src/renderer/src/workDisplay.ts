@@ -1,15 +1,15 @@
-import type { Band, Gate, Ticket, TicketKind } from '../../preload/bridge.ts';
+import type { Ticket, TicketKind, TicketStatus } from '../../preload/bridge.ts';
 import { copy } from './workCopy.ts';
 
 export type WorkOrder = 'rank' | 'updated' | 'created';
 export type WorkGroup = 'status' | 'kind';
-export type WorkClaimFilter = 'all' | 'claimed' | 'unclaimed';
+export type WorkStatus = TicketStatus | 'blocked';
 
 export interface WorkDisplay {
   search: string;
-  band: Band | 'all';
+  status: WorkStatus | 'all';
   kind: TicketKind | 'all';
-  claim: WorkClaimFilter;
+  owner: 'all' | 'assigned' | 'unassigned';
   order: WorkOrder;
   group: WorkGroup;
   showDone: boolean;
@@ -17,9 +17,9 @@ export interface WorkDisplay {
 
 export const DEFAULT_WORK_DISPLAY: WorkDisplay = {
   search: '',
-  band: 'all',
+  status: 'all',
   kind: 'all',
-  claim: 'all',
+  owner: 'all',
   order: 'rank',
   group: 'status',
   showDone: false,
@@ -27,18 +27,18 @@ export const DEFAULT_WORK_DISPLAY: WorkDisplay = {
 
 export function readWorkDisplay(search: string): WorkDisplay {
   const params = new URLSearchParams(search);
-  const band = params.get('band');
+  const status = params.get('status');
   const kind = params.get('kind');
-  const claim = params.get('claim');
+  const owner = params.get('owner');
   const order = params.get('order');
   const group = params.get('group');
 
   return {
     ...DEFAULT_WORK_DISPLAY,
     search: params.get('search') ?? '',
-    band: band !== null && isBand(band) ? band : DEFAULT_WORK_DISPLAY.band,
+    status: status !== null && isWorkStatus(status) ? status : DEFAULT_WORK_DISPLAY.status,
     kind: kind !== null && isKind(kind) ? kind : DEFAULT_WORK_DISPLAY.kind,
-    claim: claim === 'claimed' || claim === 'unclaimed' ? claim : DEFAULT_WORK_DISPLAY.claim,
+    owner: owner === 'assigned' || owner === 'unassigned' ? owner : DEFAULT_WORK_DISPLAY.owner,
     order: order === 'updated' || order === 'created' ? order : DEFAULT_WORK_DISPLAY.order,
     group: group === 'kind' ? 'kind' : DEFAULT_WORK_DISPLAY.group,
     showDone: params.get('done') === '1',
@@ -49,9 +49,9 @@ export function canReorderReady(display: WorkDisplay): boolean {
   return (
     display.order === 'rank' &&
     display.search.trim() === '' &&
-    display.band === 'all' &&
+    display.status === 'all' &&
     display.kind === 'all' &&
-    display.claim === 'all'
+    display.owner === 'all'
   );
 }
 
@@ -68,140 +68,25 @@ function isKind(value: string): value is TicketKind {
   ].includes(value);
 }
 
-function isBand(value: string): value is Band {
-  return ['draft', 'ready', 'blocked', 'running', 'needs-you', 'done'].includes(value);
+function isWorkStatus(value: string): value is WorkStatus {
+  return ['draft', 'ready', 'running', 'needs-review', 'blocked', 'done', 'wont-do'].includes(
+    value,
+  );
 }
 
 export type TicketDropPlan =
-  | { kind: 'choose-ready-gate' }
-  | { kind: 'change-gate'; gate: Gate }
-  | { kind: 'prepare-agent-run' }
-  | { kind: 'start-run' }
+  | { kind: 'change-status'; status: TicketStatus }
   | { kind: 'add-blocker' }
-  | { kind: 'resolve-blockers' }
-  | { kind: 'send-back' }
-  | { kind: 'accept-result' }
-  | { kind: 'choose-closure' }
-  | { kind: 'unavailable'; reason: string };
+  | { kind: 'resolve-blockers' };
 
 /**
- * A lane drop is an intent for a supported ticket action, never a band write.
- * The server's next queue read remains the only authority on where the ticket lands.
+ * Blocked is derived from open blockers; all other lanes write the stored status.
  */
-export function planTicketDrop(ticket: Ticket, target: Band): TicketDropPlan | null {
-  if (ticket.band === target) return null;
-  if (ticket.closedAt !== null || ticket.band === 'done') {
-    return { kind: 'unavailable', reason: copy.drop.unavailable.closed };
-  }
-  if (ticket.claim !== null || ticket.band === 'running') {
-    return { kind: 'unavailable', reason: copy.drop.unavailable.running };
-  }
-
-  if (ticket.band === 'needs-you') {
-    const proposal = ticket.runs[0];
-    if (
-      proposal?.endedAt === null ||
-      proposal?.endedAt === undefined ||
-      proposal.verdict !== null
-    ) {
-      return {
-        kind: 'unavailable',
-        reason: copy.drop.unavailable.noResult,
-      };
-    }
-    if (target === 'ready') return { kind: 'send-back' };
-    if (target === 'done') return { kind: 'accept-result' };
-    return {
-      kind: 'unavailable',
-      reason: copy.drop.unavailable.answerFirst,
-    };
-  }
-
-  if (target === 'needs-you') {
-    return {
-      kind: 'unavailable',
-      reason: copy.drop.unavailable.reviewIsAutomatic,
-    };
-  }
-
-  if (target === 'draft') return { kind: 'change-gate', gate: 'draft' };
-
-  if (target === 'ready') {
-    if (ticket.band === 'draft') {
-      return ticket.kind === 'map'
-        ? { kind: 'unavailable', reason: copy.drop.unavailable.mapToReady }
-        : { kind: 'choose-ready-gate' };
-    }
-    if (ticket.band === 'blocked') {
-      if (ticket.kind === 'map') {
-        return {
-          kind: 'unavailable',
-          reason: copy.drop.unavailable.mapToReady,
-        };
-      }
-      if (!ticket.children.some((child) => !child.closed)) {
-        return {
-          kind: 'unavailable',
-          reason: copy.drop.unavailable.noBlockersToRemove,
-        };
-      }
-      return { kind: 'resolve-blockers' };
-    }
-  }
-
-  if (target === 'running') {
-    if (ticket.kind === 'map') {
-      return { kind: 'unavailable', reason: copy.drop.unavailable.mapCannotStart };
-    }
-    if (ticket.band === 'draft' || ticket.gate === 'ready-for-human') {
-      return ticket.criteria.some((criterion) => criterion.trim() !== '')
-        ? { kind: 'prepare-agent-run' }
-        : {
-            kind: 'unavailable',
-            reason: copy.drop.unavailable.needsCheckToPrepare,
-          };
-    }
-    if (ticket.band === 'ready' && ticket.gate === 'ready-for-agent') {
-      return ticket.criteria.some((criterion) => criterion.trim() !== '')
-        ? { kind: 'start-run' }
-        : {
-            kind: 'unavailable',
-            reason: copy.drop.unavailable.needsCheckToStart,
-          };
-    }
-    return {
-      kind: 'unavailable',
-      reason: copy.drop.unavailable.notReadyForAgent,
-    };
-  }
-
-  if (target === 'blocked') {
-    if (ticket.band !== 'ready') {
-      return {
-        kind: 'unavailable',
-        reason: copy.drop.unavailable.blockerFromReadyOnly,
-      };
-    }
-    return { kind: 'add-blocker' };
-  }
-
-  if (target === 'done') {
-    if (ticket.kind === 'map') {
-      return {
-        kind: 'unavailable',
-        reason: copy.drop.unavailable.mapNeedsDestination,
-      };
-    }
-    if ((ticket.kind === 'question' || ticket.kind === 'research') && ticket.outcome == null) {
-      return {
-        kind: 'unavailable',
-        reason: copy.drop.unavailable.needsOutcome,
-      };
-    }
-    return { kind: 'choose-closure' };
-  }
-
-  return { kind: 'unavailable', reason: copy.drop.unavailable.noMove };
+export function planTicketDrop(ticket: Ticket, target: WorkStatus): TicketDropPlan | null {
+  if ((ticket.blocked ? 'blocked' : ticket.status) === target) return null;
+  if (target === 'blocked') return { kind: 'add-blocker' };
+  if (ticket.blocked) return { kind: 'resolve-blockers' };
+  return { kind: 'change-status', status: target };
 }
 
 export function displayWork(tickets: Ticket[], display: WorkDisplay): Ticket[] {
@@ -212,11 +97,12 @@ export function displayWork(tickets: Ticket[], display: WorkDisplay): Ticket[] {
 }
 
 export function matchesWork(ticket: Ticket, display: WorkDisplay): boolean {
-  if (!display.showDone && ticket.band === 'done') return false;
-  if (display.band !== 'all' && ticket.band !== display.band) return false;
+  if (!display.showDone && (ticket.status === 'done' || ticket.status === 'wont-do')) return false;
+  const status = ticket.blocked ? 'blocked' : ticket.status;
+  if (display.status !== 'all' && status !== display.status) return false;
   if (display.kind !== 'all' && ticket.kind !== display.kind) return false;
-  if (display.claim === 'claimed' && ticket.claim === null) return false;
-  if (display.claim === 'unclaimed' && ticket.claim !== null) return false;
+  if (display.owner === 'assigned' && ticket.assignee === null) return false;
+  if (display.owner === 'unassigned' && ticket.assignee !== null) return false;
 
   const search = display.search.trim().toLocaleLowerCase();
   if (search === '') return true;
@@ -242,7 +128,7 @@ export function groupedWork(
   const groups = new Map<string, Ticket[]>();
 
   for (const ticket of tickets) {
-    const key = group === 'status' ? ticket.band : ticket.kind;
+    const key = group === 'status' ? (ticket.blocked ? 'blocked' : ticket.status) : ticket.kind;
     const held = groups.get(key) ?? [];
     held.push(ticket);
     groups.set(key, held);
@@ -250,13 +136,13 @@ export function groupedWork(
 
   return [...groups].map(([key, held]) => ({
     key,
-    label: group === 'status' ? copy.statuses[key as Band].label : key,
+    label: group === 'status' ? copy.statuses[key as WorkStatus].label : key,
     tickets: held,
   }));
 }
 
 export function reorderReady(tickets: Ticket[], activeId: string, overId: string): Ticket[] {
-  const current = tickets.filter((ticket) => ticket.band === 'ready');
+  const current = tickets.filter((ticket) => !ticket.blocked && ticket.status === 'ready');
   const activeIndex = current.findIndex((ticket) => ticket.id === activeId);
   const overIndex = current.findIndex((ticket) => ticket.id === overId);
   if (activeIndex < 0 || overIndex < 0 || activeIndex === overIndex) return current;
@@ -268,6 +154,6 @@ export function reorderReady(tickets: Ticket[], activeId: string, overId: string
   return moved.map((ticket, index) => ({ ...ticket, rank: index }));
 }
 
-export function bandLabel(band: Band): string {
-  return copy.statuses[band].label;
+export function statusLabel(status: WorkStatus): string {
+  return copy.statuses[status].label;
 }

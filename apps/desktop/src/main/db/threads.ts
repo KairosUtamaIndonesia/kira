@@ -9,7 +9,7 @@ import type { ChatMode, ShapingState } from '../../preload/bridge.ts';
  * Bumped whenever the statements below change shape. A database written by a
  * newer build is refused rather than misread.
  */
-const SCHEMA_VERSION = 16;
+const SCHEMA_VERSION = 17;
 
 export type McpServerScope = 'global' | 'workspace';
 export type McpServerTransport = 'stdio' | 'streamable-http';
@@ -72,14 +72,7 @@ export interface ThreadRecord {
   mode: ChatMode;
   /** The workspace this chat is filed under, or null when it is filed nowhere. */
   workspaceId: string | null;
-  /**
-   * The ticket this chat is a run of, or null when it is an ordinary chat.
-   *
-   * A run is a chat in every other way, so this is the one thing that tells them apart —
-   * and it is what the sidebar draws a ticket's run with (GH #68).
-   */
-  ticketId: string | null;
-  /** Project tickets this ordinary chat is working across, independent of runs. */
+  /** Project tickets explicitly linked to this chat. */
   workTicketIds: string[];
   /** The one-time shaping offer and latest proposal, persisted with the chat. */
   shaping: ShapingState | null;
@@ -233,7 +226,6 @@ export class ThreadStore {
           cwd              TEXT NOT NULL,
           workspace_id     TEXT REFERENCES workspaces(id) ON DELETE SET NULL,
           parent_thread_id TEXT REFERENCES threads(id),
-          ticket_id        TEXT,
           work_ticket_ids_json TEXT,
           shaping_json     TEXT,
           head_id          TEXT,
@@ -361,11 +353,14 @@ export class ThreadStore {
       this.toWorkspaces();
     }
 
-    // A run is a chat, and a chat had no way to say it was one — so nothing could tell a
-    // run in the sidebar from a conversation somebody had, and a run that was over had to
-    // be thrown away rather than kept to be read. A chat says which ticket it is a run of,
-    // and every database written before that gains somewhere to say it (GH #68).
-    if (row.user_version >= 1 && row.user_version < 10) {
+    // Legacy ticket_id associations become ordinary chat links before the old column is removed.
+    if (
+      row.user_version >= 1 &&
+      row.user_version < 10 &&
+      !(this.db.prepare('PRAGMA table_info(threads)').all() as Array<{ name: string }>).some(
+        (column) => column.name === 'ticket_id',
+      )
+    ) {
       this.db.exec('ALTER TABLE threads ADD COLUMN ticket_id TEXT');
     }
 
@@ -406,7 +401,40 @@ export class ThreadStore {
         this.db.exec('ALTER TABLE threads ADD COLUMN work_ticket_ids_json TEXT');
       }
     }
+    if (row.user_version < 17) this.migrateTicketLinks();
     this.db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+  }
+
+  /** Move legacy ticket associations into the chat's explicit ticket links. */
+  private migrateTicketLinks(): void {
+    const columns = new Set(
+      (this.db.prepare('PRAGMA table_info(threads)').all() as Array<{ name: string }>).map(
+        (column) => column.name,
+      ),
+    );
+    if (!columns.has('ticket_id')) return;
+
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const rows = this.db
+        .prepare('SELECT id, ticket_id, work_ticket_ids_json FROM threads')
+        .all() as Array<{
+        id: string;
+        ticket_id: string | null;
+        work_ticket_ids_json: string | null;
+      }>;
+      const update = this.db.prepare('UPDATE threads SET work_ticket_ids_json = ? WHERE id = ?');
+      for (const row of rows) {
+        const ids = ticketIdsOf(row.work_ticket_ids_json);
+        if (row.ticket_id !== null && !ids.includes(row.ticket_id)) ids.push(row.ticket_id);
+        update.run(JSON.stringify(ids), row.id);
+      }
+      this.db.exec('ALTER TABLE threads DROP COLUMN ticket_id');
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
   }
 
   /**
@@ -630,7 +658,6 @@ export class ThreadStore {
       id?: string;
       parentThreadId?: string;
       workspaceId?: string;
-      ticketId?: string;
       workTicketIds?: string[];
       subagent?: SubagentRecord;
       mode?: ChatMode;
@@ -640,21 +667,19 @@ export class ThreadStore {
     const now = new Date().toISOString();
     const parentThreadId = options.parentThreadId ?? null;
     const workspaceId = options.workspaceId ?? null;
-    const ticketId = options.ticketId ?? null;
     const workTicketIds = [...new Set(options.workTicketIds ?? [])];
     const subagent = options.subagent ?? null;
     const mode = options.mode ?? 'build';
 
     this.db
       .prepare(
-        'INSERT INTO threads (id, cwd, workspace_id, parent_thread_id, ticket_id, work_ticket_ids_json, shaping_json, subagent_json, mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO threads (id, cwd, workspace_id, parent_thread_id, work_ticket_ids_json, shaping_json, subagent_json, mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       )
       .run(
         id,
         cwd,
         workspaceId,
         parentThreadId,
-        ticketId,
         JSON.stringify(workTicketIds),
         null,
         subagentJsonOf(subagent),
@@ -668,7 +693,6 @@ export class ThreadStore {
       cwd,
       mode,
       workspaceId,
-      ticketId,
       workTicketIds,
       shaping: null,
       parentThreadId,
@@ -1384,7 +1408,6 @@ interface ThreadRow {
   cwd: string;
   mode: ChatMode;
   workspace_id: string | null;
-  ticket_id: string | null;
   work_ticket_ids_json: string | null;
   shaping_json: string | null;
   parent_thread_id: string | null;
@@ -1396,7 +1419,7 @@ interface ThreadRow {
 }
 
 const THREAD_COLUMNS =
-  'SELECT id, cwd, mode, workspace_id, parent_thread_id, head_id, model_id, ticket_id, work_ticket_ids_json, shaping_json, subagent_json, created_at, updated_at FROM threads';
+  'SELECT id, cwd, mode, workspace_id, parent_thread_id, head_id, model_id, work_ticket_ids_json, shaping_json, subagent_json, created_at, updated_at FROM threads';
 
 function subagentJsonOf(value: SubagentRecord | null): string | null {
   return value === null ? null : JSON.stringify(value);
@@ -1461,7 +1484,6 @@ function threadRecordOf(row: ThreadRow): ThreadRecord {
     cwd: row.cwd,
     mode: row.mode === 'spec' ? 'spec' : 'build',
     workspaceId: row.workspace_id,
-    ticketId: row.ticket_id,
     workTicketIds: ticketIdsOf(row.work_ticket_ids_json),
     shaping: shapingOf(row.shaping_json),
     parentThreadId: row.parent_thread_id,

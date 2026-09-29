@@ -34,7 +34,6 @@ import { Folder, FolderPlus } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import type { Proposal, ProjectSummary, WorkspaceSummary } from '../../preload/bridge.ts';
 import { FlushDialogHeader } from './dialogHeader.tsx';
-import { fromHome } from './executionWorkspace.ts';
 import { placesOf } from './moveToProject.ts';
 import { suggestPrefix } from './workRows.ts';
 import { copy } from './workCopy.ts';
@@ -89,11 +88,7 @@ export function MoveToProject({ what, chatId, workspaces, onCancel, onMoved }: P
   const places = placesOf(workspaces, projects ?? []);
   const picked = places.find((each) => each.workspace.id === pick);
   const fresh = pick === NEW;
-  const target = picked
-    ? fromHome(picked.workspace.folder)
-    : fresh && folder
-      ? fromHome(folder.folder)
-      : null;
+  const target = picked ? picked.workspace.folder : fresh && folder ? folder.folder : null;
   const canMove =
     picked !== undefined ||
     (fresh && folder !== null && name.trim() !== '' && prefix.trim() !== '');
@@ -197,7 +192,7 @@ export function MoveToProject({ what, chatId, workspaces, onCancel, onMoved }: P
                   onSelect={() => setPick(each.workspace.id)}
                   icon={Folder}
                   title={each.workspace.name}
-                  note={fromHome(each.workspace.folder)}
+                  note={each.workspace.folder}
                   aside={
                     each.project === undefined ? undefined : (
                       <>
@@ -225,7 +220,7 @@ export function MoveToProject({ what, chatId, workspaces, onCancel, onMoved }: P
                     {...stylex.props(ui.mono, ui.clip, folder === null && ui.dim)}
                     title={folder?.folder}
                   >
-                    {folder === null ? copy.filing.noFolder : fromHome(folder.folder)}
+                    {folder === null ? copy.filing.noFolder : folder.folder}
                   </span>
                   <Button
                     label={folder === null ? copy.filing.chooseFolder : copy.filing.changeFolder}

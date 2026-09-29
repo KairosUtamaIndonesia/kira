@@ -1,8 +1,8 @@
 /**
  * Writing a new ticket, in a dialog over the queue. It reads like the document a ticket
  * becomes: its kind, a large title, About (rich markdown), then Done when as ruled check
- * rows. A ticket is written as a draft, so nothing insists on the checks; the refusal that
- * matters comes when it is marked ready for an agent.
+ * rows. A ticket is written as a draft, so nothing insists on the checks; a person adds them
+ * before making it Ready.
  */
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';

@@ -20,7 +20,7 @@ test('each chat mode exposes its tools and blocks MCP name collisions', () => {
         'shape_spec_proposal',
         'shape_breakdown_proposal',
         'tracker_queue',
-        'tracker_write_draft',
+        'tracker_create_ticket',
         'tracker_read_ticket',
         'workspace_search',
         'old_mcp_tool',

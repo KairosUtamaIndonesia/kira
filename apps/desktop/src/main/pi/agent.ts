@@ -40,7 +40,6 @@ export async function startSession(
     id?: string;
     workspaceId?: string;
     modelId?: string;
-    ticketId?: string;
     workTicketIds?: string[];
     mode?: ChatMode;
   } = {},

@@ -20,11 +20,13 @@ import * as stylex from '@stylexjs/stylex';
 import { Check, ListFilter, Search, SlidersHorizontal, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useRef } from 'react';
-import type { Band, Ticket, TicketKind } from '../../preload/bridge.ts';
+import type { Ticket, TicketKind } from '../../preload/bridge.ts';
 import { DEFAULT_WORK_DISPLAY, displayWork, type WorkDisplay } from './workDisplay.ts';
+import type { WorkStatus } from './workDisplay.ts';
+import { statusOf } from './workRows.ts';
 import { copy } from './workCopy.ts';
 
-type Lane = { id: Band; label: string };
+type Lane = { id: WorkStatus; label: string };
 
 const KINDS: TicketKind[] = [
   'feature',
@@ -49,13 +51,13 @@ export interface FilterProps {
 /** Everything that narrows which tickets show; Display's settings do not count. */
 function activeFilters(display: WorkDisplay, lanes: Lane[]) {
   const active: { key: string; label: string; clear: (d: WorkDisplay) => WorkDisplay }[] = [];
-  if (display.band !== 'all') {
+  if (display.status !== 'all') {
     active.push({
-      key: 'band',
+      key: 'status',
       label: copy.filter.statusChip(
-        lanes.find((each) => each.id === display.band)?.label ?? display.band,
+        lanes.find((each) => each.id === display.status)?.label ?? display.status,
       ),
-      clear: (d) => ({ ...d, band: 'all' }),
+      clear: (d) => ({ ...d, status: 'all' }),
     });
   }
   if (display.kind !== 'all') {
@@ -65,11 +67,11 @@ function activeFilters(display: WorkDisplay, lanes: Lane[]) {
       clear: (d) => ({ ...d, kind: 'all' }),
     });
   }
-  if (display.claim !== 'all') {
+  if (display.owner !== 'all') {
     active.push({
-      key: 'claim',
-      label: copy.filter.owners[display.claim],
-      clear: (d) => ({ ...d, claim: 'all' }),
+      key: 'owner',
+      label: copy.filter.owners[display.owner],
+      clear: (d) => ({ ...d, owner: 'all' }),
     });
   }
   return active;
@@ -84,18 +86,18 @@ function statusItems(props: FilterProps, counts: Map<string, number>): DropdownM
   return [
     {
       label: copy.filter.anyStatus,
-      endContent: check(display.band === 'all'),
-      onClick: () => onChange((d) => ({ ...d, band: 'all' })),
+      endContent: check(display.status === 'all'),
+      onClick: () => onChange((d) => ({ ...d, status: 'all' })),
     },
     ...lanes.map((lane) => ({
       label: lane.label,
       endContent:
-        display.band === lane.id ? (
+        display.status === lane.id ? (
           check(true)
         ) : (
           <span {...stylex.props(ui.menuCount)}>{counts.get(lane.id) ?? 0}</span>
         ),
-      onClick: () => onChange((d) => ({ ...d, band: lane.id })),
+      onClick: () => onChange((d) => ({ ...d, status: lane.id })),
     })),
   ];
 }
@@ -117,12 +119,12 @@ function kindItems(props: FilterProps): DropdownMenuOption[] {
   ];
 }
 
-function claimItems(props: FilterProps): DropdownMenuOption[] {
+function ownerItems(props: FilterProps): DropdownMenuOption[] {
   const { display, onChange } = props;
-  return (['all', 'claimed', 'unclaimed'] as const).map((claim) => ({
-    label: copy.filter.owners[claim],
-    endContent: check(display.claim === claim),
-    onClick: () => onChange((d) => ({ ...d, claim })),
+  return (['all', 'assigned', 'unassigned'] as const).map((owner) => ({
+    label: copy.filter.owners[owner],
+    endContent: check(display.owner === owner),
+    onClick: () => onChange((d) => ({ ...d, owner })),
   }));
 }
 
@@ -233,8 +235,9 @@ function DisplayMenu(props: FilterProps) {
 export function FilterToolbar(props: FilterProps) {
   const active = activeFilters(props.display, props.lanes);
   const counts = new Map<string, number>();
-  for (const ticket of displayWork(props.tickets, { ...props.display, band: 'all' })) {
-    counts.set(ticket.band, (counts.get(ticket.band) ?? 0) + 1);
+  for (const ticket of displayWork(props.tickets, { ...props.display, status: 'all' })) {
+    const status = statusOf(ticket);
+    counts.set(status, (counts.get(status) ?? 0) + 1);
   }
 
   return (
@@ -252,7 +255,7 @@ export function FilterToolbar(props: FilterProps) {
         items={[
           { label: copy.filter.status, items: statusItems(props, counts) },
           { label: copy.filter.kind, items: kindItems(props) },
-          { label: copy.filter.owner, items: claimItems(props) },
+          { label: copy.filter.owner, items: ownerItems(props) },
         ]}
       />
       <DisplayMenu {...props} />
@@ -290,7 +293,7 @@ export function FilterBar(
           size="sm"
           variant="ghost"
           onClick={() =>
-            onChange((d) => ({ ...d, band: 'all', kind: 'all', claim: 'all', search: '' }))
+            onChange((d) => ({ ...d, status: 'all', kind: 'all', owner: 'all', search: '' }))
           }
         />
       )}

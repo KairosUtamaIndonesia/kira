@@ -70,7 +70,6 @@ export function createThread(
     id?: string;
     parentThreadId?: string;
     workspaceId?: string;
-    ticketId?: string;
     workTicketIds?: string[];
     mode?: ChatMode;
   } = {},

@@ -127,6 +127,13 @@
       "when": 1790323000000,
       "tag": "0017_delivery",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1790705108138,
+      "tag": "0018_simple_issue_tracker",
+      "breakpoints": true
     }
   ]
 }

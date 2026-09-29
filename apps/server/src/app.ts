@@ -12,7 +12,6 @@ import { createGlossary } from './glossary';
 import { createPool } from './pool';
 import { REFUSAL, refusal } from './refusals';
 import { createTickets } from './tickets';
-import { createWorkers } from './workers';
 
 const SIGN_IN_PAGE = `<!doctype html>
 <html lang="en">
@@ -130,7 +129,6 @@ export function createApp({
       .use(createDecisions({ auth, database }))
       .use(createGlossary({ auth, database }))
       .use(createTickets({ auth, database }))
-      .use(createWorkers({ auth, database }))
   );
 }
 

@@ -112,19 +112,19 @@ _Avoid_: Claim, lease, lock
 **Ticket**:
 One unit of work on a project, written so that whoever works it needs nothing else to hand:
 what to build, how it is known to be done, and the other tickets that block it. A ticket may
-have children, and a child blocks its parent, so a ticket can be worked only when nothing
-under it and nothing blocking it is open and it has been marked ready. It has one stored status
-(ADR 0024). Its **kind** — prototype, bug, feature, refactor, question, research, spec or map — is set when
-it is written and names the skill that works it and what that leaves behind. Its **rank**
-orders it within a status, which is the only ordering there is.
+have children, and a child blocks its parent. It has one stored status; an open blocker is shown
+as Blocked without changing that status (ADR 0024). Its **kind** — prototype, bug, feature,
+refactor, question, research, spec or map — is set when it is written and names the skill that
+works it and what that leaves behind. Its **rank** orders it within a status, which is the only
+ordering there is.
 _Avoid_: Issue, task, card
 
 **Spec**:
 A ticket of kind spec: an idea worked out with a person — the problem, the solution, and the
 stories it must satisfy — whose children are the tickets that build it. Kira writes it from an
 interview the person has confirmed, and it stays a draft until the person approves it. It is a
-ticket rather than a thing of its own, so it sits in the same queue; its own session comes last,
-once every child is done, and reviews the children together against what the spec asked for.
+ticket rather than a thing of its own, so it sits in the same queue; a chat works it after its
+children are Done and reviews them together against what the spec asked for.
 _Avoid_: PRD, epic, plan, parent ticket
 
 **Map**:
@@ -162,25 +162,27 @@ The shared account boundary for people, projects, and permissions. It is not the
 _Avoid_: repository, project
 
 **Blocker**:
-A ticket that must close before another can be started: a child blocks its parent, and a ticket
-can name others it waits on. A blocked ticket sits in Blocked until its blockers close.
+A ticket another ticket waits on: a child blocks its parent, and a ticket can name other tickets
+it waits on. An open blocker is shown as Blocked, without changing the ticket's stored status.
 _Avoid_: Gate, dependency, prerequisite
 
 **Status**:
-The stored stage of a ticket: Draft, Ready, Running, In review, Done or Won't do. People set it, and so
-does the agent for the ticket linked in its chat. A ticket with an open blocker also shows Blocked.
+The stored stage of a ticket: Draft, Ready, Running, Needs review, Done or Won't do. A person may
+choose any status. For tickets linked in its chat, the agent may set Running or Needs review; it
+cannot set Done or Won't do. An open blocker also shows Blocked without changing the stored status.
 _Avoid_: Readiness, band, execution state, claim
 
-**Session**:
-A chat with a ticket linked, in which the agent works it with the skill its kind names. A ticket lists
-its sessions. The person starts one by linking the ticket in the composer.
-_Avoid_: Run (in anything a person reads), Worker, job
+**Linked chat**:
+A chat with a ticket linked, in which the agent works it with the skill its kind names. A ticket
+lists its linked chats. Linking a ticket in the composer is the person's way to ask for that work;
+there is no separate start action.
+_Avoid_: Session, Run (in anything a person reads), Worker, job
 
 The central relationship is:
 
 ```text
 Ticket = what should be done
-Session = a chat doing it
+Linked chat = where the work is done
 ```
 
 The product optimizes for:

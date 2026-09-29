@@ -219,17 +219,12 @@ direction is in `apps/desktop/DESIGN.md` (Work), and this is where its pieces li
   toasts, empty states, aria-labels, tooltips); its header holds the vocabulary and voice
   rules. New Work wording goes there, never inline. Server refusals that reach the desktop
   are worded in `apps/server/src/messages.ts` by the same rule.
-- **`workspaceSetup.tsx`** is the "No workspace yet" row and the setup dialog. The dialog is
-  drawn only while wanted, so drawing it is opening it. It reads a checkout's branches and
-  asks for a folder through `window.kira.listCheckoutBranches` and `chooseCheckout`
-  (`EXECUTION_CHANNELS`, `main/ipc/execution.ts`); choosing a checkout there does not register
-  a Kira workspace.
 - **`moveToProject.tsx`** is the dialog that files a chat under a project's folder, and
   **`moveToProject.ts`** holds when a chat needs one (`needsProject`) and which folders it could
   go to (`placesOf`). `App.tsx` opens it when an Approve would otherwise be refused for want of
   a project, and from a chat row's "Move to project…". Filing goes through
   `window.kira.fileChat` (`CHAT_CHANNELS.file`, `openChats.fileChat`): it repoints the chat's
-  stored folder and reopens the session on screen, so the chat and its words are the same.
+  stored folder and reopens the chat on screen, so the chat and its words are the same.
 - **`workRows.ts`** and **`workDisplay.ts`** hold the pure words and rules (age, what a row
   says, filtering and order) with tests beside them. New wording for a status goes there, not
   inline in a component.
@@ -241,8 +236,8 @@ Working rules for changes here:
   itself, so the outer grid's first and last tracks are the side padding.
 - **Ghost buttons at an edge are compensated** (see Where a style goes), including the filter
   bar and the header's right end. Check with a text range's `getBoundingClientRect().left`.
-- **On screen: Ticket, Blocker, Session.** Code and IPC keep `gate` and `run`. When a
-  component's copy changes, grep for the old word: the same action must not have two names.
+- **On screen: Ticket, Blocker, Chat.** The tracker still calls blocker edges `gate` internally.
+  When a component's copy changes, grep for the old word: the same action must not have two names.
 - **A prototype is a switch, not a fork.** Variants of a design live behind a development-only
   switcher (`import.meta.env.DEV`) in the real app, on their own branch, so they can be judged
   with real data. When one wins, rewrite it as real code, remove the losers, the switcher and
@@ -277,8 +272,8 @@ serves.
 | `workspace/` | a workspace on disk: git's exclusions, one folder at a time, reading one file                                        |
 
 Root files are single-instance modules that more than one folder needs: `memory.ts`
-(what a project has worked out), `tracker.ts` (the project's queue, and the workspace's
-link to it), `usage.ts` (what runs have spent).
+(what a project has worked out), `tracker.ts` (the project's tickets and a workspace's
+link to it), `usage.ts` (what requests have spent).
 
 A folder appears with its first real file. `ipc/` exists when the first channel does,
 not before.

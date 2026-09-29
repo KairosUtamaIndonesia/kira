@@ -11,11 +11,12 @@ export const WORKFLOW_ROUTER = [
   'After an approved spec, a request to make tickets: load to-tickets and follow it; call shape_breakdown_proposal so Kira shows the proposal card. Never claim approval, publication, or readiness unless Kira state confirms it.',
   'An idea too large for one spec: wayfinder.',
   'A question ticket: grilling.',
-  'A research run: research.',
-  'A prototype run: prototype.',
-  'A feature or refactor run: implement, with tdd and code-review.',
-  'A bug run: diagnosing-bugs.',
-  "A spec's own run: code-review against the spec.",
+  'A research ticket: research.',
+  'A prototype ticket: prototype.',
+  'A feature or refactor ticket: implement, with tdd and code-review.',
+  'A bug ticket: diagnosing-bugs.',
+  'A spec ticket: code-review against the spec.',
+  'For a linked ticket, set Running when work begins and Needs review after opening a pull request. Never set Done or Won’t do; a person marks Done after merging.',
   'Resolve with Kira: resolving-merge-conflicts.',
 ].join('\n');
 
@@ -45,7 +46,7 @@ export function workflowForMode(mode: ChatMode): string {
   if (mode === 'build') return WORKFLOW_ROUTER;
 
   return [
-    'Spec mode: planning-only interview and clarification. Do not change workspace files or start ticket runs.',
+    'Spec mode: planning-only interview and clarification. Do not change workspace files or update ticket status.',
     'Explore with read-only tools, ask the person questions when needed, and propose a spec with shape_spec_proposal.',
     'After the person approves the spec, immediately call shape_breakdown_proposal to draft its tickets. Do not wait for another request.',
     'Wait for the person to approve the spec and ticket breakdown before Kira publishes either one.',

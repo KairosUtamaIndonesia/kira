@@ -543,23 +543,23 @@ test('with nothing open there is nothing to show or send', async () => {
   fixture.store.close();
 });
 
-test('a ticket run remains an ordinary flat chat row beside its shaping chat', async () => {
+test('a chat explicitly links tickets and remains beside its shaping chat', async () => {
   const store = new ThreadStore(join(tempDir('kira-open-store-'), 'threads.db'));
   const workspace = store.rememberWorkspace(tempDir('kira-open-workspace-'));
   const shaping = createThread(store, workspace.folder, { workspaceId: workspace.id });
-  const run = createThread(store, workspace.folder, {
+  const linked = createThread(store, workspace.folder, {
     workspaceId: workspace.id,
-    ticketId: 'child-1',
+    workTicketIds: ['child-1'],
   });
-  ask(run, 'I checked the slice.');
+  ask(linked, 'I checked the slice.');
   const chats = openChats(store, () => {}, newWorkspaces().make, MODELS);
 
   await chats.open(shaping.threadId);
 
   const rows = chats.state().chats;
   assert.equal(rows.length, 2);
-  assert.equal(rows.find(({ id }) => id === run.threadId)?.ticketId, 'child-1');
-  assert.equal(rows.find(({ id }) => id === shaping.threadId)?.ticketId, null);
+  assert.deepEqual(rows.find(({ id }) => id === linked.threadId)?.workTicketIds, ['child-1']);
+  assert.deepEqual(rows.find(({ id }) => id === shaping.threadId)?.workTicketIds, []);
   assert.ok(rows.every(({ workspaceId }) => workspaceId === workspace.id));
 
   chats.closeAll();

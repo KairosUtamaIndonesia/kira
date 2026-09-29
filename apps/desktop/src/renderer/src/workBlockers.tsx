@@ -16,11 +16,11 @@ import {
   typographyVars,
 } from '@astryxdesign/core/theme/tokens.stylex';
 import * as stylex from '@stylexjs/stylex';
-import { CircleAlert, CircleCheck, Lock, LockOpen, Plus, X } from 'lucide-react';
+import { CircleAlert, Lock, LockOpen, Plus, X } from 'lucide-react';
 import { useState } from 'react';
-import type { Band, NamedTicket, Ticket } from '../../preload/bridge.ts';
+import type { NamedTicket, Ticket, TicketStatus } from '../../preload/bridge.ts';
 import { copy } from './workCopy.ts';
-import { bandIcon } from './workRows.ts';
+import { statusIcon, statusOf } from './workRows.ts';
 
 interface Props {
   ticket: Ticket;
@@ -42,21 +42,18 @@ function links(named: NamedTicket[], tickets: Ticket[]): Link[] {
 }
 
 function stateWords(link: Link): string {
-  if (link.named.closed) {
-    return link.named.closure === 'wontfix' ? copy.actions.wontDo : copy.statusWord.done;
-  }
-  return link.full === undefined ? copy.blockers.openState : copy.statusWord[link.full.band];
+  const status = link.full === undefined ? link.named.status : statusOf(link.full);
+  return copy.statusWord[status];
 }
 
-type Tone = 'done' | 'wontfix' | 'open' | 'running' | 'review' | 'blocked';
+type Tone = TicketStatus | 'blocked';
 
 function tone(link: Link): Tone {
-  if (link.named.closed) return link.named.closure === 'wontfix' ? 'wontfix' : 'done';
-  const band: Band | undefined = link.full?.band;
-  if (band === 'running') return 'running';
-  if (band === 'needs-you') return 'review';
-  if (band === 'blocked') return 'blocked';
-  return 'open';
+  return link.full === undefined ? link.named.status : statusOf(link.full);
+}
+
+function isClosed(status: TicketStatus): boolean {
+  return status === 'done' || status === 'wont-do';
 }
 
 /** The one sentence that says what the blockers mean for this ticket right now. */
@@ -64,8 +61,8 @@ function verdict(
   ticket: Ticket,
   blockers: Link[],
 ): { tone: 'clear' | 'waiting' | 'check'; words: string } {
-  const open = blockers.filter((each) => !each.named.closed);
-  const dropped = blockers.filter((each) => each.named.closure === 'wontfix');
+  const open = blockers.filter((each) => !isClosed(each.named.status));
+  const dropped = blockers.filter((each) => each.named.status === 'wont-do');
   if (blockers.length === 0) return { tone: 'clear', words: copy.blockers.none };
   if (open.length > 0) {
     return {
@@ -99,15 +96,16 @@ function verdict(
 
 /** Whether this ticket is the last thing holding a downstream ticket up. */
 function lastHold(ticket: Ticket, link: Link): boolean {
-  const others = link.full?.children.filter((each) => each.id !== ticket.id && !each.closed) ?? [];
-  return !link.named.closed && others.length === 0 && ticket.closedAt === null;
+  const others =
+    link.full?.children.filter((each) => each.id !== ticket.id && !isClosed(each.status)) ?? [];
+  return !isClosed(link.named.status) && others.length === 0 && !isClosed(ticket.status);
 }
 
 function AddBlocker({ ticket, tickets, onGate }: Props) {
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState(false);
   const taken = new Set([ticket.id, ...ticket.children.map((each) => each.id)]);
-  const candidates = tickets.filter((each) => each.closedAt === null && !taken.has(each.id));
+  const candidates = tickets.filter((each) => !isClosed(each.status) && !taken.has(each.id));
   const [chosen, setChosen] = useState('');
 
   if (!adding) {
@@ -167,14 +165,7 @@ function AddBlocker({ ticket, tickets, onGate }: Props) {
 
 function StateMark({ link }: { link: Link }) {
   const t = tone(link);
-  const icon =
-    t === 'done'
-      ? CircleCheck
-      : t === 'wontfix'
-        ? CircleAlert
-        : link.full !== undefined
-          ? bandIcon(link.full)
-          : CircleAlert;
+  const icon = statusIcon(t);
   return (
     <span {...stylex.props(ui.mark, toneText[t])}>
       <Icon icon={icon} size="sm" />
@@ -207,7 +198,7 @@ function Row({
   hint?: string;
   onRemove?: () => void;
 }) {
-  const person = link.named.closed ? undefined : link.full?.claim?.holder.name;
+  const person = link.full?.assignee?.name;
   return (
     <li {...stylex.props(ui.row, onRemove !== undefined && ui.rowRemovable)}>
       <button
@@ -218,7 +209,7 @@ function Row({
       />
       <StateMark link={link} />
       <span {...stylex.props(ui.id)}>{link.named.name}</span>
-      <span {...stylex.props(ui.title, link.named.closed && ui.titleClosed)}>
+      <span {...stylex.props(ui.title, isClosed(link.named.status) && ui.titleClosed)}>
         {link.full?.title ?? copy.blockers.titleUnavailable}
       </span>
       <span {...stylex.props(ui.meta)}>
@@ -250,7 +241,7 @@ export function Blockers(props: Props) {
   const blockers = links(ticket.children, tickets);
   const blocking = links(ticket.gates, tickets);
   const said = verdict(ticket, blockers);
-  const closed = blockers.filter((each) => each.named.closed).length;
+  const closed = blockers.filter((each) => isClosed(each.named.status)).length;
 
   return (
     <section {...stylex.props(ui.section)} aria-label={copy.blockers.aria}>
@@ -318,10 +309,11 @@ export function Blockers(props: Props) {
 
 const toneText = stylex.create({
   done: { color: colorVars['--color-text-green'] },
-  wontfix: { color: colorVars['--color-text-orange'] },
-  open: { color: colorVars['--color-text-secondary'] },
+  'wont-do': { color: colorVars['--color-text-orange'] },
+  draft: { color: colorVars['--color-text-secondary'] },
+  ready: { color: colorVars['--color-text-secondary'] },
   running: { color: colorVars['--color-text-blue'] },
-  review: { color: colorVars['--color-text-yellow'] },
+  'needs-review': { color: colorVars['--color-text-yellow'] },
   blocked: { color: colorVars['--color-text-orange'] },
 });
 

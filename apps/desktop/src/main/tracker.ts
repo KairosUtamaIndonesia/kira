@@ -11,9 +11,8 @@
  * workspace works one project, that link lives in the desktop's own database, and
  * a folder nobody has joined is a refusal with a sentence rather than an empty
  * queue. The rest is one call to the server and the server's own answer — its
- * refusals are shown in its own words, because it is the party that knows why it
- * would not take a ticket without acceptance criteria or why a gate would close a
- * circle.
+ * refusals are shown in its own words, because it is the party that knows why a
+ * blocker cannot be added or a ticket cannot be changed.
  */
 import type {
   GlossaryEdit,
@@ -22,24 +21,16 @@ import type {
   BreakdownSlice,
   JoinRequest,
   ProjectSummary,
-  SaidBy,
   Ticket,
   DecisionProposal,
   ProjectDecision,
   TicketChange,
   TicketDraft,
   TicketQueue,
-  TicketRun,
-  TicketSaid,
   Outcome,
   OutcomeProposal,
   MapProposal,
   WorkspaceSummary,
-  ExecutionWorkspace,
-  ExecutionReview,
-  ReviewComment,
-  ReviewFeedback,
-  DeliveryAudit,
 } from '../preload/bridge.ts';
 
 /**
@@ -59,46 +50,8 @@ export type TrackerAnswer<T> =
 
 /** The server's half of the tracker, as `auth/kira.ts` implements it. */
 export interface TrackerWire {
-  executionWorkspaces?:
-    | ((key: string, ticketId: string) => Promise<TrackerAnswer<ExecutionWorkspace[]>>)
-    | undefined;
-  createExecutionWorkspace?: (
-    key: string,
-    ticketId: string,
-    draft: Omit<ExecutionWorkspace, 'id' | 'ticketId' | 'createdAt'>,
-  ) => Promise<TrackerAnswer<ExecutionWorkspace>>;
-  removeExecutionWorkspace?:
-    | ((key: string, ticketId: string, workspaceId: string) => Promise<TrackerAnswer<unknown>>)
-    | undefined;
-  readExecutionReview?: (
-    key: string,
-    ticketId: string,
-    workspaceId: string,
-  ) => Promise<TrackerAnswer<ExecutionReview>>;
-  addReviewComment?: (
-    key: string,
-    ticketId: string,
-    workspaceId: string,
-    comment: { runId?: string | null; path: string; line: number; side: string; body: string },
-  ) => Promise<TrackerAnswer<ReviewComment>>;
-  updateReviewComment?: (
-    key: string,
-    ticketId: string,
-    workspaceId: string,
-    commentId: string,
-    status: ReviewComment['status'],
-  ) => Promise<TrackerAnswer<ReviewComment>>;
-  sendReviewFeedback?: (
-    key: string,
-    ticketId: string,
-    workspaceId: string,
-    feedback: { runId?: string | null; body: string },
-  ) => Promise<TrackerAnswer<ReviewFeedback>>;
-  recordDelivery?: (
-    key: string,
-    ticketId: string,
-    audit: DeliveryAudit,
-  ) => Promise<TrackerAnswer<unknown>>;
+  /** The signed-in person behind this key. */
+  currentUser(key: string): Promise<TrackerAnswer<{ id: string }>>;
   /** The projects anyone signed in may work in. */
   projects(key: string): Promise<TrackerAnswer<ProjectSummary[]>>;
   /** Make a project, refused when its prefix is taken. */
@@ -106,7 +59,7 @@ export interface TrackerWire {
     key: string,
     made: { name: string; prefix: string },
   ): Promise<TrackerAnswer<ProjectSummary>>;
-  /** One project with its tickets, each in the band the server derived. */
+  /** One project with its tickets and stored statuses. */
   queue(key: string, projectId: string): Promise<TrackerAnswer<TicketQueue>>;
   /** Project glossary entries, including immutable history for each term. */
   glossary?(key: string, projectId: string): Promise<TrackerAnswer<GlossaryEntry[]>>;
@@ -134,7 +87,7 @@ export interface TrackerWire {
       sourceChatId: string;
     },
   ): Promise<TrackerAnswer<ProjectDecision>>;
-  /** One ticket, by its name or its id, which is what a run reads before it starts. */
+  /** One ticket, by its human-readable name or id. */
   readTicket(key: string, ref: string): Promise<TrackerAnswer<Ticket>>;
   /** Link one author-owned Kira chat to a question, idempotently. */
   openQuestion?(key: string, ticketId: string, chatId: string): Promise<TrackerAnswer<Ticket>>;
@@ -173,9 +126,9 @@ export interface TrackerWire {
     mapTicketId: string,
     draft: TicketDraft,
   ): Promise<TrackerAnswer<Ticket>>;
-  /** Write a ticket down in a project, as a draft. */
+  /** Create a ticket in a project. */
   writeTicket(key: string, projectId: string, draft: TicketDraft): Promise<TrackerAnswer<Ticket>>;
-  /** Write what changed about a ticket. */
+  /** Update a ticket's fields and stored status. */
   changeTicket(key: string, ticketId: string, change: TicketChange): Promise<TrackerAnswer<Ticket>>;
   /** Name a ticket that gates this one. */
   gateTicket(key: string, ticketId: string, gatedBy: string): Promise<TrackerAnswer<Ticket>>;
@@ -189,126 +142,12 @@ export interface TrackerWire {
   ): Promise<TrackerAnswer<BreakdownResult>>;
   /** Mark all draft children of a spec ready in one server transaction. */
   markBreakdownReady?(key: string, specTicketId: string): Promise<TrackerAnswer<BreakdownResult>>;
-  /**
-   * Take the claim on a ticket, naming the desktop that will work it.
-   *
-   * This is where Run is refused on a ticket that is not ready: the server is the party
-   * that decides whether a ticket can be picked up, and its own words are what the
-   * person is shown.
-   */
-  claimTicket(
-    key: string,
-    ticketId: string,
-    workerId: string | null,
-  ): Promise<TrackerAnswer<Ticket>>;
-  /** Let a claim go, whether or not a run came of it. */
-  releaseTicket(key: string, ticketId: string): Promise<TrackerAnswer<unknown>>;
-  /**
-   * Take over a claim whose lease has run out, by hand.
-   *
-   * A claim made this way has no worker and no lease, so it never goes stale on its own:
-   * a person is working the ticket, and only they can let it go.
-   */
-  takeOverTicket(key: string, ticketId: string): Promise<TrackerAnswer<Ticket>>;
-  /** Say what a person makes of a run's proposal. */
-  judgeRun(
-    key: string,
-    ticketId: string,
-    runId: string,
-    verdict: 'accepted' | 'sent-back',
-  ): Promise<TrackerAnswer<TicketRun>>;
-  /** Start a run on a ticket this key holds the claim on. */
-  startRun(
-    key: string,
-    ticketId: string,
-    workerId: string | null,
-  ): Promise<TrackerAnswer<TicketRun>>;
-  /** Say which branch a run made, which is what the ticket then answers with. */
-  recordRun(
-    key: string,
-    ticketId: string,
-    runId: string,
-    recorded: { branch?: string },
-  ): Promise<TrackerAnswer<TicketRun>>;
-  /** End a run: as a proposal with what it made, or stopped saying why. */
-  endRun(
-    key: string,
-    ticketId: string,
-    runId: string,
-    ending: {
-      changed?: string;
-      checks?: string[];
-      made?: string;
-      stoppedBecause?: string;
-    },
-  ): Promise<TrackerAnswer<TicketRun>>;
-  /** What was said while a run went on, oldest first. */
-  readTranscript(
-    key: string,
-    ticketId: string,
-    runId: string,
-  ): Promise<TrackerAnswer<TicketSaid[]>>;
-  /** Write down one thing said while a run went on. */
-  sayInRun(
-    key: string,
-    ticketId: string,
-    runId: string,
-    said: { saidBy: SaidBy; words: string },
-  ): Promise<TrackerAnswer<TicketSaid>>;
-}
-
-/** What the window asked the main process to do, once it has been checked. */
-export interface RunContext {
-  /** The spec that owns this run, or null for work outside a spec. */
-  spec: {
-    id: string;
-    name: string;
-    title: string;
-    body: string;
-    sourceChatId: string | null;
-  } | null;
-  /** Siblings under the enclosing spec, with bands from the same queue read. */
-  siblings: {
-    id: string;
-    name: string;
-    title: string;
-    kind: Ticket['kind'];
-    band: Ticket['band'];
-    criteria: string[];
-  }[];
-  glossary: GlossaryEntry[];
-  /** Decisions cited by the spec's shaping chat. */
-  decisions: ProjectDecision[];
 }
 
 export interface Tracker {
-  executionWorkspaces(ticketId: string): Promise<ExecutionWorkspace[]>;
-  createExecutionWorkspace(
-    ticketId: string,
-    draft: Omit<ExecutionWorkspace, 'id' | 'ticketId' | 'createdAt'>,
-  ): Promise<ExecutionWorkspace>;
-  removeExecutionWorkspace(ticketId: string, workspaceId: string): Promise<void>;
-  readExecutionReview(ticketId: string, workspaceId: string): Promise<ExecutionReview>;
-  addReviewComment(
-    ticketId: string,
-    workspaceId: string,
-    comment: { runId?: string | null; path: string; line: number; side: string; body: string },
-  ): Promise<ReviewComment>;
-  updateReviewComment(
-    ticketId: string,
-    workspaceId: string,
-    commentId: string,
-    status: ReviewComment['status'],
-  ): Promise<ReviewComment>;
-  sendReviewFeedback(
-    ticketId: string,
-    workspaceId: string,
-    feedback: { runId?: string | null; body: string },
-  ): Promise<ReviewFeedback>;
-  recordDelivery(ticketId: string, audit: DeliveryAudit): Promise<void>;
   queue(workspaceId: string): Promise<TicketQueue>;
-  /** Read the current project context for a run from the tracker seam. */
-  runContext(workspaceId: string, ticketId: string): Promise<RunContext>;
+  /** Read the id of the signed-in person who owns this desktop key. */
+  currentUserId(): Promise<string>;
   /** Read one ticket by its id or human-readable name. */
   readTicket(ref: string): Promise<Ticket>;
   openQuestion(workspaceId: string, ticketId: string, chatId: string): Promise<Ticket>;
@@ -404,56 +243,6 @@ export function trackerFor({
   }
 
   return {
-    async executionWorkspaces(ticketId) {
-      if (wire.executionWorkspaces === undefined)
-        throw new Error('Execution workspaces are unavailable.');
-      const held = await key();
-      return await asked(() => wire.executionWorkspaces!(held, ticketId));
-    },
-    async createExecutionWorkspace(ticketId, draft) {
-      if (wire.createExecutionWorkspace === undefined)
-        throw new Error('Execution workspaces are unavailable.');
-      const held = await key();
-      return await asked(() => wire.createExecutionWorkspace!(held, ticketId, draft));
-    },
-    async removeExecutionWorkspace(ticketId, workspaceId) {
-      if (wire.removeExecutionWorkspace === undefined)
-        throw new Error('Execution workspaces are unavailable.');
-      const held = await key();
-      await asked(() => wire.removeExecutionWorkspace!(held, ticketId, workspaceId));
-    },
-    async readExecutionReview(ticketId, workspaceId) {
-      if (wire.readExecutionReview === undefined)
-        throw new Error('Execution workspace review is unavailable.');
-      const held = await key();
-      return await asked(() => wire.readExecutionReview!(held, ticketId, workspaceId));
-    },
-    async addReviewComment(ticketId, workspaceId, comment) {
-      if (wire.addReviewComment === undefined)
-        throw new Error('Execution workspace review is unavailable.');
-      const held = await key();
-      return await asked(() => wire.addReviewComment!(held, ticketId, workspaceId, comment));
-    },
-    async updateReviewComment(ticketId, workspaceId, commentId, status) {
-      if (wire.updateReviewComment === undefined)
-        throw new Error('Execution workspace review is unavailable.');
-      const held = await key();
-      return await asked(() =>
-        wire.updateReviewComment!(held, ticketId, workspaceId, commentId, status),
-      );
-    },
-    async sendReviewFeedback(ticketId, workspaceId, feedback) {
-      if (wire.sendReviewFeedback === undefined)
-        throw new Error('Execution workspace review is unavailable.');
-      const held = await key();
-      return await asked(() => wire.sendReviewFeedback!(held, ticketId, workspaceId, feedback));
-    },
-    async recordDelivery(ticketId, audit) {
-      if (wire.recordDelivery === undefined)
-        throw new Error('Execution workspace delivery is unavailable.');
-      const held = await key();
-      await asked(() => wire.recordDelivery!(held, ticketId, audit));
-    },
     async queue(workspaceId) {
       const held = await key();
       const projectId = projectIn(workspaceId);
@@ -461,12 +250,9 @@ export function trackerFor({
       return await asked(() => wire.queue(held, projectId));
     },
 
-    async runContext(workspaceId, ticketId) {
-      const queue = await this.queue(workspaceId);
-      const glossary = this.glossary === undefined ? [] : await this.glossary(workspaceId);
-      const decisions = this.decisions === undefined ? [] : await this.decisions(workspaceId);
-
-      return contextFor(queue, ticketId, glossary, decisions);
+    async currentUserId() {
+      const held = await key();
+      return (await asked(() => wire.currentUser(held))).id;
     },
 
     async readTicket(ref) {
@@ -626,57 +412,6 @@ export function trackerFor({
 
       return joined;
     },
-  };
-}
-
-/** Build run context from one current queue and the project knowledge it names. */
-export function contextFor(
-  queue: TicketQueue,
-  ticketId: string,
-  glossary: GlossaryEntry[],
-  decisions: ProjectDecision[],
-): RunContext {
-  const ticket = queue.tickets.find((each) => each.id === ticketId);
-  if (ticket === undefined) throw new Error('That ticket is no longer in the project queue.');
-
-  const spec =
-    ticket.kind === 'spec'
-      ? ticket
-      : queue.tickets.find(
-          (each) => each.kind === 'spec' && each.children.some((child) => child.id === ticket.id),
-        );
-  const siblings =
-    spec === undefined
-      ? []
-      : spec.children
-          .map((child) => queue.tickets.find((each) => each.id === child.id))
-          .filter((each): each is Ticket => each !== undefined && each.id !== ticket.id)
-          .map(({ id, name, title, kind, band, criteria }) => ({
-            id,
-            name,
-            title,
-            kind,
-            band,
-            criteria,
-          }));
-
-  return {
-    spec:
-      spec === undefined
-        ? null
-        : {
-            id: spec.id,
-            name: spec.name,
-            title: spec.title,
-            body: spec.body,
-            sourceChatId: spec.sourceChatId ?? null,
-          },
-    siblings,
-    glossary,
-    decisions:
-      spec?.sourceChatId === undefined || spec.sourceChatId === null
-        ? []
-        : decisions.filter((decision) => decision.sourceChatId === spec.sourceChatId),
   };
 }
 

@@ -1051,12 +1051,7 @@ export default function App() {
       onOpen={() => void switchChat(() => window.kira.openChat(chat.id))}
       onArchive={() => void archiveChat(chat.id)}
       onDelete={() => setDeleting(chat)}
-      // A run belongs to its ticket's folder, so only a conversation can be moved.
-      onMove={
-        chat.ticketId === null && needsProject(chat.workspaceId, workspaces)
-          ? () => void moveChat(chat.id)
-          : undefined
-      }
+      onMove={needsProject(chat.workspaceId, workspaces) ? () => void moveChat(chat.id) : undefined}
     />
   );
 
@@ -1405,9 +1400,6 @@ export default function App() {
             auth={auth}
             initialTicketId={workTicketId}
             onBack={() => showSurface('work-home')}
-            // A run's chat is a chat, so the ticket hands the window to it rather than
-            // drawing the run's words a second time in the panel (GH #68).
-            chatIds={chats.map((each) => each.id)}
             chatSummaries={chats}
             onOpenChat={(chatId) => void switchChat(() => window.kira.openChat(chatId))}
             onStartChat={(ticketIds) => void startChat(worked?.id ?? null, ticketIds)}
@@ -1861,10 +1853,7 @@ function ChatRow({
       <div className={`chat-row${isMenuOpen ? ' chat-row-menu-open' : ''}`}>
         <SideNavItem
           label={chat.title}
-          // A run is a chat in every other way, so the one thing that tells them apart is
-          // drawn rather than written: a ticket beside a row means this chat is a run of it
-          // rather than a conversation somebody had (GH #68).
-          icon={chat.ticketId === null ? undefined : Ticket}
+          icon={chat.workTicketIds.length > 0 ? Ticket : undefined}
           isSelected={isCurrent}
           // A chat Kira is writing in is marked, because that keeps going whether or
           // not this window is showing it. Otherwise, when a chat's title is not

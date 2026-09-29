@@ -267,9 +267,8 @@ export const project = pgTable('project', {
  *
  * `number` is scoped to the project and never reused, and the name people say is
  * the project's `prefix` and this number — `FND-12` — rather than the id, which is
- * opaque on purpose. The band a ticket is in is *not* a column: it is derived from
- * `gate`, `closedAt` and the gate edges, so nothing can assert a state the server
- * would not derive (docs/adr/0017).
+ * opaque on purpose. `status` is the one stored state; blockers remain links
+ * between tickets.
  */
 export const decision = pgTable(
   'decision',
@@ -318,17 +317,18 @@ export const ticket = pgTable(
      * checks. A criterion that is empty or only whitespace is not a criterion.
      */
     criteria: text('criteria').array().notNull(),
-    /** draft, ready-for-agent or ready-for-human. A value, not an absence. */
-    gate: text('gate').notNull(),
-    /** Human-facing kanban column, separate from execution readiness. */
-    status: text('status').notNull().default('backlog'),
+    /** One of draft, ready, running, needs-review, done or wont-do. */
+    status: text('status').notNull().default('draft'),
     /** Person-owned urgency, ordered by the board rather than by the machine. */
     priority: text('priority').notNull().default('none'),
-    /** The person responsible for the issue, when one has been chosen. */
+    /** The person responsible for the ticket, when one has been chosen. */
     assigneeId: text('assigneeId').references(() => user.id, { onDelete: 'set null' }),
     /** Small user-facing labels used by board filtering. */
-    tags: text('tags').array().notNull().default(sql`ARRAY[]::text[]`),
-    /** Orders it within a band. Ties are broken by the number, so the order is total. */
+    tags: text('tags')
+      .array()
+      .notNull()
+      .default(sql`ARRAY[]::text[]`),
+    /** Orders it within a status. Ties are broken by the number, so the order is total. */
     rank: integer('rank').notNull(),
     /** Cleared rather than cascaded, for the same reason a project's is. */
     authorId: text('authorId').references(() => user.id, { onDelete: 'set null' }),
@@ -338,9 +338,6 @@ export const ticket = pgTable(
     updatedAt: timestamp('updatedAt', { withTimezone: true })
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
-    closedAt: timestamp('closedAt', { withTimezone: true }),
-    /** Why it was closed: `done` or `wontfix`, and null while it is open. */
-    closure: text('closure'),
     /** The ordinary shaping chat that proposed this spec, when it has one. */
     sourceChatId: text('sourceChatId'),
   },
@@ -473,216 +470,6 @@ export const ticketRelationship = pgTable(
   ],
 );
 
-/** A local execution workspace linked to one issue (docs/adr/0023). */
-export const executionWorkspace = pgTable(
-  'execution_workspace',
-  {
-    id: text('id').primaryKey(),
-    ticketId: text('ticketId')
-      .notNull()
-      .references(() => ticket.id, { onDelete: 'cascade' }),
-    repository: text('repository').notNull(),
-    baseBranch: text('baseBranch').notNull(),
-    branch: text('branch').notNull(),
-    agentConfig: text('agentConfig').notNull(),
-    creatorId: text('creatorId').references(() => user.id, { onDelete: 'set null' }),
-    createdAt: timestamp('createdAt', { withTimezone: true })
-      .notNull()
-      .default(sql`CURRENT_TIMESTAMP`),
-  },
-  (table) => [index('execution_workspace_by_ticket').on(table.ticketId, table.createdAt)],
-);
-
-/** One attempted delivery of an approved execution workspace (docs/adr/0023). */
-export const delivery = pgTable(
-  'delivery',
-  {
-    id: text('id').primaryKey(),
-    ticketId: text('ticketId')
-      .notNull()
-      .references(() => ticket.id, { onDelete: 'cascade' }),
-    workspaceId: text('workspaceId')
-      .notNull()
-      .references(() => executionWorkspace.id, { onDelete: 'cascade' }),
-    path: text('path').notNull(),
-    outcome: text('outcome').notNull(),
-    reference: text('reference'),
-    url: text('url'),
-    details: text('details'),
-    actorId: text('actorId').references(() => user.id, { onDelete: 'set null' }),
-    createdAt: timestamp('createdAt', { withTimezone: true })
-      .notNull()
-      .default(sql`CURRENT_TIMESTAMP`),
-  },
-  (table) => [index('delivery_by_ticket').on(table.ticketId, table.createdAt)],
-);
-
-/** A review comment anchored to a file in an execution workspace. */
-export const reviewComment = pgTable(
-  'review_comment',
-  {
-    id: text('id').primaryKey(),
-    workspaceId: text('workspaceId')
-      .notNull()
-      .references(() => executionWorkspace.id, { onDelete: 'cascade' }),
-    runId: text('runId'),
-    path: text('path').notNull(),
-    line: integer('line').notNull(),
-    side: text('side').notNull(),
-    body: text('body').notNull(),
-    status: text('status').notNull().default('open'),
-    authorId: text('authorId').references(() => user.id, { onDelete: 'set null' }),
-    createdAt: timestamp('createdAt', { withTimezone: true })
-      .notNull()
-      .default(sql`CURRENT_TIMESTAMP`),
-    addressedAt: timestamp('addressedAt', { withTimezone: true }),
-  },
-  (table) => [index('review_comment_by_workspace').on(table.workspaceId, table.createdAt)],
-);
-
-/** Feedback sent to the agent, grouped by execution workspace and run. */
-export const reviewFeedback = pgTable(
-  'review_feedback',
-  {
-    id: text('id').primaryKey(),
-    workspaceId: text('workspaceId')
-      .notNull()
-      .references(() => executionWorkspace.id, { onDelete: 'cascade' }),
-    runId: text('runId'),
-    body: text('body').notNull(),
-    authorId: text('authorId').references(() => user.id, { onDelete: 'set null' }),
-    createdAt: timestamp('createdAt', { withTimezone: true })
-      .notNull()
-      .default(sql`CURRENT_TIMESTAMP`),
-  },
-  (table) => [index('review_feedback_by_workspace').on(table.workspaceId, table.createdAt)],
-);
-
-/**
- * A ticket held while somebody works it (docs/adr/0012).
- *
- * A worker holds a claim with a lease and a heartbeat; a person working a ticket by
- * hand holds one with neither, which is why `workerId`, `heardAt` and `leaseUntil`
- * are all nullable. Nothing releases a claim on a clock: the lease exists so a worker
- * that stopped answering can be told apart from one that is working, and the read
- * answers how stale it is so that a person takes it over rather than a timer
- * reassigning somebody's work.
- */
-export const claim = pgTable('claim', {
-  ticketId: text('ticketId')
-    .primaryKey()
-    .references(() => ticket.id, { onDelete: 'cascade' }),
-  /** Cascaded rather than cleared: a claim with nobody holding it means nothing. */
-  holderId: text('holderId')
-    .notNull()
-    .references(() => user.id, { onDelete: 'cascade' }),
-  /**
-   * The desktop holding it, or null when a person is working it by hand.
-   *
-   * Restricted rather than cascaded: a claim is a lease on a machine that exists, and a
-   * desktop cannot be deleted while it holds one. Deleting the desktop first would drop
-   * the claim without ending the run it carries, which is the one thing a claim going
-   * away must never do (GH #68).
-   */
-  workerId: text('workerId').references(() => worker.id, { onDelete: 'restrict' }),
-  startedAt: timestamp('startedAt', { withTimezone: true })
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-  /** When it was last heard from, or null for a claim that has no heartbeat. */
-  heardAt: timestamp('heardAt', { withTimezone: true }),
-  /** When its lease runs out, or null for a claim that has no lease. */
-  leaseUntil: timestamp('leaseUntil', { withTimezone: true }),
-});
-
-/**
- * One agent's attempt at a ticket, in one workspace, from a claim to an end.
- *
- * A ticket has many runs and a run is never the ticket's state (docs/adr/0012). The
- * contract it was given is copied in rather than read from the ticket, because a run's
- * evidence is evidence about the criteria as they read when it started: a criterion
- * edited afterwards cannot be presented as something the run verified, and editing one
- * while a run works is a steering decision rather than a silent swap (GH #57).
- */
-export const run = pgTable(
-  'run',
-  {
-    id: text('id').primaryKey(),
-    ticketId: text('ticketId')
-      .notNull()
-      .references(() => ticket.id, { onDelete: 'cascade' }),
-    /** Who drove it: the person the ticket is for, whose allowance it spends. */
-    driverId: text('driverId').references(() => user.id, { onDelete: 'set null' }),
-    /** The desktop it ran on, or null when a person worked the ticket by hand. */
-    workerId: text('workerId'),
-    startedAt: timestamp('startedAt', { withTimezone: true })
-      .notNull()
-      .default(sql`CURRENT_TIMESTAMP`),
-    /** The criteria as they read when the run started. */
-    contract: text('contract').array().notNull(),
-    /** The branch it made, or null while it has made none. */
-    branch: text('branch'),
-    endedAt: timestamp('endedAt', { withTimezone: true }),
-    /** Why it stopped needing a person, or null when it finished what it set out to do. */
-    stoppedBecause: text('stoppedBecause'),
-    /** What it changed, what it ran, and what it made of it: its proposal. */
-    changed: text('changed'),
-    checks: text('checks').array(),
-    made: text('made'),
-    /** `accepted` or `sent-back` once the person has judged it, null until then. */
-    verdict: text('verdict'),
-    verdictAt: timestamp('verdictAt', { withTimezone: true }),
-  },
-  (table) => [index('run_by_ticket').on(table.ticketId, table.startedAt)],
-);
-
-/**
- * What was said while a run went on.
- *
- * A run's words are the project's, not the machine's (docs/adr/0012): the chat in the
- * window is a way of watching them, and closing the window does not lose them. An entry
- * is written once and never changed, because a transcript somebody can edit afterwards is
- * not a record of what happened. `saidBy` is who said it — the person steering, the agent
- * doing the work, or a note Kira adds itself, such as why a run stopped.
- */
-export const transcript = pgTable(
-  'transcript',
-  {
-    id: text('id').primaryKey(),
-    runId: text('runId')
-      .notNull()
-      .references(() => run.id, { onDelete: 'cascade' }),
-    /** `person`, `agent` or `note`. */
-    saidBy: text('saidBy').notNull(),
-    words: text('words').notNull(),
-    at: timestamp('at', { withTimezone: true })
-      .notNull()
-      .default(sql`CURRENT_TIMESTAMP`),
-  },
-  (table) => [index('transcript_by_run').on(table.runId, table.at)],
-);
-
-/**
- * A desktop that has offered itself for work (docs/adr/0012).
- *
- * A worker is online while it is being heard from, away when it is not, and gone when it
- * says so — which is why nothing here has an `online` column: online is how long ago it
- * was heard from, read at read time. A worker that stops answering keeps its claims,
- * because a claim is taken over by a person rather than released by a clock.
- */
-export const worker = pgTable('worker', {
-  id: text('id').primaryKey(),
-  /** Cascaded: a worker is a live offering, not history, and it belongs to one person. */
-  ownerId: text('ownerId')
-    .notNull()
-    .references(() => user.id, { onDelete: 'cascade' }),
-  name: text('name').notNull(),
-  /** The folders it can run in, as it names them to itself. */
-  workspaces: text('workspaces').array().notNull(),
-  heardAt: timestamp('heardAt', { withTimezone: true })
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
-});
-
 /**
  * Everything, under the names Better Auth asks for. Its adapter looks up a
  * model by these keys and a field by the key inside it, so the export names are
@@ -705,10 +492,4 @@ export const schema = {
   glossaryHistory,
   gate,
   ticketRelationship,
-  executionWorkspace,
-  delivery,
-  claim,
-  run,
-  transcript,
-  worker,
 };

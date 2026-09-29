@@ -22,7 +22,7 @@ test('a new database reaches the current schema version', () => {
   const db = new DatabaseSync(path);
   assert.equal(
     (db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version,
-    16,
+    17,
   );
   assert.ok(
     (db.prepare('PRAGMA table_info(threads)').all() as { name: string }[]).some(
@@ -43,11 +43,12 @@ test('chat mode defaults to Build and is remembered per chat', () => {
   store.close();
 });
 
-test('an ordinary chat remembers its attached project tickets without becoming a ticket run', () => {
+test('an ordinary chat remembers its linked project tickets', () => {
   const store = new ThreadStore(storePath());
-  const chat = store.createThread(tmpdir(), { workTicketIds: ['ticket-a', 'ticket-b', 'ticket-a'] });
+  const chat = store.createThread(tmpdir(), {
+    workTicketIds: ['ticket-a', 'ticket-b', 'ticket-a'],
+  });
 
-  assert.equal(chat.ticketId, null);
   assert.deepEqual(chat.workTicketIds, ['ticket-a', 'ticket-b']);
   assert.deepEqual(store.getThread(chat.id).workTicketIds, ['ticket-a', 'ticket-b']);
 
@@ -358,7 +359,6 @@ test('a database from before the rename keeps its folders, its chats and what a 
       'INSERT INTO workspace_observations (workspace_id, at, kind, relevance, text) VALUES (?, ?, ?, ?, ?)',
     )
     .run(workspace.id, '2026-01-01T00:00:00.000Z', 'decision', 'high', 'the queue is derived');
-  old.exec('ALTER TABLE threads DROP COLUMN ticket_id');
   beforeWorkspacesRename(old);
   old.exec('PRAGMA user_version = 8');
   old.close();
@@ -822,7 +822,6 @@ function beforeArchiving(path: string): void {
   store.close();
 
   const old = new DatabaseSync(path);
-  old.exec('ALTER TABLE threads DROP COLUMN ticket_id');
   // Everything version 4 and later added, in the order it arrived: a shape that
   // keeps a column an older build never wrote is not that older shape, and the
   // migration meets it as a column that is already there.
@@ -853,7 +852,6 @@ function beforeModelMemory(path: string): void {
   store.close();
 
   const old = new DatabaseSync(path);
-  old.exec('ALTER TABLE threads DROP COLUMN ticket_id');
   old.exec('ALTER TABLE threads DROP COLUMN model_id');
   beforeWorkspacesRename(old);
   old.exec('DROP TABLE observations');
@@ -876,7 +874,6 @@ function beforeKeepingMemory(path: string): void {
   store.close();
 
   const old = new DatabaseSync(path);
-  old.exec('ALTER TABLE threads DROP COLUMN ticket_id');
   beforeWorkspacesRename(old);
   old.exec('DROP TABLE observations');
   old.exec('DROP TABLE reflections');
@@ -898,7 +895,6 @@ function beforeConclusions(path: string): void {
   store.close();
 
   const old = new DatabaseSync(path);
-  old.exec('ALTER TABLE threads DROP COLUMN ticket_id');
   beforeWorkspacesRename(old);
   old.exec('DROP TABLE reflections');
   old.exec('DROP TABLE project_observations');
@@ -919,7 +915,6 @@ function beforeProjectMemory(path: string): void {
   store.close();
 
   const old = new DatabaseSync(path);
-  old.exec('ALTER TABLE threads DROP COLUMN ticket_id');
   beforeWorkspacesRename(old);
   old.exec('DROP TABLE project_observations');
   old.exec('PRAGMA user_version = 7');
@@ -941,27 +936,8 @@ function beforeTheRename(path: string): void {
   store.close();
 
   const old = new DatabaseSync(path);
-  old.exec('ALTER TABLE threads DROP COLUMN ticket_id');
   beforeWorkspacesRename(old);
   old.exec('PRAGMA user_version = 8');
-  old.close();
-}
-
-/**
- * A database written before a chat could say it was a run of a ticket.
- *
- * The column arrives with this build, so a database written before it holds the rows it
- * always did without it — which is what this puts back, along with the version a build
- * from then would have written down.
- */
-function beforeRunsWereChats(path: string): void {
-  const store = new ThreadStore(path);
-  store.createThread(join(tmpdir(), 'kira-space'));
-  store.close();
-
-  const old = new DatabaseSync(path);
-  old.exec('ALTER TABLE threads DROP COLUMN ticket_id');
-  old.exec('PRAGMA user_version = 9');
   old.close();
 }
 
@@ -986,7 +962,6 @@ const OLDER_CASES: OlderCase[] = [
   { name: 'a database from before Kira drew conclusions', write: beforeConclusions },
   { name: 'a database from before a workspace kept anything', write: beforeProjectMemory },
   { name: 'a database from before a folder was called a workspace', write: beforeTheRename },
-  { name: 'a database from before a run was a chat', write: beforeRunsWereChats },
 ];
 
 for (const testCase of OLDER_CASES) {
@@ -1542,20 +1517,26 @@ function concludedBy(store: ThreadStore, threadId: string) {
     .map(({ text, coversThrough }) => ({ text, coversThrough }));
 }
 
-test('a chat says which ticket it is a run of, and an ordinary chat says nothing', () => {
-  const store = new ThreadStore(storePath());
-  const folder = join(tmpdir(), 'kira-space');
-
-  const ordinary = store.createThread(folder);
-  const run = store.createThread(folder, { ticketId: 'ticket-one' });
-
-  assert.equal(ordinary.ticketId, null, 'a chat somebody had is not a run of anything');
-  assert.equal(run.ticketId, 'ticket-one');
-  assert.equal(store.getThread(run.id).ticketId, 'ticket-one');
-  assert.equal(
-    store.listThreads().find((each) => each.id === run.id)?.ticketId,
-    'ticket-one',
-    'and the list the sidebar reads says so too',
-  );
+test('legacy ticket associations migrate into explicit chat ticket links', () => {
+  const path = storePath();
+  const store = new ThreadStore(path);
+  const chat = store.createThread(join(tmpdir(), 'kira-space'), {
+    workTicketIds: ['already-linked'],
+  });
   store.close();
+
+  const old = new DatabaseSync(path);
+  old.exec('ALTER TABLE threads ADD COLUMN ticket_id TEXT');
+  old.prepare('UPDATE threads SET ticket_id = ? WHERE id = ?').run('legacy-ticket', chat.id);
+  old.exec('PRAGMA user_version = 16');
+  old.close();
+
+  const migrated = new ThreadStore(path);
+  assert.deepEqual(migrated.getThread(chat.id).workTicketIds, ['already-linked', 'legacy-ticket']);
+  migrated.close();
+
+  const latest = new DatabaseSync(path);
+  const columns = latest.prepare('PRAGMA table_info(threads)').all() as Array<{ name: string }>;
+  assert.ok(!columns.some((column) => column.name === 'ticket_id'));
+  latest.close();
 });

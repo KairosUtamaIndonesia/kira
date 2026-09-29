@@ -7,10 +7,14 @@ import { Type, type TSchema } from 'typebox';
 import { randomUUID } from 'node:crypto';
 import {
   TICKET_KINDS,
+  TICKET_PRIORITIES,
   type BreakdownSlice,
   type GlossaryChangeNote,
   type GlossaryEdit,
   type TicketChange,
+  type TicketDraft,
+  type TicketStatus,
+  type Ticket,
 } from '../../../preload/bridge.ts';
 import type { ThreadStore } from '../../db/threads.ts';
 import type { Tracker } from '../../tracker.ts';
@@ -28,6 +32,9 @@ const EDIT = Type.Object({
   title: Type.Optional(Type.String()),
   body: Type.Optional(Type.String()),
   criteria: Type.Optional(Type.Array(Type.String())),
+  status: Type.Optional(Type.String()),
+  priority: Type.Optional(Type.String()),
+  tags: Type.Optional(Type.Array(Type.String())),
 });
 const GLOSSARY = Type.Object({
   term: Type.String({ minLength: 1 }),
@@ -146,14 +153,20 @@ export function trackerTools(
   tracker: Tracker,
 ): ToolDefinition[] {
   const workspace = (): string => workspaceFor(store, threadId);
+  const linkedTicket = async (ref: string): Promise<Ticket> => {
+    const ticket = await tracker.readTicket(ref);
+    if (!store.getThread(threadId).workTicketIds.includes(ticket.id)) {
+      throw new Error('This chat can only change tickets linked to it.');
+    }
+    return ticket;
+  };
 
   return [
     tool({
       name: 'tracker_queue',
       label: 'Read tracker queue',
-      description:
-        'Read the current project queue, including every ticket and its server-derived band.',
-      promptSnippet: 'Read the current project queue and ticket bands.',
+      description: 'Read the current project queue, including every ticket and its stored status.',
+      promptSnippet: 'Read the current project queue and ticket statuses.',
       parameters: EMPTY,
       async execute() {
         return textResult(await tracker.queue(workspace()));
@@ -219,22 +232,27 @@ export function trackerTools(
       },
     }),
     tool({
-      name: 'tracker_write_draft',
-      label: 'Write tracker draft',
+      name: 'tracker_create_ticket',
+      label: 'Create tracker ticket',
       description:
-        'Ticket creation is person-owned. Kira may edit an existing draft with tracker_edit_draft but cannot create tracker tickets.',
-      promptSnippet: 'Never create tracker tickets; edit only an existing draft ticket.',
+        'Create a Draft ticket in this project and link it to this chat. A person makes it Ready when it is ready to start; the agent cannot delete tickets or mark them Done or Won’t do.',
+      promptSnippet: 'Create and link a Draft ticket in this project when asked.',
       parameters: DRAFT,
-      async execute() {
-        throw new Error('Kira cannot create tracker tickets; a person must create them.');
+      async execute(params) {
+        const draft = params as Omit<TicketDraft, 'status'>;
+        const ticket = await tracker.write(workspace(), { ...draft, status: 'draft' });
+        const current = store.getThread(threadId).workTicketIds;
+        store.setThreadWorkTicketIds(threadId, [...new Set([...current, ticket.id])]);
+        return textResult(ticket);
       },
     }),
     tool({
-      name: 'tracker_edit_draft',
-      label: 'Edit tracker draft',
+      name: 'tracker_update_ticket',
+      label: 'Update tracker ticket',
       description:
-        'Edit the title, body, or acceptance criteria of a draft ticket only. Gate, readiness, closure, publication, and Decision approval are not available.',
-      promptSnippet: 'Edit a draft ticket without changing readiness or approval.',
+        'Update a ticket linked to this chat. You may set Running or Needs review; Done and Won’t do stay with the person. Running assigns the ticket to the signed-in person.',
+      promptSnippet:
+        'Update a linked ticket; set Running when work starts and Needs review after opening a pull request. Never set Done or Won’t do.',
       parameters: EDIT,
       async execute(params) {
         const edit = params as {
@@ -242,17 +260,61 @@ export function trackerTools(
           title?: string;
           body?: string;
           criteria?: string[];
+          status?: string;
+          priority?: string;
+          tags?: string[];
         };
-        const current = await tracker.readTicket(edit.ref);
-        if (current.gate !== 'draft') {
-          throw new Error('Kira can only edit draft tickets.');
-        }
+        const current = await linkedTicket(edit.ref);
 
         const change: TicketChange = {};
         if (edit.title !== undefined) change.title = edit.title;
         if (edit.body !== undefined) change.body = edit.body;
         if (edit.criteria !== undefined) change.criteria = edit.criteria;
+        if (edit.status !== undefined) {
+          if (!['running', 'needs-review'].includes(edit.status)) {
+            throw new Error('The agent can set only Running or Needs review.');
+          }
+          change.status = edit.status as TicketStatus;
+          if (edit.status === 'running') change.assigneeId = await tracker.currentUserId();
+        }
+        if (edit.priority !== undefined) {
+          if (!TICKET_PRIORITIES.includes(edit.priority as (typeof TICKET_PRIORITIES)[number])) {
+            throw new Error('Choose a supported ticket priority.');
+          }
+          change.priority = edit.priority as TicketChange['priority'];
+        }
+        if (edit.tags !== undefined) change.tags = edit.tags;
         return textResult(await tracker.change(current.id, change));
+      },
+    }),
+    tool({
+      name: 'tracker_add_blocker',
+      label: 'Add ticket blocker',
+      description: 'Add a ticket as a blocker to a ticket linked to this chat.',
+      promptSnippet: 'Add a blocker to a ticket linked to this chat.',
+      parameters: Type.Object({
+        ref: Type.String({ minLength: 1 }),
+        blockedBy: Type.String({ minLength: 1 }),
+      }),
+      async execute(params) {
+        const { ref, blockedBy } = params as { ref: string; blockedBy: string };
+        const ticket = await linkedTicket(ref);
+        return textResult(await tracker.gate(ticket.id, blockedBy));
+      },
+    }),
+    tool({
+      name: 'tracker_remove_blocker',
+      label: 'Remove ticket blocker',
+      description: 'Remove a blocker from a ticket linked to this chat.',
+      promptSnippet: 'Remove a blocker from a ticket linked to this chat.',
+      parameters: Type.Object({
+        ref: Type.String({ minLength: 1 }),
+        blockedBy: Type.String({ minLength: 1 }),
+      }),
+      async execute(params) {
+        const { ref, blockedBy } = params as { ref: string; blockedBy: string };
+        const ticket = await linkedTicket(ref);
+        return textResult(await tracker.ungate(ticket.id, blockedBy));
       },
     }),
   ];

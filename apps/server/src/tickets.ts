@@ -1,6 +1,5 @@
 /**
- * The tracker's own domain: projects, their tickets, the gate a ticket is at, and
- * the queue those derive.
+ * The tracker's own domain: projects, tickets, statuses and blockers.
  *
  * One relation, read from either end. A ticket names the tickets that gate it, so
  * its *children* are the tickets it names as gates — the parent names its slices,
@@ -8,17 +7,15 @@
  * slices show the parent they hold up. There is no parent column and nothing stores
  * a tree (docs/adr/0017-a-ticket-is-one-object-with-children.md).
  *
- * Nothing here stores a band. A ticket's band is read off its closure, its gate,
- * whether its children are closed, whether anybody holds a claim on it, and how its
- * newest run ended, so a client cannot draw a state the server would not derive, and
- * the frontier a run is dispatched from is the same derivation (GH #57, #69, #71).
+ * A ticket's status is stored. An open blocker adds a Blocked marker without changing
+ * that status.
  *
  * A project is shared work. It is readable and writable by anyone signed in, and it
  * outlives the person who wrote it — authorship is cleared rather than cascaded, the
  * one place these tables diverge from the shape `usage` uses.
  */
 import { randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
 import { Elysia, t } from 'elysia';
 import type { Auth } from './auth';
 import type { Database } from './database';
@@ -26,25 +23,14 @@ import { keyHolder, type HeldUser } from './keys';
 import { refusal, REFUSAL } from './refusals';
 import { messages } from './messages';
 import {
-  claim,
-  delivery,
-  executionWorkspace,
   gate,
   outcome,
   project,
-  reviewComment,
-  reviewFeedback,
-  run,
   ticket,
-  transcript,
   ticketRelationship,
   user,
-  worker,
   type OutcomeDecisionProposal,
 } from './schema';
-
-/** What a person can make of a run's proposal. Accepting also closes its ticket. */
-const VERDICTS = ['accepted', 'sent-back'] as const;
 
 /** What a ticket delivers, fixed when it is written. */
 const KINDS = [
@@ -58,23 +44,14 @@ const KINDS = [
   'map',
 ] as const;
 
-/** Where a ticket stands with whoever might resolve it. */
-const GATES = ['draft', 'ready-for-agent', 'ready-for-human'] as const;
-
-/** Why a ticket was closed. */
-const CLOSURES = ['done', 'wontfix'] as const;
-
 /** Human-facing columns on the Project Work board. */
-const STATUSES = ['backlog', 'todo', 'in-progress', 'in-review', 'done', 'cancelled'] as const;
+const STATUSES = ['draft', 'ready', 'running', 'needs-review', 'done', 'wont-do'] as const;
 
 /** Person-owned urgency, from highest to lowest. */
 const PRIORITIES = ['urgent', 'high', 'medium', 'low', 'none'] as const;
 
 /** Planning relationships are deliberately separate from execution gates. */
 const RELATIONSHIPS = ['parent', 'blocks', 'related', 'duplicate'] as const;
-
-/** Who a line in a run's transcript came from. */
-const SAID_BY = ['person', 'agent', 'note'] as const;
 
 /**
  * A prefix: two to six characters, starting with a letter.
@@ -86,7 +63,6 @@ const SAID_BY = ['person', 'agent', 'note'] as const;
 const PREFIX = /^[A-Z][A-Z0-9]{1,5}$/;
 
 /** How much of a title a branch name carries, so the name stays readable. */
-const SLUG_LIMIT = 40;
 
 const PROJECT = t.Object({
   id: t.String(),
@@ -94,97 +70,17 @@ const PROJECT = t.Object({
   prefix: t.String(),
 });
 
-/** A ticket at the other end of a gate, as a ticket's page draws it. */
+/** A ticket at the other end of a blocker or parent link. */
 const NAMED = t.Object({
   id: t.String(),
   name: t.String(),
-  closed: t.Boolean(),
-  closure: t.Union([t.String(), t.Null()]),
+  status: t.String(),
 });
 const ASSIGNEE = t.Union([t.Object({ id: t.String(), name: t.String() }), t.Null()]);
 const RELATIONSHIP = t.Object({
   type: t.String(),
   ticket: NAMED,
 });
-
-/** A claim on a ticket, as a client reads one. */
-const CLAIM = t.Object({
-  holder: t.Object({ id: t.String(), name: t.String() }),
-  workerId: t.Union([t.String(), t.Null()]),
-  startedAt: t.String(),
-  heardAt: t.Union([t.String(), t.Null()]),
-  leaseUntil: t.Union([t.String(), t.Null()]),
-  /** Whether its lease has run out. A claim by hand has no lease, so it is never stale. */
-  stale: t.Boolean(),
-  /** How long since it was last heard from, or null when it has no heartbeat. */
-  quietMs: t.Union([t.Integer(), t.Null()]),
-});
-
-/** A run as a client reads one. */
-const RUN = t.Object({
-  id: t.String(),
-  ticketId: t.String(),
-  workerId: t.Union([t.String(), t.Null()]),
-  startedAt: t.String(),
-  /** The criteria as they read when it started, copied rather than read through. */
-  contract: t.Array(t.String()),
-  branch: t.Union([t.String(), t.Null()]),
-  endedAt: t.Union([t.String(), t.Null()]),
-  stoppedBecause: t.Union([t.String(), t.Null()]),
-  changed: t.Union([t.String(), t.Null()]),
-  checks: t.Union([t.Array(t.String()), t.Null()]),
-  made: t.Union([t.String(), t.Null()]),
-  verdict: t.Union([t.String(), t.Null()]),
-  verdictAt: t.Union([t.String(), t.Null()]),
-});
-
-const EXECUTION_WORKSPACE = t.Object({
-  id: t.String(),
-  ticketId: t.String(),
-  repository: t.String(),
-  baseBranch: t.String(),
-  branch: t.String(),
-  agentConfig: t.String(),
-  createdAt: t.String(),
-});
-const WORKSPACES = t.Object({ workspaces: t.Array(EXECUTION_WORKSPACE) });
-const REVIEW_COMMENT = t.Object({
-  id: t.String(),
-  workspaceId: t.String(),
-  runId: t.Union([t.String(), t.Null()]),
-  path: t.String(),
-  line: t.Integer(),
-  side: t.String(),
-  body: t.String(),
-  status: t.String(),
-  author: t.Union([t.Object({ id: t.String(), name: t.String() }), t.Null()]),
-  createdAt: t.String(),
-  addressedAt: t.Union([t.String(), t.Null()]),
-});
-const REVIEW_FEEDBACK = t.Object({
-  id: t.String(),
-  workspaceId: t.String(),
-  runId: t.Union([t.String(), t.Null()]),
-  body: t.String(),
-  author: t.Union([t.Object({ id: t.String(), name: t.String() }), t.Null()]),
-  createdAt: t.String(),
-});
-const REVIEW = t.Object({
-  comments: t.Array(REVIEW_COMMENT),
-  feedback: t.Array(REVIEW_FEEDBACK),
-});
-const DELIVERY = t.Object({
-  id: t.String(),
-  ticketId: t.String(),
-  workspaceId: t.String(),
-  path: t.String(),
-  outcome: t.String(),
-  reference: t.Union([t.String(), t.Null()]),
-  url: t.Union([t.String(), t.Null()]),
-  details: t.Union([t.String(), t.Null()]),
-  createdAt: t.String(),
-});
-const DELIVERIES = t.Object({ deliveries: t.Array(DELIVERY) });
 
 const OUTCOME_DECISION = t.Object({
   context: t.String(),
@@ -243,14 +139,12 @@ const TICKET = t.Object({
   title: t.String(),
   body: t.String(),
   criteria: t.Array(t.String()),
-  gate: t.String(),
-  band: t.String(),
+  blocked: t.Boolean(),
   rank: t.Integer(),
   status: t.String(),
   priority: t.String(),
   assignee: ASSIGNEE,
   tags: t.Array(t.String()),
-  branch: t.String(),
   author: t.Union([t.Object({ id: t.String(), name: t.String() }), t.Null()]),
   gates: t.Array(NAMED),
   children: t.Array(NAMED),
@@ -259,12 +153,7 @@ const TICKET = t.Object({
   relationships: t.Array(RELATIONSHIP),
   createdAt: t.String(),
   updatedAt: t.String(),
-  closedAt: t.Union([t.String(), t.Null()]),
-  closure: t.Union([t.String(), t.Null()]),
   sourceChatId: t.Union([t.String(), t.Null()]),
-  claim: t.Union([CLAIM, t.Null()]),
-  runs: t.Array(RUN),
-  workspaces: t.Array(EXECUTION_WORKSPACE),
   outcome: t.Union([OUTCOME, t.Null()]),
   /** Approved Outcomes from this map's closed question/research children. */
   decisionsSoFar: t.Array(OUTCOME),
@@ -280,39 +169,14 @@ const BREAKDOWN_CHILD = t.Object({
   dependsOn: t.Array(t.String()),
 });
 const BREAKDOWN = t.Object({ spec: TICKET, children: t.Array(TICKET) });
-const ONE_RUN = t.Object({ run: RUN });
-
-/** One thing said while a run went on. */
-const SAID = t.Object({
-  id: t.String(),
-  saidBy: t.String(),
-  words: t.String(),
-  at: t.String(),
-});
-
-const ONE_SAID = t.Object({ said: SAID });
-const TRANSCRIPT = t.Object({ transcript: t.Array(SAID) });
-
 /** A row of the ticket table. */
 type Row = typeof ticket.$inferSelect;
-type RunRow = typeof run.$inferSelect;
-type SaidRow = typeof transcript.$inferSelect;
 
-/** A ticket at one end of a gate, as the read carries it. */
+/** A linked ticket, as the read carries it. */
 interface Named {
   id: string;
   name: string;
-  closed: boolean;
-  closure: string | null;
-}
-
-/** A claim on a ticket: who holds it, and what a worker's lease looks like. */
-interface Held {
-  holder: { id: string; name: string };
-  workerId: string | null;
-  startedAt: Date;
-  heardAt: Date | null;
-  leaseUntil: Date | null;
+  status: string;
 }
 
 /** Everything the read of one ticket needs that is not on its own row. */
@@ -324,11 +188,8 @@ interface Context {
   parent: Named | null;
   subIssues: Named[];
   relationships: { type: string; ticket: Named }[];
-  claim: Held | null;
-  runs: RunRow[];
   outcome: OutcomeView | null;
   decisionsSoFar: OutcomeView[];
-  workspaces: (typeof executionWorkspace.$inferSelect)[];
 }
 
 interface OutcomeView {
@@ -363,117 +224,6 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
           401: REFUSAL,
         },
         detail: { summary: 'The projects anyone signed in may work in' },
-      },
-    )
-    .get(
-      '/api/tickets/:ref/deliveries',
-      async ({ request, params, status }) => {
-        const held = await asking(auth, request);
-        if ('refused' in held) return status(401, held.refused);
-        const found = await resolve(database, params.ref);
-        if (!found) return status(404, refusal('TICKET_NOT_FOUND', messages.ticketNotFound));
-
-        const rows = await database
-          .select()
-          .from(delivery)
-          .where(eq(delivery.ticketId, found.ticket.id))
-          .orderBy(asc(delivery.createdAt), asc(delivery.id));
-        return { deliveries: rows.map(asDelivery) };
-      },
-      {
-        params: t.Object({ ref: t.String() }),
-        response: { 200: DELIVERIES, 401: REFUSAL, 404: REFUSAL },
-        detail: { summary: 'Read the delivery audit trail for an issue' },
-      },
-    )
-    .post(
-      '/api/tickets/:ref/deliveries',
-      async ({ request, params, body, status }) => {
-        const held = await asking(auth, request);
-        if ('refused' in held) return status(401, held.refused);
-        const found = await resolve(database, params.ref);
-        if (!found) return status(404, refusal('TICKET_NOT_FOUND', messages.ticketNotFound));
-        if (!isOneOf(['pull-request', 'merge-pull-request', 'local-merge'] as const, body.path)) {
-          return status(400, refusal('DELIVERY_PATH_UNKNOWN', messages.deliveryPathUnknown));
-        }
-        if (!isOneOf(['delivered', 'refused'] as const, body.outcome)) {
-          return status(400, refusal('DELIVERY_OUTCOME_UNKNOWN', messages.deliveryOutcomeUnknown));
-        }
-
-        const [workspace] = await database
-          .select()
-          .from(executionWorkspace)
-          .where(
-            and(
-              eq(executionWorkspace.id, body.workspaceId),
-              eq(executionWorkspace.ticketId, found.ticket.id),
-            ),
-          );
-        if (!workspace)
-          return status(404, refusal('WORKSPACE_NOT_FOUND', messages.workspaceNotFound));
-        if (body.outcome === 'delivered' && !body.reference?.trim()) {
-          return status(
-            400,
-            refusal('DELIVERY_REFERENCE_REQUIRED', messages.deliveryReferenceRequired),
-          );
-        }
-
-        const [approved] = await database
-          .select({ branch: run.branch })
-          .from(run)
-          .where(and(eq(run.ticketId, found.ticket.id), eq(run.verdict, 'accepted')))
-          .orderBy(desc(run.startedAt), desc(run.id))
-          .limit(1);
-        if (!approved || approved.branch !== workspace.branch) {
-          return status(400, refusal('DELIVERY_NOT_APPROVED', messages.deliveryNotApproved));
-        }
-
-        const made = await database.transaction(async (transaction) => {
-          const [written] = await transaction
-            .insert(delivery)
-            .values({
-              id: randomUUID(),
-              ticketId: found.ticket.id,
-              workspaceId: workspace.id,
-              path: body.path,
-              outcome: body.outcome,
-              reference: body.reference?.trim() || null,
-              url: body.url?.trim() || null,
-              details: body.details?.trim() || null,
-              actorId: held.user.id,
-            })
-            .returning();
-          if (body.outcome === 'delivered') {
-            await transaction
-              .update(ticket)
-              .set({ status: 'done', closure: 'done', closedAt: new Date(), updatedAt: new Date() })
-              .where(eq(ticket.id, found.ticket.id));
-          }
-          return written!;
-        });
-
-        return {
-          delivery: asDelivery(made),
-          ticket: await one(database, found.project, found.ticket),
-        };
-      },
-      {
-        params: t.Object({ ref: t.String() }),
-        body: t.Object({
-          workspaceId: t.String(),
-          path: t.String(),
-          outcome: t.String(),
-          reference: t.Optional(t.String()),
-          url: t.Optional(t.String()),
-          details: t.Optional(t.String()),
-        }),
-        response: {
-          200: t.Object({ delivery: DELIVERY, ticket: TICKET }),
-          400: REFUSAL,
-          401: REFUSAL,
-          404: REFUSAL,
-        },
-        detail: { summary: 'Record a conflict-safe local merge or pull request delivery' },
       },
     )
     .post(
@@ -541,18 +291,16 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
             counts: t.Object({
               draft: t.Integer(),
               ready: t.Integer(),
-              blocked: t.Integer(),
-              done: t.Integer(),
               running: t.Integer(),
-              'needs-you': t.Integer(),
+              'needs-review': t.Integer(),
+              done: t.Integer(),
+              'wont-do': t.Integer(),
             }),
           }),
           401: REFUSAL,
           404: REFUSAL,
         },
-        detail: {
-          summary: 'One project with its tickets, each in the band it is derived into',
-        },
+        detail: { summary: 'One project with its tickets and status counts' },
       },
     )
     .post(
@@ -567,7 +315,7 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
         if (!isOneOf(KINDS, body.kind ?? 'feature')) {
           return status(400, refusal('KIND_UNKNOWN', messages.kindUnknown(KINDS)));
         }
-        if (!isOneOf(STATUSES, body.status ?? 'backlog')) {
+        if (!isOneOf(STATUSES, body.status ?? 'draft')) {
           return status(400, refusal('STATUS_UNKNOWN', messages.statusUnknown(STATUSES)));
         }
         if (!isOneOf(PRIORITIES, body.priority ?? 'none')) {
@@ -591,8 +339,7 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
           title: body.title.trim(),
           body: body.body ?? '',
           criteria: body.criteria ?? [],
-          gate: 'draft',
-          status: body.status ?? 'backlog',
+          status: body.status ?? 'draft',
           priority: body.priority ?? 'none',
           assigneeId: body.assigneeId ?? null,
           tags: cleanTags(body.tags ?? []),
@@ -616,261 +363,7 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
           sourceChatId: t.Optional(t.String()),
         }),
         response: { 200: ONE_TICKET, 400: REFUSAL, 401: REFUSAL, 404: REFUSAL },
-        detail: { summary: 'Write a ticket down in a project, as a draft' },
-      },
-    )
-    .get(
-      '/api/tickets/:ref/workspaces',
-      async ({ request, params, status }) => {
-        const held = await asking(auth, request);
-        if ('refused' in held) return status(401, held.refused);
-        const found = await resolve(database, params.ref);
-        if (!found) return status(404, refusal('TICKET_NOT_FOUND', messages.ticketNotFound));
-
-        const workspaces = await database
-          .select()
-          .from(executionWorkspace)
-          .where(eq(executionWorkspace.ticketId, found.ticket.id))
-          .orderBy(asc(executionWorkspace.createdAt), asc(executionWorkspace.id));
-        return { workspaces: workspaces.map(asExecutionWorkspace) };
-      },
-      {
-        params: t.Object({ ref: t.String() }),
-        response: { 200: WORKSPACES, 401: REFUSAL, 404: REFUSAL },
-        detail: { summary: 'List the execution workspaces linked to an issue' },
-      },
-    )
-    .post(
-      '/api/tickets/:ref/workspaces',
-      async ({ request, params, body, status }) => {
-        const held = await asking(auth, request);
-        if ('refused' in held) return status(401, held.refused);
-        const found = await resolve(database, params.ref);
-        if (!found) return status(404, refusal('TICKET_NOT_FOUND', messages.ticketNotFound));
-
-        const values = {
-          id: randomUUID(),
-          ticketId: found.ticket.id,
-          repository: body.repository.trim(),
-          baseBranch: body.baseBranch.trim(),
-          branch: body.branch.trim(),
-          agentConfig: body.agentConfig.trim(),
-          creatorId: held.user.id,
-        };
-        if (
-          Object.values(values).some((value) => typeof value === 'string' && value.trim() === '')
-        ) {
-          return status(400, refusal('WORKSPACE_INVALID', messages.workspaceInvalid));
-        }
-
-        const [made] = await database.insert(executionWorkspace).values(values).returning();
-        return { workspace: asExecutionWorkspace(made!) };
-      },
-      {
-        params: t.Object({ ref: t.String() }),
-        body: t.Object({
-          repository: t.String(),
-          baseBranch: t.String(),
-          branch: t.String(),
-          agentConfig: t.String(),
-        }),
-        response: {
-          200: t.Object({ workspace: EXECUTION_WORKSPACE }),
-          400: REFUSAL,
-          401: REFUSAL,
-          404: REFUSAL,
-        },
-        detail: { summary: 'Link an execution workspace to an issue' },
-      },
-    )
-    .delete(
-      '/api/tickets/:ref/workspaces/:workspaceId',
-      async ({ request, params, status }) => {
-        const held = await asking(auth, request);
-        if ('refused' in held) return status(401, held.refused);
-        const found = await resolve(database, params.ref);
-        if (!found) return status(404, refusal('TICKET_NOT_FOUND', messages.ticketNotFound));
-        const [removed] = await database
-          .delete(executionWorkspace)
-          .where(
-            and(
-              eq(executionWorkspace.id, params.workspaceId),
-              eq(executionWorkspace.ticketId, found.ticket.id),
-            ),
-          )
-          .returning({ id: executionWorkspace.id });
-        if (!removed)
-          return status(404, refusal('WORKSPACE_NOT_FOUND', messages.workspaceNotFound));
-        return { workspace: null };
-      },
-      {
-        params: t.Object({ ref: t.String(), workspaceId: t.String() }),
-        response: { 200: t.Object({ workspace: t.Null() }), 401: REFUSAL, 404: REFUSAL },
-        detail: { summary: 'Unlink an execution workspace from an issue' },
-      },
-    )
-    .get(
-      '/api/tickets/:ref/workspaces/:workspaceId/review',
-      async ({ request, params, status }) => {
-        const held = await asking(auth, request);
-        if ('refused' in held) return status(401, held.refused);
-        const found = await resolve(database, params.ref);
-        if (!found) return status(404, refusal('TICKET_NOT_FOUND', messages.ticketNotFound));
-        const workspace = await workspaceOn(database, found.ticket.id, params.workspaceId);
-        if (!workspace)
-          return status(404, refusal('WORKSPACE_NOT_FOUND', messages.workspaceNotFound));
-
-        const [comments, feedback] = await Promise.all([
-          database
-            .select({ comment: reviewComment, authorId: user.id, authorName: user.name })
-            .from(reviewComment)
-            .leftJoin(user, eq(reviewComment.authorId, user.id))
-            .where(eq(reviewComment.workspaceId, workspace.id))
-            .orderBy(asc(reviewComment.createdAt), asc(reviewComment.id)),
-          database
-            .select({ feedback: reviewFeedback, authorId: user.id, authorName: user.name })
-            .from(reviewFeedback)
-            .leftJoin(user, eq(reviewFeedback.authorId, user.id))
-            .where(eq(reviewFeedback.workspaceId, workspace.id))
-            .orderBy(asc(reviewFeedback.createdAt), asc(reviewFeedback.id)),
-        ]);
-        return {
-          comments: comments.map(({ comment, authorId, authorName }) =>
-            asReviewComment(
-              comment,
-              authorId === null || authorName === null ? null : { id: authorId, name: authorName },
-            ),
-          ),
-          feedback: feedback.map(({ feedback: item, authorId, authorName }) =>
-            asReviewFeedback(
-              item,
-              authorId === null || authorName === null ? null : { id: authorId, name: authorName },
-            ),
-          ),
-        };
-      },
-      {
-        params: t.Object({ ref: t.String(), workspaceId: t.String() }),
-        response: { 200: REVIEW, 401: REFUSAL, 404: REFUSAL },
-        detail: { summary: 'Read an execution workspace review' },
-      },
-    )
-    .post(
-      '/api/tickets/:ref/workspaces/:workspaceId/review/comments',
-      async ({ request, params, body, status }) => {
-        const held = await asking(auth, request);
-        if ('refused' in held) return status(401, held.refused);
-        const found = await resolve(database, params.ref);
-        if (!found) return status(404, refusal('TICKET_NOT_FOUND', messages.ticketNotFound));
-        const workspace = await workspaceOn(database, found.ticket.id, params.workspaceId);
-        if (!workspace)
-          return status(404, refusal('WORKSPACE_NOT_FOUND', messages.workspaceNotFound));
-        if (body.line < 1 || body.path.trim() === '' || body.body.trim() === '') {
-          return status(400, refusal('REVIEW_COMMENT_INVALID', messages.reviewCommentInvalid));
-        }
-        const [made] = await database
-          .insert(reviewComment)
-          .values({
-            id: randomUUID(),
-            workspaceId: workspace.id,
-            runId: body.runId ?? null,
-            path: body.path.trim(),
-            line: body.line,
-            side: body.side,
-            body: body.body.trim(),
-            authorId: held.user.id,
-          })
-          .returning();
-        return { comment: asReviewComment(made!, { id: held.user.id, name: held.user.name }) };
-      },
-      {
-        params: t.Object({ ref: t.String(), workspaceId: t.String() }),
-        body: t.Object({
-          runId: t.Optional(t.Union([t.String(), t.Null()])),
-          path: t.String(),
-          line: t.Integer(),
-          side: t.String(),
-          body: t.String(),
-        }),
-        response: {
-          200: t.Object({ comment: REVIEW_COMMENT }),
-          400: REFUSAL,
-          401: REFUSAL,
-          404: REFUSAL,
-        },
-        detail: { summary: 'Add an inline review comment' },
-      },
-    )
-    .patch(
-      '/api/tickets/:ref/workspaces/:workspaceId/review/comments/:commentId',
-      async ({ request, params, body, status }) => {
-        const held = await asking(auth, request);
-        if ('refused' in held) return status(401, held.refused);
-        const found = await resolve(database, params.ref);
-        if (!found) return status(404, refusal('TICKET_NOT_FOUND', messages.ticketNotFound));
-        const workspace = await workspaceOn(database, found.ticket.id, params.workspaceId);
-        if (!workspace)
-          return status(404, refusal('WORKSPACE_NOT_FOUND', messages.workspaceNotFound));
-        const [existing] = await database
-          .select()
-          .from(reviewComment)
-          .where(
-            and(
-              eq(reviewComment.id, params.commentId),
-              eq(reviewComment.workspaceId, workspace.id),
-            ),
-          );
-        if (!existing)
-          return status(404, refusal('REVIEW_COMMENT_NOT_FOUND', messages.reviewCommentNotFound));
-        const addressedAt = body.status === 'addressed' ? new Date() : null;
-        const [updated] = await database
-          .update(reviewComment)
-          .set({ status: body.status, addressedAt })
-          .where(eq(reviewComment.id, existing.id))
-          .returning();
-        return { comment: asReviewComment(updated!, { id: held.user.id, name: held.user.name }) };
-      },
-      {
-        params: t.Object({ ref: t.String(), workspaceId: t.String(), commentId: t.String() }),
-        body: t.Object({ status: t.Union([t.Literal('open'), t.Literal('addressed')]) }),
-        response: { 200: t.Object({ comment: REVIEW_COMMENT }), 401: REFUSAL, 404: REFUSAL },
-        detail: { summary: 'Mark a review comment open or addressed' },
-      },
-    )
-    .post(
-      '/api/tickets/:ref/workspaces/:workspaceId/review/feedback',
-      async ({ request, params, body, status }) => {
-        const held = await asking(auth, request);
-        if ('refused' in held) return status(401, held.refused);
-        const found = await resolve(database, params.ref);
-        if (!found) return status(404, refusal('TICKET_NOT_FOUND', messages.ticketNotFound));
-        const workspace = await workspaceOn(database, found.ticket.id, params.workspaceId);
-        if (!workspace)
-          return status(404, refusal('WORKSPACE_NOT_FOUND', messages.workspaceNotFound));
-        if (body.body.trim() === '')
-          return status(400, refusal('REVIEW_FEEDBACK_INVALID', messages.reviewFeedbackInvalid));
-        const [made] = await database
-          .insert(reviewFeedback)
-          .values({
-            id: randomUUID(),
-            workspaceId: workspace.id,
-            runId: body.runId ?? null,
-            body: body.body.trim(),
-            authorId: held.user.id,
-          })
-          .returning();
-        return { feedback: asReviewFeedback(made!, { id: held.user.id, name: held.user.name }) };
-      },
-      {
-        params: t.Object({ ref: t.String(), workspaceId: t.String() }),
-        body: t.Object({ runId: t.Optional(t.Union([t.String(), t.Null()])), body: t.String() }),
-        response: {
-          200: t.Object({ feedback: REVIEW_FEEDBACK }),
-          400: REFUSAL,
-          401: REFUSAL,
-          404: REFUSAL,
-        },
-        detail: { summary: 'Send feedback for an execution workspace run' },
+        detail: { summary: 'Create a ticket in a project' },
       },
     )
     .post(
@@ -889,9 +382,7 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
             title: body.title.trim(),
             body: body.body,
             criteria: body.criteria,
-            // An approved map is never agent work. Its first turn is the person/Kira
-            // proposal that gathers the children, so it starts in the human gate.
-            gate: 'ready-for-human',
+            status: 'needs-review',
             authorId: held.user.id,
             sourceChatId: body.sourceChatId ?? null,
           });
@@ -907,7 +398,7 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
                 title: child.title.trim(),
                 body: child.body,
                 criteria: child.criteria,
-                gate: kind === 'question' ? 'ready-for-human' : 'ready-for-agent',
+                status: kind === 'question' ? 'needs-review' : 'ready',
                 authorId: held.user.id,
                 sourceChatId: null,
               });
@@ -943,7 +434,7 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
         if (found.ticket.kind !== 'map') {
           return status(400, refusal('MAP_REQUIRED', messages.mapRequired));
         }
-        if (found.ticket.closedAt !== null) {
+        if (isClosed(found.ticket.status)) {
           return status(400, refusal('TICKET_CLOSED', messages.mapClosed));
         }
         if (found.ticket.authorId !== held.user.id) {
@@ -965,7 +456,7 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
                 );
         if (
           childRows.some((child) => child.kind !== 'question' && child.kind !== 'research') ||
-          childRows.some((child) => child.closedAt === null) ||
+          childRows.some((child) => !isClosed(child.status)) ||
           (
             await outcomesFor(
               database,
@@ -983,9 +474,7 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
             title: body.title.trim(),
             body: body.body,
             criteria: body.criteria,
-            // The destination follows the ordinary spec lifecycle: it is an
-            // approved spec, ready for its breakdown, and an empty spec is blocked.
-            gate: 'ready-for-agent',
+            status: 'ready',
             authorId: held.user.id,
             sourceChatId: body.sourceChatId ?? null,
           });
@@ -993,10 +482,9 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
             ticketId: found.ticket.id,
             gatedById: spec.id,
           });
-          const closedAt = new Date();
           await transaction
             .update(ticket)
-            .set({ closure: 'done', closedAt, updatedAt: closedAt })
+            .set({ status: 'done', updatedAt: new Date() })
             .where(eq(ticket.id, found.ticket.id));
           return spec;
         });
@@ -1092,7 +580,7 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
               title: child.title.trim(),
               body: child.body,
               criteria: child.criteria,
-              gate: 'draft',
+              status: 'draft',
               authorId: held.user.id,
               sourceChatId: null,
             });
@@ -1146,19 +634,20 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
         if (rows.length === 0) {
           return status(400, refusal('BREAKDOWN_EMPTY', messages.breakdownEmpty));
         }
-        if (rows.some(({ child }) => liveCriteria(child.criteria) === 0)) {
+        if (
+          rows.some(({ child }) => !child.criteria.some((criterion) => criterion.trim() !== ''))
+        ) {
           return status(400, refusal('CRITERIA_REQUIRED', messages.criteriaRequired));
         }
-
         const drafts = rows
-          .filter(({ child }) => child.gate === 'draft')
+          .filter(({ child }) => child.status === 'draft')
           .map(({ child }) => child.id);
         if (drafts.length > 0) {
           await database.transaction(async (transaction) => {
             await transaction
               .update(ticket)
-              .set({ gate: 'ready-for-agent', updatedAt: new Date() })
-              .where(and(inArray(ticket.id, drafts), eq(ticket.gate, 'draft')));
+              .set({ status: 'ready', updatedAt: new Date() })
+              .where(and(inArray(ticket.id, drafts), eq(ticket.status, 'draft')));
           });
         }
 
@@ -1209,10 +698,10 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
         if (found.ticket.authorId !== held.user.id) {
           return status(403, refusal('QUESTION_NOT_YOURS', messages.questionNotYours));
         }
-        if (found.ticket.closedAt !== null) {
+        if (isClosed(found.ticket.status)) {
           return status(400, refusal('TICKET_CLOSED', messages.questionClosed));
         }
-        if (found.ticket.gate === 'draft') {
+        if (found.ticket.status === 'draft') {
           return status(400, refusal('QUESTION_NOT_READY', messages.questionNotReady));
         }
 
@@ -1283,7 +772,7 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
           return status(403, refusal('OUTCOME_NOT_YOURS', messages.outcomeNotYoursResearch));
         }
         if (
-          found.ticket.closedAt !== null ||
+          isClosed(found.ticket.status) ||
           (await outcomeOn(database, found.ticket.id)) !== null
         ) {
           return status(400, refusal('OUTCOME_EXISTS', messages.outcomeExists));
@@ -1294,11 +783,7 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
           await transaction.insert(outcome).values(made);
           await transaction
             .update(ticket)
-            .set({
-              closure: 'done',
-              closedAt: made.createdAt,
-              updatedAt: made.createdAt,
-            })
+            .set({ status: 'done', updatedAt: made.createdAt })
             .where(eq(ticket.id, found.ticket.id));
         });
         return { outcome: await asOutcome(database, made) };
@@ -1337,7 +822,7 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
         const checked = outcomeInput(body);
         if ('refused' in checked) return status(400, checked.refused);
         if (
-          found.ticket.closedAt !== null ||
+          isClosed(found.ticket.status) ||
           (await outcomeOn(database, found.ticket.id)) !== null
         ) {
           return status(400, refusal('OUTCOME_EXISTS', messages.outcomeExists));
@@ -1348,11 +833,7 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
           await transaction.insert(outcome).values(made);
           await transaction
             .update(ticket)
-            .set({
-              closure: 'done',
-              closedAt: made.createdAt,
-              updatedAt: made.createdAt,
-            })
+            .set({ status: 'done', updatedAt: made.createdAt })
             .where(eq(ticket.id, found.ticket.id));
         });
         return { outcome: await asOutcome(database, made) };
@@ -1381,12 +862,6 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
         const found = await resolve(database, params.ref);
         if (!found) return status(404, refusal('TICKET_NOT_FOUND', messages.ticketNotFound));
 
-        if (body.gate !== undefined && !isOneOf(GATES, body.gate)) {
-          return status(400, refusal('GATE_UNKNOWN', messages.readinessUnknown(GATES)));
-        }
-        if (body.closure !== undefined && !isOneOf(CLOSURES, body.closure)) {
-          return status(400, refusal('CLOSURE_UNKNOWN', messages.closureUnknown(CLOSURES)));
-        }
         if (body.status !== undefined && !isOneOf(STATUSES, body.status)) {
           return status(400, refusal('STATUS_UNKNOWN', messages.statusUnknown(STATUSES)));
         }
@@ -1404,28 +879,11 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
           if (!assignee)
             return status(400, refusal('ASSIGNEE_NOT_FOUND', messages.assigneeNotFound));
         }
-        if (body.closure !== undefined && found.ticket.kind === 'map') {
-          return status(400, refusal('MAP_DESTINATION_REQUIRED', messages.mapDestinationRequired));
-        }
-        if (
-          body.closure !== undefined &&
-          (found.ticket.kind === 'question' || found.ticket.kind === 'research') &&
-          (await outcomeOn(database, found.ticket.id)) === null
-        ) {
-          return status(400, refusal('OUTCOME_REQUIRED', messages.outcomeRequiredToClose));
-        }
-
-        // The rule is checked against the ticket as it would be after this write, not
-        // only on the transition that opens the gate: a contract handed to an agent
-        // could otherwise be hollowed out one write at a time. `kind` is deliberately
-        // not among the fields — it decides what a run owes (ADR 0011), so a ticket
-        // written as the wrong kind is closed and written again.
         const after: Row = {
           ...found.ticket,
           title: body.title?.trim() ?? found.ticket.title,
           body: body.body ?? found.ticket.body,
           criteria: body.criteria ?? found.ticket.criteria,
-          gate: body.gate ?? found.ticket.gate,
           rank: body.rank ?? found.ticket.rank,
           status: body.status ?? found.ticket.status,
           priority: body.priority ?? found.ticket.priority,
@@ -1433,27 +891,16 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
           tags: body.tags === undefined ? found.ticket.tags : cleanTags(body.tags),
         };
 
-        if (after.gate === 'ready-for-agent' && liveCriteria(after.criteria) === 0) {
-          return status(400, refusal('CRITERIA_REQUIRED', messages.criteriaRequired));
-        }
-
         const changed = {
           title: after.title,
           body: after.body,
           criteria: after.criteria,
-          gate: after.gate,
           rank: after.rank,
           status: after.status,
           priority: after.priority,
           assigneeId: after.assigneeId,
           tags: after.tags,
           updatedAt: new Date(),
-          ...(body.closure === undefined
-            ? {}
-            : {
-                closure: body.closure,
-                closedAt: after.closedAt ?? new Date(),
-              }),
         };
 
         await database.update(ticket).set(changed).where(eq(ticket.id, found.ticket.id));
@@ -1468,9 +915,7 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
           title: t.Optional(t.String()),
           body: t.Optional(t.String()),
           criteria: t.Optional(t.Array(t.String())),
-          gate: t.Optional(t.String()),
           rank: t.Optional(t.Integer()),
-          closure: t.Optional(t.String()),
           status: t.Optional(t.String()),
           priority: t.Optional(t.String()),
           assigneeId: t.Optional(t.Union([t.String(), t.Null()])),
@@ -1478,7 +923,7 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
         }),
         response: { 200: ONE_TICKET, 400: REFUSAL, 401: REFUSAL, 404: REFUSAL },
         detail: {
-          summary: 'Write what changed about a ticket: its body, gate, rank or closure',
+          summary: 'Update a ticket’s fields and status',
         },
       },
     )
@@ -1626,427 +1071,6 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
         response: { 200: ONE_TICKET, 400: REFUSAL, 401: REFUSAL, 404: REFUSAL },
         detail: { summary: 'Remove planning relationship context from an issue' },
       },
-    )
-    .post(
-      '/api/tickets/:ref/claim',
-      async ({ request, params, body, status }) => {
-        const held = await asking(auth, request);
-        if ('refused' in held) return status(401, held.refused);
-
-        const found = await resolve(database, params.ref);
-        if (!found) return status(404, refusal('TICKET_NOT_FOUND', messages.ticketNotFound));
-
-        const refused = await whyNotClaimable(database, found, held.user);
-        if (refused) return status(400, refused);
-
-        const workerId = workerIn(body.workerId);
-        const notThisDesk = await whyNotThisDesk(database, workerId, held.user);
-        if (notThisDesk) return status(400, notThisDesk);
-
-        // The read above can race with another worker doing the same thing, so the
-        // primary key decides which insert landed — and the loser is refused rather
-        // than answered with somebody else's claim.
-        await database
-          .insert(claim)
-          .values({
-            ticketId: found.ticket.id,
-            holderId: held.user.id,
-            workerId,
-            heardAt: workerId === null ? null : new Date(),
-            leaseUntil: workerId === null ? null : leaseFrom(body.leaseSeconds),
-          })
-          .onConflictDoNothing();
-
-        const taken = await claimOn(database, found.ticket.id);
-        if (taken === null || taken.holder.id !== held.user.id || taken.workerId !== workerId) {
-          return status(400, refusal('CLAIM_TAKEN', messages.claimTaken));
-        }
-
-        return { ticket: await one(database, found.project, found.ticket) };
-      },
-      {
-        params: t.Object({ ref: t.String() }),
-        body: t.Object({
-          workerId: t.Optional(t.Union([t.String(), t.Null()])),
-          leaseSeconds: t.Optional(t.Number()),
-        }),
-        response: { 200: ONE_TICKET, 400: REFUSAL, 401: REFUSAL, 404: REFUSAL },
-        detail: { summary: 'Take a ticket to work on it' },
-      },
-    )
-    .post(
-      '/api/tickets/:ref/claim/heartbeat',
-      async ({ request, params, body, status }) => {
-        const held = await asking(auth, request);
-        if ('refused' in held) return status(401, held.refused);
-
-        const found = await resolve(database, params.ref);
-        if (!found) return status(404, refusal('TICKET_NOT_FOUND', messages.ticketNotFound));
-
-        const taken = await claimOn(database, found.ticket.id);
-        if (taken === null) {
-          return status(400, refusal('CLAIM_NONE', messages.claimNone));
-        }
-
-        // Only the desktop that holds a claim keeps it alive: another desktop of the
-        // same person is a different hand, and a claim held by hand has no heartbeat.
-        const workerId = workerIn(body.workerId);
-        if (
-          taken.holder.id !== held.user.id ||
-          taken.workerId === null ||
-          taken.workerId !== workerId
-        ) {
-          return status(400, refusal('CLAIM_NOT_HOLDER', messages.claimNotHolderToKeep));
-        }
-
-        await database
-          .update(claim)
-          .set({
-            heardAt: new Date(),
-            leaseUntil: leaseFrom(body.leaseSeconds),
-          })
-          .where(eq(claim.ticketId, found.ticket.id));
-
-        return { ticket: await one(database, found.project, found.ticket) };
-      },
-      {
-        params: t.Object({ ref: t.String() }),
-        body: t.Object({
-          workerId: t.Optional(t.Union([t.String(), t.Null()])),
-          leaseSeconds: t.Optional(t.Number()),
-        }),
-        response: { 200: ONE_TICKET, 400: REFUSAL, 401: REFUSAL, 404: REFUSAL },
-        detail: { summary: 'Say a claim is still being worked' },
-      },
-    )
-    .post(
-      '/api/tickets/:ref/claim/takeover',
-      async ({ request, params, body, status }) => {
-        const held = await asking(auth, request);
-        if ('refused' in held) return status(401, held.refused);
-
-        const found = await resolve(database, params.ref);
-        if (!found) return status(404, refusal('TICKET_NOT_FOUND', messages.ticketNotFound));
-
-        const taken = await claimOn(database, found.ticket.id);
-        if (taken === null) {
-          return status(400, refusal('CLAIM_NONE', messages.claimNone));
-        }
-
-        // A claim whose lease is still good is being heard from. Taking one over is for
-        // a worker that stopped answering, and never for work a clock decided to move.
-        if (!isStale(taken)) {
-          return status(400, refusal('CLAIM_NOT_STALE', messages.claimNotStale));
-        }
-
-        // Taking a claim over is for a desktop that stopped answering, so the run it was
-        // driving lost its driver: it is ended here rather than left open, because a run
-        // left open by a claim that changed hands is a ticket that can never run again.
-        await lostItsDriver(
-          database,
-          found.ticket.id,
-          'The desktop driving this run stopped answering.',
-        );
-
-        const workerId = workerIn(body.workerId);
-        await database
-          .update(claim)
-          .set({
-            holderId: held.user.id,
-            workerId,
-            startedAt: new Date(),
-            heardAt: workerId === null ? null : new Date(),
-            leaseUntil: workerId === null ? null : leaseFrom(body.leaseSeconds),
-          })
-          .where(eq(claim.ticketId, found.ticket.id));
-
-        return { ticket: await one(database, found.project, found.ticket) };
-      },
-      {
-        params: t.Object({ ref: t.String() }),
-        body: t.Object({
-          workerId: t.Optional(t.Union([t.String(), t.Null()])),
-          leaseSeconds: t.Optional(t.Number()),
-        }),
-        response: { 200: ONE_TICKET, 400: REFUSAL, 401: REFUSAL, 404: REFUSAL },
-        detail: { summary: 'Take over a claim that stopped answering' },
-      },
-    )
-    .delete(
-      '/api/tickets/:ref/claim',
-      async ({ request, params, status }) => {
-        const held = await asking(auth, request);
-        if ('refused' in held) return status(401, held.refused);
-
-        const found = await resolve(database, params.ref);
-        if (!found) return status(404, refusal('TICKET_NOT_FOUND', messages.ticketNotFound));
-
-        const taken = await claimOn(database, found.ticket.id);
-        if (taken !== null && taken.holder.id !== held.user.id) {
-          return status(400, refusal('CLAIM_NOT_HOLDER', messages.claimNotHolderToRelease));
-        }
-
-        // Letting go of what nobody holds is the same as having let go of it.
-        await lostItsDriver(database, found.ticket.id, 'Somebody let this run go.');
-        await database.delete(claim).where(eq(claim.ticketId, found.ticket.id));
-
-        return { ticket: await one(database, found.project, found.ticket) };
-      },
-      {
-        params: t.Object({ ref: t.String() }),
-        response: { 200: ONE_TICKET, 400: REFUSAL, 401: REFUSAL, 404: REFUSAL },
-        detail: { summary: 'Let go of a ticket' },
-      },
-    )
-    .post(
-      '/api/tickets/:ref/runs',
-      async ({ request, params, body, status }) => {
-        const held = await asking(auth, request);
-        if ('refused' in held) return status(401, held.refused);
-
-        const found = await resolve(database, params.ref);
-        if (!found) return status(404, refusal('TICKET_NOT_FOUND', messages.ticketNotFound));
-
-        const workerId = workerIn(body.workerId);
-        const taken = await claimOn(database, found.ticket.id);
-        const refused = whyNotRunnable(taken, held.user, workerId);
-        if (refused) return status(400, refused);
-
-        const open = (await runsFor(database, [found.ticket.id])).get(found.ticket.id) ?? [];
-        if (open.some((each) => each.endedAt === null)) {
-          return status(400, refusal('RUN_OPEN', messages.sessionOpen));
-        }
-
-        // The contract is copied rather than read through, so what this run verified
-        // cannot be rewritten under it by editing the ticket (GH #57).
-        const made: RunRow = {
-          id: randomUUID(),
-          ticketId: found.ticket.id,
-          driverId: held.user.id,
-          workerId,
-          startedAt: new Date(),
-          contract: found.ticket.criteria,
-          branch: null,
-          endedAt: null,
-          stoppedBecause: null,
-          changed: null,
-          checks: null,
-          made: null,
-          verdict: null,
-          verdictAt: null,
-        };
-        await database.insert(run).values(made);
-
-        return { run: asRun(made) };
-      },
-      {
-        params: t.Object({ ref: t.String() }),
-        body: t.Object({
-          workerId: t.Optional(t.Union([t.String(), t.Null()])),
-        }),
-        response: { 200: ONE_RUN, 400: REFUSAL, 401: REFUSAL, 404: REFUSAL },
-        detail: { summary: 'Start a run on a ticket somebody has claimed' },
-      },
-    )
-    .patch(
-      '/api/tickets/:ref/runs/:runId',
-      async ({ request, params, body, status }) => {
-        const held = await asking(auth, request);
-        if ('refused' in held) return status(401, held.refused);
-
-        const found = await runOn(database, params.ref, params.runId);
-        if (!found) return status(404, refusal('RUN_NOT_FOUND', messages.sessionNotFound));
-
-        const refused = whyNotTheirs(found.run, held.user);
-        if (refused) return status(400, refused);
-
-        if (found.run.endedAt !== null) {
-          return status(400, refusal('RUN_ENDED', messages.sessionEnded));
-        }
-
-        const after: RunRow = {
-          ...found.run,
-          branch: textIn(body.branch) ?? found.run.branch,
-        };
-        await database.update(run).set({ branch: after.branch }).where(eq(run.id, found.run.id));
-
-        return { run: asRun(after) };
-      },
-      {
-        params: t.Object({ ref: t.String(), runId: t.String() }),
-        body: t.Object({ branch: t.Optional(t.Union([t.String(), t.Null()])) }),
-        response: { 200: ONE_RUN, 400: REFUSAL, 401: REFUSAL, 404: REFUSAL },
-        detail: { summary: 'Say what a run has made so far' },
-      },
-    )
-    .post(
-      '/api/tickets/:ref/runs/:runId/end',
-      async ({ request, params, body, status }) => {
-        const held = await asking(auth, request);
-        if ('refused' in held) return status(401, held.refused);
-
-        const found = await runOn(database, params.ref, params.runId);
-        if (!found) return status(404, refusal('RUN_NOT_FOUND', messages.sessionNotFound));
-
-        const refused = whyNotTheirs(found.run, held.user);
-        if (refused) return status(400, refused);
-
-        if (found.run.endedAt !== null) {
-          return status(400, refusal('RUN_ENDED', messages.sessionEnded));
-        }
-
-        const after: RunRow = {
-          ...found.run,
-          endedAt: new Date(),
-          changed: textIn(body.changed),
-          checks: Array.isArray(body.checks) ? body.checks.filter(isText) : null,
-          made: textIn(body.made),
-          stoppedBecause: textIn(body.stoppedBecause),
-        };
-        await database
-          .update(run)
-          .set({
-            endedAt: after.endedAt,
-            changed: after.changed,
-            checks: after.checks,
-            made: after.made,
-            stoppedBecause: after.stoppedBecause,
-          })
-          .where(eq(run.id, found.run.id));
-
-        // A run that has ended is a ticket nobody is working any more, so the claim goes
-        // with it and the ticket can be claimed again.
-        await database.delete(claim).where(eq(claim.ticketId, found.ticket.id));
-
-        return { run: asRun(after) };
-      },
-      {
-        params: t.Object({ ref: t.String(), runId: t.String() }),
-        body: t.Object({
-          changed: t.Optional(t.Union([t.String(), t.Null()])),
-          checks: t.Optional(t.Union([t.Array(t.String()), t.Null()])),
-          made: t.Optional(t.Union([t.String(), t.Null()])),
-          stoppedBecause: t.Optional(t.Union([t.String(), t.Null()])),
-        }),
-        response: { 200: ONE_RUN, 400: REFUSAL, 401: REFUSAL, 404: REFUSAL },
-        detail: { summary: 'End a run, with what it made' },
-      },
-    )
-    .post(
-      '/api/tickets/:ref/runs/:runId/verdict',
-      async ({ request, params, body, status }) => {
-        const held = await asking(auth, request);
-        if ('refused' in held) return status(401, held.refused);
-
-        const found = await runOn(database, params.ref, params.runId);
-        if (!found) return status(404, refusal('RUN_NOT_FOUND', messages.sessionNotFound));
-
-        const refused = whyNotTheirs(found.run, held.user);
-        if (refused) return status(400, refused);
-
-        // The value first, so a verdict that is not one of the two is refused as itself
-        // rather than as a run that has already been judged.
-        if (!isOneOf(VERDICTS, body.verdict)) {
-          return status(400, refusal('VERDICT_UNKNOWN', messages.verdictUnknown));
-        }
-
-        if (found.run.endedAt === null) {
-          return status(400, refusal('RUN_UNFINISHED', messages.sessionNotEnded));
-        }
-
-        if (found.run.verdict !== null) {
-          return status(400, refusal('RUN_JUDGED', messages.sessionJudged));
-        }
-
-        const judgedAt = new Date();
-        const after: RunRow = {
-          ...found.run,
-          verdict: body.verdict,
-          verdictAt: judgedAt,
-        };
-
-        // Acceptance is one decision: either its verdict and the ticket's Done closure
-        // land together, or neither does. A sent-back run only records the verdict, so
-        // the open ticket can be claimed for another attempt.
-        await database.transaction(async (transaction) => {
-          await transaction
-            .update(run)
-            .set({ verdict: after.verdict, verdictAt: after.verdictAt })
-            .where(eq(run.id, found.run.id));
-
-          if (after.verdict === 'accepted') {
-            await transaction
-              .update(ticket)
-              .set({ closure: 'done', closedAt: judgedAt, updatedAt: judgedAt })
-              .where(eq(ticket.id, found.ticket.id));
-          }
-        });
-
-        return { run: asRun(after) };
-      },
-      {
-        params: t.Object({ ref: t.String(), runId: t.String() }),
-        body: t.Object({ verdict: t.String() }),
-        response: { 200: ONE_RUN, 400: REFUSAL, 401: REFUSAL, 404: REFUSAL },
-        detail: { summary: "Say what you make of a run's proposal" },
-      },
-    )
-    .get(
-      '/api/tickets/:ref/runs/:runId/transcript',
-      async ({ request, params, status }) => {
-        const held = await asking(auth, request);
-        if ('refused' in held) return status(401, held.refused);
-
-        const found = await runOn(database, params.ref, params.runId);
-        if (!found) return status(404, refusal('RUN_NOT_FOUND', messages.sessionNotFound));
-
-        return { transcript: await saidIn(database, found.run.id) };
-      },
-      {
-        params: t.Object({ ref: t.String(), runId: t.String() }),
-        response: { 200: TRANSCRIPT, 401: REFUSAL, 404: REFUSAL },
-        detail: { summary: 'What was said while a run went on' },
-      },
-    )
-    .post(
-      '/api/tickets/:ref/runs/:runId/transcript',
-      async ({ request, params, body, status }) => {
-        const held = await asking(auth, request);
-        if ('refused' in held) return status(401, held.refused);
-
-        const found = await runOn(database, params.ref, params.runId);
-        if (!found) return status(404, refusal('RUN_NOT_FOUND', messages.sessionNotFound));
-
-        const refused = whyNotTheirs(found.run, held.user);
-        if (refused) return status(400, refused);
-
-        if (!isOneOf(SAID_BY, body.saidBy)) {
-          return status(400, refusal('SAID_BY_UNKNOWN', messages.saidByUnknown(SAID_BY)));
-        }
-        if (body.words.trim() === '') {
-          return status(400, refusal('SAID_NOTHING', messages.saidNothing));
-        }
-
-        // Written once and never changed: a transcript somebody can edit afterwards is
-        // not a record of what happened. An entry may be written after the run has ended,
-        // because the last thing a run says is usually why it stopped.
-        const wrote: SaidRow = {
-          id: randomUUID(),
-          runId: found.run.id,
-          saidBy: body.saidBy,
-          words: body.words,
-          at: new Date(),
-        };
-        await database.insert(transcript).values(wrote);
-
-        return { said: asSaid(wrote) };
-      },
-      {
-        params: t.Object({ ref: t.String(), runId: t.String() }),
-        body: t.Object({ saidBy: t.String(), words: t.String() }),
-        response: { 200: ONE_SAID, 400: REFUSAL, 401: REFUSAL, 404: REFUSAL },
-        detail: { summary: 'Write down what was said in a run' },
-      },
     );
 }
 
@@ -2067,14 +1091,7 @@ async function asking(auth: Auth, request: Request): Promise<Asking> {
   return { user: held.user };
 }
 
-/**
- * A project with all of its tickets, each in the band it is derived into.
- *
- * Six queries whatever the size of the queue — the tickets, their gates, their
- * authors, their claims, their runs, and the project itself — because a queue is read
- * every time somebody looks at it, and a read per ticket is a queue that gets slower as
- * it fills up.
- */
+/** Read a project's tickets, with blockers and assignees. */
 async function queue(database: Database, held: typeof project.$inferSelect) {
   const rows = await database
     .select()
@@ -2092,19 +1109,7 @@ async function queue(database: Database, held: typeof project.$inferSelect) {
   const authors = await authorsOf(database, rows);
   const assignees = await assigneesOf(database, rows);
   const planning = await planningFor(database, rows, held.prefix);
-  const claims = await claimsFor(
-    database,
-    rows.map((each) => each.id),
-  );
-  const runs = await runsFor(
-    database,
-    rows.map((each) => each.id),
-  );
   const outcomes = await outcomesFor(
-    database,
-    rows.map((each) => each.id),
-  );
-  const workspaces = await workspacesFor(
     database,
     rows.map((each) => each.id),
   );
@@ -2114,8 +1119,6 @@ async function queue(database: Database, held: typeof project.$inferSelect) {
     asTicket(row, held.prefix, {
       author: row.authorId === null ? null : (authors.get(row.authorId) ?? null),
       assignee: row.assigneeId === null ? null : (assignees.get(row.assigneeId) ?? null),
-      claim: claims.get(row.id) ?? null,
-      runs: runs.get(row.id) ?? [],
       outcome: outcomes.get(row.id) ?? null,
       decisionsSoFar:
         row.kind === 'map'
@@ -2124,7 +1127,6 @@ async function queue(database: Database, held: typeof project.$inferSelect) {
               .map((each) => outcomes.get(each.gatedById))
               .filter(isThere)
           : [],
-      workspaces: workspaces.get(row.id) ?? [],
       gates: edges
         .filter((each) => each.gatedById === row.id)
         .map((each) => named.get(each.ticketId))
@@ -2141,17 +1143,17 @@ async function queue(database: Database, held: typeof project.$inferSelect) {
     project: asProject(held),
     tickets,
     counts: {
-      draft: bandCount(tickets, 'draft'),
-      ready: bandCount(tickets, 'ready'),
-      blocked: bandCount(tickets, 'blocked'),
-      done: bandCount(tickets, 'done'),
-      running: bandCount(tickets, 'running'),
-      'needs-you': bandCount(tickets, 'needs-you'),
+      draft: tickets.filter((each) => each.status === 'draft').length,
+      ready: tickets.filter((each) => each.status === 'ready').length,
+      running: tickets.filter((each) => each.status === 'running').length,
+      'needs-review': tickets.filter((each) => each.status === 'needs-review').length,
+      done: tickets.filter((each) => each.status === 'done').length,
+      'wont-do': tickets.filter((each) => each.status === 'wont-do').length,
     },
   };
 }
 
-/** One ticket in full, read the long way round because it is one ticket. */
+/** One ticket in full. */
 async function one(database: Database, held: typeof project.$inferSelect, row: Row) {
   const edges = await edgesFor(database, [row.id]);
   const touched = new Set(edges.flatMap((each) => [each.ticketId, each.gatedById]));
@@ -2176,13 +1178,9 @@ async function one(database: Database, held: typeof project.$inferSelect, row: R
           edges.filter((each) => each.ticketId === row.id).map((each) => each.gatedById),
         )
       : new Map<string, OutcomeView>();
-  const workspaces = (await workspacesFor(database, [row.id])).get(row.id) ?? [];
-
   return asTicket(row, held.prefix, {
     author: row.authorId === null ? null : (authors.get(row.authorId) ?? null),
     assignee: row.assigneeId === null ? null : (assignees.get(row.assigneeId) ?? null),
-    claim: await claimOn(database, row.id),
-    runs: (await runsFor(database, [row.id])).get(row.id) ?? [],
     outcome: await outcomeOn(database, row.id),
     decisionsSoFar:
       row.kind === 'map'
@@ -2191,7 +1189,6 @@ async function one(database: Database, held: typeof project.$inferSelect, row: R
             .map((each) => childOutcomes.get(each.gatedById))
             .filter(isThere)
         : [],
-    workspaces,
     gates: edges
       .filter((each) => each.gatedById === row.id)
       .map((each) => named.get(each.ticketId))
@@ -2514,7 +1511,6 @@ async function allocate(
     title: string;
     body: string;
     criteria: string[];
-    gate: string;
     status?: string;
     priority?: string;
     assigneeId?: string | null;
@@ -2535,7 +1531,7 @@ async function allocate(
     const row: Row = {
       id: randomUUID(),
       ...written,
-      status: written.status ?? 'backlog',
+      status: written.status ?? 'draft',
       priority: written.priority ?? 'none',
       assigneeId: written.assigneeId ?? null,
       tags: written.tags ?? [],
@@ -2543,8 +1539,6 @@ async function allocate(
       rank: Number(highest?.rank ?? 0) + 1,
       createdAt: new Date(),
       updatedAt: new Date(),
-      closedAt: null,
-      closure: null,
     };
 
     try {
@@ -2559,45 +1553,9 @@ async function allocate(
 }
 
 /**
- * The claims on a set of tickets, in one query.
+ * The tickets this one names as blockers.
  *
- * A queue is read every time somebody looks at it, so the claims come back with the
- * tickets rather than one query each — and the holder's name comes with them, because
- * the surface says who is working a ticket rather than which id holds it.
- */
-async function claimsFor(database: Database, ids: string[]): Promise<Map<string, Held>> {
-  if (ids.length === 0) return new Map();
-
-  const rows = await database
-    .select({ held: claim, name: user.name })
-    .from(claim)
-    .innerJoin(user, eq(user.id, claim.holderId))
-    .where(inArray(claim.ticketId, ids));
-
-  return new Map(
-    rows.map((each) => [
-      each.held.ticketId,
-      {
-        holder: { id: each.held.holderId, name: each.name },
-        workerId: each.held.workerId,
-        startedAt: each.held.startedAt,
-        heardAt: each.held.heardAt,
-        leaseUntil: each.held.leaseUntil,
-      },
-    ]),
-  );
-}
-
-/** The claim on one ticket, or null when nobody holds it. */
-async function claimOn(database: Database, id: string): Promise<Held | null> {
-  return (await claimsFor(database, [id])).get(id) ?? null;
-}
-
-/**
- * The tickets this one names as its gates, as the band derivation reads them.
- *
- * The band needs them and nothing else does, so this is the one read that asks for a
- * single ticket's children rather than a queue's edges.
+ * This is the one read that asks for a single ticket's blockers rather than a queue's edges.
  */
 async function childrenOf(database: Database, id: string): Promise<Named[]> {
   const rows = await database
@@ -2611,343 +1569,7 @@ async function childrenOf(database: Database, id: string): Promise<Named[]> {
   return rows.map((each) => asNamed(each.child, each.prefix));
 }
 
-/**
- * Why this ticket may not be claimed by this person, or null when it may.
- *
- * Three rules in the order a person would say them: it has to be for the person
- * asking, because only the person a ticket is for starts a run of it and a run spends
- * their allowance (docs/adr/0013); it has to be nobody else's; and it has to be ready
- * to be run at all.
- */
-async function whyNotClaimable(
-  database: Database,
-  found: { project: typeof project.$inferSelect; ticket: Row },
-  who: HeldUser,
-): Promise<ReturnType<typeof refusal> | null> {
-  if (found.ticket.authorId !== who.id) {
-    return refusal('CLAIM_NOT_YOURS', messages.claimNotYours);
-  }
-
-  if ((await claimOn(database, found.ticket.id)) !== null) {
-    return refusal('CLAIM_TAKEN', messages.claimTaken);
-  }
-
-  const children = await childrenOf(database, found.ticket.id);
-  if (bandOf(found.ticket, children, null, []) !== 'ready') {
-    return refusal('CLAIM_NOT_READY', messages.claimNotReady);
-  }
-
-  return null;
-}
-
-/**
- * Why this claim may not name this desktop, or null when it may.
- *
- * A claim that names a desktop says which machine is doing the work, so it has to name
- * one that has offered itself and belongs to the person asking. Without this a claim can
- * be written against a machine that was never heard of, which reads as work being done by
- * nothing and can never be refreshed by a heartbeat (GH #68).
- */
-async function whyNotThisDesk(
-  database: Database,
-  workerId: string | null,
-  who: HeldUser,
-): Promise<ReturnType<typeof refusal> | null> {
-  if (workerId === null) return null;
-
-  const [offered] = await database
-    .select({ ownerId: worker.ownerId })
-    .from(worker)
-    .where(eq(worker.id, workerId))
-    .limit(1);
-
-  if (offered === undefined) {
-    return refusal('CLAIM_NO_WORKER', messages.claimNoWorker);
-  }
-
-  if (offered.ownerId !== who.id) {
-    return refusal('CLAIM_WORKER_NOT_YOURS', messages.claimWorkerNotYours);
-  }
-
-  return null;
-}
-
-/** A claim as a client reads it, with its staleness read off the clock at read time. */
-function asClaim(held: Held) {
-  const quietSince = held.heardAt ?? held.startedAt;
-
-  return {
-    holder: held.holder,
-    workerId: held.workerId,
-    startedAt: held.startedAt.toISOString(),
-    heardAt: held.heardAt?.toISOString() ?? null,
-    leaseUntil: held.leaseUntil?.toISOString() ?? null,
-    stale: isStale(held),
-    quietMs: held.leaseUntil === null ? null : Math.max(0, Date.now() - quietSince.getTime()),
-  };
-}
-
-/**
- * Whether a claim's lease has run out.
- *
- * A claim held by hand has no lease, so it is never stale: there is nothing that could
- * have stopped answering, and taking it over is a hand's decision whenever a hand
- * decides to make it.
- */
-function isStale(held: Held): boolean {
-  return held.leaseUntil !== null && held.leaseUntil.getTime() <= Date.now();
-}
-
-/**
- * The run a claim was carrying, ended because the driver it was riding on is gone.
- *
- * A claim and a run are two halves of one thing: the claim is what takes the ticket off
- * the queue, and the run is what it is off the queue for. Let the claim go — or hand it to
- * somebody else — and leave the run open, and the ticket lands in the one state nothing
- * gets out of: Ready to a person, refused to Run because a run is already going, with no
- * window able to end a run nobody is driving (GH #68, #75). A run that ended on its own
- * terms keeps them, so this only ever touches one that never ended.
- */
-export async function lostItsDriver(
-  database: Database,
-  ticketId: string,
-  because: string,
-): Promise<void> {
-  await database
-    .update(run)
-    .set({ endedAt: new Date(), stoppedBecause: because })
-    .where(and(eq(run.ticketId, ticketId), isNull(run.endedAt)));
-}
-
-/**
- * When a claim's lease runs out, counted from now.
- *
- * A worker sends how long it wants, within an hour: long enough that a run which is
- * working does not have to be chatty, short enough that a desktop which vanished is
- * visibly quiet within a coffee break rather than a day. Two things hear from a holder —
- * the claim's own heartbeat, and the worker saying it is still here — and both count the
- * lease the same way, so a claim means "the machine went away" rather than "a minute
- * passed" (GH #69, #74).
- */
-export function leaseFrom(seconds: unknown): Date {
-  const wanted = typeof seconds === 'number' && Number.isFinite(seconds) ? Math.floor(seconds) : 60;
-
-  return new Date(Date.now() + Math.min(Math.max(wanted, 0), 3600) * 1000);
-}
-
-/** The desktop a claim is from, or null when a person is working it by hand. */
-function workerIn(value: unknown): string | null {
-  return typeof value === 'string' && value.trim() !== '' ? value.trim() : null;
-}
-
-/** Something a run said, or null when it said nothing about it. */
-function textIn(value: unknown): string | null {
-  return typeof value === 'string' && value.trim() !== '' ? value : null;
-}
-
-/**
- * The branch a ticket is on: the one its newest run made, or the name it would derive.
- *
- * Recording the branch closes the limit a derived name carries: a retitle changes the
- * name a branch would get, and says nothing about a branch that already exists. So a
- * ticket shows the branch there is as soon as a run has made one (GH #64, #70).
- */
-function branchOf(row: Row, prefix: string, runs: RunRow[]): string {
-  const made = runs.find((each) => each.branch !== null)?.branch;
-
-  return made ?? branchFor(prefix, row.number, row.title);
-}
-
-/** A run as a client reads it. */
-function asRun(row: RunRow) {
-  return {
-    id: row.id,
-    ticketId: row.ticketId,
-    workerId: row.workerId,
-    startedAt: row.startedAt.toISOString(),
-    contract: row.contract,
-    branch: row.branch,
-    endedAt: row.endedAt?.toISOString() ?? null,
-    stoppedBecause: row.stoppedBecause,
-    changed: row.changed,
-    checks: row.checks,
-    made: row.made,
-    verdict: row.verdict,
-    verdictAt: row.verdictAt?.toISOString() ?? null,
-  };
-}
-
-function asExecutionWorkspace(row: typeof executionWorkspace.$inferSelect) {
-  return {
-    id: row.id,
-    ticketId: row.ticketId,
-    repository: row.repository,
-    baseBranch: row.baseBranch,
-    branch: row.branch,
-    agentConfig: row.agentConfig,
-    createdAt: row.createdAt.toISOString(),
-  };
-}
-
-type ReviewAuthor = { id: string; name: string } | null;
-
-function asReviewComment(row: typeof reviewComment.$inferSelect, author: ReviewAuthor) {
-  return {
-    id: row.id,
-    workspaceId: row.workspaceId,
-    runId: row.runId,
-    path: row.path,
-    line: row.line,
-    side: row.side,
-    body: row.body,
-    status: row.status,
-    author,
-    createdAt: row.createdAt.toISOString(),
-    addressedAt: row.addressedAt?.toISOString() ?? null,
-  };
-}
-
-function asReviewFeedback(row: typeof reviewFeedback.$inferSelect, author: ReviewAuthor) {
-  return {
-    id: row.id,
-    workspaceId: row.workspaceId,
-    runId: row.runId,
-    body: row.body,
-    author,
-    createdAt: row.createdAt.toISOString(),
-  };
-}
-
-function asDelivery(row: typeof delivery.$inferSelect) {
-  return {
-    id: row.id,
-    ticketId: row.ticketId,
-    workspaceId: row.workspaceId,
-    path: row.path,
-    outcome: row.outcome,
-    reference: row.reference,
-    url: row.url,
-    details: row.details,
-    createdAt: row.createdAt.toISOString(),
-  };
-}
-
-async function workspaceOn(database: Database, ticketId: string, workspaceId: string) {
-  const [found] = await database
-    .select()
-    .from(executionWorkspace)
-    .where(and(eq(executionWorkspace.id, workspaceId), eq(executionWorkspace.ticketId, ticketId)));
-
-  return found ?? null;
-}
-
-async function workspacesFor(
-  database: Database,
-  ids: string[],
-): Promise<Map<string, (typeof executionWorkspace.$inferSelect)[]>> {
-  if (ids.length === 0) return new Map();
-  const rows = await database
-    .select()
-    .from(executionWorkspace)
-    .where(inArray(executionWorkspace.ticketId, ids))
-    .orderBy(asc(executionWorkspace.createdAt), asc(executionWorkspace.id));
-  const grouped = new Map<string, (typeof executionWorkspace.$inferSelect)[]>();
-  for (const row of rows) grouped.set(row.ticketId, [...(grouped.get(row.ticketId) ?? []), row]);
-  return grouped;
-}
-
-/** A run's transcript, oldest first, which is the order it was said in. */
-async function saidIn(database: Database, runId: string) {
-  const rows = await database
-    .select()
-    .from(transcript)
-    .where(eq(transcript.runId, runId))
-    .orderBy(asc(transcript.at), asc(transcript.id));
-
-  return rows.map(asSaid);
-}
-
-/** A line of a run's transcript as a client reads it. */
-function asSaid(row: SaidRow) {
-  return {
-    id: row.id,
-    saidBy: row.saidBy,
-    words: row.words,
-    at: row.at.toISOString(),
-  };
-}
-
-/**
- * The runs of a set of tickets, newest first, in one query.
- *
- * Newest first because that is the order a ticket's page reads them in and the order
- * "what happened last" is answered from, and in one query because a queue carries every
- * ticket's runs rather than fetching them one at a time.
- */
-async function runsFor(database: Database, ids: string[]): Promise<Map<string, RunRow[]>> {
-  if (ids.length === 0) return new Map();
-
-  const rows = await database
-    .select()
-    .from(run)
-    .where(inArray(run.ticketId, ids))
-    .orderBy(desc(run.startedAt), desc(run.id));
-
-  const grouped = new Map<string, RunRow[]>();
-  for (const row of rows) {
-    grouped.set(row.ticketId, [...(grouped.get(row.ticketId) ?? []), row]);
-  }
-
-  return grouped;
-}
-
-/** One run, and the ticket it is a run of. */
-async function runOn(database: Database, ref: string, runId: string) {
-  const found = await resolve(database, ref);
-  if (!found) return null;
-
-  const [held] = await database
-    .select()
-    .from(run)
-    .where(and(eq(run.id, runId), eq(run.ticketId, found.ticket.id)));
-
-  return held === undefined ? null : { ...found, run: held };
-}
-
-/**
- * Why a ticket may not be run by this hand, or null when it may.
- *
- * A run happens on a claim: a ticket nobody holds is one nobody has started, and a
- * claim held by another desktop is another hand's to run. Only the person a ticket is
- * for starts a run of it, and a run spends their allowance (docs/adr/0012, 0013).
- */
-function whyNotRunnable(
-  taken: Held | null,
-  who: HeldUser,
-  workerId: string | null,
-): ReturnType<typeof refusal> | null {
-  if (taken === null) {
-    return refusal('CLAIM_NONE', messages.claimNoneForSession);
-  }
-
-  if (taken.holder.id !== who.id || taken.workerId !== workerId) {
-    return refusal('CLAIM_NOT_HOLDER', messages.claimNotHolderForSession);
-  }
-
-  return null;
-}
-
-/**
- * Why this run may not be written by this person, or null when it may.
- *
- * The driver of a run is the person whose claim it happens on, so what a run reports
- * about itself is theirs to report and nobody else's (docs/adr/0012).
- */
-function whyNotTheirs(held: RunRow, who: HeldUser): ReturnType<typeof refusal> | null {
-  return held.driverId === who.id ? null : refusal('RUN_NOT_YOURS', messages.sessionNotYours);
-}
-
-/** A ticket row as a client reads it, with the band read off what it is made of. */
+/** A ticket row as a client reads it. */
 function asTicket(row: Row, prefix: string, context: Context) {
   return {
     id: row.id,
@@ -2958,136 +1580,31 @@ function asTicket(row: Row, prefix: string, context: Context) {
     title: row.title,
     body: row.body,
     criteria: row.criteria,
-    gate: row.gate,
     status: row.status,
+    blocked: context.children.some((each) => !isClosed(each.status)),
     priority: row.priority,
     assignee: context.assignee,
     tags: row.tags,
-    band: bandOf(row, context.children, context.claim, context.runs),
     rank: row.rank,
-    branch: branchOf(row, prefix, context.runs),
     author: context.author,
     gates: context.gates,
     children: context.children,
     parent: context.parent,
     subIssues: context.subIssues,
     relationships: context.relationships,
-    claim: context.claim === null ? null : asClaim(context.claim),
-    runs: context.runs.map(asRun),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
-    closedAt: row.closedAt?.toISOString() ?? null,
-    closure: row.closure,
     sourceChatId: row.sourceChatId,
     outcome: context.outcome === null ? null : asOutcomeValue(context.outcome),
     decisionsSoFar: context.decisionsSoFar.map(asOutcomeValue),
-    workspaces: context.workspaces.map(asExecutionWorkspace),
   };
-}
-
-/**
- * The band a ticket is in, derived rather than stored.
- *
- * A claim comes first, so a ticket somebody is working is running whatever else is
- * true of it — including having been closed while a run went, which is a thing that
- * happens and not a thing to hide. Closure is next, so that closing an idea nobody ever
- * asked for still lands in Done, and a ticket closed while a proposal waited is done
- * rather than waiting on somebody to answer. Then a run that left a person's turn
- * unanswered: a proposal nobody has judged, or a run that stopped needing somebody.
- * A draft after that, so a ticket nobody has said anything about is never counted as
- * work; then an open child keeps the parent out of the frontier; otherwise it is ready.
- */
-function bandOf(row: Row, children: Named[], held: Held | null, runs: RunRow[]) {
-  if (held !== null) return 'running';
-  if (row.closedAt !== null) return 'done';
-  // A question has no agent claim or run: its linked chat is the person's claim.
-  // Keeping the link on the ticket makes opening it again idempotent and keeps it
-  // Needs you after a sent-back Outcome.
-  if (row.kind === 'question' && row.sourceChatId !== null) return 'needs-you';
-  if (waitingOnAPerson(runs)) return 'needs-you';
-  if (row.gate === 'draft') return 'draft';
-  // Maps are coordination records, not executable work. Their open question and
-  // research children keep them Blocked; once those Outcomes are all approved,
-  // Kira's destination-spec proposal is the person's next turn.
-  if (row.kind === 'map') return children.some((each) => !each.closed) ? 'blocked' : 'needs-you';
-  if (children.some((each) => !each.closed)) return 'blocked';
-  if (row.kind === 'spec' && children.length === 0) return 'blocked';
-
-  return 'ready';
-}
-
-/**
- * Whether a ticket is waiting on a person rather than on the queue.
- *
- * Its newest run ended with no verdict on it: either it made a proposal nobody has
- * answered yet, or it stopped saying it needed somebody. Both are a person's turn
- * rather than the queue's (docs/adr/0011).
- */
-function waitingOnAPerson(runs: RunRow[]): boolean {
-  const last = runs[0];
-  if (last === undefined) return false;
-
-  return last.endedAt !== null && last.verdict === null;
-}
-
-/**
- * The name a branch for this ticket would carry, derived from what it says.
- *
- * Derived rather than stored, so nothing can disagree with it — and the limit
- * that carries is accepted: a retitle changes the name, and a branch made before
- * a retitle keeps the name it was made with. Nothing here claims a branch
- * exists. When a run records the branch it made, the ticket shows that instead
- * (GH #64).
- */
-function branchFor(prefix: string, number: number, title: string) {
-  const slug = slugOf(title);
-  const name = `${prefix.toLowerCase()}-${number}`;
-
-  return slug === '' ? name : `${name}-${slug}`;
-}
-
-/**
- * A title reduced to the part of a branch name git will take.
- *
- * Everything that is not a letter or a digit separates words, and whole words are
- * dropped once the next would push the name past its limit — so the cut lands
- * between words rather than through one. A title with nothing usable in it comes to
- * nothing, and the branch is the ticket's own name.
- *
- * A slash is deliberately not allowed through: a branch is one name here, not a
- * little tree, and `..`, a leading dash and a trailing `.lock` are things git
- * refuses or misreads rather than names.
- */
-function slugOf(title: string) {
-  const words = title
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter((each) => each !== '');
-
-  const kept: string[] = [];
-  let length = 0;
-
-  for (const word of words) {
-    const grew = length + (kept.length === 0 ? 0 : 1) + word.length;
-    if (grew > SLUG_LIMIT) break;
-
-    kept.push(word);
-    length = grew;
-  }
-
-  // A first word longer than the whole allowance is cut rather than dropped: a
-  // branch named after the ticket alone says less than a truncated word does.
-  if (kept.length === 0 && words[0] !== undefined) return words[0].slice(0, SLUG_LIMIT);
-
-  return kept.join('-');
 }
 
 function asNamed(row: Row, prefix: string): Named {
   return {
     id: row.id,
     name: `${prefix}-${row.number}`,
-    closed: row.closedAt !== null,
-    closure: row.closure,
+    status: row.status,
   };
 }
 
@@ -3099,14 +1616,8 @@ function cleanTags(tags: string[]): string[] {
   return [...new Set(tags.map((tag) => tag.trim()).filter((tag) => tag !== ''))];
 }
 
-/** How many criteria are really there, since a blank one is not a criterion. */
-function liveCriteria(criteria: string[]): number {
-  return criteria.filter((each) => each.trim() !== '').length;
-}
-
-/** How many of these tickets are in a band. */
-function bandCount(tickets: { band: string }[], band: string): number {
-  return tickets.filter((each) => each.band === band).length;
+function isClosed(status: string): boolean {
+  return status === 'done' || status === 'wont-do';
 }
 
 /** The code Postgres refused with, however many wrappers it arrived in. */

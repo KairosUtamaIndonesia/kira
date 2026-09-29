@@ -19,19 +19,20 @@ const draft: Ticket = {
   title: 'A ticket',
   body: 'A draft',
   criteria: ['It is testable'],
-  gate: 'draft',
-  band: 'draft',
+  status: 'draft',
+  blocked: false,
   rank: 0,
-  branch: 'fnd-1-a-ticket',
+  priority: 'none',
+  assignee: null,
+  tags: [],
   author: null,
   gates: [],
   children: [],
+  parent: null,
+  subIssues: [],
+  relationships: [],
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
-  closedAt: null,
-  closure: null,
-  claim: null,
-  runs: [],
 };
 
 function streamAnswer(response: ServerResponse, body: unknown): void {
@@ -43,9 +44,7 @@ test('a real Kira session reads and edits through the main-process tracker seam'
   const previousHome = process.env['HOME'];
   const previousAgentDir = process.env['PI_CODING_AGENT_DIR'];
   process.env['HOME'] = mkdtempSync(join(tmpdir(), 'kira-tracker-session-home-'));
-  process.env['PI_CODING_AGENT_DIR'] = mkdtempSync(
-    join(tmpdir(), 'kira-tracker-session-agent-'),
-  );
+  process.env['PI_CODING_AGENT_DIR'] = mkdtempSync(join(tmpdir(), 'kira-tracker-session-agent-'));
   t.after(() => {
     if (previousHome === undefined) delete process.env['HOME'];
     else process.env['HOME'] = previousHome;
@@ -66,7 +65,7 @@ test('a real Kira session reads and edits through the main-process tracker seam'
       const tool =
         providerCalls === 1
           ? { name: 'tracker_queue', arguments: '{}' }
-          : { name: 'tracker_edit_draft', arguments: '{"ref":"FND-1","body":"Updated"}' };
+          : { name: 'tracker_update_ticket', arguments: '{"ref":"FND-1","body":"Updated"}' };
       streamAnswer(response, {
         id: `chatcmpl-tool-${providerCalls}`,
         object: 'chat.completion.chunk',
@@ -158,7 +157,7 @@ test('a real Kira session reads and edits through the main-process tracker seam'
     store,
     workspace.folder,
     models,
-    { id: 'thread-1', workspaceId: workspace.id },
+    { id: 'thread-1', workspaceId: workspace.id, workTicketIds: [draft.id] },
     undefined,
     tracker,
   );
@@ -170,6 +169,7 @@ test('a real Kira session reads and edits through the main-process tracker seam'
       (tool) => tool.function.name,
     );
     assert.deepEqual(calls, [
+      'read:device-key:ticket-1',
       `queue:device-key:${workspace.id}`,
       'read:device-key:FND-1',
       'change:device-key:ticket-1',
@@ -179,7 +179,7 @@ test('a real Kira session reads and edits through the main-process tracker seam'
     assert.ok(toolNames.includes('tracker_read_glossary'));
     assert.ok(toolNames.includes('tracker_read_decisions'));
     assert.ok(toolNames.includes('propose_decision'));
-    assert.ok(toolNames.includes('tracker_edit_draft'));
+    assert.ok(toolNames.includes('tracker_update_ticket'));
     assert.ok(
       !toolNames.some((name) => /publish|ready|approve|create.*decision|supersede/i.test(name)),
     );
@@ -188,6 +188,8 @@ test('a real Kira session reads and edits through the main-process tracker seam'
     )?.content;
     assert.match(systemPrompt ?? '', /Workflow router/);
     assert.match(systemPrompt ?? '', /to-spec/);
+    assert.match(systemPrompt ?? '', /Set a ticket to Running when you begin work/);
+    assert.match(systemPrompt ?? '', /Never mark a ticket Done/);
     assert.equal(edited.body, 'Updated');
   } finally {
     conversation.close();

@@ -2,13 +2,11 @@
  * The Work surface: one project's tickets, on a board or in a list.
  *
  * Board and List are two readings of the same tickets. Opening a ticket puts the
- * same detail panel over either view, so its workspace stays close to the plan
+ * same detail panel over either view, so its details stay close to the plan
  * without replacing the board or list. All of its wording lives in `workCopy.ts`.
  *
- * Nothing here derives a band. The server decides what band a ticket is in and
- * the surface groups what it was handed, because a window that derived one could
- * draw a state the server would not — and the frontier a run is dispatched from
- * is the same derivation (GH #57). What the surface does decide is what to say
+ * Status is stored by the server. The surface derives only the Blocked marker from
+ * open blockers, and groups tickets by that displayed status. What the surface does decide is what to say
  * when there is no queue to draw: a server that cannot be reached, a machine
  * nobody is signed in on, and a folder that works no project are three different
  * things, and an empty project is a fourth.
@@ -66,37 +64,24 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
+import { useCallback, useEffect, useState, type PointerEventHandler, type ReactNode } from 'react';
 import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type PointerEventHandler,
-  type ReactNode,
-} from 'react';
-import {
-  ArrowDownToLine,
   ArrowLeft,
-  ArrowRight,
   ArrowUp,
   Bug,
   ChevronDown,
   CircleCheck,
   CircleDashed,
   CircleHelp,
-  Copy,
   FileText,
   FlaskConical,
-  Folder,
   FolderOpen,
   GitBranch,
   GripVertical,
-  History,
   Map as MapIcon,
   Maximize2,
   MessageSquare,
   Paperclip,
-  Play,
   Plus,
   Rows3,
   Search,
@@ -107,33 +92,23 @@ import {
   X,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import {
-  age,
-  branchNote,
-  holding,
-  inBand,
-  runChoiceLabel,
-  runTelling,
-  saidByLabel,
-  suggestPrefix,
-  when,
-} from './workRows.ts';
+import { age, holding, inStatus, statusOf, suggestPrefix, when } from './workRows.ts';
 import {
   canReorderReady,
-  bandLabel,
   DEFAULT_WORK_DISPLAY,
   displayWork,
   groupedWork,
   planTicketDrop,
   readWorkDisplay,
+  statusLabel,
   type WorkDisplay,
   type WorkGroup,
+  type WorkStatus,
   type TicketDropPlan,
   reorderReady,
 } from './workDisplay.ts';
 import type {
   AuthState,
-  Band,
   ChatSummary,
   JoinRequest,
   ProjectSummary,
@@ -141,32 +116,20 @@ import type {
   TicketChange,
   TicketKind,
   TicketQueue,
-  TicketRun,
-  TicketSaid,
-  ExecutionWorkspace,
-  DeliveryAudit,
-  DeliveryPath,
-  Result,
+  TicketStatus,
   WorkspaceSummary,
 } from '../../preload/bridge.ts';
-import { ExecutionWorkspacePanel } from './executionWorkspace.tsx';
 import { Blockers } from './workBlockers.tsx';
 import { NewTicketDialog, TicketFields } from './workNewTicket.tsx';
 import { FilterBar, FilterToolbar } from './workFilters.tsx';
 import { copy } from './workCopy.ts';
-import {
-  executionWorkspaceView,
-  fromHome,
-  shortenMiddle,
-  workspaceStateWords,
-} from './executionWorkspace.ts';
 
 /** Two readings of the same issues. */
 type View = 'board' | 'list';
 
 interface DropIntent {
   ticketId: string;
-  target: Band;
+  target: WorkStatus;
   plan: TicketDropPlan;
 }
 
@@ -175,23 +138,10 @@ const VIEWS: { id: View; label: string; icon: LucideIcon; note: string }[] = [
   { id: 'list', icon: Rows3, ...copy.views.list },
 ];
 
-/** The six server-derived lanes, ordered from the next human action to completed work. */
-const BANDS: { id: Band; label: string; note: string }[] = (
-  ['needs-you', 'ready', 'running', 'blocked', 'draft', 'done'] as const
+/** Stored statuses plus Blocked, which is derived from open blockers. */
+const STATUSES: { id: WorkStatus; label: string; note: string }[] = (
+  ['needs-review', 'ready', 'running', 'blocked', 'draft', 'done', 'wont-do'] as const
 ).map((id) => ({ id, ...copy.statuses[id] }));
-
-/**
- * How often the queue is read again while the Work surface is open.
- *
- * A run makes the queue move on its own — it claims, it proposes, it ends — so a surface
- * that only read when a person acted would show a band that has moved as though it had
- * not. It is not gated on this window's own copy of what is running, which reads well and
- * is wrong: the read after pressing Run can land before the server has recorded the claim,
- * and a surface whose copy says nothing is running never reads again — so the ticket sits
- * in Ready, with Run still offered, while the server has it Running. A copy cannot be what
- * starts looking for what it does not have (GH #75).
- */
-const READ_AGAIN_MS = 5_000;
 
 /** Each kind's shape, drawn before its name on the board so kinds read apart at a glance. */
 const KIND_ICON: Record<TicketKind, LucideIcon> = {
@@ -271,9 +221,6 @@ const styles = stylex.create({
     flexDirection: 'column',
     gap: spacingVars['--spacing-3'],
     padding: spacingVars['--spacing-4'],
-  },
-  abandoned: {
-    color: colorVars['--color-text-orange'],
   },
 
   /* The board, and the ticket over it. */
@@ -370,7 +317,7 @@ const styles = stylex.create({
   table: {
     display: 'grid',
     gridTemplateColumns:
-      '4px 16px max-content minmax(160px, 1fr) minmax(120px, 200px) 88px 64px 64px minmax(80px, 140px) 56px 4px',
+      '4px 16px max-content minmax(160px, 1fr) minmax(120px, 200px) 88px 64px minmax(80px, 140px) 56px 4px',
     columnGap: spacingVars['--spacing-3'],
     // Wide enough for every column at its narrowest; past that the table scrolls sideways.
     minWidth: 850,
@@ -1002,46 +949,6 @@ const styles = stylex.create({
     listStyle: 'none',
     minWidth: 0,
   },
-  branchFact: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: spacingVars['--spacing-2'],
-    minWidth: 0,
-    fontSize: textSizeVars['--font-size-sm'],
-    color: colorVars['--color-text-secondary'],
-  },
-  branchState: { color: colorVars['--color-text-primary'] },
-  branchMore: { color: colorVars['--color-text-secondary'] },
-  branchPath: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  stateDot: {
-    width: 7,
-    height: 7,
-    flexShrink: 0,
-    borderRadius: radiusVars['--radius-full'],
-    backgroundColor: colorVars['--color-icon-secondary'],
-  },
-  stateDotRunning: { backgroundColor: colorVars['--color-icon-blue'] },
-  stateDotDone: { backgroundColor: colorVars['--color-success'] },
-  stateDotFailed: { backgroundColor: colorVars['--color-error'] },
-  goLink: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: spacingVars['--spacing-1'],
-    padding: 0,
-    borderWidth: 0,
-    backgroundColor: 'transparent',
-    color: colorVars['--color-text-accent'],
-    fontSize: textSizeVars['--font-size-sm'],
-    fontWeight: 600,
-    textDecorationLine: { default: 'none', ':hover': 'underline' },
-    textUnderlineOffset: 3,
-    cursor: 'pointer',
-    outlineStyle: { default: 'none', ':focus-visible': focusVars['--focus-outline-style'] },
-    outlineWidth: focusVars['--focus-outline-width'],
-    outlineColor: focusVars['--focus-outline-color'],
-    outlineOffset: 2,
-  },
   srOnly: {
     position: 'absolute',
     width: 1,
@@ -1176,21 +1083,6 @@ const styles = stylex.create({
     gap: spacingVars['--spacing-4'],
     paddingBlockEnd: spacingVars['--spacing-4'],
   },
-  ticketFacts: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: spacingVars['--spacing-2'],
-  },
-  ticketFact: {
-    display: 'grid',
-    gridTemplateColumns: 'minmax(88px, 0.7fr) minmax(0, 1.3fr)',
-    alignItems: 'baseline',
-    gap: spacingVars['--spacing-3'],
-  },
-  ticketFactValue: {
-    minWidth: 0,
-    overflowWrap: 'anywhere',
-  },
   refusal: {
     flexShrink: 0,
     padding: spacingVars['--spacing-3'],
@@ -1207,43 +1099,6 @@ const styles = stylex.create({
     display: 'flex',
     alignItems: 'center',
     gap: spacingVars['--spacing-2'],
-  },
-  branch: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: spacingVars['--spacing-2'],
-  },
-
-  /* What a run left on a ticket: its evidence, and the words it went with. */
-  evidence: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: spacingVars['--spacing-1'],
-    minWidth: 0,
-  },
-  said: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: spacingVars['--spacing-3'],
-    margin: 0,
-    padding: 0,
-    listStyle: 'none',
-    // A run can talk for longer than the ticket is long. The transcript is bounded so the
-    // facts a person came for stay where they were, and it scrolls rather than growing.
-    maxHeight: 420,
-    overflowY: 'auto',
-  },
-  saidLine: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: spacingVars['--spacing-1'],
-    minWidth: 0,
-  },
-  saidWords: {
-    // The words are written in paragraphs, and a command is written as one line: both are
-    // kept as they were written rather than reflowed into each other.
-    whiteSpace: 'pre-wrap',
-    wordBreak: 'break-word',
   },
   field: {
     display: 'flex',
@@ -1315,7 +1170,6 @@ function useMountEffect(effect: () => void | (() => void)): void {
 export function WorkSurface({
   workspace,
   auth,
-  chatIds,
   chatSummaries,
   initialTicketId,
   onBack,
@@ -1327,14 +1181,12 @@ export function WorkSurface({
   workspace: WorkspaceSummary | null;
   /** Who is signed in, as the window last heard — null until the first answer. */
   auth: AuthState | null;
-  /** The chats the window is holding, by id: a run's chat is one of them. */
-  chatIds: string[];
   chatSummaries: ChatSummary[];
   /** A ticket to select when Work was opened from the shaping Workbench. */
   initialTicketId?: string | null;
   /** Return to the project navigator, when this surface was entered from there. */
   onBack?: () => void;
-  /** Show a chat: what a run is, and where its words are read. */
+  /** Show a linked chat. */
   onOpenChat: (chatId: string) => void;
   /** Start an ordinary chat with selected tickets attached as working context. */
   onStartChat: (ticketIds: string[]) => void;
@@ -1355,16 +1207,8 @@ export function WorkSurface({
   const [refusal, setRefusal] = useState<string | null>(null);
   const [attachedIds, setAttachedIds] = useState<string[]>([]);
   const [isFull, setIsFull] = useState(false);
-  const [executionWorkspaces, setExecutionWorkspaces] = useState<
-    Record<string, ExecutionWorkspace[]>
-  >({});
   const [dropIntent, setDropIntent] = useState<DropIntent | null>(null);
-  const [dropExecutionWorkspaces, setDropExecutionWorkspaces] = useState<
-    ExecutionWorkspace[] | null
-  >(null);
-  const [dropLoading, setDropLoading] = useState(false);
   const [dropBusy, setDropBusy] = useState(false);
-  const dropRequestId = useRef(0);
 
   function updateDisplay(change: WorkDisplay | ((current: WorkDisplay) => WorkDisplay)): void {
     setDisplay((current: WorkDisplay) => {
@@ -1372,9 +1216,9 @@ export function WorkSurface({
       const params = new URLSearchParams(window.location.search);
       const values: [string, string | null][] = [
         ['search', next.search.trim() || null],
-        ['band', next.band === 'all' ? null : next.band],
+        ['status', next.status === 'all' ? null : next.status],
         ['kind', next.kind === 'all' ? null : next.kind],
-        ['claim', next.claim === 'all' ? null : next.claim],
+        ['owner', next.owner === 'all' ? null : next.owner],
         ['order', next.order === 'rank' ? null : next.order],
         ['group', next.group === 'status' ? null : next.group],
         ['done', next.showDone ? '1' : null],
@@ -1395,8 +1239,7 @@ export function WorkSurface({
 
   const projectId = workspace?.projectId ?? null;
 
-  // A chat's own read: one workspace's queue, asked for again by whoever needs it — the
-  // mount, the window coming back, a write, and the beat while a run is going.
+  // Read the project's ticket store on mount, focus, and after a write.
   const read = useCallback(async (): Promise<void> => {
     if (workspace === null || projectId === null) return;
 
@@ -1412,13 +1255,7 @@ export function WorkSurface({
 
     setTrouble(null);
     setQueue(answer.value);
-    if (openId !== null) {
-      const workspaces = await window.kira.listExecutionWorkspaces(openId);
-      if (workspaces.ok) {
-        setExecutionWorkspaces((current) => ({ ...current, [openId]: workspaces.value }));
-      }
-    }
-  }, [workspace, projectId, openId]);
+  }, [workspace, projectId]);
 
   useMountEffect(() => {
     void read();
@@ -1432,21 +1269,10 @@ export function WorkSurface({
     return () => window.removeEventListener('focus', again);
   });
 
-  // The queue is read on a beat while the surface is open, so a run that moves a ticket on
-  // its own is drawn where it has moved to.
-  useEffect(() => {
-    const beat = setInterval(() => void read(), READ_AGAIN_MS);
-
-    return () => clearInterval(beat);
-  }, [read]);
-
   /**
    * One write, and what the server made of it.
    *
-   * Every write is followed by a read rather than patched into the list by hand:
-   * a band is derived, so one write can move a ticket nobody touched — closing a
-   * slice releases the parent that named it — and a surface that guessed at the
-   * result would show a queue the server does not have.
+   * Every write is followed by a read so the view reflects stored server state.
    */
   /**
    * Where a refusal is said. What is done inside the ticket's panel is refused in the
@@ -1477,32 +1303,11 @@ export function WorkSurface({
     return answer.value;
   }
 
-  /**
-   * One act that answers a run, and what the server made of it.
-   *
-   * The same shape as `wrote`, which is the same shape of act: the server is asked, its
-   * own words are shown when it refuses, and the queue is read again when it does not —
-   * because a run that started moves a ticket nobody touched.
-   */
-  async function acted<T>(
-    act: () => Promise<{ ok: true; value: T } | { ok: false; error: string }>,
-    shownIn: 'panel' | 'toast' = 'panel',
-  ): Promise<boolean> {
-    const answer = await act();
-
-    if (!answer.ok) {
-      refuse(answer.error, shownIn);
-      return false;
-    }
-
-    setRefusal(null);
-    await read();
-    return true;
-  }
-
-  /** Move a Ready ticket to the front of its existing lane without changing its gate. */
+  /** Move a Ready ticket to the front of its existing status group. */
   async function promote(id: string): Promise<void> {
-    const ready = tickets.filter((each) => each.band === 'ready' && each.id !== id);
+    const ready = tickets.filter(
+      (each) => !each.blocked && each.status === 'ready' && each.id !== id,
+    );
     const top = ready.reduce(
       (lowest, each) => Math.min(lowest, each.rank),
       Number.MAX_SAFE_INTEGER,
@@ -1532,8 +1337,7 @@ export function WorkSurface({
     await read();
   }
 
-  function beginTicketDrop(ticketId: string, target: Band): void {
-    const requestId = ++dropRequestId.current;
+  function beginTicketDrop(ticketId: string, target: WorkStatus): void {
     const ticket = queue?.tickets.find((each) => each.id === ticketId);
     if (ticket === undefined) return;
 
@@ -1541,34 +1345,11 @@ export function WorkSurface({
     if (plan === null) return;
 
     setDropIntent({ ticketId, target, plan });
-    setDropExecutionWorkspaces(null);
-    setDropLoading(false);
     setDropBusy(false);
     setRefusal(null);
-
-    if (plan.kind !== 'start-run') return;
-
-    setDropLoading(true);
-    void window.kira
-      .listExecutionWorkspaces(ticketId)
-      .then((answer) => {
-        if (requestId !== dropRequestId.current) return;
-        setDropLoading(false);
-        if (!answer.ok) {
-          refuse(answer.error, 'toast');
-          return;
-        }
-        setDropExecutionWorkspaces(answer.value);
-      })
-      .catch((failure: unknown) => {
-        if (requestId !== dropRequestId.current) return;
-        setDropLoading(false);
-        refuse(failure instanceof Error ? failure.message : String(failure), 'toast');
-      });
   }
 
   function cancelTicketDrop(): void {
-    dropRequestId.current += 1;
     setDropIntent(null);
   }
 
@@ -1579,34 +1360,6 @@ export function WorkSurface({
     const changed = await wrote(action, 'toast');
     setDropBusy(false);
     if (changed !== null) setDropIntent(null);
-  }
-
-  async function applyDropVerdict(verdict: 'accepted' | 'sent-back'): Promise<void> {
-    const ticket = tickets.find((each) => each.id === dropIntent?.ticketId);
-    if (ticket === undefined || workspace === null) return;
-    const run = ticket.runs[0];
-    if (run === undefined) return;
-
-    setDropBusy(true);
-    const judged = await acted(
-      () => window.kira.judgeRun(ticket.id, run.id, verdict, workspace.id),
-      'toast',
-    );
-    setDropBusy(false);
-    if (judged) setDropIntent(null);
-  }
-
-  async function applyDropRun(executionWorkspaceId: string): Promise<void> {
-    const ticket = tickets.find((each) => each.id === dropIntent?.ticketId);
-    if (ticket === undefined || workspace === null) return;
-
-    setDropBusy(true);
-    const started = await acted(
-      () => window.kira.startRun(workspace.id, ticket.id, executionWorkspaceId),
-      'toast',
-    );
-    setDropBusy(false);
-    if (started) setDropIntent(null);
   }
 
   async function removeDropBlocker(blockerId: string): Promise<void> {
@@ -1640,10 +1393,9 @@ export function WorkSurface({
 
   const tickets = queue?.tickets ?? [];
   const visibleTickets = displayWork(tickets, display);
-  const doneCount = displayWork(tickets, { ...display, showDone: true }).filter(
-    (ticket) => ticket.band === 'done',
-  ).length;
-  const visibleBands = BANDS;
+  const doneCount = tickets.filter((ticket) => ticket.status === 'done').length;
+  const wontDoCount = tickets.filter((ticket) => ticket.status === 'wont-do').length;
+  const visibleStatuses = STATUSES;
   const readyCanReorder = canReorderReady(display);
   const open = tickets.find((each) => each.id === openId) ?? null;
   const placement = 'beside';
@@ -1662,51 +1414,19 @@ export function WorkSurface({
     open === null ? null : (
       <TicketReading
         ticket={open}
-        repository={workspace.folder}
-        executionWorkspaces={executionWorkspaces[open.id] ?? []}
         placement={isFull ? 'full' : placement}
         onExpand={() => setIsFull(true)}
         onCollapse={() => setIsFull(false)}
         linkedChats={chatSummaries.filter((chat) => chat.workTicketIds.includes(open.id))}
         tickets={tickets}
         refusal={refusal}
-        chatIds={chatIds}
         onLeave={closePanel}
         onOpen={openTicket}
         onOpenChat={onOpenChat}
-        onChanged={read}
         onRefuse={setRefusal}
         onWrite={(change) => wrote(() => window.kira.changeTicket(open.id, change))}
         onGate={(gatedBy) => wrote(() => window.kira.gateTicket(open.id, gatedBy))}
         onUngate={(gatedBy) => wrote(() => window.kira.ungateTicket(open.id, gatedBy))}
-        onRun={(executionWorkspaceId, followUp) =>
-          acted(() => window.kira.startRun(workspace.id, open.id, executionWorkspaceId, followUp))
-        }
-        onRequestRun={() => beginTicketDrop(open.id, 'running')}
-        onDeliver={(workspaceId, path) =>
-          window.kira.deliverExecutionWorkspace(open.id, workspaceId, path)
-        }
-        onQuestion={() => acted(() => window.kira.openQuestion(workspace.id, open.id))}
-        onTakeOver={() => acted(() => window.kira.takeOverClaim(open.id))}
-        onLetGo={() => acted(() => window.kira.releaseClaim(open.id))}
-        onResolve={() =>
-          acted(() =>
-            window.kira.resolveRun(
-              workspace.id,
-              open.id,
-              refusal?.replace(/^Merge conflict:\s*/, '') ?? 'The spec branch has conflicts.',
-            ),
-          )
-        }
-        onJudge={(verdict) => {
-          // The newest run is the one with something to answer: a ticket waits on a person
-          // because of what its last run did.
-          const last = open.runs[0];
-
-          return last === undefined
-            ? Promise.resolve(false)
-            : acted(() => window.kira.judgeRun(open.id, last.id, verdict, workspace.id));
-        }}
       />
     );
 
@@ -1765,7 +1485,7 @@ export function WorkSurface({
             display={display}
             onChange={updateDisplay}
             tickets={tickets}
-            lanes={BANDS}
+            lanes={STATUSES}
             kindIcons={KIND_ICON}
             isDisabled={queue === null}
           />
@@ -1796,9 +1516,13 @@ export function WorkSurface({
       <FilterBar
         display={display}
         onChange={updateDisplay}
-        lanes={BANDS}
+        lanes={STATUSES}
         shown={visibleTickets.length}
-        total={tickets.filter((each) => display.showDone || each.band !== 'done').length}
+        total={
+          tickets.filter(
+            (each) => display.showDone || (each.status !== 'done' && each.status !== 'wont-do'),
+          ).length
+        }
       />
 
       {isWriting && (
@@ -1822,11 +1546,8 @@ export function WorkSurface({
           intent={dropIntent}
           ticket={tickets.find((each) => each.id === dropIntent.ticketId) ?? null}
           tickets={tickets}
-          executionWorkspaces={dropExecutionWorkspaces}
-          isLoading={dropLoading}
           isBusy={dropBusy}
           onCancel={cancelTicketDrop}
-          onOpen={openTicket}
           onChangeTicket={(ticketId, change) =>
             applyDropWrite(() => window.kira.changeTicket(ticketId, change))
           }
@@ -1834,8 +1555,6 @@ export function WorkSurface({
             applyDropWrite(() => window.kira.gateTicket(ticketId, blockerId))
           }
           onRemoveBlocker={removeDropBlocker}
-          onJudge={applyDropVerdict}
-          onStartRun={applyDropRun}
         />
       )}
 
@@ -1890,9 +1609,10 @@ export function WorkSurface({
       ) : view === 'board' ? (
         <BoardView
           tickets={visibleTickets}
-          bands={visibleBands}
+          statuses={visibleStatuses}
           showDone={display.showDone}
           doneCount={doneCount}
+          wontDoCount={wontDoCount}
           selected={openId}
           onOpen={openTicket}
           onPromote={(id) => void promote(id)}
@@ -1912,7 +1632,7 @@ export function WorkSurface({
       ) : (
         <TicketTable
           tickets={visibleTickets}
-          bands={visibleBands}
+          statuses={visibleStatuses}
           group={display.group}
           selected={openId}
           onOpen={openTicket}
@@ -2138,7 +1858,7 @@ interface ViewProps {
  */
 function TicketTable({
   tickets,
-  bands,
+  statuses,
   group,
   selected,
   onOpen,
@@ -2147,11 +1867,11 @@ function TicketTable({
   onReorder,
   onDrop,
 }: ViewProps & {
-  bands: typeof BANDS;
+  statuses: typeof STATUSES;
   group: WorkGroup;
   canReorder: boolean;
   onReorder: (activeId: string, overId: string) => void;
-  onDrop: (ticketId: string, target: Band) => void;
+  onDrop: (ticketId: string, target: WorkStatus) => void;
 }) {
   const [folded, setFolded] = useState<string[]>([]);
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -2165,13 +1885,13 @@ function TicketTable({
           tickets: each.tickets,
           kind: each.key as TicketKind,
         }))
-      : bands
-          .map((band) => ({
-            key: band.id,
-            label: band.label,
-            note: band.note,
-            band: band.id,
-            tickets: inBand(tickets, band.id),
+      : statuses
+          .map((status) => ({
+            key: status.id,
+            label: status.label,
+            note: status.note,
+            status: status.id,
+            tickets: inStatus(tickets, status.id),
           }))
           .filter((each) => each.tickets.length > 0);
   const sensors = useSensors(
@@ -2186,11 +1906,14 @@ function TicketTable({
 
     const overId = String(over.id);
     const target = overId.startsWith('lane:')
-      ? bands.find((band) => band.id === overId.slice('lane:'.length))?.id
-      : tickets.find((each) => each.id === overId)?.band;
+      ? statuses.find((status) => status.id === overId.slice('lane:'.length))?.id
+      : (() => {
+          const ticket = tickets.find((each) => each.id === overId);
+          return ticket === undefined ? undefined : statusOf(ticket);
+        })();
     if (target === undefined) return;
 
-    if (moved.band === target) {
+    if (statusOf(moved) === target) {
       if (canReorder && target === 'ready') onReorder(moved.id, overId);
       return;
     }
@@ -2217,7 +1940,6 @@ function TicketTable({
               <span {...stylex.props(styles.tableHeadCell)}>{copy.table.status}</span>
               <span {...stylex.props(styles.tableHeadCell)}>{copy.table.kind}</span>
               <span {...stylex.props(styles.tableHeadCell)}>{copy.table.blockers}</span>
-              <span {...stylex.props(styles.tableHeadCell)}>{copy.table.sessions}</span>
               <span {...stylex.props(styles.tableHeadCell)}>{copy.table.owner}</span>
               <span {...stylex.props(styles.tableHeadCell, styles.tableHeadEnd)}>
                 {copy.table.updated}
@@ -2263,7 +1985,7 @@ interface TableGroup {
   key: string;
   label: string;
   note?: string;
-  band?: Band;
+  status?: WorkStatus;
   kind?: TicketKind;
   tickets: Ticket[];
 }
@@ -2286,7 +2008,7 @@ function TableSection({
 }) {
   const { isOver, setNodeRef } = useDroppable({
     id: `lane:${group.key}`,
-    disabled: !canDrag || group.band === undefined,
+    disabled: !canDrag || group.status === undefined,
   });
 
   return (
@@ -2305,8 +2027,8 @@ function TableSection({
           aria-hidden
           {...stylex.props(
             styles.tableGroupDot,
-            group.band !== undefined
-              ? LANE_FILL[group.band]
+            group.status !== undefined
+              ? LANE_FILL[group.status]
               : group.kind !== undefined && KIND_HUE[group.kind],
           )}
         />
@@ -2361,8 +2083,10 @@ function TableRow({
     isDragging,
   } = useSortable({ id: ticket.id, disabled: !canDrag });
   const said = holding(ticket);
-  const openBlockers = ticket.children.filter((child) => !child.closed).length;
-  const owner = ticket.claim?.holder.name ?? ticket.author?.name ?? null;
+  const openBlockers = ticket.children.filter(
+    (child) => child.status !== 'done' && child.status !== 'wont-do',
+  ).length;
+  const owner = ticket.assignee?.name ?? ticket.author?.name ?? null;
 
   return (
     <div
@@ -2392,8 +2116,8 @@ function TableRow({
       </span>
       <span {...stylex.props(styles.rowName)}>{ticket.name}</span>
       <span {...stylex.props(styles.tableTitle)}>{ticket.title || copy.untitled}</span>
-      <span {...stylex.props(styles.rowState, ticket.closure === 'wontfix' && styles.abandoned)}>
-        <span {...stylex.props(styles.rowStateIcon, BAND_TONE[ticket.band])}>
+      <span {...stylex.props(styles.rowState)}>
+        <span {...stylex.props(styles.rowStateIcon, STATUS_TONE[statusOf(ticket)])}>
           <Icon icon={said.icon} size="xsm" />
         </span>
         <span {...stylex.props(styles.rowStateWords)}>{said.words}</span>
@@ -2406,9 +2130,6 @@ function TableRow({
         {ticket.children.length === 0
           ? copy.none
           : `${ticket.children.length - openBlockers}/${ticket.children.length}`}
-      </span>
-      <span {...stylex.props(styles.tableNumber)}>
-        {ticket.runs.length === 0 ? copy.none : ticket.runs.length}
       </span>
       <span {...stylex.props(styles.tableOwner)} title={owner ?? undefined}>
         {owner ?? copy.none}
@@ -2437,71 +2158,40 @@ function DropActionBar({
   intent,
   ticket,
   tickets,
-  executionWorkspaces,
-  isLoading,
   isBusy,
   onCancel,
-  onOpen,
   onChangeTicket,
   onAddBlocker,
   onRemoveBlocker,
-  onJudge,
-  onStartRun,
 }: {
   intent: DropIntent;
   ticket: Ticket | null;
   tickets: Ticket[];
-  executionWorkspaces: ExecutionWorkspace[] | null;
-  isLoading: boolean;
   isBusy: boolean;
   onCancel: () => void;
-  onOpen: (id: string) => void;
   onChangeTicket: (ticketId: string, change: TicketChange) => Promise<void>;
   onAddBlocker: (ticketId: string, blockerId: string) => Promise<void>;
   onRemoveBlocker: (blockerId: string) => Promise<void>;
-  onJudge: (verdict: 'accepted' | 'sent-back') => Promise<void>;
-  onStartRun: (executionWorkspaceId: string) => Promise<void>;
 }) {
   const [selectedBlockerId, setSelectedBlockerId] = useState('');
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState('');
-
   if (ticket === null) return null;
 
+  const isClosed = (status: TicketStatus): boolean => status === 'done' || status === 'wont-do';
   const blockerIds = new Set(ticket.children.map((child) => child.id));
   const addableBlockers = tickets.filter(
     (candidate) =>
-      candidate.id !== ticket.id && candidate.closedAt === null && !blockerIds.has(candidate.id),
+      candidate.id !== ticket.id && !isClosed(candidate.status) && !blockerIds.has(candidate.id),
   );
-  const openBlockers = ticket.children.filter((child) => !child.closed);
-  const workspaces = executionWorkspaces ?? [];
+  const openBlockers = ticket.children.filter((child) => !isClosed(child.status));
   const chosenBlocker = addableBlockers.find((each) => each.id === selectedBlockerId);
   const chosenOpenBlocker = openBlockers.find((each) => each.id === selectedBlockerId);
-  const chosenWorkspace =
-    workspaces.find((each) => each.id === selectedWorkspaceId) ?? workspaces[0];
-  const destination = bandLabel(intent.target);
-
-  let message = copy.drop.move(ticket.name, bandLabel(ticket.band), destination);
-  if (intent.plan.kind === 'choose-ready-gate') {
-    message = copy.drop.chooseReady(ticket.name);
-  } else if (intent.plan.kind === 'change-gate') {
-    message = copy.drop.backToDrafts(ticket.name);
-  } else if (intent.plan.kind === 'prepare-agent-run') {
-    message = copy.drop.prepareAgent(ticket.name);
-  } else if (intent.plan.kind === 'start-run') {
-    message = copy.drop.startAgent(ticket.name);
-  } else if (intent.plan.kind === 'add-blocker') {
-    message = copy.drop.addBlocker(ticket.name);
-  } else if (intent.plan.kind === 'resolve-blockers') {
-    message = copy.drop.removeBlocker(ticket.name);
-  } else if (intent.plan.kind === 'send-back') {
-    message = copy.drop.sendBack(ticket.name);
-  } else if (intent.plan.kind === 'accept-result') {
-    message = copy.drop.accept(ticket.name);
-  } else if (intent.plan.kind === 'choose-closure') {
-    message = copy.drop.resolve(ticket.name);
-  } else if (intent.plan.kind === 'unavailable') {
-    message = intent.plan.reason;
-  }
+  const destination = statusLabel(intent.target);
+  const message =
+    intent.plan.kind === 'change-status'
+      ? copy.drop.move(ticket.name, statusLabel(statusOf(ticket)), destination)
+      : intent.plan.kind === 'add-blocker'
+        ? copy.drop.addBlocker(ticket.name)
+        : copy.drop.removeBlocker(ticket.name);
 
   return (
     <section {...stylex.props(styles.dropAction)} aria-label={copy.drop.aria} aria-live="polite">
@@ -2514,83 +2204,19 @@ function DropActionBar({
         </Text>
       </div>
       <div {...stylex.props(styles.dropActionTools)}>
-        {intent.plan.kind === 'choose-ready-gate' && (
-          <>
-            <Button
-              label={copy.actions.readyForAgent}
-              size="sm"
-              variant="primary"
-              isDisabled={isBusy || !ticket.criteria.some((criterion) => criterion.trim() !== '')}
-              onClick={() => void onChangeTicket(ticket.id, { gate: 'ready-for-agent' })}
-            />
-            <Button
-              label={copy.actions.readyForPerson}
-              size="sm"
-              variant="secondary"
-              isDisabled={isBusy}
-              onClick={() => void onChangeTicket(ticket.id, { gate: 'ready-for-human' })}
-            />
-          </>
-        )}
-        {intent.plan.kind === 'change-gate' && (
+        {intent.plan.kind === 'change-status' && (
           <Button
-            label={copy.actions.backToDraft}
+            label={copy.drop.confirmStatus(destination)}
             size="sm"
             variant="primary"
             isDisabled={isBusy}
-            onClick={() => void onChangeTicket(ticket.id, { gate: 'draft' })}
+            onClick={() => {
+              if (intent.plan.kind === 'change-status') {
+                void onChangeTicket(ticket.id, { status: intent.plan.status });
+              }
+            }}
           />
         )}
-        {intent.plan.kind === 'prepare-agent-run' && (
-          <Button
-            label={copy.actions.readyForAgent}
-            size="sm"
-            variant="primary"
-            isDisabled={isBusy}
-            onClick={() => void onChangeTicket(ticket.id, { gate: 'ready-for-agent' })}
-          />
-        )}
-        {intent.plan.kind === 'start-run' &&
-          (isLoading ? (
-            <Text type="supporting" color="secondary">
-              {copy.drop.checkingWorkspaces}
-            </Text>
-          ) : workspaces.length === 0 ? (
-            <Button
-              label={copy.drop.openToSetUp}
-              size="sm"
-              variant="primary"
-              isDisabled={isBusy || executionWorkspaces === null}
-              onClick={() => onOpen(ticket.id)}
-            />
-          ) : (
-            <>
-              {workspaces.length > 1 && (
-                <div {...stylex.props(styles.dropSelector)}>
-                  <Selector
-                    label={copy.drop.workspace}
-                    options={workspaces.map((each) => ({
-                      value: each.id,
-                      label: each.branch,
-                      description: each.repository,
-                    }))}
-                    value={chosenWorkspace?.id}
-                    onChange={setSelectedWorkspaceId}
-                    isDisabled={isBusy}
-                  />
-                </div>
-              )}
-              <Button
-                label={copy.drop.startAgentIn(chosenWorkspace?.branch)}
-                size="sm"
-                variant="primary"
-                isDisabled={isBusy || chosenWorkspace === undefined}
-                onClick={() => {
-                  if (chosenWorkspace !== undefined) void onStartRun(chosenWorkspace.id);
-                }}
-              />
-            </>
-          ))}
         {intent.plan.kind === 'add-blocker' && (
           <>
             {addableBlockers.length > 0 ? (
@@ -2613,9 +2239,7 @@ function DropActionBar({
                   variant="primary"
                   isDisabled={isBusy || chosenBlocker === undefined}
                   onClick={() => {
-                    if (chosenBlocker !== undefined) {
-                      void onAddBlocker(ticket.id, chosenBlocker.id);
-                    }
+                    if (chosenBlocker !== undefined) void onAddBlocker(ticket.id, chosenBlocker.id);
                   }}
                 />
               </>
@@ -2645,9 +2269,7 @@ function DropActionBar({
                   variant="primary"
                   isDisabled={isBusy || chosenOpenBlocker === undefined}
                   onClick={() => {
-                    if (chosenOpenBlocker !== undefined) {
-                      void onRemoveBlocker(chosenOpenBlocker.id);
-                    }
+                    if (chosenOpenBlocker !== undefined) void onRemoveBlocker(chosenOpenBlocker.id);
                   }}
                 />
               </>
@@ -2657,50 +2279,6 @@ function DropActionBar({
               </Text>
             )}
           </>
-        )}
-        {intent.plan.kind === 'send-back' && (
-          <Button
-            label={copy.actions.sendBack}
-            size="sm"
-            variant="primary"
-            isDisabled={isBusy}
-            onClick={() => void onJudge('sent-back')}
-          />
-        )}
-        {intent.plan.kind === 'accept-result' && (
-          <Button
-            label={copy.actions.acceptAndClose}
-            size="sm"
-            variant="primary"
-            isDisabled={isBusy}
-            onClick={() => void onJudge('accepted')}
-          />
-        )}
-        {intent.plan.kind === 'choose-closure' && (
-          <>
-            <Button
-              label={copy.actions.markDone}
-              size="sm"
-              variant="primary"
-              isDisabled={isBusy}
-              onClick={() => void onChangeTicket(ticket.id, { closure: 'done' })}
-            />
-            <Button
-              label={copy.actions.wontDo}
-              size="sm"
-              variant="secondary"
-              isDisabled={isBusy}
-              onClick={() => void onChangeTicket(ticket.id, { closure: 'wontfix' })}
-            />
-          </>
-        )}
-        {intent.plan.kind === 'unavailable' && (
-          <Button
-            label={copy.drop.openTicket}
-            size="sm"
-            variant="secondary"
-            onClick={() => onOpen(ticket.id)}
-          />
         )}
         <Button
           label={copy.actions.cancel}
@@ -2716,9 +2294,10 @@ function DropActionBar({
 
 function BoardView({
   tickets,
-  bands,
+  statuses,
   showDone,
   doneCount,
+  wontDoCount,
   selected,
   onOpen,
   onPromote,
@@ -2731,13 +2310,14 @@ function BoardView({
   onOpenChat,
   onToggleAttached,
 }: ViewProps & {
-  bands: typeof BANDS;
+  statuses: typeof STATUSES;
   showDone: boolean;
   doneCount: number;
+  wontDoCount: number;
   onPromote: (id: string) => void;
   canReorder: boolean;
   onReorder: (activeId: string, overId: string) => void;
-  onDrop: (ticketId: string, target: Band) => void;
+  onDrop: (ticketId: string, target: WorkStatus) => void;
   attachedIds: string[];
   chatSummaries: ChatSummary[];
   onOpenChat: (chatId: string) => void;
@@ -2756,17 +2336,20 @@ function BoardView({
     if (activeTicket === undefined) return;
 
     const overId = String(over.id);
-    const targetBand = overId.startsWith('lane:')
-      ? bands.find((band) => band.id === overId.slice('lane:'.length))?.id
-      : tickets.find((ticket) => ticket.id === overId)?.band;
-    if (targetBand === undefined) return;
+    const targetStatus = overId.startsWith('lane:')
+      ? statuses.find((status) => status.id === overId.slice('lane:'.length))?.id
+      : (() => {
+          const ticket = tickets.find((each) => each.id === overId);
+          return ticket === undefined ? undefined : statusOf(ticket);
+        })();
+    if (targetStatus === undefined) return;
 
-    if (activeTicket.band === targetBand) {
-      if (canReorder && targetBand === 'ready') onReorder(String(active.id), overId);
+    if (statusOf(activeTicket) === targetStatus) {
+      if (canReorder && targetStatus === 'ready') onReorder(String(active.id), overId);
       return;
     }
 
-    onDrop(activeTicket.id, targetBand);
+    onDrop(activeTicket.id, targetStatus);
   };
   const chatsFor = (ticket: Ticket): ChatSummary[] =>
     chatSummaries.filter((chat) => chat.workTicketIds.includes(ticket.id));
@@ -2781,20 +2364,25 @@ function BoardView({
     >
       <div {...stylex.props(styles.board)}>
         <section aria-label={copy.board.lanes} {...stylex.props(styles.boardColumns)}>
-          {bands.map((band) => {
-            const held = inBand(tickets, band.id);
+          {statuses.map((status) => {
+            const held = inStatus(tickets, status.id);
             return (
               <BoardLane
-                key={band.id}
-                band={band}
+                key={status.id}
+                status={status}
                 tickets={held}
                 showDone={showDone}
-                count={band.id === 'done' && !showDone ? doneCount : held.length}
+                count={
+                  !showDone && status.id === 'done'
+                    ? doneCount
+                    : !showDone && status.id === 'wont-do'
+                      ? wontDoCount
+                      : held.length
+                }
                 selected={selected}
-                canReorder={canReorder && band.id === 'ready'}
+                canReorder={canReorder && status.id === 'ready'}
                 onOpen={onOpen}
                 onPromote={onPromote}
-                onRequestRun={(ticketId) => onDrop(ticketId, 'running')}
                 attachedIds={attachedIds}
                 onToggleAttached={onToggleAttached}
                 chatsFor={chatsFor}
@@ -2823,31 +2411,34 @@ function BoardView({
 }
 
 const LANE_RULE = {
-  'needs-you': styles.laneNeedsYou,
+  'needs-review': styles.laneNeedsYou,
   ready: styles.laneReady,
   running: styles.laneRunning,
   blocked: styles.laneBlocked,
   draft: styles.laneDraft,
   done: styles.laneDone,
-} satisfies Record<Band, stylex.StyleXStyles>;
+  'wont-do': styles.laneDone,
+} satisfies Record<WorkStatus, stylex.StyleXStyles>;
 
 const LANE_FILL = {
-  'needs-you': styles.laneFillNeedsYou,
+  'needs-review': styles.laneFillNeedsYou,
   ready: styles.laneFillReady,
   running: styles.laneFillRunning,
   blocked: styles.laneFillBlocked,
   draft: styles.laneFillDraft,
   done: styles.laneFillDone,
-} satisfies Record<Band, stylex.StyleXStyles>;
+  'wont-do': styles.laneFillDone,
+} satisfies Record<WorkStatus, stylex.StyleXStyles>;
 
-const BAND_TONE = {
-  'needs-you': styles.toneNeedsYou,
+const STATUS_TONE = {
+  'needs-review': styles.toneNeedsYou,
   ready: styles.toneReady,
   running: styles.toneRunning,
   blocked: styles.toneBlocked,
   draft: styles.toneDraft,
   done: styles.toneDone,
-} satisfies Record<Band, stylex.StyleXStyles>;
+  'wont-do': styles.toneDone,
+} satisfies Record<WorkStatus, stylex.StyleXStyles>;
 
 /**
  * A kind's hue on its tag. Hues no lane uses for status, except bug's orange; kinds that
@@ -2865,7 +2456,7 @@ const KIND_HUE = {
 } satisfies Record<TicketKind, stylex.StyleXStyles>;
 
 function BoardLane({
-  band,
+  status,
   tickets,
   showDone,
   count,
@@ -2873,13 +2464,12 @@ function BoardLane({
   canReorder,
   onOpen,
   onPromote,
-  onRequestRun,
   attachedIds,
   onToggleAttached,
   chatsFor,
   onOpenChat,
 }: {
-  band: (typeof BANDS)[number];
+  status: (typeof STATUSES)[number];
   tickets: Ticket[];
   showDone: boolean;
   count: number;
@@ -2887,21 +2477,20 @@ function BoardLane({
   canReorder: boolean;
   onOpen: (id: string) => void;
   onPromote: (id: string) => void;
-  onRequestRun: (id: string) => void;
   attachedIds: string[];
   onToggleAttached: (id: string) => void;
   chatsFor: (ticket: Ticket) => ChatSummary[];
   onOpenChat: (chatId: string) => void;
 }) {
-  const { isOver, setNodeRef } = useDroppable({ id: `lane:${band.id}` });
+  const { isOver, setNodeRef } = useDroppable({ id: `lane:${status.id}` });
 
   return (
     <div ref={setNodeRef} {...stylex.props(styles.column, isOver && styles.columnOver)}>
-      <header title={band.note} {...stylex.props(styles.laneHead, LANE_RULE[band.id])}>
-        <span {...stylex.props(styles.laneLabel)}>{band.label}</span>
+      <header title={status.note} {...stylex.props(styles.laneHead, LANE_RULE[status.id])}>
+        <span {...stylex.props(styles.laneLabel)}>{status.label}</span>
         <span {...stylex.props(styles.laneCount)}>{String(count).padStart(2, '0')}</span>
       </header>
-      <ol aria-label={band.label} {...stylex.props(styles.rows)}>
+      <ol aria-label={status.label} {...stylex.props(styles.rows)}>
         <SortableContext
           items={tickets.map((ticket) => ticket.id)}
           strategy={verticalListSortingStrategy}
@@ -2914,7 +2503,6 @@ function BoardLane({
               canReorder={canReorder}
               onOpen={onOpen}
               onPromote={onPromote}
-              onRequestRun={onRequestRun}
               attached={attachedIds.includes(ticket.id)}
               onToggleAttached={onToggleAttached}
               linkedChats={chatsFor(ticket)}
@@ -2925,7 +2513,9 @@ function BoardLane({
       </ol>
       {tickets.length === 0 && (
         <p {...stylex.props(styles.laneEmpty)}>
-          {band.id === 'done' && !showDone ? copy.board.doneHidden : copy.board.empty}
+          {(status.id === 'done' || status.id === 'wont-do') && !showDone
+            ? copy.board.doneHidden
+            : copy.board.empty}
         </p>
       )}
     </div>
@@ -2943,7 +2533,6 @@ function SortableTicketRow({
   canReorder,
   onOpen,
   onPromote,
-  onRequestRun,
   attached,
   onToggleAttached,
   linkedChats,
@@ -2954,7 +2543,6 @@ function SortableTicketRow({
   canReorder: boolean;
   onOpen: (id: string) => void;
   onPromote: (id: string) => void;
-  onRequestRun: (id: string) => void;
   attached: boolean;
   onToggleAttached: (id: string) => void;
   linkedChats: ChatSummary[];
@@ -2971,7 +2559,6 @@ function SortableTicketRow({
   } = useSortable({ id: ticket.id });
   const transformStyle =
     transform === null ? undefined : `translate3d(${transform.x}px, ${transform.y}px, 0)`;
-  const canStart = planTicketDrop(ticket, 'running')?.kind === 'start-run';
 
   return (
     <li
@@ -2998,18 +2585,7 @@ function SortableTicketRow({
         onOpenChat={onOpenChat}
       />
       <span {...stylex.props(styles.strip)}>
-        {canStart && (
-          <button
-            type="button"
-            aria-label={copy.row.startOn(ticket.name)}
-            {...stylex.props(styles.stripStart)}
-            onClick={() => onRequestRun(ticket.id)}
-          >
-            <Icon icon={Play} size="xsm" />
-            {copy.row.start}
-          </button>
-        )}
-        {ticket.band === 'ready' && (
+        {statusOf(ticket) === 'ready' && (
           <StripButton
             label={copy.row.toTop(ticket.name)}
             icon={ArrowUp}
@@ -3076,8 +2652,10 @@ function TicketRowBody({
   onOpenChat?: (chatId: string) => void;
 }) {
   const said = holding(ticket);
-  const person = ticket.claim?.holder.name ?? ticket.author?.name ?? null;
-  const openChildren = ticket.children.filter((child) => !child.closed).length;
+  const person = ticket.assignee?.name ?? ticket.author?.name ?? null;
+  const openChildren = ticket.children.filter(
+    (child) => child.status !== 'done' && child.status !== 'wont-do',
+  ).length;
   const firstChat = linkedChats[0];
 
   return (
@@ -3097,8 +2675,8 @@ function TicketRowBody({
         )}
       </span>
       <span {...stylex.props(styles.rowTitle)}>{ticket.title || copy.untitled}</span>
-      <span {...stylex.props(styles.rowState, ticket.closure === 'wontfix' && styles.abandoned)}>
-        <span {...stylex.props(styles.rowStateIcon, BAND_TONE[ticket.band])}>
+      <span {...stylex.props(styles.rowState)}>
+        <span {...stylex.props(styles.rowStateIcon, STATUS_TONE[statusOf(ticket)])}>
           <Icon icon={said.icon} size="xsm" />
         </span>
         <span {...stylex.props(styles.rowStateWords)}>{said.words}</span>
@@ -3112,12 +2690,6 @@ function TicketRowBody({
           <span {...stylex.props(styles.rowTag)} title={copy.row.blockersClosed}>
             <Icon icon={GitBranch} size="xsm" />
             {ticket.children.length - openChildren}/{ticket.children.length}
-          </span>
-        )}
-        {ticket.runs.length > 0 && (
-          <span {...stylex.props(styles.rowTag)} title={copy.row.sessions}>
-            <Icon icon={History} size="xsm" />
-            {ticket.runs.length}
           </span>
         )}
         {firstChat !== undefined && (
@@ -3151,8 +2723,8 @@ function TicketState({ ticket }: { ticket: Ticket }) {
   const said = holding(ticket);
 
   return (
-    <span {...stylex.props(styles.rowState, ticket.closure === 'wontfix' && styles.abandoned)}>
-      <span {...stylex.props(styles.rowStateIcon, BAND_TONE[ticket.band])}>
+    <span {...stylex.props(styles.rowState)}>
+      <span {...stylex.props(styles.rowStateIcon, STATUS_TONE[statusOf(ticket)])}>
         <Icon icon={said.icon} size="xsm" />
       </span>
       <span {...stylex.props(styles.rowStateWords)}>{said.words}</span>
@@ -3295,64 +2867,38 @@ function TicketPanel({
 /** One ticket in full, with everything that can be done to it. */
 function TicketReading({
   ticket,
-  repository,
-  executionWorkspaces,
   placement,
   refusal,
-  chatIds,
   onLeave,
   onOpen,
   onOpenChat,
-  onChanged,
   onRefuse,
   onWrite,
   onGate,
   onUngate,
-  onRun,
-  onDeliver,
-  onQuestion,
-  onTakeOver,
-  onLetGo,
-  onJudge,
-  onResolve,
-  onRequestRun,
   onExpand,
   onCollapse,
   linkedChats = [],
   tickets = [],
 }: {
   ticket: Ticket;
-  repository: string;
-  executionWorkspaces: ExecutionWorkspace[];
   placement: Placement;
   refusal: string | null;
-  chatIds: string[];
   onLeave: () => void;
   onOpen: (id: string) => void;
   onOpenChat: (chatId: string) => void;
-  onChanged: () => Promise<void>;
   onRefuse: (message: string | null) => void;
   onWrite: (change: TicketChange) => Promise<Ticket | null>;
-  onGate: (gatedBy: string) => Promise<Ticket | null>;
-  onUngate: (gatedBy: string) => Promise<Ticket | null>;
-  onRun: (executionWorkspaceId: string, followUp?: string) => Promise<boolean>;
-  onDeliver: (workspaceId: string, path: DeliveryPath) => Promise<Result<DeliveryAudit>>;
-  onQuestion: () => Promise<boolean>;
-  onTakeOver: () => Promise<boolean>;
-  onLetGo: () => Promise<boolean>;
-  onJudge: (verdict: 'accepted' | 'sent-back') => Promise<boolean>;
-  onResolve: () => Promise<boolean>;
-  onRequestRun: () => void;
+  onGate: (blockedBy: string) => Promise<Ticket | null>;
+  onUngate: (blockedBy: string) => Promise<Ticket | null>;
   onExpand?: () => void;
   onCollapse?: () => void;
   linkedChats?: ChatSummary[];
   tickets?: Ticket[];
 }) {
-  const [isClosing, setIsClosing] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
-  const workspaceRef = useRef<HTMLDivElement | null>(null);
   const hasDescription = ticket.body.trim().length > 0;
 
   async function run(act: () => Promise<unknown>): Promise<void> {
@@ -3361,68 +2907,14 @@ function TicketReading({
     setIsBusy(false);
   }
 
-  // The sections the drawer keeps behind "More ticket details", and the full view lays
-  // out in the open: each is drawn once, and only where it sits differs.
-  const runs = <RunHistory ticket={ticket} chatIds={chatIds} onOpenChat={onOpenChat} />;
-  const workspace = (
-    <div ref={workspaceRef} {...stylex.props(styles.workspaceAnchor)}>
-      <ExecutionWorkspacePanel
-        ticket={ticket}
-        workspaces={executionWorkspaces}
-        repository={repository}
-        onStart={onRun}
-        onDeliver={onDeliver}
-        onChanged={onChanged}
-      />
-    </div>
-  );
-  const blockers = (
-    <Blockers
-      ticket={ticket}
-      tickets={tickets}
-      onOpen={onOpen}
-      onGate={onGate}
-      onUngate={onUngate}
-    />
-  );
-  const branch = (
-    <section {...stylex.props(styles.section)}>
-      <Text type="label" weight="medium">
-        {copy.branch.heading}
-      </Text>
-      <div {...stylex.props(styles.branch)}>
-        <Text type="code">{ticket.branch}</Text>
-        <IconButton
-          label={copy.branch.copy}
-          icon={<Icon icon={Copy} size="sm" />}
-          onClick={() => copyText(ticket.branch)}
-        />
-      </div>
-      <Text type="supporting" color="secondary">
-        {branchNote(ticket)}
-      </Text>
-    </section>
-  );
-
-  // In the full view, what the drawer lists under its disclosure sits in the floating
-  // box instead: the facts a person scans, then the branch, then the chats it came from.
   const facts: { label: string; value: string }[] = [
-    { label: copy.facts.status, value: copy.statusWord[ticket.band] },
-    { label: copy.facts.readyFor, value: copy.facts.readyForValues[ticket.gate] },
+    { label: copy.facts.status, value: copy.statusWord[statusOf(ticket)] },
     { label: copy.facts.kind, value: ticket.kind },
-    { label: copy.facts.workingOnIt, value: ticket.claim?.holder.name ?? copy.facts.nobody },
+    { label: copy.facts.assignee, value: ticket.assignee?.name ?? copy.facts.nobody },
     { label: copy.facts.createdBy, value: ticket.author?.name ?? copy.none },
-    { label: copy.facts.priority, value: String(ticket.rank) },
+    { label: copy.facts.priority, value: ticket.priority },
     { label: copy.facts.created, value: when(ticket.createdAt) },
     { label: copy.facts.updated, value: when(ticket.updatedAt) },
-    ...(ticket.closedAt === null
-      ? []
-      : [
-          {
-            label: copy.facts.closed,
-            value: copy.ticket.closedAs(when(ticket.closedAt), ticket.closure === 'wontfix'),
-          },
-        ]),
   ];
   const aside =
     placement === 'full' ? (
@@ -3435,15 +2927,6 @@ function TicketReading({
             </div>
           ))}
         </dl>
-        <div {...stylex.props(styles.fullGroup)}>
-          <BranchLine
-            ticket={ticket}
-            workspaces={executionWorkspaces}
-            onGoToWorkspace={() =>
-              workspaceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-            }
-          />
-        </div>
         <section {...stylex.props(styles.fullGroup)}>
           <Text type="label" weight="medium">
             {copy.ticket.linkedChats}
@@ -3472,13 +2955,22 @@ function TicketReading({
       </>
     ) : undefined;
 
+  const statusActions = [
+    ...(['draft', 'ready', 'running', 'needs-review', 'done', 'wont-do'] as const)
+      .filter((status) => status !== ticket.status)
+      .map((status) => ({
+        label: copy.statuses[status].label,
+        onClick: () => void run(() => onWrite({ status })),
+      })),
+  ];
+
   return (
     <TicketPanel
       placement={placement}
       onLeave={onLeave}
       onExpand={onExpand}
       onCollapse={onCollapse}
-      crumb={copy.ticket.crumb(bandLabel(ticket.band), ticket.name)}
+      crumb={copy.ticket.crumb(statusLabel(statusOf(ticket)), ticket.name)}
       aside={aside}
       refusal={refusal}
       head={
@@ -3497,130 +2989,8 @@ function TicketReading({
         </div>
       }
       foot={
-        ticket.closedAt !== null || isEditing ? undefined : isClosing ? (
+        isEditing ? undefined : (
           <>
-            <Button
-              label={copy.actions.markDone}
-              size="sm"
-              variant="primary"
-              isDisabled={isBusy}
-              onClick={() =>
-                void run(async () => {
-                  await onWrite({ closure: 'done' });
-                  setIsClosing(false);
-                })
-              }
-            />
-            <Button
-              label={copy.actions.wontDo}
-              size="sm"
-              variant="secondary"
-              isDisabled={isBusy}
-              onClick={() =>
-                void run(async () => {
-                  await onWrite({ closure: 'wontfix' });
-                  setIsClosing(false);
-                })
-              }
-            />
-            <Button
-              label={copy.actions.cancel}
-              size="sm"
-              variant="ghost"
-              onClick={() => setIsClosing(false)}
-            />
-          </>
-        ) : (
-          <>
-            {/* The next step, as the ticket's state offers it. Only one of these groups
-                applies at a time, so the footer leads with a single decision. */}
-            {planTicketDrop(ticket, 'running')?.kind === 'start-run' && (
-              <Button
-                label={copy.actions.startAgent}
-                size="sm"
-                variant="primary"
-                isDisabled={isBusy}
-                onClick={onRequestRun}
-              />
-            )}
-            {/* Asking is offered on a ready question and nowhere else, because whether a
-                ticket can be picked up is the server's answer and its own words are what is
-                shown when it says no. */}
-            {ticket.kind === 'question' &&
-              (ticket.band === 'ready' || ticket.band === 'needs-you') && (
-                <Button
-                  label={
-                    ticket.band === 'needs-you'
-                      ? copy.actions.continueWithKira
-                      : copy.actions.askKira
-                  }
-                  size="sm"
-                  variant="primary"
-                  isDisabled={isBusy}
-                  onClick={() => void run(onQuestion)}
-                />
-              )}
-            {/* A claim whose machine stopped answering, which only a person can take on. */}
-            {ticket.claim?.stale === true && (
-              <Button
-                label={copy.actions.takeOver(ticket.claim.holder.name)}
-                size="sm"
-                variant="primary"
-                isDisabled={isBusy}
-                onClick={() => void run(onTakeOver)}
-              />
-            )}
-            {/* A session left a proposal: the person it is for says what they make of it. */}
-            {ticket.band === 'needs-you' && (
-              <>
-                {refusal?.startsWith('Merge conflict:') === true && (
-                  <Button
-                    label={copy.actions.fixConflicts}
-                    size="sm"
-                    variant="primary"
-                    isDisabled={isBusy}
-                    onClick={() => void run(onResolve)}
-                  />
-                )}
-                <Button
-                  label={copy.actions.acceptAndClose}
-                  size="sm"
-                  variant="primary"
-                  isDisabled={isBusy}
-                  onClick={() => void run(() => onJudge('accepted'))}
-                />
-                <Button
-                  label={copy.actions.sendBack}
-                  size="sm"
-                  variant="secondary"
-                  isDisabled={isBusy}
-                  onClick={() => void run(() => onJudge('sent-back'))}
-                />
-              </>
-            )}
-            {ticket.gate === 'draft' && (
-              <>
-                <Button
-                  label={copy.actions.readyForAgent}
-                  size="sm"
-                  variant="primary"
-                  isDisabled={isBusy}
-                  onClick={() => void run(() => onWrite({ gate: 'ready-for-agent' }))}
-                />
-                <Button
-                  label={copy.actions.readyForPerson}
-                  size="sm"
-                  variant="secondary"
-                  isDisabled={isBusy}
-                  onClick={() => void run(() => onWrite({ gate: 'ready-for-human' }))}
-                />
-              </>
-            )}
-            {/* Then editing, and the rarer moves behind More: taking readiness back, letting
-                go of a ticket held by hand, and resolving it. Resolving closes the ticket for
-                good; "Close" is the panel's word for putting it away, so this one is not. */}
-            {/* In the box, Edit starts the row and lines up with the box's edge; in the
-                drawer's footer it sits between buttons and keeps its box. */}
             <span {...stylex.props(styles.footTail, placement === 'full' && EDGE_TEXT_BUTTON)}>
               <Button
                 label={copy.actions.edit}
@@ -3639,36 +3009,7 @@ function TicketReading({
                   alignment="end"
                   placement={placement === 'full' ? 'below' : 'above'}
                   isDisabled={isBusy}
-                  items={[
-                    ...(ticket.gate === 'draft'
-                      ? []
-                      : [
-                          {
-                            label: copy.actions.backToDraft,
-                            description: copy.actions.backToDraftNote,
-                            onClick: () => void run(() => onWrite({ gate: 'draft' })),
-                          },
-                        ]),
-                    // A claim held by hand is held by a person: only they can let it go, and
-                    // without this a ticket taken over would sit in Running for good.
-                    ...(ticket.claim !== null && ticket.claim.workerId === null
-                      ? [
-                          {
-                            label: copy.actions.stopWorking,
-                            description: copy.actions.stopWorkingNote,
-                            onClick: () => void run(onLetGo),
-                          },
-                        ]
-                      : []),
-                    {
-                      label: copy.actions.resolve,
-                      description: copy.actions.resolveNote,
-                      onClick: () => {
-                        setIsClosing(true);
-                        onRefuse(null);
-                      },
-                    },
-                  ]}
+                  items={statusActions}
                 />
               </span>
             </span>
@@ -3677,19 +3018,12 @@ function TicketReading({
       }
     >
       {isEditing ? (
-        // Correcting a ticket takes the panel's whole body rather than sitting
-        // inside one of its sections: what is being edited is the contract, and
-        // leaving the reading below the form would say it twice, once stale.
         <TicketEdit
           ticket={ticket}
           isBusy={isBusy}
           onCancel={() => setIsEditing(false)}
           onSave={(change) =>
             void run(async () => {
-              // The editor stays open when the server refuses: the words typed into
-              // it are the person's, and a refused write is not a reason to take them
-              // away — removing the last criterion from a ticket an agent runs is
-              // exactly the write that gets refused (GH #63).
               const saved = await onWrite(change);
               if (saved !== null) setIsEditing(false);
             })
@@ -3716,7 +3050,6 @@ function TicketReading({
               </Text>
             )}
           </section>
-
           <section {...stylex.props(styles.section)}>
             <div {...stylex.props(styles.ticketSectionHeading)}>
               <Text type="label" weight="medium">
@@ -3755,7 +3088,6 @@ function TicketReading({
               </ul>
             )}
           </section>
-
           {ticket.kind === 'map' && (ticket.decisionsSoFar?.length ?? 0) > 0 && (
             <section {...stylex.props(styles.section)}>
               <Text type="label" weight="medium">
@@ -3771,13 +3103,14 @@ function TicketReading({
               </ul>
             </section>
           )}
-
           {placement === 'full' ? (
-            <>
-              {runs}
-              {workspace}
-              {blockers}
-            </>
+            <Blockers
+              ticket={ticket}
+              tickets={tickets}
+              onOpen={onOpen}
+              onGate={onGate}
+              onUngate={onUngate}
+            />
           ) : (
             <details
               {...stylex.props(styles.ticketDetails)}
@@ -3802,52 +3135,31 @@ function TicketReading({
                 </span>
               </summary>
               <div {...stylex.props(styles.ticketDetailsContent)}>
-                <div {...stylex.props(styles.ticketFacts)}>
-                  <div {...stylex.props(styles.ticketFact)}>
-                    <Text type="supporting" color="secondary">
-                      {copy.facts.priority}
-                    </Text>
-                    <Text type="supporting" {...stylex.props(styles.ticketFactValue)}>
-                      {ticket.rank}
-                    </Text>
-                  </div>
-                  {ticket.author !== null && (
-                    <div {...stylex.props(styles.ticketFact)}>
-                      <Text type="supporting" color="secondary">
-                        {copy.facts.createdBy}
-                      </Text>
-                      <Text type="supporting" {...stylex.props(styles.ticketFactValue)}>
-                        {ticket.author.name}
-                      </Text>
-                    </div>
-                  )}
-                </div>
-
-                {runs}
-
-                {workspace}
-
-                {blockers}
-
-                {branch}
-
+                <Blockers
+                  ticket={ticket}
+                  tickets={tickets}
+                  onOpen={onOpen}
+                  onGate={onGate}
+                  onUngate={onUngate}
+                />
                 <section {...stylex.props(styles.section)}>
                   <Text type="label" weight="medium">
                     {copy.ticket.datesHeading}
                   </Text>
                   <Text type="supporting" color="secondary">
-                    {copy.ticket.dates(
-                      when(ticket.createdAt),
-                      when(ticket.updatedAt),
-                      ticket.closedAt === null
-                        ? null
-                        : copy.ticket.closedAsShort(
-                            when(ticket.closedAt),
-                            ticket.closure === 'wontfix',
-                          ),
-                    )}
+                    {copy.ticket.dates(when(ticket.createdAt), when(ticket.updatedAt))}
                   </Text>
                 </section>
+                {linkedChats.map((chat) => (
+                  <Button
+                    key={chat.id}
+                    label={copy.ticket.openChat(chat.title)}
+                    icon={<Icon icon={MessageSquare} size="sm" />}
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => onOpenChat(chat.id)}
+                  />
+                ))}
               </div>
             </details>
           )}
@@ -3857,314 +3169,6 @@ function TicketReading({
   );
 }
 
-/**
- * Where a ticket's work happens, as the full view's box says it: the branch it comes from
- * and the branch it makes, how its workspace stands, and the way to that workspace's panel.
- * The first workspace is the one summed up; the panel is where the others are chosen.
- */
-function BranchLine({
-  ticket,
-  workspaces,
-  onGoToWorkspace,
-}: {
-  ticket: Ticket;
-  workspaces: ExecutionWorkspace[];
-  onGoToWorkspace: () => void;
-}) {
-  const first = workspaces[0];
-  const view = first === undefined ? null : executionWorkspaceView(first, ticket);
-  const branch = view?.branch ?? ticket.branch;
-
-  return (
-    <section {...stylex.props(styles.section)} aria-label={copy.branch.aria}>
-      <Text type="label" weight="medium">
-        {copy.branch.heading}
-      </Text>
-      <div {...stylex.props(styles.branchLine)}>
-        {view !== null && (
-          <>
-            <span {...stylex.props(styles.branchPill, styles.branchBase)}>
-              {view.workspace.baseBranch}
-            </span>
-            <span {...stylex.props(styles.branchArrow)}>
-              <Icon icon={ArrowRight} size="xsm" />
-            </span>
-          </>
-        )}
-        <span
-          title={branch}
-          {...stylex.props(
-            styles.branchPill,
-            styles.branchWork,
-            view === null && styles.branchPlanned,
-          )}
-        >
-          <span aria-hidden>{shortenMiddle(branch, view === null ? 26 : 20)}</span>
-          <span {...stylex.props(styles.srOnly)}>{branch}</span>
-        </span>
-        <IconButton
-          label={copy.branch.copy}
-          icon={<Icon icon={Copy} size="sm" />}
-          variant="ghost"
-          size="sm"
-          onClick={() => copyText(branch)}
-        />
-      </div>
-      <ul {...stylex.props(styles.branchFacts)}>
-        {view === null ? (
-          <li {...stylex.props(styles.branchFact)}>{copy.branch.notCreated}</li>
-        ) : (
-          <>
-            <li {...stylex.props(styles.branchFact, styles.branchState)}>
-              <span
-                aria-hidden
-                {...stylex.props(
-                  styles.stateDot,
-                  view.status === 'running' && styles.stateDotRunning,
-                  view.status === 'completed' && styles.stateDotDone,
-                  view.status === 'failed' && styles.stateDotFailed,
-                )}
-              />
-              {workspaceStateWords(view.status)}
-              {workspaces.length > 1 && (
-                <span {...stylex.props(styles.branchMore)}>
-                  {copy.branch.moreWorkspaces(workspaces.length - 1)}
-                </span>
-              )}
-            </li>
-            <li {...stylex.props(styles.branchFact)} title={view.repository}>
-              <Icon icon={Folder} size="xsm" />
-              <span {...stylex.props(styles.branchPath)}>{fromHome(view.repository)}</span>
-            </li>
-          </>
-        )}
-      </ul>
-      <button type="button" {...stylex.props(styles.goLink)} onClick={onGoToWorkspace}>
-        {view === null ? copy.branch.setUp : copy.branch.open}
-        <Icon icon={view === null ? Plus : ArrowDownToLine} size="xsm" />
-      </button>
-    </section>
-  );
-}
-
-/**
- * A ticket's runs, newest first, with one of them drawn.
- *
- * The newest is drawn unless somebody picked another. A ticket that has been run several
- * times keeps all of them, because what the ticket is waiting on is the newest run's
- * proposal, and what it did before that is how a person judges whether to trust it
- * (GH #68).
- *
- * An older run has no chat in this window — the row for a run is cleared when its ticket is
- * run again — so its words are read from the transcript the project keeps.
- */
-function RunHistory({
-  ticket,
-  chatIds,
-  onOpenChat,
-}: {
-  ticket: Ticket;
-  chatIds: string[];
-  onOpenChat: (chatId: string) => void;
-}) {
-  const [picked, setPicked] = useState<string | null>(null);
-
-  // A run picked on another ticket is not one of this ticket's, so an id that is not here
-  // falls back to the newest: the panel never has to be told which ticket it is showing.
-  const shown = ticket.runs.find((each) => each.id === picked) ?? ticket.runs[0];
-  const others = ticket.runs.filter((each) => each.id !== shown?.id);
-
-  if (shown === undefined) return null;
-
-  return (
-    <>
-      <RunReading
-        key={`${ticket.id}:${shown.id}`}
-        ticketId={ticket.id}
-        run={shown}
-        // A run's chat is a chat, and this window is holding it: the ticket opens it
-        // rather than saying the same things again in a worse place. A run from somewhere
-        // else has no chat here, and then its words are all the panel can show — which is
-        // the point of keeping them on the ticket.
-        chatId={chatIds.includes(shown.id) ? shown.id : null}
-        onOpenChat={onOpenChat}
-      />
-
-      {others.length > 0 && (
-        <section {...stylex.props(styles.section)}>
-          <Text type="label" weight="medium">
-            {copy.sessions.earlier}
-          </Text>
-          <ul {...stylex.props(styles.lines)}>
-            {others.map((each) => (
-              <li key={each.id}>
-                <Button
-                  label={runChoiceLabel(each)}
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setPicked(each.id)}
-                />
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-    </>
-  );
-}
-
-/**
- * One run on a ticket: what it made, and where its words are.
- *
- * A run is a chat, so the words are read in the chat rather than drawn again here — this
- * window is holding that chat already, and a chat is a better place to read a conversation
- * than a panel beside a ticket is. What the panel keeps is the evidence: what the run
- * changed, what it ran, and where it stands, which is what a person decides on without
- * reading a whole conversation (GH #68).
- *
- * A run that happened somewhere else has no chat in this window, and then its words are
- * read from the server and drawn here — the transcript is project-owned, so a colleague's
- * run is still readable on the ticket. Those words are read when the ticket is opened and
- * again on the beat the queue is read on while the run is going, because a run that is
- * talking should be readable as it talks (GH #74).
- */
-function RunReading({
-  ticketId,
-  run,
-  chatId,
-  onOpenChat,
-}: {
-  ticketId: string;
-  run: TicketRun;
-  /** The chat this run's words are in, when this window is holding it. */
-  chatId: string | null;
-  onOpenChat: (chatId: string) => void;
-}) {
-  const [said, setSaid] = useState<TicketSaid[] | null>(null);
-  const [trouble, setTrouble] = useState<string | null>(null);
-
-  const read = useCallback(async () => {
-    const answer = await window.kira.readTranscript(ticketId, run.id);
-
-    if (!answer.ok) {
-      setTrouble(answer.error);
-      return;
-    }
-
-    setTrouble(null);
-    setSaid(answer.value);
-  }, [ticketId, run.id]);
-
-  useMountEffect(() => {
-    void read();
-  });
-
-  // While the run is still going, its words are read again on the same beat as the queue:
-  // a run says things as it works, and the ticket should not be a page somebody has to
-  // reload to see them.
-  const going = run.endedAt === null;
-
-  useEffect(() => {
-    if (!going) return;
-
-    const beat = setInterval(() => void read(), READ_AGAIN_MS);
-
-    return () => clearInterval(beat);
-  }, [going, read]);
-
-  return (
-    <section {...stylex.props(styles.section)}>
-      <Text type="label" weight="medium">
-        {copy.sessions.heading}
-      </Text>
-      <Text type="supporting" color="secondary">
-        {runTelling(run)}
-      </Text>
-
-      {run.changed !== null && (
-        <div {...stylex.props(styles.evidence)}>
-          <Text type="supporting" color="secondary">
-            {copy.sessions.changes}
-          </Text>
-          <Text type="code">{run.changed}</Text>
-        </div>
-      )}
-
-      {run.checks !== null && run.checks.length > 0 && (
-        <div {...stylex.props(styles.evidence)}>
-          <Text type="supporting" color="secondary">
-            {copy.sessions.commands}
-          </Text>
-          <ul {...stylex.props(styles.lines)}>
-            {run.checks.map((each, at) => (
-              <li key={`${at}-${each}`} {...stylex.props(styles.saidLine)}>
-                <Text type="code">{each}</Text>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      <div {...stylex.props(styles.evidence)}>
-        <Text type="supporting" color="secondary">
-          {copy.sessions.transcript}
-        </Text>
-
-        {chatId !== null ? (
-          <div>
-            <Button
-              label={copy.sessions.read}
-              icon={<Icon icon={TicketIcon} size="sm" />}
-              size="sm"
-              variant="secondary"
-              onClick={() => onOpenChat(chatId)}
-            />
-          </div>
-        ) : trouble !== null ? (
-          <Text type="supporting" color="secondary">
-            {trouble}
-          </Text>
-        ) : said === null ? (
-          <Skeleton width="100%" height={16} />
-        ) : said.length === 0 && run.made !== null ? (
-          // Nothing was recorded while it went, which is what a run that only ever said one
-          // thing looks like: its closing words are still what it had to say.
-          <Text type="body" {...stylex.props(styles.saidWords)}>
-            {run.made}
-          </Text>
-        ) : said.length === 0 ? (
-          // An empty list would read as a run that had nothing to say. Words reach the
-          // ticket as they settle, so a run that is still on its first turn has none here
-          // yet — and that is a different thing from a run that said nothing at all.
-          <Text type="supporting" color="secondary">
-            {going ? copy.sessions.stillWorking : copy.sessions.saidNothing}
-          </Text>
-        ) : (
-          <ul {...stylex.props(styles.said)}>
-            {said.map((each, at) => (
-              <li key={each.id} {...stylex.props(styles.saidLine)}>
-                <Text type="supporting" color="secondary">
-                  {saidByLabel(each.saidBy, at === 0)} · {when(each.at)}
-                </Text>
-                <Text type="body" {...stylex.props(styles.saidWords)}>
-                  {each.words}
-                </Text>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </section>
-  );
-}
-
-/* ── Writing one down, and correcting it ────────────────────────────────── */
-
-/**
- * Correcting what a ticket says, in the place it is read: the same document layout as
- * writing one, with the ticket's own words in it. The editor stays open when the server
- * refuses, so the words typed are never lost to a refused write.
- */
 function TicketEdit({
   ticket,
   isBusy,
@@ -4233,28 +3237,10 @@ function readView(): View {
 }
 
 /**
- * Copy the branch name, so a person can paste it into their own git client.
- *
- * The clipboard API is the way in, and it is not always there: a packaged window
- * is served from `file://`, which is not a secure context, so the older selection
- * route is kept as the way that always works.
- */
-/**
  * A link in a ticket's words opens in the system browser, as every link in the window does:
  * `window.open` reaches the main process's open handler, and the window itself stays put.
  */
 function openLink(href: string): false {
   window.open(href, '_blank', 'noopener');
   return false;
-}
-
-function copyText(text: string): void {
-  void navigator.clipboard?.writeText(text).catch(() => {
-    const held = document.createElement('textarea');
-    held.value = text;
-    document.body.append(held);
-    held.select();
-    document.execCommand('copy');
-    held.remove();
-  });
 }

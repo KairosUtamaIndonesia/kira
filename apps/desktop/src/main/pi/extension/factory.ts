@@ -68,15 +68,19 @@ async function attachedTicketContext(
     const id = ids[index]!;
     if (ticket === null) return `- ${id}: unavailable; use tracker_read_ticket if still relevant.`;
     return [
-      `- ${ticket.name} — ${ticket.title} [${ticket.kind}; ${ticket.band}] (id: ${id})`,
+      `- ${ticket.name} — ${ticket.title} [${ticket.kind}; ${ticket.status}] (id: ${id})`,
       ticket.body.trim() || '(no description)',
-      ...(ticket.criteria.length === 0 ? [] : [`Acceptance criteria:\n${ticket.criteria.map((criterion) => `  - ${criterion}`).join('\n')}`]),
+      ...(ticket.criteria.length === 0
+        ? []
+        : [
+            `Acceptance criteria:\n${ticket.criteria.map((criterion) => `  - ${criterion}`).join('\n')}`,
+          ]),
     ].join('\n');
   });
   return [
     '',
     '## Attached project tickets',
-    'The person attached these tickets as shared context for this chat. They are references, not a claim that this chat is a dedicated run of any one ticket. Do not change their state unless the person explicitly asks and the available tracker tools permit it.',
+    'Work on these linked tickets using the matching workflow skill. Use tracker tools only for tickets linked to this chat. Set a ticket to Running when you begin work and Needs review after opening its pull request. Never mark a ticket Done; a person does that after merging. The agent cannot delete tickets or mark them Won’t do.',
     ...lines,
   ].join('\n');
 }
