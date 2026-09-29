@@ -2215,12 +2215,7 @@ function QueueView({
 function IssueDrawer({ panel, onLeave }: { panel: ReactNode; onLeave: () => void }) {
   return (
     <>
-      <button
-        type="button"
-        aria-label="Close the issue"
-        {...stylex.props(styles.scrim)}
-        onClick={onLeave}
-      />
+      <button type="button" aria-label="Close" {...stylex.props(styles.scrim)} onClick={onLeave} />
       <div {...stylex.props(styles.drawer)}>{panel}</div>
     </>
   );
@@ -2293,7 +2288,7 @@ function DropActionBar({
   } else if (intent.plan.kind === 'accept-result') {
     message = `Accept ${ticket.name}’s run proposal and close the ticket?`;
   } else if (intent.plan.kind === 'choose-closure') {
-    message = `Choose how to close ${ticket.name}.`;
+    message = `Choose how to resolve ${ticket.name}.`;
   } else if (intent.plan.kind === 'unavailable') {
     message = intent.plan.reason;
   }
@@ -2483,14 +2478,14 @@ function DropActionBar({
         {intent.plan.kind === 'choose-closure' && (
           <>
             <Button
-              label="Close as done"
+              label="Mark done"
               size="sm"
               variant="primary"
               isDisabled={isBusy}
               onClick={() => void onChangeTicket(ticket.id, { closure: 'done' })}
             />
             <Button
-              label="Not doing"
+              label="Won’t do"
               size="sm"
               variant="secondary"
               isDisabled={isBusy}
@@ -3116,7 +3111,7 @@ function TicketPanel({
             </Text>
           </span>
           <span {...stylex.props(styles.edgeEndIcon)}>
-            <IconButton label="Close issue" icon={<Icon icon={X} size="sm" />} onClick={onLeave} />
+            <IconButton label="Close" icon={<Icon icon={X} size="sm" />} onClick={onLeave} />
           </span>
         </div>
         {banner}
@@ -3142,7 +3137,7 @@ function TicketPanel({
         <div {...stylex.props(styles.panelHeadBar)}>
           <span {...stylex.props(EDGE_TEXT_BUTTON)}>
             <Button
-              label={placement === 'inline' ? 'Back to the queue' : 'Close issue'}
+              label={placement === 'inline' ? 'Back to the queue' : 'Close'}
               icon={<Icon icon={placement === 'inline' ? ArrowLeft : X} size="sm" />}
               variant="ghost"
               size="sm"
@@ -3498,7 +3493,7 @@ function TicketReading({
         ticket.closedAt !== null || isEditing ? undefined : isClosing ? (
           <>
             <Button
-              label="Done"
+              label="Mark done"
               size="sm"
               variant="primary"
               isDisabled={isBusy}
@@ -3510,7 +3505,7 @@ function TicketReading({
               }
             />
             <Button
-              label="Close as not doing"
+              label="Won’t do"
               size="sm"
               variant="secondary"
               isDisabled={isBusy}
@@ -3633,7 +3628,9 @@ function TicketReading({
               }}
             />
             <Button
-              label="Close it"
+              // Resolving closes the ticket for good, as done or won't-do; "Close" is the
+              // panel's own word for putting the ticket away, so this one is not "close".
+              label="Resolve…"
               size="sm"
               variant="ghost"
               isDisabled={isBusy}
