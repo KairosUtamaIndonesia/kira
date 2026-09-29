@@ -86,6 +86,7 @@ import {
   GripVertical,
   History,
   Map as MapIcon,
+  Maximize2,
   MessageSquare,
   Paperclip,
   Play,
@@ -146,6 +147,13 @@ import type {
   WorkspaceSummary,
 } from '../../preload/bridge.ts';
 import { ExecutionWorkspacePanel } from './executionWorkspace.tsx';
+import {
+  readTicketVariant,
+  richSample,
+  TicketFullPrototype,
+  TicketPrototypeSwitcher,
+  type TicketVariant,
+} from './workTicketPrototype.tsx';
 
 /** Two readings of the same issues. */
 type View = 'board' | 'list';
@@ -712,7 +720,14 @@ const styles = stylex.create({
     borderInlineStartStyle: 'solid',
     borderInlineStartColor: colorVars['--color-background-muted'],
   },
+  expand: {
+    position: 'absolute',
+    insetBlockStart: spacingVars['--spacing-3'],
+    insetInlineEnd: spacingVars['--spacing-3'],
+    zIndex: 1,
+  },
   boardDrawer: {
+    position: 'relative',
     display: 'flex',
     flexDirection: 'column',
     flex: '0 0 min(420px, 42vw)',
@@ -1079,6 +1094,11 @@ export function WorkSurface({
   const [refusal, setRefusal] = useState<string | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [attachedIds, setAttachedIds] = useState<string[]>([]);
+  // PROTOTYPE: the ticket's full view (workTicketPrototype.tsx); development builds only.
+  const [ticketExpanded, setTicketExpanded] = useState(false);
+  const [ticketVariant, setTicketVariant] = useState<TicketVariant>(readTicketVariant);
+  const [ticketRich, setTicketRich] = useState(false);
+  const [ticketNote, setTicketNote] = useState<string | null>(null);
   const [executionWorkspaces, setExecutionWorkspaces] = useState<
     Record<string, ExecutionWorkspace[]>
   >({});
@@ -1354,6 +1374,7 @@ export function WorkSurface({
   const open = tickets.find((each) => each.id === openId) ?? null;
   const placement = view === 'board' ? 'beside' : 'over';
   const closePanel = (): void => {
+    setTicketExpanded(false);
     setIsWriting(false);
     setOpenId(null);
     setRefusal(null);
@@ -1673,6 +1694,21 @@ export function WorkSurface({
             }
           />
         </div>
+      ) : view === 'board' && import.meta.env.DEV && ticketExpanded && open !== null ? (
+        <TicketFullPrototype
+          variant={ticketVariant}
+          {...(ticketRich
+            ? richSample(open)
+            : {
+                ticket: open,
+                workspaces: executionWorkspaces[open.id] ?? [],
+                chats: chatSummaries.filter((chat) => chat.workTicketIds.includes(open.id)),
+              })}
+          laneLabel={bandLabel}
+          onCollapse={() => setTicketExpanded(false)}
+          onClose={closePanel}
+          onStub={(action) => setTicketNote(`“${action}” is stubbed in the prototype.`)}
+        />
       ) : view === 'board' ? (
         <BoardView
           tickets={visibleTickets}
@@ -1686,6 +1722,14 @@ export function WorkSurface({
           onReorder={(activeId, overId) => void reorder(activeId, overId)}
           onDrop={beginTicketDrop}
           panel={panel}
+          onExpand={
+            import.meta.env.DEV && open !== null && !isWriting
+              ? () => {
+                  setTicketNote(null);
+                  setTicketExpanded(true);
+                }
+              : undefined
+          }
           attachedIds={attachedIds}
           chatSummaries={chatSummaries}
           onOpenChat={onOpenChat}
@@ -1704,6 +1748,15 @@ export function WorkSurface({
           onOpen={openTicket}
           panel={panel}
           onLeave={closePanel}
+        />
+      )}
+      {import.meta.env.DEV && view === 'board' && ticketExpanded && open !== null && (
+        <TicketPrototypeSwitcher
+          variant={ticketVariant}
+          onChange={setTicketVariant}
+          rich={ticketRich}
+          onToggleRich={() => setTicketRich((on) => !on)}
+          note={ticketNote}
         />
       )}
     </div>
@@ -2285,11 +2338,13 @@ function BoardView({
   onReorder,
   onDrop,
   panel,
+  onExpand,
   attachedIds,
   chatSummaries,
   onOpenChat,
   onToggleAttached,
 }: ViewProps & {
+  onExpand?: () => void;
   bands: typeof BANDS;
   showDone: boolean;
   doneCount: number;
@@ -2365,7 +2420,20 @@ function BoardView({
             );
           })}
         </section>
-        {panel !== null && <div {...stylex.props(styles.boardDrawer)}>{panel}</div>}
+        {panel !== null && (
+          <div {...stylex.props(styles.boardDrawer)}>
+            {onExpand !== undefined && (
+              <span {...stylex.props(styles.expand)}>
+                <IconButton
+                  label="Expand to the full view"
+                  icon={<Icon icon={Maximize2} size="sm" />}
+                  onClick={onExpand}
+                />
+              </span>
+            )}
+            {panel}
+          </div>
+        )}
       </div>
       {/* The row being dragged is drawn above every lane, so it can leave the one it
           scrolls in; the row it came from stays behind, faded, until the drop. */}
