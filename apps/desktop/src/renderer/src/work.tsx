@@ -790,7 +790,6 @@ const styles = stylex.create({
     justifyContent: 'space-between',
     gap: spacingVars['--spacing-2'],
   },
-  fullPage: { backgroundColor: colorVars['--color-background-body'] },
   fullBar: {
     display: 'flex',
     alignItems: 'center',
@@ -3102,7 +3101,7 @@ function TicketPanel({
 
   if (placement === 'full') {
     return (
-      <div {...stylex.props(styles.panel, styles.fullPage)}>
+      <div {...stylex.props(styles.panel)}>
         <div {...stylex.props(styles.fullBar)}>
           <span {...stylex.props(styles.fullBarStart)}>
             {onCollapse !== undefined && (
