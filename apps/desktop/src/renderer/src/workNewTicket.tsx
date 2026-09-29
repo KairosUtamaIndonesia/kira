@@ -166,19 +166,59 @@ function Document({
         />
         <span {...stylex.props(ui.docHint)}>can’t change once written</span>
       </div>
-      <input
+      <TicketFields
+        title={title}
+        setTitle={setTitle}
+        setBody={setBody}
+        criteria={criteria}
+        setCriteria={setCriteria}
+        focusTitle
+      />
+    </>
+  );
+}
+
+/**
+ * The words of a ticket, laid out as the document it becomes: a large title, About in the
+ * rich editor, then Done when as ruled check rows. New ticket and Edit share it, so writing
+ * and correcting look the same.
+ */
+export function TicketFields({
+  title,
+  setTitle,
+  initialBody = '',
+  setBody,
+  criteria,
+  setCriteria,
+  focusTitle = false,
+}: {
+  title: string;
+  setTitle: (title: string) => void;
+  /** Read once, when the editor is made. */
+  initialBody?: string;
+  setBody: (body: string) => void;
+  criteria: string[];
+  setCriteria: (criteria: string[]) => void;
+  focusTitle?: boolean;
+}) {
+  return (
+    <>
+      <textarea
+        rows={1}
         aria-label="Title"
         placeholder="Ticket title"
         value={title}
         // eslint-disable-next-line jsx-a11y/no-autofocus
-        autoFocus
+        autoFocus={focusTitle}
         onChange={(event) => setTitle(event.target.value)}
+        onKeyDown={oneLine}
         {...stylex.props(ui.docTitle)}
       />
       <div {...stylex.props(ui.docSection)}>
         <span {...stylex.props(ui.docLabel)}>About</span>
         <MarkdownEditor
           label="Description"
+          initial={initialBody}
           placeholder="What to build, and why. Markdown works."
           onChange={setBody}
         />
@@ -189,13 +229,15 @@ function Document({
           {criteria.map((line, at) => (
             <li key={at} {...stylex.props(ui.check)}>
               <span {...stylex.props(ui.checkMark)} aria-hidden />
-              <input
+              <textarea
+                rows={1}
                 aria-label={`Criterion ${at + 1}`}
                 placeholder="A check that says it is done"
                 value={line}
                 onChange={(event) =>
                   setCriteria(criteria.map((each, i) => (i === at ? event.target.value : each)))
                 }
+                onKeyDown={oneLine}
                 {...stylex.props(ui.checkInput)}
               />
               {criteria.length > 1 && (
@@ -226,7 +268,15 @@ function Document({
   );
 }
 
+/** A title or a check is one line of meaning that wraps: Enter does not break it. */
+function oneLine(event: KeyboardEvent<HTMLTextAreaElement>): void {
+  if (event.key === 'Enter' && !event.metaKey && !event.ctrlKey) event.preventDefault();
+}
+
 const bare = {
+  // Grows with what is typed, so a long title or check wraps instead of hiding.
+  fieldSizing: 'content',
+  resize: 'none',
   width: '100%',
   padding: 0,
   borderWidth: 0,
@@ -283,14 +333,15 @@ const ui = stylex.create({
   check: {
     '--row-reveal': { default: '0', ':hover': '1', ':focus-within': '1' },
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: spacingVars['--spacing-3'],
-    minHeight: 36,
+    paddingBlock: spacingVars['--spacing-2'],
     borderBlockEndWidth: 1,
     borderBlockEndStyle: 'solid',
     borderBlockEndColor: colorVars['--color-background-muted'],
   },
   checkMark: {
+    marginBlockStart: 4,
     width: 14,
     height: 14,
     flexShrink: 0,

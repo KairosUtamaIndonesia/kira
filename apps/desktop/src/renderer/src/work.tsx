@@ -35,7 +35,6 @@ import { Selector } from '@astryxdesign/core/Selector';
 import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl';
 import { Skeleton } from '@astryxdesign/core/Skeleton';
 import { Text } from '@astryxdesign/core/Text';
-import { TextArea } from '@astryxdesign/core/TextArea';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import {
   borderVars,
@@ -151,7 +150,7 @@ import type {
 } from '../../preload/bridge.ts';
 import { ExecutionWorkspacePanel } from './executionWorkspace.tsx';
 import { Blockers } from './workBlockers.tsx';
-import { NewTicketDialog } from './workNewTicket.tsx';
+import { NewTicketDialog, TicketFields } from './workNewTicket.tsx';
 import { FilterBar, FilterToolbar } from './workFilters.tsx';
 import {
   executionWorkspaceView,
@@ -3509,7 +3508,9 @@ function TicketReading({
             </span>
             <TicketState ticket={ticket} />
           </div>
-          <h2 {...stylex.props(styles.ticketTitle)}>{ticket.title || 'Untitled'}</h2>
+          {!isEditing && (
+            <h2 {...stylex.props(styles.ticketTitle)}>{ticket.title || 'Untitled'}</h2>
+          )}
         </div>
       }
       foot={
@@ -4153,7 +4154,11 @@ function RunReading({
 
 /* ── Writing one down, and correcting it ────────────────────────────────── */
 
-/** Correcting what a ticket says, in the place it is read. */
+/**
+ * Correcting what a ticket says, in the place it is read: the same document layout as
+ * writing one, with the ticket's own words in it. The editor stays open when the server
+ * refuses, so the words typed are never lost to a refused write.
+ */
 function TicketEdit({
   ticket,
   isBusy,
@@ -4170,70 +4175,35 @@ function TicketEdit({
   const [criteria, setCriteria] = useState<string[]>(
     ticket.criteria.length === 0 ? [''] : ticket.criteria,
   );
+  const save = (): void => {
+    if (!isBusy) onSave({ title, body, criteria: criteria.filter((each) => each.trim() !== '') });
+  };
 
   return (
-    <div {...stylex.props(styles.formFields)}>
-      <TextInput label="Title" value={title} onChange={setTitle} size="sm" />
-      <TextArea label="Description" value={body} onChange={setBody} rows={6} />
-      <Text type="label" weight="medium">
-        Acceptance criteria
-      </Text>
-      <CriteriaFields criteria={criteria} onChange={setCriteria} />
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
+    <div
+      {...stylex.props(styles.formFields)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+          event.preventDefault();
+          save();
+        }
+      }}
+    >
+      <TicketFields
+        title={title}
+        setTitle={setTitle}
+        initialBody={ticket.body}
+        setBody={setBody}
+        criteria={criteria}
+        setCriteria={setCriteria}
+        focusTitle
+      />
       <div {...stylex.props(styles.actions)}>
-        <Button
-          label="Save"
-          size="sm"
-          variant="primary"
-          isDisabled={isBusy}
-          onClick={() => onSave({ title, body, criteria })}
-        />
+        <Button label="Save" size="sm" variant="primary" isDisabled={isBusy} onClick={save} />
         <Button label="Cancel" size="sm" variant="ghost" onClick={onCancel} />
       </div>
     </div>
-  );
-}
-
-/** The criteria as they are edited: one line each, added and taken away. */
-function CriteriaFields({
-  criteria,
-  onChange,
-}: {
-  criteria: string[];
-  onChange: (next: string[]) => void;
-}) {
-  return (
-    <>
-      {criteria.map((line, at) => (
-        <div key={at} {...stylex.props(styles.field)}>
-          <div {...stylex.props(styles.fieldGrow)}>
-            <TextInput
-              label={`Criterion ${at + 1}`}
-              isLabelHidden
-              value={line}
-              onChange={(next) =>
-                onChange(criteria.map((each, index) => (index === at ? next : each)))
-              }
-              size="sm"
-            />
-          </div>
-          <IconButton
-            label={`Remove criterion ${at + 1}`}
-            icon={<Icon icon={X} size="sm" />}
-            isDisabled={criteria.length === 1}
-            onClick={() => onChange(criteria.filter((_each, index) => index !== at))}
-          />
-        </div>
-      ))}
-      <div>
-        <Button
-          label="Add criterion"
-          icon={<Icon icon={Plus} size="sm" />}
-          size="sm"
-          variant="ghost"
-          onClick={() => onChange([...criteria, ''])}
-        />
-      </div>
-    </>
   );
 }
 
