@@ -1163,6 +1163,12 @@ const styles = stylex.create({
     borderBlockStartColor: colorVars['--color-background-muted'],
   },
   ticketDetailsSummary: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    // The browser's own marker sits off the text column; the chevron at the end replaces it.
+    listStyle: 'none',
+    '::-webkit-details-marker': { display: 'none' },
     paddingBlock: spacingVars['--spacing-3'],
     color: colorVars['--color-text-primary'],
     cursor: 'pointer',
@@ -1177,9 +1183,14 @@ const styles = stylex.create({
     display: 'inline-flex',
     flexDirection: 'column',
     gap: spacingVars['--spacing-0-5'],
-    marginInlineStart: spacingVars['--spacing-2'],
-    verticalAlign: 'middle',
   },
+  ticketDetailsChevron: {
+    display: 'inline-flex',
+    color: colorVars['--color-icon-secondary'],
+    transitionProperty: 'transform',
+    transitionDuration: '120ms',
+  },
+  ticketDetailsChevronOpen: { transform: 'rotate(180deg)' },
   ticketDetailsContent: {
     display: 'flex',
     flexDirection: 'column',
@@ -1217,11 +1228,6 @@ const styles = stylex.create({
     display: 'flex',
     alignItems: 'center',
     gap: spacingVars['--spacing-2'],
-  },
-  lineText: {
-    display: 'flex',
-    flex: 1,
-    minWidth: 0,
   },
   branch: {
     display: 'flex',
@@ -1289,11 +1295,6 @@ const styles = stylex.create({
     gap: spacingVars['--spacing-4'],
     maxWidth: 640,
     padding: spacingVars['--spacing-6'],
-  },
-  joinList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: spacingVars['--spacing-1'],
   },
   joinFields: {
     display: 'flex',
@@ -3222,7 +3223,7 @@ function TicketPanel({
 }) {
   const banner = refusal !== null && (
     <div {...stylex.props(styles.refusal)}>
-      <Banner status="error" title="Action could not be completed" description={refusal} />
+      <Banner status="error" title="That didn’t go through" description={refusal} />
     </div>
   );
 
@@ -3360,6 +3361,7 @@ function TicketReading({
 }) {
   const [isClosing, setIsClosing] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const hasDescription = ticket.body.trim().length > 0;
@@ -3787,7 +3789,10 @@ function TicketReading({
               {blockers}
             </>
           ) : (
-            <details {...stylex.props(styles.ticketDetails)}>
+            <details
+              {...stylex.props(styles.ticketDetails)}
+              onToggle={(event) => setDetailsOpen(event.currentTarget.open)}
+            >
               <summary {...stylex.props(styles.ticketDetailsSummary)}>
                 <span {...stylex.props(styles.ticketDetailsSummaryText)}>
                   <Text type="label" weight="medium">
@@ -3796,6 +3801,14 @@ function TicketReading({
                   <Text type="supporting" color="secondary">
                     Sessions, blockers, and branch
                   </Text>
+                </span>
+                <span
+                  {...stylex.props(
+                    styles.ticketDetailsChevron,
+                    detailsOpen && styles.ticketDetailsChevronOpen,
+                  )}
+                >
+                  <Icon icon={ChevronDown} size="sm" />
                 </span>
               </summary>
               <div {...stylex.props(styles.ticketDetailsContent)}>

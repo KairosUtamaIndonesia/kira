@@ -644,7 +644,7 @@
 }
 
 .file-code-editor .cm-search .cm-textfield:focus {
-  border-color: var(--color-border-focus, var(--color-text-secondary));
+  border-color: var(--focus-outline-color);
 }
 
 .file-code-editor .cm-search .cm-textfield::placeholder {
@@ -767,7 +767,7 @@
 
 .file-code-editor .cm-search .cm-button:focus-visible,
 .file-code-editor .cm-panel.cm-search button[name='close']:focus-visible {
-  outline: 2px solid var(--color-border-focus, var(--color-text-secondary));
+  outline: 2px solid var(--focus-outline-color);
   outline-offset: 1px;
 }
 
@@ -1168,7 +1168,7 @@
 }
 
 .rich-editor a {
-  color: var(--color-text-link, var(--color-accent));
+  color: var(--color-accent);
   text-decoration: underline;
 }
 

@@ -5,7 +5,8 @@
  * field puts the suggested name back.
  */
 import { Button } from '@astryxdesign/core/Button';
-import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog';
+import { Dialog } from '@astryxdesign/core/Dialog';
+import { FlushDialogHeader } from './dialogHeader.tsx';
 import { Icon } from '@astryxdesign/core/Icon';
 import { IconButton } from '@astryxdesign/core/IconButton';
 import {
@@ -194,7 +195,7 @@ export function WorkspaceSetupDialog({
       purpose="form"
       width={520}
     >
-      <DialogHeader
+      <FlushDialogHeader
         title="Set up a workspace"
         subtitle={`Where ${ticket.name}’s agent works.`}
         onOpenChange={(next) => {
@@ -330,6 +331,7 @@ export function WorkspaceSetupDialog({
 const styles = stylex.create({
   empty: {
     display: 'flex',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: spacingVars['--spacing-3'],
     padding: spacingVars['--spacing-4'],
@@ -349,7 +351,7 @@ const styles = stylex.create({
     color: colorVars['--color-icon-secondary'],
     backgroundColor: colorVars['--color-background-muted'],
   },
-  emptyCopy: { display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 0 },
+  emptyCopy: { display: 'flex', flexDirection: 'column', gap: 2, flex: '1 1 200px', minWidth: 0 },
   body: {
     display: 'flex',
     flexDirection: 'column',

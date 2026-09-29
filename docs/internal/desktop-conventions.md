@@ -237,6 +237,14 @@ Working rules for changes here:
   switcher (`import.meta.env.DEV`) in the real app, on their own branch, so they can be judged
   with real data. When one wins, rewrite it as real code, remove the losers, the switcher and
   the file's "PROTOTYPE" header in the same change, and update DESIGN.md.
+- **Dialogs use `FlushDialogHeader`** (`dialogHeader.tsx`), not Astryx's `DialogHeader`, so the
+  title lines up with the body and foot instead of sitting one padding step further in.
+- **Use tokens that exist.** A `var(--…)` that no theme defines resolves to nothing and fails
+  silently (`--radius-md` and `--font-family-mono` did). Radii are `--radius-inner`, `-element`,
+  `-container`, `-page`, `-full`; code is `--font-family-code`. To check a name, ask
+  `getComputedStyle(document.body).getPropertyValue(name)` in the running app.
+- **Never run the formatter over a folder** you did not change; name the files. It rewrites
+  other people's uncommitted work.
 - **Delete what a change makes dead**: styles, imports, and helpers, checked with
   `oxlint` and a scan of `styles.<key>` uses. Leave already-dead code alone and mention it.
 - **Test in the running app** as `docs/internal/frontend-debugging.md` describes. Drag by

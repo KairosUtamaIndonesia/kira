@@ -6,7 +6,8 @@
  */
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
-import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog';
+import { Dialog } from '@astryxdesign/core/Dialog';
+import { FlushDialogHeader } from './dialogHeader.tsx';
 import { DropdownMenu } from '@astryxdesign/core/DropdownMenu';
 import { Icon } from '@astryxdesign/core/Icon';
 import { IconButton } from '@astryxdesign/core/IconButton';
@@ -78,7 +79,7 @@ export function NewTicketDialog({ kinds, kindIcons, refusal, onCancel, onWrite }
       purpose="form"
       width={640}
     >
-      <DialogHeader
+      <FlushDialogHeader
         title="New ticket"
         subtitle="It starts as a draft. Make it ready when it is clear enough to start."
         onOpenChange={(next) => {

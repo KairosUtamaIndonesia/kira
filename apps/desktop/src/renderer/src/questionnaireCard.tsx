@@ -30,7 +30,7 @@ const styles = stylex.create({
     borderWidth: borderVars['--border-width'],
     borderStyle: 'solid',
     borderColor: colorVars['--color-border'],
-    borderRadius: 'var(--radius-md)',
+    borderRadius: 'var(--radius-container)',
     backgroundColor: 'transparent',
     color: colorVars['--color-text-primary'],
     textAlign: 'start',
