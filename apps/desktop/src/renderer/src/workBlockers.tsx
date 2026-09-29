@@ -1,12 +1,7 @@
 /**
- * PROTOTYPE — throwaway. A ticket's blockers — what it waits on and what waits on it — as
- * ledger rows, in development builds only.
- *
- * Question it answers: what does a person need from this section to decide what to do
- * next? It fills a blocker in from the ticket it names (title, lane, kind, who is
- * working on it), not just its name, and says what the ticket's own state means for the
- * tickets downstream. Opening a blocker is real; adding and removing are stubs.
- * Once a variant wins, rewrite it properly in `work.tsx` and drop this file from main.
+ * A ticket's blockers — what it waits on and what waits on it — as ledger rows. A blocker
+ * is filled in from the ticket it names (title, lane, who is working on it), and the
+ * section says what the blockers mean for the ticket right now.
  */
 import { Button } from '@astryxdesign/core/Button';
 import { Icon } from '@astryxdesign/core/Icon';
@@ -16,7 +11,6 @@ import {
   colorVars,
   focusVars,
   radiusVars,
-  shadowVars,
   spacingVars,
   textSizeVars,
   typographyVars,
@@ -31,6 +25,9 @@ interface Props {
   ticket: Ticket;
   tickets: Ticket[];
   onOpen: (id: string) => void;
+  /** Name a ticket that has to close first; null when the server refused. */
+  onGate: (blockerId: string) => Promise<Ticket | null>;
+  onUngate: (blockerId: string) => Promise<Ticket | null>;
 }
 
 /** A named ticket, filled in from the queue when the queue holds it. */
@@ -67,24 +64,6 @@ function tone(link: Link): Tone {
   if (band === 'blocked') return 'blocked';
   return 'open';
 }
-
-export function BlockersPrototype(props: Props) {
-  const [note, setNote] = useState<string | null>(null);
-  const stub = (action: string): void => setNote(`“${action}” is stubbed in the prototype.`);
-
-  return (
-    <>
-      <LedgerBlockers {...props} onStub={stub} />
-      {note !== null && (
-        <output {...stylex.props(ui.switcher)}>
-          <span {...stylex.props(ui.note)}>{note}</span>
-        </output>
-      )}
-    </>
-  );
-}
-
-type Shared = Props & { onStub: (action: string) => void };
 
 /** The one sentence that says what the blockers mean for this ticket right now. */
 function verdict(
@@ -126,7 +105,8 @@ function lastHold(ticket: Ticket, link: Link): boolean {
   return !link.named.closed && others.length === 0 && ticket.closedAt === null;
 }
 
-function AddBlocker({ ticket, tickets, onStub }: Shared) {
+function AddBlocker({ ticket, tickets, onGate }: Props) {
+  const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState(false);
   const taken = new Set([ticket.id, ...ticket.children.map((each) => each.id)]);
   const candidates = tickets.filter((each) => each.closedAt === null && !taken.has(each.id));
@@ -151,6 +131,7 @@ function AddBlocker({ ticket, tickets, onStub }: Shared) {
         <Selector
           label="Blocker"
           isLabelHidden
+          isDisabled={busy}
           placeholder="Choose a ticket that has to close first"
           options={candidates.map((each) => ({
             value: each.id,
@@ -164,10 +145,24 @@ function AddBlocker({ ticket, tickets, onStub }: Shared) {
         label="Add"
         size="sm"
         variant="primary"
-        isDisabled={chosen === ''}
-        onClick={() => onStub('Add blocker')}
+        isDisabled={chosen === '' || busy}
+        onClick={() => {
+          setBusy(true);
+          void onGate(chosen).then((held) => {
+            setBusy(false);
+            if (held === null) return;
+            setChosen('');
+            setAdding(false);
+          });
+        }}
       />
-      <Button label="Cancel" size="sm" variant="ghost" onClick={() => setAdding(false)} />
+      <Button
+        label="Cancel"
+        size="sm"
+        variant="ghost"
+        isDisabled={busy}
+        onClick={() => setAdding(false)}
+      />
     </div>
   );
 }
@@ -252,10 +247,8 @@ function Row({
   );
 }
 
-/* ── A. Ledger rows ─────────────────────────────────────────────────────── */
-
-function LedgerBlockers(props: Shared) {
-  const { ticket, tickets, onOpen, onStub } = props;
+export function Blockers(props: Props) {
+  const { ticket, tickets, onOpen, onUngate } = props;
   const blockers = links(ticket.children, tickets);
   const blocking = links(ticket.gates, tickets);
   const said = verdict(ticket, blockers);
@@ -294,7 +287,7 @@ function LedgerBlockers(props: Shared) {
               key={each.named.id}
               link={each}
               onOpen={onOpen}
-              onRemove={() => onStub('Remove blocker')}
+              onRemove={() => void onUngate(each.named.id)}
             />
           ))}
         </ul>
@@ -498,41 +491,6 @@ const ui = stylex.create({
   addRow: { display: 'flex', marginInlineStart: `calc(-1 * ${spacingVars['--spacing-3']})` },
   adding: { display: 'flex', alignItems: 'center', gap: spacingVars['--spacing-2'] },
   grow: { flex: 1, minWidth: 0 },
-  switcher: {
-    position: 'fixed',
-    insetBlockEnd: 16,
-    insetInlineStart: '50%',
-    transform: 'translateX(-50%)',
-    zIndex: 50,
-    display: 'flex',
-    alignItems: 'center',
-    gap: 2,
-    padding: spacingVars['--spacing-1'],
-    borderRadius: 999,
-    backgroundColor: colorVars['--color-background-inverted'],
-    color: colorVars['--color-background-surface'],
-    boxShadow: shadowVars['--shadow-high'],
-    fontSize: textSizeVars['--font-size-sm'],
-  },
-  segment: {
-    height: 24,
-    paddingInline: spacingVars['--spacing-2'],
-    borderWidth: 0,
-    borderRadius: 999,
-    backgroundColor: { default: 'transparent', ':hover': 'rgb(128 128 128 / 0.25)' },
-    color: 'inherit',
-    fontSize: textSizeVars['--font-size-sm'],
-    whiteSpace: 'nowrap',
-    cursor: 'pointer',
-  },
-  segmentOn: {
-    backgroundColor: {
-      default: colorVars['--color-accent'],
-      ':hover': colorVars['--color-accent'],
-    },
-    color: colorVars['--color-on-accent'],
-  },
-  note: { paddingInline: spacingVars['--spacing-2'], opacity: 0.8, whiteSpace: 'nowrap' },
 });
 
 const VERDICT_STYLE = {

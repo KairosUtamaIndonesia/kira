@@ -81,7 +81,6 @@ import {
   ArrowUp,
   Bug,
   ChevronDown,
-  CircleAlert,
   CircleCheck,
   CircleDashed,
   CircleHelp,
@@ -137,7 +136,6 @@ import type {
   Band,
   ChatSummary,
   JoinRequest,
-  NamedTicket,
   ProjectSummary,
   Ticket,
   TicketChange,
@@ -153,7 +151,7 @@ import type {
   WorkspaceSummary,
 } from '../../preload/bridge.ts';
 import { ExecutionWorkspacePanel } from './executionWorkspace.tsx';
-import { BlockersPrototype } from './workBlockersPrototype.tsx';
+import { Blockers } from './workBlockers.tsx';
 import { FilterBar, FilterToolbar } from './workFilters.tsx';
 import {
   executionWorkspaceView,
@@ -299,12 +297,6 @@ const styles = stylex.create({
   abandoned: {
     color: colorVars['--color-text-orange'],
   },
-  glyph: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    color: colorVars['--color-text-secondary'],
-  },
-  glyphAbandoned: { color: colorVars['--color-text-orange'] },
 
   /* The board, and the ticket over it. */
   board: {
@@ -1231,23 +1223,6 @@ const styles = stylex.create({
     display: 'flex',
     flex: 1,
     minWidth: 0,
-  },
-  gateName: {
-    display: 'flex',
-    flex: 1,
-    minWidth: 0,
-    padding: 0,
-    borderWidth: 0,
-    backgroundColor: 'transparent',
-    textAlign: 'start',
-    cursor: 'pointer',
-    color: colorVars['--color-text-primary'],
-    ':focus-visible': {
-      outlineWidth: focusVars['--focus-outline-width'],
-      outlineStyle: focusVars['--focus-outline-style'],
-      outlineColor: focusVars['--focus-outline-color'],
-      outlineOffset: focusVars['--focus-outline-offset'],
-    },
   },
   branch: {
     display: 'flex',
@@ -3383,8 +3358,6 @@ function TicketReading({
   tickets?: Ticket[];
 }) {
   const [isClosing, setIsClosing] = useState(false);
-  const [isGating, setIsGating] = useState(false);
-  const [named, setNamed] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
   const workspaceRef = useRef<HTMLDivElement | null>(null);
@@ -3411,140 +3384,14 @@ function TicketReading({
       />
     </div>
   );
-  const gatedBy = (
-    <section {...stylex.props(styles.section)}>
-      <Text type="label" weight="medium">
-        Blocked by
-      </Text>
-      {ticket.children.length === 0 ? (
-        <Text type="supporting" color="secondary">
-          Nothing is blocking it. Add a ticket that has to close first, or break this one into
-          smaller tickets.
-        </Text>
-      ) : (
-        <>
-          <Text type="supporting" color="secondary">
-            {ticket.children.filter((each) => each.closed).length} of {ticket.children.length}{' '}
-            closed
-          </Text>
-          <ul {...stylex.props(styles.lines)}>
-            {ticket.children.map((each) => (
-              <li key={each.id} {...stylex.props(styles.line)}>
-                <NamedGlyph ticket={each} />
-                <button
-                  type="button"
-                  {...stylex.props(styles.gateName)}
-                  onClick={() => onOpen(each.id)}
-                >
-                  <Text type="supporting">
-                    {each.name}
-                    {each.closure === 'wontfix' ? ' — closed, won’t do' : ''}
-                  </Text>
-                </button>
-                <IconButton
-                  label={`Remove ${each.name} as a blocker`}
-                  icon={<Icon icon={X} size="sm" />}
-                  isDisabled={isBusy}
-                  onClick={() => void run(() => onUngate(each.id))}
-                />
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-
-      {isGating ? (
-        <>
-          <div {...stylex.props(styles.field)}>
-            <div {...stylex.props(styles.fieldGrow)}>
-              <TextInput
-                label="Which ticket blocks this one"
-                value={named}
-                onChange={setNamed}
-                description="Its name, like FND-12."
-                size="sm"
-              />
-            </div>
-          </div>
-          <div {...stylex.props(styles.actions)}>
-            <Button
-              label="Add blocker"
-              size="sm"
-              variant="secondary"
-              isDisabled={isBusy || named.trim() === ''}
-              onClick={() =>
-                void run(async () => {
-                  const held = await onGate(named.trim());
-                  if (held !== null) {
-                    setNamed('');
-                    setIsGating(false);
-                  }
-                })
-              }
-            />
-            <Button
-              label="Cancel"
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                setIsGating(false);
-                onRefuse(null);
-              }}
-            />
-          </div>
-        </>
-      ) : (
-        <div>
-          <Button
-            label="Add blocker"
-            icon={<Icon icon={Plus} size="sm" />}
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              setIsGating(true);
-              onRefuse(null);
-            }}
-          />
-        </div>
-      )}
-    </section>
-  );
-  const gating = (
-    <>
-      {ticket.gates.length > 0 && (
-        <section {...stylex.props(styles.section)}>
-          <Text type="label" weight="medium">
-            Blocking
-          </Text>
-          <ul {...stylex.props(styles.lines)}>
-            {ticket.gates.map((each) => (
-              <li key={each.id} {...stylex.props(styles.line)}>
-                <Icon icon={ArrowUp} size="sm" />
-                <button
-                  type="button"
-                  {...stylex.props(styles.gateName)}
-                  onClick={() => onOpen(each.id)}
-                >
-                  <Text type="supporting">
-                    {each.name}
-                    {each.closed ? ' — closed' : ' — open'}
-                  </Text>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-    </>
-  );
-  // PROTOTYPE: ways to draw blockers (workBlockersPrototype.tsx); development builds only.
-  const blockers = import.meta.env.DEV ? (
-    <BlockersPrototype ticket={ticket} tickets={tickets} onOpen={onOpen} />
-  ) : (
-    <>
-      {gatedBy}
-      {gating}
-    </>
+  const blockers = (
+    <Blockers
+      ticket={ticket}
+      tickets={tickets}
+      onOpen={onOpen}
+      onGate={onGate}
+      onUngate={onUngate}
+    />
   );
   const branch = (
     <section {...stylex.props(styles.section)}>
@@ -4299,20 +4146,6 @@ function RunReading({
         )}
       </div>
     </section>
-  );
-}
-
-function NamedGlyph({ ticket }: { ticket: NamedTicket }) {
-  const icon: LucideIcon = !ticket.closed
-    ? Play
-    : ticket.closure === 'wontfix'
-      ? CircleAlert
-      : CircleCheck;
-
-  return (
-    <span {...stylex.props(styles.glyph, ticket.closure === 'wontfix' && styles.glyphAbandoned)}>
-      <Icon icon={icon} size="sm" />
-    </span>
   );
 }
 
