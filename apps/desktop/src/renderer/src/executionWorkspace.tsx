@@ -95,7 +95,7 @@ export function ExecutionWorkspacePanel({
             Execution workspace
           </Text>
           <Text type="supporting" color="secondary">
-            Follow the agent, checkout, changes, and review from this issue.
+            Follow the agent, its checkout, its changes, and your review from this ticket.
           </Text>
         </div>
         <Badge
@@ -145,7 +145,7 @@ export function ExecutionWorkspacePanel({
 
       {ticket.band === 'ready' && view.status !== 'running' && (
         <Button
-          label={view.run === null ? 'Start agent' : 'Run again'}
+          label={view.run === null ? 'Start agent' : 'Start a new session'}
           size="sm"
           variant="primary"
           isDisabled={starting}
@@ -154,7 +154,7 @@ export function ExecutionWorkspacePanel({
       )}
       {ticket.band !== 'ready' && view.run === null && (
         <Text type="supporting" color="secondary">
-          Mark this issue ready before starting its agent.
+          Make this ticket ready for an agent before starting one.
         </Text>
       )}
 
@@ -766,7 +766,9 @@ function WorkspaceDetails({
         )}
         <TextArea label="Feedback for the agent" value={feedback} onChange={setFeedback} rows={3} />
         <Button
-          label={view.status === 'running' ? 'Agent is running' : 'Send feedback & run agent'}
+          label={
+            view.status === 'running' ? 'Agent is working' : 'Send feedback and start a new session'
+          }
           size="sm"
           variant="primary"
           isDisabled={

@@ -30,6 +30,7 @@ import { IconButton } from '@astryxdesign/core/IconButton';
 import { Item } from '@astryxdesign/core/Item';
 import { edgeCompSlot } from '@astryxdesign/core/Layout';
 import { List } from '@astryxdesign/core/List';
+import { MoreMenu } from '@astryxdesign/core/MoreMenu';
 import { Selector } from '@astryxdesign/core/Selector';
 import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl';
 import { Skeleton } from '@astryxdesign/core/Skeleton';
@@ -174,13 +175,13 @@ const VIEWS: { id: View; label: string; icon: LucideIcon; note: string }[] = [
     id: 'board',
     label: 'Board',
     icon: SquareKanban,
-    note: 'issues grouped by status',
+    note: 'tickets grouped by status',
   },
   {
     id: 'list',
     label: 'List',
     icon: Rows3,
-    note: 'all issues in a list',
+    note: 'all tickets in a list',
   },
 ];
 
@@ -189,7 +190,7 @@ const BANDS: { id: Band; label: string; note: string }[] = [
   {
     id: 'needs-you',
     label: 'Needs review',
-    note: 'a question or run result needs your answer',
+    note: 'a question or a session’s result needs your answer',
   },
   {
     id: 'ready',
@@ -198,7 +199,7 @@ const BANDS: { id: Band; label: string; note: string }[] = [
   },
   { id: 'running', label: 'Running', note: 'someone is working on it now' },
   { id: 'blocked', label: 'Blocked', note: 'child work remains open or a breakdown is needed' },
-  { id: 'draft', label: 'Drafts', note: 'captured, but not ready to run' },
+  { id: 'draft', label: 'Drafts', note: 'captured, but not ready to start' },
   { id: 'done', label: 'Done', note: 'closed with a recorded outcome' },
 ];
 
@@ -777,6 +778,7 @@ const styles = stylex.create({
     display: 'inline-flex',
     marginInlineEnd: `calc((${sizeVars['--size-element-md']} - 16px) / -2)`,
   },
+  footTail: { display: 'inline-flex', alignItems: 'center', gap: spacingVars['--spacing-1'] },
   panelHeadBar: {
     display: 'flex',
     alignItems: 'center',
@@ -1561,7 +1563,7 @@ export function WorkSurface({
         <div {...stylex.props(styles.scroll)}>
           <EmptyState
             title="No workspace selected"
-            description="Open a folder from the sidebar. A folder is a workspace, and a workspace is where a project's work runs."
+            description="Open a folder from the sidebar. A folder is a workspace, and a workspace is where a project's agents do their work."
             icon={<Icon icon={FolderOpen} size="lg" />}
             headingLevel={2}
           />
@@ -1698,7 +1700,7 @@ export function WorkSurface({
                 query ? `${window.location.pathname}?${query}` : window.location.pathname,
               );
             }}
-            label="Issue view"
+            label="Ticket view"
             size="sm"
           >
             {VIEWS.map((each) => (
@@ -1711,12 +1713,12 @@ export function WorkSurface({
             ))}
           </SegmentedControl>
           <TextInput
-            label="Search issues"
+            label="Search tickets"
             isLabelHidden
             size="sm"
             width={190}
             value={display.search}
-            placeholder="Search issues"
+            placeholder="Search tickets"
             isDisabled={queue === null}
             disabledMessage={trouble === null ? 'Work is loading.' : undefined}
             onChange={(next) => updateDisplay((current) => ({ ...current, search: next }))}
@@ -1729,7 +1731,7 @@ export function WorkSurface({
             onClick={() => setFiltersOpen((open) => !open)}
           />
           <Button
-            label="New issue"
+            label="New ticket"
             icon={<Icon icon={Plus} size="sm" />}
             variant="primary"
             size="sm"
@@ -1742,7 +1744,7 @@ export function WorkSurface({
           />
           {view === 'board' && attachedIds.length > 0 && (
             <Button
-              label={`Start chat with ${attachedIds.length} ${attachedIds.length === 1 ? 'issue' : 'issues'}`}
+              label={`Start chat with ${attachedIds.length} ${attachedIds.length === 1 ? 'ticket' : 'tickets'}`}
               icon={<Icon icon={TicketIcon} size="sm" />}
               variant="primary"
               size="sm"
@@ -1753,7 +1755,7 @@ export function WorkSurface({
       </div>
 
       {filtersOpen && (
-        <div {...stylex.props(styles.filterBar)} aria-label="Issue filters">
+        <div {...stylex.props(styles.filterBar)} aria-label="Ticket filters">
           <Button
             label={`Status: ${display.band === 'all' ? 'all' : BANDS.find((each) => each.id === display.band)?.label}`}
             size="sm"
@@ -1782,7 +1784,7 @@ export function WorkSurface({
             }
           />
           <Button
-            label={`Claim: ${display.claim}`}
+            label={`Being worked on: ${display.claim === 'all' ? 'any' : display.claim === 'claimed' ? 'yes' : 'no'}`}
             size="sm"
             variant="ghost"
             onClick={() =>
@@ -1871,7 +1873,7 @@ export function WorkSurface({
       ) : queue === null && !isWriting ? (
         // The shape of what is coming, rather than a spinner in the middle of
         // nothing: a queue is rows, and three of them say so while it is read.
-        <div {...stylex.props(styles.waiting)} aria-busy="true" aria-label="Reading the queue">
+        <div {...stylex.props(styles.waiting)} aria-busy="true" aria-label="Loading tickets">
           <Skeleton width="30%" height={14} />
           <Skeleton width="75%" height={14} index={1} />
           <Skeleton width="65%" height={14} index={2} />
@@ -1880,13 +1882,13 @@ export function WorkSurface({
       ) : tickets.length === 0 && !isWriting ? (
         <div {...stylex.props(styles.scroll)}>
           <EmptyState
-            title="No issues yet"
-            description="Create an issue to plan work, start an agent workspace, and review the result."
+            title="No tickets yet"
+            description="Write a ticket to plan work, start an agent on it, and review what it made."
             icon={<Icon icon={FileText} size="lg" />}
             headingLevel={2}
             actions={
               <Button
-                label="New issue"
+                label="New ticket"
                 icon={<Icon icon={Plus} size="sm" />}
                 variant="primary"
                 onClick={() => setIsWriting(true)}
@@ -1897,7 +1899,7 @@ export function WorkSurface({
       ) : visibleTickets.length === 0 && !isWriting ? (
         <div {...stylex.props(styles.scroll)}>
           <EmptyState
-            title="No matching issues"
+            title="No matching tickets"
             description="Try a different search or clear the current filters."
             icon={<Icon icon={FileText} size="lg" />}
             headingLevel={2}
@@ -2084,7 +2086,7 @@ function Join({
                     <Item
                       key={each.id}
                       label={each.name}
-                      description={`${each.prefix} · issues are named ${each.prefix}-1, ${each.prefix}-2`}
+                      description={`${each.prefix} · tickets are named ${each.prefix}-1, ${each.prefix}-2`}
                       endContent={
                         <Button
                           label="Join"
@@ -2118,7 +2120,7 @@ function Join({
                     label="Prefix"
                     value={prefix}
                     onChange={(next) => setPrefix(next.toUpperCase())}
-                    description="Two to six letters and digits. Issue names use this prefix, which cannot change later."
+                    description="Two to six letters and digits. Ticket names use this prefix, which cannot change later."
                     size="sm"
                   />
                 </div>
@@ -2274,19 +2276,19 @@ function DropActionBar({
   if (intent.plan.kind === 'choose-ready-gate') {
     message = `Choose who should take the next turn on ${ticket.name}.`;
   } else if (intent.plan.kind === 'change-gate') {
-    message = `Put ${ticket.name} back in Draft. Its blockers and run history will stay.`;
+    message = `Put ${ticket.name} back in Drafts. Its blockers and sessions will stay.`;
   } else if (intent.plan.kind === 'prepare-agent-run') {
-    message = `${ticket.name} needs an agent-ready gate before a run can start.`;
+    message = `${ticket.name} has to be ready for an agent before an agent can start on it.`;
   } else if (intent.plan.kind === 'start-run') {
     message = `Confirm the execution workspace for ${ticket.name}, then start its agent.`;
   } else if (intent.plan.kind === 'add-blocker') {
-    message = `Choose an open issue that should block ${ticket.name}.`;
+    message = `Choose an open ticket that should block ${ticket.name}.`;
   } else if (intent.plan.kind === 'resolve-blockers') {
-    message = `Remove an open dependency link from ${ticket.name}.`;
+    message = `Choose a blocker to remove from ${ticket.name}.`;
   } else if (intent.plan.kind === 'send-back') {
-    message = `Send ${ticket.name}’s run proposal back for another attempt?`;
+    message = `Send ${ticket.name} back? The agent tries again from Ready.`;
   } else if (intent.plan.kind === 'accept-result') {
-    message = `Accept ${ticket.name}’s run proposal and close the ticket?`;
+    message = `Accept what the session made and close ${ticket.name}?`;
   } else if (intent.plan.kind === 'choose-closure') {
     message = `Choose how to resolve ${ticket.name}.`;
   } else if (intent.plan.kind === 'unavailable') {
@@ -2333,7 +2335,7 @@ function DropActionBar({
         )}
         {intent.plan.kind === 'change-gate' && (
           <Button
-            label="Move to Draft"
+            label="Back to draft"
             size="sm"
             variant="primary"
             isDisabled={isBusy}
@@ -2342,7 +2344,7 @@ function DropActionBar({
         )}
         {intent.plan.kind === 'prepare-agent-run' && (
           <Button
-            label="Make agent-ready"
+            label="Ready for an agent"
             size="sm"
             variant="primary"
             isDisabled={isBusy}
@@ -2356,7 +2358,7 @@ function DropActionBar({
             </Text>
           ) : workspaces.length === 0 ? (
             <Button
-              label="Open issue to create an execution workspace"
+              label="Open ticket to set up a workspace"
               size="sm"
               variant="primary"
               isDisabled={isBusy || executionWorkspaces === null}
@@ -2396,7 +2398,7 @@ function DropActionBar({
               <>
                 <div {...stylex.props(styles.dropSelector)}>
                   <Selector
-                    label="Blocking issue"
+                    label="Blocker"
                     options={addableBlockers.map((each) => ({
                       value: each.id,
                       label: `${each.name} · ${each.title || 'Untitled'}`,
@@ -2420,7 +2422,7 @@ function DropActionBar({
               </>
             ) : (
               <Text type="supporting" color="secondary">
-                No open issues can block this ticket.
+                No open tickets can block this one.
               </Text>
             )}
           </>
@@ -2439,7 +2441,7 @@ function DropActionBar({
                   />
                 </div>
                 <Button
-                  label="Remove dependency"
+                  label="Remove blocker"
                   size="sm"
                   variant="primary"
                   isDisabled={isBusy || chosenOpenBlocker === undefined}
@@ -2452,14 +2454,14 @@ function DropActionBar({
               </>
             ) : (
               <Text type="supporting" color="secondary">
-                No open dependency links remain.
+                It has no open blockers.
               </Text>
             )}
           </>
         )}
         {intent.plan.kind === 'send-back' && (
           <Button
-            label="Send back to Ready"
+            label="Send back"
             size="sm"
             variant="primary"
             isDisabled={isBusy}
@@ -2495,7 +2497,7 @@ function DropActionBar({
         )}
         {intent.plan.kind === 'unavailable' && (
           <Button
-            label="Open issue"
+            label="Open ticket"
             size="sm"
             variant="secondary"
             onClick={() => onOpen(ticket.id)}
@@ -2574,7 +2576,7 @@ function BoardView({
     >
       <div {...stylex.props(styles.board)}>
         <section
-          aria-label="Issue lanes; scroll horizontally to see all states"
+          aria-label="Ticket lanes; scroll horizontally to see all states"
           {...stylex.props(styles.boardColumns)}
         >
           {bands.map((band) => {
@@ -2775,7 +2777,7 @@ function SortableTicketRow({
     >
       <button
         type="button"
-        aria-label={`Open issue ${ticket.name}: ${ticket.title || 'Untitled'}`}
+        aria-label={`Open ticket ${ticket.name}: ${ticket.title || 'Untitled'}`}
         aria-current={selected || undefined}
         {...stylex.props(styles.rowOpen)}
         onClick={() => onOpen(ticket.id)}
@@ -2800,7 +2802,7 @@ function SortableTicketRow({
         )}
         {ticket.band === 'ready' && (
           <StripButton
-            label={`Move issue ${ticket.name} to the front of Ready`}
+            label={`Move ${ticket.name} to the top of Ready`}
             icon={ArrowUp}
             onClick={() => onPromote(ticket.id)}
           />
@@ -2898,13 +2900,13 @@ function TicketRowBody({
           {ticket.kind}
         </span>
         {ticket.children.length > 0 && (
-          <span {...stylex.props(styles.rowTag)} title="Blocking issues closed">
+          <span {...stylex.props(styles.rowTag)} title="Blockers closed">
             <Icon icon={GitBranch} size="xsm" />
             {ticket.children.length - openChildren}/{ticket.children.length}
           </span>
         )}
         {ticket.runs.length > 0 && (
-          <span {...stylex.props(styles.rowTag)} title="Runs">
+          <span {...stylex.props(styles.rowTag)} title="Sessions">
             <Icon icon={History} size="xsm" />
             {ticket.runs.length}
           </span>
@@ -3121,7 +3123,7 @@ function TicketPanel({
               {head}
               {children}
             </article>
-            <aside aria-label="Ticket actions and facts" {...stylex.props(styles.fullBox)}>
+            <aside aria-label="Ticket actions and details" {...stylex.props(styles.fullBox)}>
               {foot !== undefined && <div {...stylex.props(styles.fullActions)}>{foot}</div>}
               {aside}
             </aside>
@@ -3137,7 +3139,7 @@ function TicketPanel({
         <div {...stylex.props(styles.panelHeadBar)}>
           <span {...stylex.props(EDGE_TEXT_BUTTON)}>
             <Button
-              label={placement === 'inline' ? 'Back to the queue' : 'Close'}
+              label={placement === 'inline' ? 'Back to Work' : 'Close'}
               icon={<Icon icon={placement === 'inline' ? ArrowLeft : X} size="sm" />}
               variant="ghost"
               size="sm"
@@ -3250,12 +3252,12 @@ function TicketReading({
   const gatedBy = (
     <section {...stylex.props(styles.section)}>
       <Text type="label" weight="medium">
-        What gates it
+        Blocked by
       </Text>
       {ticket.children.length === 0 ? (
         <Text type="supporting" color="secondary">
-          Nothing gates this. A ticket names the tickets that hold it up, and a parent names its
-          slices.
+          Nothing is blocking it. Add a ticket that has to close first, or break this one into
+          smaller tickets.
         </Text>
       ) : (
         <>
@@ -3274,11 +3276,11 @@ function TicketReading({
                 >
                   <Text type="supporting">
                     {each.name}
-                    {each.closure === 'wontfix' ? ' — closed without being done' : ''}
+                    {each.closure === 'wontfix' ? ' — closed, won’t do' : ''}
                   </Text>
                 </button>
                 <IconButton
-                  label={`Take ${each.name} off what gates this`}
+                  label={`Remove ${each.name} as a blocker`}
                   icon={<Icon icon={X} size="sm" />}
                   isDisabled={isBusy}
                   onClick={() => void run(() => onUngate(each.id))}
@@ -3294,17 +3296,17 @@ function TicketReading({
           <div {...stylex.props(styles.field)}>
             <div {...stylex.props(styles.fieldGrow)}>
               <TextInput
-                label="Which issue blocks this one"
+                label="Which ticket blocks this one"
                 value={named}
                 onChange={setNamed}
-                description="By its name — FND-12 — or by anything else the server knows it as."
+                description="Its name, like FND-12."
                 size="sm"
               />
             </div>
           </div>
           <div {...stylex.props(styles.actions)}>
             <Button
-              label="Add the gate"
+              label="Add blocker"
               size="sm"
               variant="secondary"
               isDisabled={isBusy || named.trim() === ''}
@@ -3332,7 +3334,7 @@ function TicketReading({
       ) : (
         <div>
           <Button
-            label="Add a gate"
+            label="Add blocker"
             icon={<Icon icon={Plus} size="sm" />}
             size="sm"
             variant="ghost"
@@ -3350,7 +3352,7 @@ function TicketReading({
       {ticket.gates.length > 0 && (
         <section {...stylex.props(styles.section)}>
           <Text type="label" weight="medium">
-            What it gates
+            Blocking
           </Text>
           <ul {...stylex.props(styles.lines)}>
             {ticket.gates.map((each) => (
@@ -3363,7 +3365,7 @@ function TicketReading({
                 >
                   <Text type="supporting">
                     {each.name}
-                    {each.closed ? ' — closed' : ' — still open'}
+                    {each.closed ? ' — closed' : ' — open'}
                   </Text>
                 </button>
               </li>
@@ -3397,20 +3399,20 @@ function TicketReading({
   const facts: { label: string; value: string }[] = [
     { label: 'Status', value: bandLabel(ticket.band) },
     {
-      label: 'Gate',
+      label: 'Ready for',
       value:
         ticket.gate === 'draft'
-          ? 'Draft'
+          ? 'Not yet (draft)'
           : ticket.gate === 'ready-for-agent'
-            ? 'Ready for an agent'
-            : 'Ready for a person',
+            ? 'An agent'
+            : 'A person',
     },
     { label: 'Kind', value: ticket.kind },
-    { label: 'Held by', value: ticket.claim?.holder.name ?? 'Nobody' },
-    { label: 'Written by', value: ticket.author?.name ?? '—' },
-    { label: 'Rank', value: String(ticket.rank) },
-    { label: 'Written', value: when(ticket.createdAt) },
-    { label: 'Changed', value: when(ticket.updatedAt) },
+    { label: 'Working on it', value: ticket.claim?.holder.name ?? 'Nobody' },
+    { label: 'Created by', value: ticket.author?.name ?? '—' },
+    { label: 'Priority', value: String(ticket.rank) },
+    { label: 'Created', value: when(ticket.createdAt) },
+    { label: 'Updated', value: when(ticket.updatedAt) },
     ...(ticket.closedAt === null
       ? []
       : [
@@ -3520,6 +3522,8 @@ function TicketReading({
           </>
         ) : (
           <>
+            {/* The next step, as the ticket's state offers it. Only one of these groups
+                applies at a time, so the footer leads with a single decision. */}
             {planTicketDrop(ticket, 'running')?.kind === 'start-run' && (
               <Button
                 label="Start agent"
@@ -3529,13 +3533,13 @@ function TicketReading({
                 onClick={onRequestRun}
               />
             )}
-            {/* Run is offered on a ready ticket and nowhere else, because whether a ticket
-                can be picked up is the server's answer and its own words are what is shown
-                when it says no. */}
+            {/* Asking is offered on a ready question and nowhere else, because whether a
+                ticket can be picked up is the server's answer and its own words are what is
+                shown when it says no. */}
             {ticket.kind === 'question' &&
               (ticket.band === 'ready' || ticket.band === 'needs-you') && (
                 <Button
-                  label={ticket.band === 'needs-you' ? 'Resume question' : 'Start question'}
+                  label={ticket.band === 'needs-you' ? 'Continue with Kira' : 'Ask Kira'}
                   size="sm"
                   variant="primary"
                   isDisabled={isBusy}
@@ -3545,19 +3549,19 @@ function TicketReading({
             {/* A claim whose machine stopped answering, which only a person can take on. */}
             {ticket.claim?.stale === true && (
               <Button
-                label="Take it over"
+                label={`Take over from ${ticket.claim.holder.name}`}
                 size="sm"
                 variant="primary"
                 isDisabled={isBusy}
                 onClick={() => void run(onTakeOver)}
               />
             )}
-            {/* A run left a proposal: the person it is for says what they make of it. */}
+            {/* A session left a proposal: the person it is for says what they make of it. */}
             {ticket.band === 'needs-you' && (
               <>
                 {refusal?.startsWith('Merge conflict:') === true && (
                   <Button
-                    label="Resolve with Kira"
+                    label="Fix conflicts with Kira"
                     size="sm"
                     variant="primary"
                     isDisabled={isBusy}
@@ -3565,7 +3569,7 @@ function TicketReading({
                   />
                 )}
                 <Button
-                  label="Accept result"
+                  label="Accept and close"
                   size="sm"
                   variant="primary"
                   isDisabled={isBusy}
@@ -3580,65 +3584,76 @@ function TicketReading({
                 />
               </>
             )}
-            {/* A claim held by hand is held by a person: only they can let it go, and
-                without this a ticket taken over would sit in Running for good. */}
-            {ticket.claim !== null && ticket.claim.workerId === null && (
-              <Button
-                label="Release claim"
-                size="sm"
-                variant="ghost"
-                isDisabled={isBusy}
-                onClick={() => void run(onLetGo)}
-              />
-            )}
-            {ticket.gate === 'draft' ? (
+            {ticket.gate === 'draft' && (
               <>
                 <Button
-                  label="Mark ready for an agent"
+                  label="Ready for an agent"
                   size="sm"
                   variant="primary"
                   isDisabled={isBusy}
                   onClick={() => void run(() => onWrite({ gate: 'ready-for-agent' }))}
                 />
                 <Button
-                  label="Mark ready for a person"
+                  label="Ready for a person"
                   size="sm"
                   variant="secondary"
                   isDisabled={isBusy}
                   onClick={() => void run(() => onWrite({ gate: 'ready-for-human' }))}
                 />
               </>
-            ) : (
-              <Button
-                label="Return to draft"
-                size="sm"
-                variant="secondary"
-                isDisabled={isBusy}
-                onClick={() => void run(() => onWrite({ gate: 'draft' }))}
-              />
             )}
-            <Button
-              label="Edit"
-              size="sm"
-              variant="ghost"
-              isDisabled={isBusy}
-              onClick={() => {
-                setIsEditing(true);
-                onRefuse(null);
-              }}
-            />
-            <Button
-              // Resolving closes the ticket for good, as done or won't-do; "Close" is the
-              // panel's own word for putting the ticket away, so this one is not "close".
-              label="Resolve…"
-              size="sm"
-              variant="ghost"
-              isDisabled={isBusy}
-              onClick={() => {
-                setIsClosing(true);
-                onRefuse(null);
-              }}
-            />
+            {/* Then editing, and the rarer moves behind More: taking readiness back, letting
+                go of a ticket held by hand, and resolving it. Resolving closes the ticket for
+                good; "Close" is the panel's word for putting it away, so this one is not. */}
+            <span {...stylex.props(styles.footTail)}>
+              <Button
+                label="Edit"
+                size="sm"
+                variant="ghost"
+                isDisabled={isBusy}
+                onClick={() => {
+                  setIsEditing(true);
+                  onRefuse(null);
+                }}
+              />
+              <MoreMenu
+                label="More ticket actions"
+                size="sm"
+                alignment="end"
+                placement={placement === 'full' ? 'below' : 'above'}
+                isDisabled={isBusy}
+                items={[
+                  ...(ticket.gate === 'draft'
+                    ? []
+                    : [
+                        {
+                          label: 'Back to draft',
+                          description: 'Stop it being picked up until it is ready again.',
+                          onClick: () => void run(() => onWrite({ gate: 'draft' })),
+                        },
+                      ]),
+                  // A claim held by hand is held by a person: only they can let it go, and
+                  // without this a ticket taken over would sit in Running for good.
+                  ...(ticket.claim !== null && ticket.claim.workerId === null
+                    ? [
+                        {
+                          label: 'Stop working on it',
+                          description: 'Put it back in its column for someone else.',
+                          onClick: () => void run(onLetGo),
+                        },
+                      ]
+                    : []),
+                  {
+                    label: 'Resolve…',
+                    description: 'Close it as done, or as something that won’t be done.',
+                    onClick: () => {
+                      setIsClosing(true);
+                      onRefuse(null);
+                    },
+                  },
+                ]}
+              />
+            </span>
           </>
         )
       }
@@ -3674,7 +3689,7 @@ function TicketReading({
               </Text>
             ) : (
               <Text type="supporting" color="secondary">
-                No description has been added yet.
+                No description yet.
               </Text>
             )}
           </section>
@@ -3692,7 +3707,7 @@ function TicketReading({
             </div>
             {ticket.criteria.length === 0 ? (
               <Text type="supporting" color="secondary">
-                No finish line has been written yet. Add one before marking this ready for an agent.
+                No finish line yet. Add one before making this ready for an agent.
               </Text>
             ) : (
               <ul {...stylex.props(styles.ticketCriteria)}>
@@ -3743,7 +3758,7 @@ function TicketReading({
                     More ticket details
                   </Text>
                   <Text type="supporting" color="secondary">
-                    Runs, dependencies, and branch
+                    Sessions, blockers, and branch
                   </Text>
                 </span>
               </summary>
@@ -3751,7 +3766,7 @@ function TicketReading({
                 <div {...stylex.props(styles.ticketFacts)}>
                   <div {...stylex.props(styles.ticketFact)}>
                     <Text type="supporting" color="secondary">
-                      Rank
+                      Priority
                     </Text>
                     <Text type="supporting" {...stylex.props(styles.ticketFactValue)}>
                       {ticket.rank}
@@ -3760,7 +3775,7 @@ function TicketReading({
                   {ticket.author !== null && (
                     <div {...stylex.props(styles.ticketFact)}>
                       <Text type="supporting" color="secondary">
-                        Written by
+                        Created by
                       </Text>
                       <Text type="supporting" {...stylex.props(styles.ticketFactValue)}>
                         {ticket.author.name}
@@ -3781,13 +3796,13 @@ function TicketReading({
 
                 <section {...stylex.props(styles.section)}>
                   <Text type="label" weight="medium">
-                    Written and changed
+                    Created and updated
                   </Text>
                   <Text type="supporting" color="secondary">
-                    written {when(ticket.createdAt)} · last changed {when(ticket.updatedAt)}
+                    created {when(ticket.createdAt)} · updated {when(ticket.updatedAt)}
                     {ticket.closedAt === null
                       ? ''
-                      : ` · closed ${when(ticket.closedAt)} as ${ticket.closure === 'wontfix' ? 'something that will not be done' : 'done'}`}
+                      : ` · closed ${when(ticket.closedAt)} as ${ticket.closure === 'wontfix' ? 'won’t do' : 'done'}`}
                   </Text>
                 </section>
               </div>
@@ -3854,7 +3869,7 @@ function BranchLine({
       <ul {...stylex.props(styles.branchFacts)}>
         {view === null ? (
           <li {...stylex.props(styles.branchFact)}>
-            Named, not made — a run makes it, or work it by hand.
+            Not created yet. Starting the agent creates it.
           </li>
         ) : (
           <>
@@ -3937,7 +3952,7 @@ function RunHistory({
       {others.length > 0 && (
         <section {...stylex.props(styles.section)}>
           <Text type="label" weight="medium">
-            Other runs
+            Earlier sessions
           </Text>
           <ul {...stylex.props(styles.lines)}>
             {others.map((each) => (
@@ -4019,7 +4034,7 @@ function RunReading({
   return (
     <section {...stylex.props(styles.section)}>
       <Text type="label" weight="medium">
-        The run
+        The session
       </Text>
       <Text type="supporting" color="secondary">
         {runTelling(run)}
@@ -4057,7 +4072,7 @@ function RunReading({
         {chatId !== null ? (
           <div>
             <Button
-              label="Read the run"
+              label="Read the session"
               icon={<Icon icon={TicketIcon} size="sm" />}
               size="sm"
               variant="secondary"
@@ -4159,14 +4174,14 @@ function TicketForm({
             New ticket
           </Text>
           <Text type="supporting" color="secondary">
-            New tickets start as drafts. Mark one ready when it is clear enough to run.
+            New tickets start as drafts. Make one ready when it is clear enough to start.
           </Text>
         </>
       }
       foot={
         <>
           <Button
-            label={isBusy ? 'Creating issue' : 'Create issue'}
+            label={isBusy ? 'Creating ticket' : 'Create ticket'}
             size="sm"
             variant="primary"
             isDisabled={isBusy}
@@ -4199,8 +4214,8 @@ function TicketForm({
           </SegmentedControl>
         </div>
         <Text type="supporting" color="secondary">
-          The kind decides what a run of this ticket owes, and it is fixed once the ticket is
-          written.
+          The kind decides what an agent's session on this ticket has to deliver, and it can't
+          change once the ticket is written.
         </Text>
       </section>
 
@@ -4209,13 +4224,13 @@ function TicketForm({
           label="Title"
           value={title}
           onChange={setTitle}
-          description="What the issue is called. Its suggested branch name comes from the title."
+          description="What the ticket is called. Its branch name is suggested from the title."
         />
         <TextArea
           label="Description"
           value={body}
           onChange={setBody}
-          description="Enough that whoever runs it needs nothing else to hand."
+          description="Everything the agent or a teammate needs to do it."
           rows={6}
         />
       </div>
@@ -4297,7 +4312,7 @@ function CriteriaFields({
             />
           </div>
           <IconButton
-            label={`Take criterion ${at + 1} away`}
+            label={`Remove criterion ${at + 1}`}
             icon={<Icon icon={X} size="sm" />}
             isDisabled={criteria.length === 1}
             onClick={() => onChange(criteria.filter((_each, index) => index !== at))}
@@ -4306,7 +4321,7 @@ function CriteriaFields({
       ))}
       <div>
         <Button
-          label="Another criterion"
+          label="Add criterion"
           icon={<Icon icon={Plus} size="sm" />}
           size="sm"
           variant="ghost"

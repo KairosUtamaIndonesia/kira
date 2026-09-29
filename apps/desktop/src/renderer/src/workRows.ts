@@ -53,7 +53,7 @@ export function holding(
 ): { icon: LucideIcon; words: string } {
   if (ticket.closedAt !== null) {
     return ticket.closure === 'wontfix'
-      ? { icon: CircleAlert, words: 'closed without being done' }
+      ? { icon: CircleAlert, words: 'closed, won’t do' }
       : { icon: CircleCheck, words: 'done' };
   }
 
@@ -61,11 +61,13 @@ export function holding(
   // as one being worked otherwise, and the difference is the whole of what a person needs
   // to decide whether to take it over.
   if (ticket.claim !== null) {
-    const quiet = ticket.claim.stale ? ', gone quiet' : ` ${howLong(ticket.claim.startedAt, now)}`;
+    const name = ticket.claim.holder.name;
 
     return {
       icon: ticket.claim.stale ? CircleAlert : Loader,
-      words: `held by ${ticket.claim.holder.name}${quiet}`,
+      words: ticket.claim.stale
+        ? `${name} went quiet`
+        : `${name} working on it ${howLong(ticket.claim.startedAt, now)}`,
     };
   }
 
@@ -98,7 +100,7 @@ export function whyWaiting(ticket: Ticket): string {
   const last = ticket.runs[0];
   if (last === undefined) return 'waiting on a person';
 
-  return last.stoppedBecause ?? 'a proposal nobody has answered';
+  return last.stoppedBecause ?? 'waiting for your review';
 }
 
 /**
@@ -268,8 +270,8 @@ export function branchNote(ticket: Ticket): string {
   const made = ticket.runs.some((each) => each.branch === ticket.branch);
 
   return made
-    ? 'The branch a run made for this ticket. It is kept when the run\u2019s checkout is thrown away.'
-    : 'What a branch for this ticket would be called. Nothing here makes it: work it by hand, or let a run make the same one later.';
+    ? 'The branch a session made for this ticket. It is kept when the session\u2019s checkout is removed.'
+    : 'What a branch for this ticket would be called. Nothing has created it yet: work on it by hand, or start the agent and it creates it.';
 }
 
 /**

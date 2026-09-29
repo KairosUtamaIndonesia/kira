@@ -224,7 +224,7 @@ export function WorkHome({
                   const destination = destinationForProject(project, workspaces);
                   const actionLabel =
                     destination.kind === 'open'
-                      ? 'Open queue'
+                      ? 'Open tickets'
                       : destination.kind === 'choose'
                         ? selected
                           ? 'Hide workspaces'

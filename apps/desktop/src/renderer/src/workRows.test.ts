@@ -185,7 +185,7 @@ test('a row says one thing, and its icon agrees with it', () => {
     {
       name: 'a ticket closed without being done',
       held: ticket({ band: 'done', closedAt: '2026-01-02T00:00:00.000Z', closure: 'wontfix' }),
-      words: 'closed without being done',
+      words: 'closed, won’t do',
       icon: CircleAlert,
     },
   ];
@@ -333,7 +333,7 @@ test('a ticket somebody is working says who, and how long they have had it', () 
 
   assert.deepEqual(holding(ticket({ band: 'running', claim }), now), {
     icon: Loader,
-    words: 'held by Ada Lovelace for 18 minutes',
+    words: 'Ada Lovelace working on it for 18 minutes',
   });
 });
 
@@ -351,7 +351,7 @@ test('a claim whose machine stopped answering reads as gone quiet, and can be ta
 
   // The difference between a run being worked and one whose machine went away is the
   // whole of what a person needs to decide whether to step in, so it is the row's words.
-  assert.deepEqual(holding(held), { icon: CircleAlert, words: 'held by Ada Lovelace, gone quiet' });
+  assert.deepEqual(holding(held), { icon: CircleAlert, words: 'Ada Lovelace went quiet' });
   assert.equal(bandIcon(held), Loader);
 });
 
@@ -377,7 +377,7 @@ test('a ticket waiting on a person says why, in the run’s own words', () => {
   assert.equal(whyWaiting(ticket({ band: 'needs-you', runs: [run] })), run.stoppedBecause);
   assert.equal(
     whyWaiting(ticket({ band: 'needs-you', runs: [{ ...run, stoppedBecause: null }] })),
-    'a proposal nobody has answered',
+    'waiting for your review',
   );
 });
 
@@ -474,7 +474,7 @@ test('the branch line knows whether a run has made the branch yet', () => {
   // The run made it: the ticket answers with the branch the run recorded, so the line
   // stops calling it a suggestion.
   const worked = ticket({ branch: 'fnd-1-a-ticket', runs: [run()] });
-  assert.match(branchNote(worked), /^The branch a run made/);
+  assert.match(branchNote(worked), /^The branch a session made/);
 
   // A run that made some other branch — the ticket was retitled and the branch kept its
   // name, or the run was on an older branch — does not claim this one.

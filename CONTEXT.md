@@ -128,7 +128,7 @@ Its **kind** — prototype, bug, feature, refactor, question, research, spec or 
 decides what a run of it owes before that run's output counts as a proposal (ADR 0011). Its
 **rank** orders it within a band of the queue, which is the only ordering there is: the bands
 are derived, never set (ADR 0017).
-_Avoid_: Issue — what a ticket is before it has been triaged into this shape
+_Avoid_: Issue, task, card
 
 **Spec**:
 A ticket of kind spec: an idea worked out with a person — the problem, the solution, and the
@@ -185,21 +185,23 @@ Project Work is Kira's focused flow for turning a planned piece of work into a r
 The shared account boundary for people, projects, and permissions. It is not the place where code runs.
 _Avoid_: Execution Workspace, repository, project
 
-**Issue**:
-A piece of work to be planned, assigned, executed, reviewed, and completed. The existing server may continue to call this object a ticket, but the user-facing model follows Issue vocabulary.
-_Avoid_: Run, Workspace, task attempt
+**Blocker**:
+A ticket that must close before another can be run: a child blocks its parent, and a ticket
+can name others it waits on. A blocked ticket sits in Blocked until its blockers close.
+_Avoid_: Gate, dependency, prerequisite
 
 **Status**:
-The human-facing column an issue appears in on the kanban board.
+The human-facing column a ticket appears in on the kanban board.
 _Avoid_: Readiness, execution state, claim
 
 **Execution Workspace**:
-A space attached to an issue with the repository checkout, branch, agent session, tools, and review surface needed to do the work. One issue may have multiple execution workspaces.
+A space attached to a ticket with the repository checkout, branch, agent session, tools, and review surface needed to do the work. One ticket may have multiple execution workspaces.
 _Avoid_: Organization, Project, folder when referring to the shared planning scope
 
 **Session**:
-One coding-agent conversation running inside an execution workspace.
-_Avoid_: Run, Worker
+One coding-agent conversation running inside an execution workspace: a run, as a person sees
+it. Starting the agent starts a session, and a ticket keeps every session it has had.
+_Avoid_: Run (in anything a person reads), Worker, job
 
 **Review**:
 The human inspection and feedback loop over an execution workspace's changes.
@@ -212,7 +214,7 @@ _Avoid_: Run, merge
 The central relationship is:
 
 ```text
-Issue = what should be done
+Ticket = what should be done
 Execution Workspace = where an agent does it
 ```
 
