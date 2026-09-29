@@ -35,6 +35,7 @@ import { Selector } from '@astryxdesign/core/Selector';
 import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl';
 import { Skeleton } from '@astryxdesign/core/Skeleton';
 import { Text } from '@astryxdesign/core/Text';
+import { useToast } from '@astryxdesign/core/Toast';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import {
   borderVars,
@@ -1372,6 +1373,7 @@ export function WorkSurface({
   );
   const [isWriting, setIsWriting] = useState(false);
   /** What the server last refused, in its own words. */
+  const toast = useToast();
   const [refusal, setRefusal] = useState<string | null>(null);
   const [attachedIds, setAttachedIds] = useState<string[]>([]);
   const [isFull, setIsFull] = useState(false);
@@ -1468,12 +1470,27 @@ export function WorkSurface({
    * slice releases the parent that named it — and a surface that guessed at the
    * result would show a queue the server does not have.
    */
+  /**
+   * Where a refusal is said. What is done inside the ticket's panel is refused in the
+   * panel, next to what was being done. A move made from the board or list has no panel to
+   * say it in, and the confirmation bar is too small to read a sentence in, so it is a toast.
+   */
+  function refuse(message: string, shownIn: 'panel' | 'toast'): void {
+    if (shownIn === 'panel') {
+      setRefusal(message);
+      return;
+    }
+    setRefusal(null);
+    toast({ type: 'error', body: message });
+  }
+
   async function wrote(
     act: () => Promise<{ ok: true; value: Ticket } | { ok: false; error: string }>,
+    shownIn: 'panel' | 'toast' = 'panel',
   ): Promise<Ticket | null> {
     const answer = await act();
     if (!answer.ok) {
-      setRefusal(answer.error);
+      refuse(answer.error, shownIn);
       return null;
     }
 
@@ -1491,11 +1508,12 @@ export function WorkSurface({
    */
   async function acted<T>(
     act: () => Promise<{ ok: true; value: T } | { ok: false; error: string }>,
+    shownIn: 'panel' | 'toast' = 'panel',
   ): Promise<boolean> {
     const answer = await act();
 
     if (!answer.ok) {
-      setRefusal(answer.error);
+      refuse(answer.error, shownIn);
       return false;
     }
 
@@ -1526,7 +1544,7 @@ export function WorkSurface({
     for (const [rank, ticket] of ordered.entries()) {
       const answer = await window.kira.changeTicket(ticket.id, { rank });
       if (!answer.ok) {
-        setRefusal(answer.error);
+        refuse(answer.error, 'toast');
         await read();
         return;
       }
@@ -1559,7 +1577,7 @@ export function WorkSurface({
         if (requestId !== dropRequestId.current) return;
         setDropLoading(false);
         if (!answer.ok) {
-          setRefusal(answer.error);
+          refuse(answer.error, 'toast');
           return;
         }
         setDropExecutionWorkspaces(answer.value);
@@ -1567,7 +1585,7 @@ export function WorkSurface({
       .catch((failure: unknown) => {
         if (requestId !== dropRequestId.current) return;
         setDropLoading(false);
-        setRefusal(failure instanceof Error ? failure.message : String(failure));
+        refuse(failure instanceof Error ? failure.message : String(failure), 'toast');
       });
   }
 
@@ -1580,7 +1598,7 @@ export function WorkSurface({
     action: () => Promise<{ ok: true; value: Ticket } | { ok: false; error: string }>,
   ): Promise<void> {
     setDropBusy(true);
-    const changed = await wrote(action);
+    const changed = await wrote(action, 'toast');
     setDropBusy(false);
     if (changed !== null) setDropIntent(null);
   }
@@ -1592,8 +1610,9 @@ export function WorkSurface({
     if (run === undefined) return;
 
     setDropBusy(true);
-    const judged = await acted(() =>
-      window.kira.judgeRun(ticket.id, run.id, verdict, workspace.id),
+    const judged = await acted(
+      () => window.kira.judgeRun(ticket.id, run.id, verdict, workspace.id),
+      'toast',
     );
     setDropBusy(false);
     if (judged) setDropIntent(null);
@@ -1604,8 +1623,9 @@ export function WorkSurface({
     if (ticket === undefined || workspace === null) return;
 
     setDropBusy(true);
-    const started = await acted(() =>
-      window.kira.startRun(workspace.id, ticket.id, executionWorkspaceId),
+    const started = await acted(
+      () => window.kira.startRun(workspace.id, ticket.id, executionWorkspaceId),
+      'toast',
     );
     setDropBusy(false);
     if (started) setDropIntent(null);
@@ -1616,7 +1636,7 @@ export function WorkSurface({
     if (ticket === undefined) return;
 
     setDropBusy(true);
-    const removed = await wrote(() => window.kira.ungateTicket(ticket.id, blockerId));
+    const removed = await wrote(() => window.kira.ungateTicket(ticket.id, blockerId), 'toast');
     setDropBusy(false);
     if (removed !== null) setDropIntent(null);
   }
@@ -1827,7 +1847,6 @@ export function WorkSurface({
           executionWorkspaces={dropExecutionWorkspaces}
           isLoading={dropLoading}
           isBusy={dropBusy}
-          refusal={refusal}
           onCancel={cancelTicketDrop}
           onOpen={openTicket}
           onChangeTicket={(ticketId, change) =>
@@ -2445,7 +2464,6 @@ function DropActionBar({
   executionWorkspaces,
   isLoading,
   isBusy,
-  refusal,
   onCancel,
   onOpen,
   onChangeTicket,
@@ -2460,7 +2478,6 @@ function DropActionBar({
   executionWorkspaces: ExecutionWorkspace[] | null;
   isLoading: boolean;
   isBusy: boolean;
-  refusal: string | null;
   onCancel: () => void;
   onOpen: (id: string) => void;
   onChangeTicket: (ticketId: string, change: TicketChange) => Promise<void>;
@@ -2523,11 +2540,6 @@ function DropActionBar({
         <Text type="supporting" color="secondary">
           {message}
         </Text>
-        {refusal !== null && (
-          <Text type="supporting" color="secondary">
-            {refusal}
-          </Text>
-        )}
       </div>
       <div {...stylex.props(styles.dropActionTools)}>
         {intent.plan.kind === 'choose-ready-gate' && (
