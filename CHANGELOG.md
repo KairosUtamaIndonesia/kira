@@ -8,7 +8,7 @@
 
 - A ticket's drawer can expand into a full view: the ticket reads as a document, with its actions, facts, branch, and linked chats in a box that stays beside it while the document scrolls.
 
-- Work is organized around issues with Board and List views, search, and collapsible filters. Each issue can have an execution workspace with its own repository, base branch, and working branch; agents start in that persistent checkout, where tracked changes can be reviewed as a diff and work can continue between runs.
+- Work is organized around tickets with Board and List views, search, and collapsible filters. Each ticket can have an execution workspace with its own repository, base branch, and working branch; agents start in that persistent checkout, where tracked changes can be reviewed as a diff and work can continue between sessions.
 
 - Kira's desktop now runs on Electron, with its own Bun-powered platform API and administration console.
 - Packaged desktop builds check for updates automatically, download them in the background, and offer a restart to install from Settings. macOS, Windows, and Linux AppImage are supported.
