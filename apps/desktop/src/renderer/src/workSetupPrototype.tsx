@@ -4,7 +4,8 @@
  *
  * Question it answers: does setting up read better as a dialog, with the choices that have
  * a known set of answers picked rather than typed? The checkout and the base branch are
- * pickers; only the new branch's name is typed, since it is a name nobody has made yet.
+ * pickers; only the new branch's name is typed, since it is a name nobody has made yet,
+ * and a button inside that field puts the suggested name back.
  *
  * Two things here are not the real data yet, and the dialog says so: the base-branch list
  * is a sample (the real one needs a main-process channel that lists a checkout's
@@ -15,6 +16,8 @@
 import { Button } from '@astryxdesign/core/Button';
 import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog';
 import { Icon } from '@astryxdesign/core/Icon';
+import { IconButton } from '@astryxdesign/core/IconButton';
+import { InputGroup, InputGroupText } from '@astryxdesign/core/InputGroup';
 import { Selector } from '@astryxdesign/core/Selector';
 import { Text } from '@astryxdesign/core/Text';
 import { TextInput } from '@astryxdesign/core/TextInput';
@@ -27,7 +30,7 @@ import {
   typographyVars,
 } from '@astryxdesign/core/theme/tokens.stylex';
 import * as stylex from '@stylexjs/stylex';
-import { ArrowRight, Folder, Plus } from 'lucide-react';
+import { ArrowRight, Folder, Plus, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import type { ModelOption, Ticket } from '../../preload/bridge.ts';
 import { fromHome, shortenMiddle } from './executionWorkspace.ts';
@@ -152,14 +155,27 @@ export function WorkspaceSetupPrototype({ ticket, initial }: { ticket: Ticket; i
               value={choices.baseBranch}
               onChange={(baseBranch) => setChoices({ ...choices, baseBranch })}
             />
-            <TextInput
+            <InputGroup
               label="New branch"
               description="Suggested from the ticket."
-              value={choices.branch}
-              onChange={(branch) => setChoices({ ...choices, branch })}
               status={trouble === null ? undefined : { type: 'error', message: trouble }}
-              size="md"
-            />
+            >
+              <TextInput
+                label="Name"
+                value={choices.branch}
+                onChange={(branch) => setChoices({ ...choices, branch })}
+              />
+              <InputGroupText>
+                <IconButton
+                  label="Use the suggested name"
+                  tooltip="Use the suggested name"
+                  icon={<Icon icon={Sparkles} size="sm" />}
+                  size="sm"
+                  isDisabled={choices.branch === initial.branch}
+                  onClick={() => setChoices({ ...choices, branch: initial.branch })}
+                />
+              </InputGroupText>
+            </InputGroup>
           </div>
 
           <Selector
