@@ -2,6 +2,8 @@
 
 Date: 2026-09-23
 
+Amended by ADR 0024: linked tickets are worked in chat; there is no separate Run what's ready flow.
+
 ## Context
 
 The workflow Kira's tickets were modelled on (ADR 0017) lives in skills: grilling, to-spec,
