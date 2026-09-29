@@ -1,9 +1,9 @@
 /**
- * PROTOTYPE — throwaway. Three ways to draw a ticket's blockers — what it waits on and what
- * waits on it — switchable from a development-only bar.
+ * PROTOTYPE — throwaway. A ticket's blockers — what it waits on and what waits on it — as
+ * ledger rows, in development builds only.
  *
  * Question it answers: what does a person need from this section to decide what to do
- * next? Each variant fills a blocker in from the ticket it names (title, lane, kind, who is
+ * next? It fills a blocker in from the ticket it names (title, lane, kind, who is
  * working on it), not just its name, and says what the ticket's own state means for the
  * tickets downstream. Opening a blocker is real; adding and removing are stubs.
  * Once a variant wins, rewrite it properly in `work.tsx` and drop this file from main.
@@ -22,17 +22,10 @@ import {
   typographyVars,
 } from '@astryxdesign/core/theme/tokens.stylex';
 import * as stylex from '@stylexjs/stylex';
-import { ArrowDown, CircleAlert, CircleCheck, Lock, LockOpen, Plus, X } from 'lucide-react';
+import { CircleAlert, CircleCheck, Lock, LockOpen, Plus, X } from 'lucide-react';
 import { useState } from 'react';
 import type { Band, NamedTicket, Ticket } from '../../preload/bridge.ts';
 import { bandIcon } from './workRows.ts';
-
-const VARIANTS = [
-  { id: 'ledger', label: 'Ledger rows' },
-  { id: 'flow', label: 'Flow' },
-  { id: 'split', label: 'Side by side' },
-] as const;
-type Variant = (typeof VARIANTS)[number]['id'];
 
 interface Props {
   ticket: Ticket;
@@ -76,33 +69,17 @@ function tone(link: Link): Tone {
 }
 
 export function BlockersPrototype(props: Props) {
-  const [variant, setVariant] = useState<Variant>('ledger');
   const [note, setNote] = useState<string | null>(null);
   const stub = (action: string): void => setNote(`“${action}” is stubbed in the prototype.`);
-  const shared = { ...props, onStub: stub };
 
   return (
     <>
-      {variant === 'ledger' && <LedgerBlockers {...shared} />}
-      {variant === 'flow' && <FlowBlockers {...shared} />}
-      {variant === 'split' && <SplitBlockers {...shared} />}
-      <div {...stylex.props(ui.switcher)} role="toolbar" aria-label="Blocker prototypes">
-        {VARIANTS.map((each, index) => (
-          <button
-            key={each.id}
-            type="button"
-            aria-pressed={each.id === variant}
-            {...stylex.props(ui.segment, each.id === variant && ui.segmentOn)}
-            onClick={() => {
-              setVariant(each.id);
-              setNote(null);
-            }}
-          >
-            {String.fromCharCode(65 + index)} · {each.label}
-          </button>
-        ))}
-        {note !== null && <span {...stylex.props(ui.note)}>{note}</span>}
-      </div>
+      <LedgerBlockers {...props} onStub={stub} />
+      {note !== null && (
+        <output {...stylex.props(ui.switcher)}>
+          <span {...stylex.props(ui.note)}>{note}</span>
+        </output>
+      )}
     </>
   );
 }
@@ -212,35 +189,53 @@ function StateMark({ link }: { link: Link }) {
   );
 }
 
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .map((part) => part[0] ?? '')
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+}
+
+/**
+ * One linked ticket, in four columns that line up down the list: its state icon, its name,
+ * its title, and where it stands. Removing it takes the place of where it stands on hover,
+ * so the row reserves no room for a button most rows never show.
+ */
 function Row({
   link,
   onOpen,
-  aside,
+  hint,
   onRemove,
 }: {
   link: Link;
   onOpen: (id: string) => void;
-  aside?: string;
+  hint?: string;
   onRemove?: () => void;
 }) {
-  const person = link.full?.claim?.holder.name;
+  const person = link.named.closed ? undefined : link.full?.claim?.holder.name;
   return (
-    <li {...stylex.props(ui.row, link.named.closed && ui.rowClosed)}>
+    <li {...stylex.props(ui.row, onRemove !== undefined && ui.rowRemovable)}>
       <button
         type="button"
-        aria-label={`Open ${link.named.name}: ${link.full?.title ?? ''}`}
+        aria-label={`Open ${link.named.name}${link.full === undefined ? '' : `: ${link.full.title}`}`}
         {...stylex.props(ui.rowOpen)}
         onClick={() => onOpen(link.named.id)}
       />
       <StateMark link={link} />
       <span {...stylex.props(ui.id)}>{link.named.name}</span>
       <span {...stylex.props(ui.title, link.named.closed && ui.titleClosed)}>
-        {link.full?.title ?? 'A ticket outside this view'}
+        {link.full?.title ?? 'Not in this view'}
       </span>
-      {aside !== undefined && <span {...stylex.props(ui.aside)}>{aside}</span>}
-      <span {...stylex.props(ui.state, toneText[tone(link)])}>
-        {person !== undefined && !link.named.closed ? `${person} · ` : ''}
-        {stateWords(link)}
+      <span {...stylex.props(ui.meta)}>
+        {hint !== undefined && <span {...stylex.props(ui.hint)}>{hint}</span>}
+        {person !== undefined && (
+          <span {...stylex.props(ui.person)} title={person}>
+            {initials(person)}
+          </span>
+        )}
+        <span {...stylex.props(ui.state, toneText[tone(link)])}>{stateWords(link)}</span>
       </span>
       {onRemove !== undefined && (
         <span {...stylex.props(ui.remove)}>
@@ -277,7 +272,7 @@ function LedgerBlockers(props: Shared) {
           >
             <span {...stylex.props(ui.bar)}>
               <span
-                {...stylex.props(ui.barFill)}
+                {...stylex.props(ui.barFill, said.tone === 'check' && ui.barFillCheck)}
                 style={{ width: `${(closed / blockers.length) * 100}%` }}
               />
             </span>
@@ -319,142 +314,11 @@ function LedgerBlockers(props: Shared) {
               key={each.named.id}
               link={each}
               onOpen={onOpen}
-              aside={lastHold(ticket, each) ? 'waits only on this' : undefined}
+              hint={lastHold(ticket, each) ? 'last blocker' : undefined}
             />
           ))}
         </ul>
       )}
-    </section>
-  );
-}
-
-/* ── B. Flow ────────────────────────────────────────────────────────────── */
-
-function FlowBlockers(props: Shared) {
-  const { ticket, tickets, onOpen, onStub } = props;
-  const blockers = links(ticket.children, tickets);
-  const blocking = links(ticket.gates, tickets);
-  const said = verdict(ticket, blockers);
-
-  return (
-    <section {...stylex.props(ui.section)} aria-label="Blockers">
-      <h3 {...stylex.props(ui.heading)}>Blockers</h3>
-      <div {...stylex.props(flow.stack)}>
-        <div {...stylex.props(flow.group)}>
-          <span {...stylex.props(flow.caption)}>Has to close first</span>
-          {blockers.length === 0 ? (
-            <p {...stylex.props(ui.muted)}>Nothing blocks it.</p>
-          ) : (
-            <ul {...stylex.props(ui.list)}>
-              {blockers.map((each) => (
-                <Row
-                  key={each.named.id}
-                  link={each}
-                  onOpen={onOpen}
-                  onRemove={() => onStub('Remove blocker')}
-                />
-              ))}
-            </ul>
-          )}
-          <AddBlocker {...props} />
-        </div>
-        <span {...stylex.props(flow.arrow)} aria-hidden>
-          <Icon icon={ArrowDown} size="sm" />
-        </span>
-        <div
-          {...stylex.props(flow.self, said.tone === 'clear' ? flow.selfClear : flow.selfWaiting)}
-        >
-          <Icon
-            icon={said.tone === 'clear' ? LockOpen : said.tone === 'check' ? CircleAlert : Lock}
-            size="sm"
-          />
-          <span {...stylex.props(ui.id)}>{ticket.name}</span>
-          <span {...stylex.props(flow.selfWords)}>{said.words}</span>
-        </div>
-        <span {...stylex.props(flow.arrow)} aria-hidden>
-          <Icon icon={ArrowDown} size="sm" />
-        </span>
-        <div {...stylex.props(flow.group)}>
-          <span {...stylex.props(flow.caption)}>Waiting on {ticket.name}</span>
-          {blocking.length === 0 ? (
-            <p {...stylex.props(ui.muted)}>Nothing waits on it.</p>
-          ) : (
-            <ul {...stylex.props(ui.list)}>
-              {blocking.map((each) => (
-                <Row
-                  key={each.named.id}
-                  link={each}
-                  onOpen={onOpen}
-                  aside={lastHold(ticket, each) ? 'waits only on this' : undefined}
-                />
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ── C. Side by side ────────────────────────────────────────────────────── */
-
-function SplitBlockers(props: Shared) {
-  const { ticket, tickets, onOpen, onStub } = props;
-  const blockers = links(ticket.children, tickets);
-  const blocking = links(ticket.gates, tickets);
-  const said = verdict(ticket, blockers);
-
-  return (
-    <section {...stylex.props(ui.section)} aria-label="Blockers">
-      <h3 {...stylex.props(ui.heading)}>Blockers</h3>
-      <p {...stylex.props(ui.verdict, VERDICT_STYLE[said.tone])}>
-        <Icon
-          icon={said.tone === 'clear' ? LockOpen : said.tone === 'check' ? CircleAlert : Lock}
-          size="sm"
-        />
-        {said.words}
-      </p>
-      <div {...stylex.props(split.grid)}>
-        <div {...stylex.props(split.card)}>
-          <span {...stylex.props(split.cardHead)}>
-            Blocked by <span {...stylex.props(ui.count)}>{blockers.length}</span>
-          </span>
-          {blockers.length === 0 ? (
-            <p {...stylex.props(ui.muted)}>Nothing.</p>
-          ) : (
-            <ul {...stylex.props(ui.list)}>
-              {blockers.map((each) => (
-                <Row
-                  key={each.named.id}
-                  link={each}
-                  onOpen={onOpen}
-                  onRemove={() => onStub('Remove blocker')}
-                />
-              ))}
-            </ul>
-          )}
-          <AddBlocker {...props} />
-        </div>
-        <div {...stylex.props(split.card)}>
-          <span {...stylex.props(split.cardHead)}>
-            Blocking <span {...stylex.props(ui.count)}>{blocking.length}</span>
-          </span>
-          {blocking.length === 0 ? (
-            <p {...stylex.props(ui.muted)}>Nothing.</p>
-          ) : (
-            <ul {...stylex.props(ui.list)}>
-              {blocking.map((each) => (
-                <Row
-                  key={each.named.id}
-                  link={each}
-                  onOpen={onOpen}
-                  aside={lastHold(ticket, each) ? 'only this' : undefined}
-                />
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
     </section>
   );
 }
@@ -505,6 +369,7 @@ const ui = stylex.create({
     backgroundColor: colorVars['--color-background-muted'],
   },
   barFill: { display: 'block', height: '100%', backgroundColor: colorVars['--color-success'] },
+  barFillCheck: { backgroundColor: colorVars['--color-warning'] },
   verdict: {
     display: 'flex',
     alignItems: 'center',
@@ -532,22 +397,23 @@ const ui = stylex.create({
     '--row-reveal': { default: '0', ':hover': '1', ':focus-within': '1' },
     position: 'relative',
     display: 'grid',
-    gridTemplateColumns: 'auto auto minmax(0, 1fr) auto auto auto',
+    gridTemplateColumns: '16px 64px minmax(0, 1fr) auto',
     alignItems: 'center',
-    columnGap: spacingVars['--spacing-2'],
-    minHeight: 36,
+    columnGap: spacingVars['--spacing-3'],
+    minHeight: 40,
     paddingInline: spacingVars['--spacing-2'],
-    borderBlockEndWidth: 1,
-    borderBlockEndStyle: 'solid',
-    borderBlockEndColor: colorVars['--color-border'],
+    marginInline: `calc(-1 * ${spacingVars['--spacing-2']})`,
+    borderRadius: radiusVars['--radius-element'],
     backgroundColor: { default: 'transparent', ':hover': colorVars['--color-overlay-hover'] },
   },
-  rowClosed: {},
+  // On a removable row, where the ticket stands gives way to the remove button on hover.
+  rowRemovable: { '--removable': '1' },
   rowOpen: {
     position: 'absolute',
     inset: 0,
     padding: 0,
     borderWidth: 0,
+    borderRadius: 'inherit',
     backgroundColor: 'transparent',
     cursor: 'pointer',
     outlineStyle: { default: 'none', ':focus-visible': focusVars['--focus-outline-style'] },
@@ -560,6 +426,7 @@ const ui = stylex.create({
     fontFamily: typographyVars['--font-family-code'],
     fontSize: textSizeVars['--font-size-sm'],
     color: colorVars['--color-text-secondary'],
+    fontVariantNumeric: 'tabular-nums',
     whiteSpace: 'nowrap',
   },
   title: {
@@ -570,25 +437,48 @@ const ui = stylex.create({
     fontSize: textSizeVars['--font-size-base'],
     color: colorVars['--color-text-primary'],
   },
-  titleClosed: {
-    color: colorVars['--color-text-secondary'],
-    textDecorationLine: 'line-through',
-    textDecorationColor: colorVars['--color-border-emphasized'],
+  titleClosed: { color: colorVars['--color-text-secondary'] },
+  meta: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: spacingVars['--spacing-2'],
+    minWidth: 96,
+    opacity: 'calc(1 - var(--row-reveal) * var(--removable, 0))',
+    transitionProperty: 'opacity',
+    transitionDuration: '120ms',
   },
-  aside: {
-    paddingInline: 6,
+  hint: {
+    fontSize: textSizeVars['--font-size-sm'],
+    color: colorVars['--color-text-secondary'],
+    whiteSpace: 'nowrap',
+  },
+  person: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 20,
+    height: 20,
     borderRadius: 999,
     fontSize: textSizeVars['--font-size-xs'],
-    lineHeight: '18px',
-    whiteSpace: 'nowrap',
-    color: colorVars['--color-text-accent'],
-    backgroundColor: colorVars['--color-accent-muted'],
+    fontWeight: 600,
+    color: colorVars['--color-text-primary'],
+    backgroundColor: colorVars['--color-neutral'],
   },
-  state: { fontSize: textSizeVars['--font-size-sm'], whiteSpace: 'nowrap' },
+  state: {
+    minWidth: 76,
+    textAlign: 'end',
+    fontSize: textSizeVars['--font-size-sm'],
+    fontWeight: 500,
+    whiteSpace: 'nowrap',
+  },
   remove: {
-    position: 'relative',
+    position: 'absolute',
+    insetBlock: 0,
+    insetInlineEnd: spacingVars['--spacing-1'],
     zIndex: 1,
-    display: 'inline-flex',
+    display: 'flex',
+    alignItems: 'center',
     opacity: 'var(--row-reveal)',
   },
   muted: {
@@ -641,66 +531,3 @@ const VERDICT_STYLE = {
   waiting: ui.verdictWaiting,
   check: ui.verdictCheck,
 } as const;
-
-const flow = stylex.create({
-  stack: { display: 'flex', flexDirection: 'column', gap: spacingVars['--spacing-2'] },
-  group: { display: 'flex', flexDirection: 'column', gap: spacingVars['--spacing-1'] },
-  caption: {
-    fontSize: textSizeVars['--font-size-sm'],
-    fontWeight: 600,
-    color: colorVars['--color-text-secondary'],
-  },
-  arrow: {
-    display: 'flex',
-    justifyContent: 'center',
-    width: 32,
-    color: colorVars['--color-icon-secondary'],
-  },
-  self: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: spacingVars['--spacing-2'],
-    paddingBlock: spacingVars['--spacing-2'],
-    paddingInline: spacingVars['--spacing-3'],
-    borderRadius: radiusVars['--radius-container'],
-    borderWidth: 1,
-    borderStyle: 'solid',
-  },
-  selfWaiting: {
-    color: colorVars['--color-text-orange'],
-    borderColor: colorVars['--color-warning'],
-    backgroundColor: colorVars['--color-warning-muted'],
-  },
-  selfClear: {
-    color: colorVars['--color-text-green'],
-    borderColor: colorVars['--color-success'],
-    backgroundColor: colorVars['--color-success-muted'],
-  },
-  selfWords: { fontSize: textSizeVars['--font-size-sm'] },
-});
-
-const split = stylex.create({
-  grid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-    gap: spacingVars['--spacing-3'],
-    '@media (max-width: 900px)': { gridTemplateColumns: 'minmax(0, 1fr)' },
-  },
-  card: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: spacingVars['--spacing-1'],
-    minWidth: 0,
-    padding: spacingVars['--spacing-3'],
-    borderRadius: 10,
-    backgroundColor: colorVars['--color-background-muted'],
-  },
-  cardHead: {
-    display: 'flex',
-    alignItems: 'baseline',
-    gap: spacingVars['--spacing-2'],
-    paddingBlockEnd: spacingVars['--spacing-1'],
-    fontSize: textSizeVars['--font-size-sm'],
-    fontWeight: 600,
-  },
-});
