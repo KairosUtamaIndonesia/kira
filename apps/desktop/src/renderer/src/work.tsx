@@ -87,6 +87,7 @@ import {
   History,
   Map as MapIcon,
   Maximize2,
+  Minimize2,
   MessageSquare,
   Paperclip,
   Play,
@@ -147,13 +148,6 @@ import type {
   WorkspaceSummary,
 } from '../../preload/bridge.ts';
 import { ExecutionWorkspacePanel } from './executionWorkspace.tsx';
-import {
-  readTicketVariant,
-  richSample,
-  TicketFullPrototype,
-  TicketPrototypeSwitcher,
-  type TicketVariant,
-} from './workTicketPrototype.tsx';
 
 /** Two readings of the same issues. */
 type View = 'board' | 'list';
@@ -720,14 +714,7 @@ const styles = stylex.create({
     borderInlineStartStyle: 'solid',
     borderInlineStartColor: colorVars['--color-background-muted'],
   },
-  expand: {
-    position: 'absolute',
-    insetBlockStart: spacingVars['--spacing-3'],
-    insetInlineEnd: spacingVars['--spacing-3'],
-    zIndex: 1,
-  },
   boardDrawer: {
-    position: 'relative',
     display: 'flex',
     flexDirection: 'column',
     flex: '0 0 min(420px, 42vw)',
@@ -769,6 +756,104 @@ const styles = stylex.create({
     borderBlockEndWidth: borderVars['--border-width'],
     borderBlockEndStyle: 'solid',
     borderBlockEndColor: colorVars['--color-background-muted'],
+  },
+  panelHeadBar: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacingVars['--spacing-2'],
+  },
+  fullPage: { backgroundColor: colorVars['--color-background-body'] },
+  fullBar: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacingVars['--spacing-3'],
+    flexShrink: 0,
+    height: 44,
+    paddingInline: spacingVars['--spacing-4'],
+    borderBlockEndWidth: borderVars['--border-width'],
+    borderBlockEndStyle: 'solid',
+    borderBlockEndColor: colorVars['--color-border'],
+    backgroundColor: colorVars['--color-background-surface'],
+  },
+  fullBarTools: { display: 'flex', alignItems: 'center', gap: spacingVars['--spacing-1'] },
+  fullScroll: { flex: 1, minHeight: 0, overflowY: 'auto' },
+  fullGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) 300px',
+    alignItems: 'start',
+    gap: spacingVars['--spacing-8'],
+    maxWidth: 1180,
+    marginInline: 'auto',
+    padding: spacingVars['--spacing-6'],
+    '@media (max-width: 860px)': { gridTemplateColumns: 'minmax(0, 1fr)' },
+  },
+  fullDoc: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: spacingVars['--spacing-6'],
+    minWidth: 0,
+  },
+  /* The box's edge is the shadow's own inset ring; it takes no border (DESIGN.md). */
+  fullBox: {
+    position: 'sticky',
+    insetBlockStart: spacingVars['--spacing-6'],
+    display: 'flex',
+    flexDirection: 'column',
+    gap: spacingVars['--spacing-5'],
+    maxHeight: `calc(100vh - 200px)`,
+    overflowY: 'auto',
+    padding: spacingVars['--spacing-4'],
+    borderRadius: 10,
+    backgroundColor: colorVars['--color-background-popover'],
+    boxShadow: shadowVars['--shadow-low'],
+    '@media (max-width: 860px)': { position: 'static', maxHeight: 'none' },
+  },
+  fullActions: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: spacingVars['--spacing-2'],
+  },
+  fullFacts: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: spacingVars['--spacing-2'],
+    margin: 0,
+  },
+  fullFact: {
+    display: 'grid',
+    gridTemplateColumns: '96px minmax(0, 1fr)',
+    alignItems: 'baseline',
+    gap: spacingVars['--spacing-2'],
+  },
+  fullFactLabel: {
+    fontSize: textSizeVars['--font-size-sm'],
+    color: colorVars['--color-text-secondary'],
+  },
+  fullFactValue: { margin: 0, fontSize: textSizeVars['--font-size-sm'], overflowWrap: 'anywhere' },
+  fullGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: spacingVars['--spacing-2'],
+    minWidth: 0,
+    paddingBlockStart: spacingVars['--spacing-4'],
+    borderBlockStartWidth: borderVars['--border-width'],
+    borderBlockStartStyle: 'solid',
+    borderBlockStartColor: colorVars['--color-border'],
+  },
+  chatButton: {
+    width: '100%',
+    minWidth: 0,
+    justifyContent: 'flex-start',
+  },
+  chatButtonLabel: {
+    display: 'block',
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
   },
   panelBody: {
     display: 'flex',
@@ -1094,11 +1179,7 @@ export function WorkSurface({
   const [refusal, setRefusal] = useState<string | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [attachedIds, setAttachedIds] = useState<string[]>([]);
-  // PROTOTYPE: the ticket's full view (workTicketPrototype.tsx); development builds only.
-  const [ticketExpanded, setTicketExpanded] = useState(false);
-  const [ticketVariant, setTicketVariant] = useState<TicketVariant>(readTicketVariant);
-  const [ticketRich, setTicketRich] = useState(false);
-  const [ticketNote, setTicketNote] = useState<string | null>(null);
+  const [isFull, setIsFull] = useState(false);
   const [executionWorkspaces, setExecutionWorkspaces] = useState<
     Record<string, ExecutionWorkspace[]>
   >({});
@@ -1374,7 +1455,7 @@ export function WorkSurface({
   const open = tickets.find((each) => each.id === openId) ?? null;
   const placement = view === 'board' ? 'beside' : 'over';
   const closePanel = (): void => {
-    setTicketExpanded(false);
+    setIsFull(false);
     setIsWriting(false);
     setOpenId(null);
     setRefusal(null);
@@ -1404,7 +1485,10 @@ export function WorkSurface({
       ticket={open}
       repository={workspace.folder}
       executionWorkspaces={executionWorkspaces[open.id] ?? []}
-      placement={placement}
+      placement={isFull ? 'full' : placement}
+      onExpand={() => setIsFull(true)}
+      onCollapse={() => setIsFull(false)}
+      linkedChats={chatSummaries.filter((chat) => chat.workTicketIds.includes(open.id))}
       refusal={refusal}
       chatIds={chatIds}
       onLeave={closePanel}
@@ -1520,6 +1604,7 @@ export function WorkSurface({
             size="sm"
             onClick={() => {
               setOpenId(null);
+              setIsFull(false);
               setIsWriting(true);
               setRefusal(null);
             }}
@@ -1694,21 +1779,8 @@ export function WorkSurface({
             }
           />
         </div>
-      ) : view === 'board' && import.meta.env.DEV && ticketExpanded && open !== null ? (
-        <TicketFullPrototype
-          variant={ticketVariant}
-          {...(ticketRich
-            ? richSample(open)
-            : {
-                ticket: open,
-                workspaces: executionWorkspaces[open.id] ?? [],
-                chats: chatSummaries.filter((chat) => chat.workTicketIds.includes(open.id)),
-              })}
-          laneLabel={bandLabel}
-          onCollapse={() => setTicketExpanded(false)}
-          onClose={closePanel}
-          onStub={(action) => setTicketNote(`“${action}” is stubbed in the prototype.`)}
-        />
+      ) : isFull && open !== null && !isWriting ? (
+        panel
       ) : view === 'board' ? (
         <BoardView
           tickets={visibleTickets}
@@ -1722,14 +1794,6 @@ export function WorkSurface({
           onReorder={(activeId, overId) => void reorder(activeId, overId)}
           onDrop={beginTicketDrop}
           panel={panel}
-          onExpand={
-            import.meta.env.DEV && open !== null && !isWriting
-              ? () => {
-                  setTicketNote(null);
-                  setTicketExpanded(true);
-                }
-              : undefined
-          }
           attachedIds={attachedIds}
           chatSummaries={chatSummaries}
           onOpenChat={onOpenChat}
@@ -1748,15 +1812,6 @@ export function WorkSurface({
           onOpen={openTicket}
           panel={panel}
           onLeave={closePanel}
-        />
-      )}
-      {import.meta.env.DEV && view === 'board' && ticketExpanded && open !== null && (
-        <TicketPrototypeSwitcher
-          variant={ticketVariant}
-          onChange={setTicketVariant}
-          rich={ticketRich}
-          onToggleRich={() => setTicketRich((on) => !on)}
-          note={ticketNote}
         />
       )}
     </div>
@@ -2338,13 +2393,11 @@ function BoardView({
   onReorder,
   onDrop,
   panel,
-  onExpand,
   attachedIds,
   chatSummaries,
   onOpenChat,
   onToggleAttached,
 }: ViewProps & {
-  onExpand?: () => void;
   bands: typeof BANDS;
   showDone: boolean;
   doneCount: number;
@@ -2420,20 +2473,7 @@ function BoardView({
             );
           })}
         </section>
-        {panel !== null && (
-          <div {...stylex.props(styles.boardDrawer)}>
-            {onExpand !== undefined && (
-              <span {...stylex.props(styles.expand)}>
-                <IconButton
-                  label="Expand to the full view"
-                  icon={<Icon icon={Maximize2} size="sm" />}
-                  onClick={onExpand}
-                />
-              </span>
-            )}
-            {panel}
-          </div>
-        )}
+        {panel !== null && <div {...stylex.props(styles.boardDrawer)}>{panel}</div>}
       </div>
       {/* The row being dragged is drawn above every lane, so it can leave the one it
           scrolls in; the row it came from stays behind, faded, until the drop. */}
@@ -2887,27 +2927,80 @@ function Band({
  * The frame a ticket is read or written in. The views disagree about where it
  * sits and what is on screen with it, not about what it says: `inline` takes the
  * queue's place, `over` covers the board behind a scrim, `beside` holds a column
- * of its own. Only `placement` differs here, and all it decides is how you leave.
+ * of its own, and `full` takes the whole surface. `full` is the drawer grown into a
+ * page: the ticket reads as a document, and its actions and facts float in a box
+ * beside it that holds its place while the document scrolls.
  */
+type Placement = 'inline' | 'over' | 'beside' | 'full';
+
 function TicketPanel({
   placement,
   onLeave,
+  onExpand,
+  onCollapse,
+  crumb,
   refusal,
   head,
   foot,
+  aside,
   children,
 }: {
-  placement: 'inline' | 'over' | 'beside';
+  placement: Placement;
   onLeave: () => void;
+  onExpand?: () => void;
+  onCollapse?: () => void;
+  crumb?: string;
   refusal: string | null;
   head: ReactNode;
   foot?: ReactNode;
+  aside?: ReactNode;
   children: ReactNode;
 }) {
+  const banner = refusal !== null && (
+    <div {...stylex.props(styles.refusal)}>
+      <Banner status="error" title="Action could not be completed" description={refusal} />
+    </div>
+  );
+
+  if (placement === 'full') {
+    return (
+      <div {...stylex.props(styles.panel, styles.fullPage)}>
+        <div {...stylex.props(styles.fullBar)}>
+          <Text type="supporting" color="secondary" maxLines={1}>
+            {crumb}
+          </Text>
+          <span {...stylex.props(styles.fullBarTools)}>
+            {onCollapse !== undefined && (
+              <IconButton
+                label="Collapse to the drawer"
+                icon={<Icon icon={Minimize2} size="sm" />}
+                onClick={onCollapse}
+              />
+            )}
+            <IconButton label="Close issue" icon={<Icon icon={X} size="sm" />} onClick={onLeave} />
+          </span>
+        </div>
+        {banner}
+        <div {...stylex.props(styles.fullScroll)}>
+          <div {...stylex.props(styles.fullGrid)}>
+            <article {...stylex.props(styles.fullDoc)}>
+              {head}
+              {children}
+            </article>
+            <aside aria-label="Ticket actions and facts" {...stylex.props(styles.fullBox)}>
+              {foot !== undefined && <div {...stylex.props(styles.fullActions)}>{foot}</div>}
+              {aside}
+            </aside>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div {...stylex.props(styles.panel)}>
       <div {...stylex.props(styles.panelHead)}>
-        <div>
+        <div {...stylex.props(styles.panelHeadBar)}>
           <Button
             label={placement === 'inline' ? 'Back to the queue' : 'Close issue'}
             icon={<Icon icon={placement === 'inline' ? ArrowLeft : X} size="sm" />}
@@ -2915,14 +3008,17 @@ function TicketPanel({
             size="sm"
             onClick={onLeave}
           />
+          {onExpand !== undefined && (
+            <IconButton
+              label="Expand to the full view"
+              icon={<Icon icon={Maximize2} size="sm" />}
+              onClick={onExpand}
+            />
+          )}
         </div>
         {head}
       </div>
-      {refusal !== null && (
-        <div {...stylex.props(styles.refusal)}>
-          <Banner status="error" title="Action could not be completed" description={refusal} />
-        </div>
-      )}
+      {banner}
       <div {...stylex.props(styles.panelBody)}>{children}</div>
       {foot !== undefined && <div {...stylex.props(styles.panelFoot)}>{foot}</div>}
     </div>
@@ -2953,11 +3049,14 @@ function TicketReading({
   onJudge,
   onResolve,
   onRequestRun,
+  onExpand,
+  onCollapse,
+  linkedChats = [],
 }: {
   ticket: Ticket;
   repository: string;
   executionWorkspaces: ExecutionWorkspace[];
-  placement: 'inline' | 'over' | 'beside';
+  placement: Placement;
   refusal: string | null;
   chatIds: string[];
   onLeave: () => void;
@@ -2976,6 +3075,9 @@ function TicketReading({
   onJudge: (verdict: 'accepted' | 'sent-back') => Promise<boolean>;
   onResolve: () => Promise<boolean>;
   onRequestRun: () => void;
+  onExpand?: () => void;
+  onCollapse?: () => void;
+  linkedChats?: ChatSummary[];
 }) {
   const [isClosing, setIsClosing] = useState(false);
   const [isGating, setIsGating] = useState(false);
@@ -2990,10 +3092,240 @@ function TicketReading({
     setIsBusy(false);
   }
 
+  // The sections the drawer keeps behind "More ticket details", and the full view lays
+  // out in the open: each is drawn once, and only where it sits differs.
+  const runs = <RunHistory ticket={ticket} chatIds={chatIds} onOpenChat={onOpenChat} />;
+  const workspace = (
+    <ExecutionWorkspacePanel
+      ticket={ticket}
+      workspaces={executionWorkspaces}
+      repository={repository}
+      onStart={onRun}
+      onDeliver={onDeliver}
+      onChanged={onChanged}
+    />
+  );
+  const gatedBy = (
+    <section {...stylex.props(styles.section)}>
+      <Text type="label" weight="medium">
+        What gates it
+      </Text>
+      {ticket.children.length === 0 ? (
+        <Text type="supporting" color="secondary">
+          Nothing gates this. A ticket names the tickets that hold it up, and a parent names its
+          slices.
+        </Text>
+      ) : (
+        <>
+          <Text type="supporting" color="secondary">
+            {ticket.children.filter((each) => each.closed).length} of {ticket.children.length}{' '}
+            closed
+          </Text>
+          <ul {...stylex.props(styles.lines)}>
+            {ticket.children.map((each) => (
+              <li key={each.id} {...stylex.props(styles.line)}>
+                <NamedGlyph ticket={each} />
+                <button
+                  type="button"
+                  {...stylex.props(styles.gateName)}
+                  onClick={() => onOpen(each.id)}
+                >
+                  <Text type="supporting">
+                    {each.name}
+                    {each.closure === 'wontfix' ? ' — closed without being done' : ''}
+                  </Text>
+                </button>
+                <IconButton
+                  label={`Take ${each.name} off what gates this`}
+                  icon={<Icon icon={X} size="sm" />}
+                  isDisabled={isBusy}
+                  onClick={() => void run(() => onUngate(each.id))}
+                />
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {isGating ? (
+        <>
+          <div {...stylex.props(styles.field)}>
+            <div {...stylex.props(styles.fieldGrow)}>
+              <TextInput
+                label="Which issue blocks this one"
+                value={named}
+                onChange={setNamed}
+                description="By its name — FND-12 — or by anything else the server knows it as."
+                size="sm"
+              />
+            </div>
+          </div>
+          <div {...stylex.props(styles.actions)}>
+            <Button
+              label="Add the gate"
+              size="sm"
+              variant="secondary"
+              isDisabled={isBusy || named.trim() === ''}
+              onClick={() =>
+                void run(async () => {
+                  const held = await onGate(named.trim());
+                  if (held !== null) {
+                    setNamed('');
+                    setIsGating(false);
+                  }
+                })
+              }
+            />
+            <Button
+              label="Cancel"
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setIsGating(false);
+                onRefuse(null);
+              }}
+            />
+          </div>
+        </>
+      ) : (
+        <div>
+          <Button
+            label="Add a gate"
+            icon={<Icon icon={Plus} size="sm" />}
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              setIsGating(true);
+              onRefuse(null);
+            }}
+          />
+        </div>
+      )}
+    </section>
+  );
+  const gating = (
+    <>
+      {ticket.gates.length > 0 && (
+        <section {...stylex.props(styles.section)}>
+          <Text type="label" weight="medium">
+            What it gates
+          </Text>
+          <ul {...stylex.props(styles.lines)}>
+            {ticket.gates.map((each) => (
+              <li key={each.id} {...stylex.props(styles.line)}>
+                <Icon icon={ArrowUp} size="sm" />
+                <button
+                  type="button"
+                  {...stylex.props(styles.gateName)}
+                  onClick={() => onOpen(each.id)}
+                >
+                  <Text type="supporting">
+                    {each.name}
+                    {each.closed ? ' — closed' : ' — still open'}
+                  </Text>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </>
+  );
+  const branch = (
+    <section {...stylex.props(styles.section)}>
+      <Text type="label" weight="medium">
+        The branch
+      </Text>
+      <div {...stylex.props(styles.branch)}>
+        <Text type="code">{ticket.branch}</Text>
+        <IconButton
+          label={`Copy ${ticket.branch}`}
+          icon={<Icon icon={Copy} size="sm" />}
+          onClick={() => copyText(ticket.branch)}
+        />
+      </div>
+      <Text type="supporting" color="secondary">
+        {branchNote(ticket)}
+      </Text>
+    </section>
+  );
+
+  // In the full view, what the drawer lists under its disclosure sits in the floating
+  // box instead: the facts a person scans, then the branch, then the chats it came from.
+  const facts: { label: string; value: string }[] = [
+    { label: 'Status', value: bandLabel(ticket.band) },
+    {
+      label: 'Gate',
+      value:
+        ticket.gate === 'draft'
+          ? 'Draft'
+          : ticket.gate === 'ready-for-agent'
+            ? 'Ready for an agent'
+            : 'Ready for a person',
+    },
+    { label: 'Kind', value: ticket.kind },
+    { label: 'Held by', value: ticket.claim?.holder.name ?? 'Nobody' },
+    { label: 'Written by', value: ticket.author?.name ?? '—' },
+    { label: 'Rank', value: String(ticket.rank) },
+    { label: 'Written', value: when(ticket.createdAt) },
+    { label: 'Changed', value: when(ticket.updatedAt) },
+    ...(ticket.closedAt === null
+      ? []
+      : [
+          {
+            label: 'Closed',
+            value: `${when(ticket.closedAt)}, ${ticket.closure === 'wontfix' ? 'not done' : 'done'}`,
+          },
+        ]),
+  ];
+  const aside =
+    placement === 'full' ? (
+      <>
+        <dl {...stylex.props(styles.fullFacts)}>
+          {facts.map((fact) => (
+            <div key={fact.label} {...stylex.props(styles.fullFact)}>
+              <dt {...stylex.props(styles.fullFactLabel)}>{fact.label}</dt>
+              <dd {...stylex.props(styles.fullFactValue)}>{fact.value}</dd>
+            </div>
+          ))}
+        </dl>
+        <div {...stylex.props(styles.fullGroup)}>{branch}</div>
+        <section {...stylex.props(styles.fullGroup)}>
+          <Text type="label" weight="medium">
+            Linked chats
+          </Text>
+          {linkedChats.length === 0 ? (
+            <Text type="supporting" color="secondary">
+              No chats are linked to this ticket.
+            </Text>
+          ) : (
+            linkedChats.map((chat) => (
+              <Button
+                key={chat.id}
+                label={`Open chat: ${chat.title}`}
+                icon={<Icon icon={MessageSquare} size="sm" />}
+                size="sm"
+                variant="ghost"
+                width="100%"
+                xstyle={styles.chatButton}
+                onClick={() => onOpenChat(chat.id)}
+              >
+                <span {...stylex.props(styles.chatButtonLabel)}>{chat.title}</span>
+              </Button>
+            ))
+          )}
+        </section>
+      </>
+    ) : undefined;
+
   return (
     <TicketPanel
       placement={placement}
       onLeave={onLeave}
+      onExpand={onExpand}
+      onCollapse={onCollapse}
+      crumb={`${bandLabel(ticket.band)} / ${ticket.name}`}
+      aside={aside}
       refusal={refusal}
       head={
         <div {...stylex.props(styles.ticketHeader)}>
@@ -3244,204 +3576,71 @@ function TicketReading({
             </section>
           )}
 
-          <details {...stylex.props(styles.ticketDetails)}>
-            <summary {...stylex.props(styles.ticketDetailsSummary)}>
-              <span {...stylex.props(styles.ticketDetailsSummaryText)}>
-                <Text type="label" weight="medium">
-                  More ticket details
-                </Text>
-                <Text type="supporting" color="secondary">
-                  Runs, dependencies, and branch
-                </Text>
-              </span>
-            </summary>
-            <div {...stylex.props(styles.ticketDetailsContent)}>
-              <div {...stylex.props(styles.ticketFacts)}>
-                <div {...stylex.props(styles.ticketFact)}>
+          {placement === 'full' ? (
+            <>
+              {runs}
+              {workspace}
+              {gatedBy}
+              {gating}
+            </>
+          ) : (
+            <details {...stylex.props(styles.ticketDetails)}>
+              <summary {...stylex.props(styles.ticketDetailsSummary)}>
+                <span {...stylex.props(styles.ticketDetailsSummaryText)}>
+                  <Text type="label" weight="medium">
+                    More ticket details
+                  </Text>
                   <Text type="supporting" color="secondary">
-                    Rank
+                    Runs, dependencies, and branch
                   </Text>
-                  <Text type="supporting" {...stylex.props(styles.ticketFactValue)}>
-                    {ticket.rank}
-                  </Text>
-                </div>
-                {ticket.author !== null && (
+                </span>
+              </summary>
+              <div {...stylex.props(styles.ticketDetailsContent)}>
+                <div {...stylex.props(styles.ticketFacts)}>
                   <div {...stylex.props(styles.ticketFact)}>
                     <Text type="supporting" color="secondary">
-                      Written by
+                      Rank
                     </Text>
                     <Text type="supporting" {...stylex.props(styles.ticketFactValue)}>
-                      {ticket.author.name}
+                      {ticket.rank}
                     </Text>
                   </div>
-                )}
-              </div>
-
-              {/* What a run made of it, above the queue's own facts: on a ticket somebody or
-                  something has worked, this is what the ticket is waiting on. */}
-              <RunHistory ticket={ticket} chatIds={chatIds} onOpenChat={onOpenChat} />
-
-              <ExecutionWorkspacePanel
-                ticket={ticket}
-                workspaces={executionWorkspaces}
-                repository={repository}
-                onStart={onRun}
-                onDeliver={onDeliver}
-                onChanged={onChanged}
-              />
-
-              <section {...stylex.props(styles.section)}>
-                <Text type="label" weight="medium">
-                  What gates it
-                </Text>
-                {ticket.children.length === 0 ? (
-                  <Text type="supporting" color="secondary">
-                    Nothing gates this. A ticket names the tickets that hold it up, and a parent
-                    names its slices.
-                  </Text>
-                ) : (
-                  <>
-                    <Text type="supporting" color="secondary">
-                      {ticket.children.filter((each) => each.closed).length} of{' '}
-                      {ticket.children.length} closed
-                    </Text>
-                    <ul {...stylex.props(styles.lines)}>
-                      {ticket.children.map((each) => (
-                        <li key={each.id} {...stylex.props(styles.line)}>
-                          <NamedGlyph ticket={each} />
-                          <button
-                            type="button"
-                            {...stylex.props(styles.gateName)}
-                            onClick={() => onOpen(each.id)}
-                          >
-                            <Text type="supporting">
-                              {each.name}
-                              {each.closure === 'wontfix' ? ' — closed without being done' : ''}
-                            </Text>
-                          </button>
-                          <IconButton
-                            label={`Take ${each.name} off what gates this`}
-                            icon={<Icon icon={X} size="sm" />}
-                            isDisabled={isBusy}
-                            onClick={() => void run(() => onUngate(each.id))}
-                          />
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                )}
-
-                {isGating ? (
-                  <>
-                    <div {...stylex.props(styles.field)}>
-                      <div {...stylex.props(styles.fieldGrow)}>
-                        <TextInput
-                          label="Which issue blocks this one"
-                          value={named}
-                          onChange={setNamed}
-                          description="By its name — FND-12 — or by anything else the server knows it as."
-                          size="sm"
-                        />
-                      </div>
+                  {ticket.author !== null && (
+                    <div {...stylex.props(styles.ticketFact)}>
+                      <Text type="supporting" color="secondary">
+                        Written by
+                      </Text>
+                      <Text type="supporting" {...stylex.props(styles.ticketFactValue)}>
+                        {ticket.author.name}
+                      </Text>
                     </div>
-                    <div {...stylex.props(styles.actions)}>
-                      <Button
-                        label="Add the gate"
-                        size="sm"
-                        variant="secondary"
-                        isDisabled={isBusy || named.trim() === ''}
-                        onClick={() =>
-                          void run(async () => {
-                            const held = await onGate(named.trim());
-                            if (held !== null) {
-                              setNamed('');
-                              setIsGating(false);
-                            }
-                          })
-                        }
-                      />
-                      <Button
-                        label="Cancel"
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          setIsGating(false);
-                          onRefuse(null);
-                        }}
-                      />
-                    </div>
-                  </>
-                ) : (
-                  <div>
-                    <Button
-                      label="Add a gate"
-                      icon={<Icon icon={Plus} size="sm" />}
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => {
-                        setIsGating(true);
-                        onRefuse(null);
-                      }}
-                    />
-                  </div>
-                )}
-              </section>
+                  )}
+                </div>
 
-              {ticket.gates.length > 0 && (
+                {runs}
+
+                {workspace}
+
+                {gatedBy}
+
+                {gating}
+
+                {branch}
+
                 <section {...stylex.props(styles.section)}>
                   <Text type="label" weight="medium">
-                    What it gates
+                    Written and changed
                   </Text>
-                  <ul {...stylex.props(styles.lines)}>
-                    {ticket.gates.map((each) => (
-                      <li key={each.id} {...stylex.props(styles.line)}>
-                        <Icon icon={ArrowUp} size="sm" />
-                        <button
-                          type="button"
-                          {...stylex.props(styles.gateName)}
-                          onClick={() => onOpen(each.id)}
-                        >
-                          <Text type="supporting">
-                            {each.name}
-                            {each.closed ? ' — closed' : ' — still open'}
-                          </Text>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
+                  <Text type="supporting" color="secondary">
+                    written {when(ticket.createdAt)} · last changed {when(ticket.updatedAt)}
+                    {ticket.closedAt === null
+                      ? ''
+                      : ` · closed ${when(ticket.closedAt)} as ${ticket.closure === 'wontfix' ? 'something that will not be done' : 'done'}`}
+                  </Text>
                 </section>
-              )}
-
-              <section {...stylex.props(styles.section)}>
-                <Text type="label" weight="medium">
-                  The branch
-                </Text>
-                <div {...stylex.props(styles.branch)}>
-                  <Text type="code">{ticket.branch}</Text>
-                  <IconButton
-                    label={`Copy ${ticket.branch}`}
-                    icon={<Icon icon={Copy} size="sm" />}
-                    onClick={() => copyText(ticket.branch)}
-                  />
-                </div>
-                <Text type="supporting" color="secondary">
-                  {branchNote(ticket)}
-                </Text>
-              </section>
-
-              <section {...stylex.props(styles.section)}>
-                <Text type="label" weight="medium">
-                  Written and changed
-                </Text>
-                <Text type="supporting" color="secondary">
-                  written {when(ticket.createdAt)} · last changed {when(ticket.updatedAt)}
-                  {ticket.closedAt === null
-                    ? ''
-                    : ` · closed ${when(ticket.closedAt)} as ${ticket.closure === 'wontfix' ? 'something that will not be done' : 'done'}`}
-                </Text>
-              </section>
-            </div>
-          </details>
+              </div>
+            </details>
+          )}
         </>
       )}
     </TicketPanel>
