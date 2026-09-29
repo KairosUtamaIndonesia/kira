@@ -1118,7 +1118,7 @@ describe('the gate a ticket is at', () => {
       expect(await refused.json()).toEqual({
         error: {
           code: 'CRITERIA_REQUIRED',
-          message: 'A ticket an agent runs has to say how it is known to be done.',
+          message: 'Say how we’ll know this ticket is done before an agent starts on it.',
         },
       });
 
@@ -1988,7 +1988,7 @@ describe('a run', () => {
     const twice = await judged(app, person.key, ticket.id, made.id, { verdict: 'sent-back' });
     expect(twice.status).toBe(400);
     expect(await twice.json()).toEqual({
-      error: { code: 'RUN_JUDGED', message: 'That session has already been judged.' },
+      error: { code: 'RUN_JUDGED', message: 'That session already has a verdict.' },
     });
 
     // A closed ticket cannot be retried, and this refusal also comes from the server.
@@ -1997,7 +1997,7 @@ describe('a run', () => {
     expect(await retry.json()).toEqual({
       error: {
         code: 'CLAIM_NOT_READY',
-        message: 'A ticket is worked when it is ready and nothing else.',
+        message: 'A ticket can be worked on only while it is ready.',
       },
     });
 
@@ -2045,7 +2045,7 @@ describe('a run', () => {
     const answer = await judged(app, person.key, ticket.id, made.id, { verdict: 'accepted' });
     expect(answer.status).toBe(400);
     expect(await answer.json()).toEqual({
-      error: { code: 'RUN_UNFINISHED', message: 'That session has not ended yet.' },
+      error: { code: 'RUN_UNFINISHED', message: 'That session hasn’t ended yet.' },
     });
   });
 

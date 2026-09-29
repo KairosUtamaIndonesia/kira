@@ -171,12 +171,12 @@ const CASES: Case[] = [
     makeDeps: (calls) =>
       deps(calls, {
         write: async () => {
-          throw new Error('A ticket an agent runs has to say how it is known to be done.');
+          throw new Error('Say how we’ll know this ticket is done before an agent starts on it.');
         },
       }),
     call: 'write',
     args: ['api', draft],
-    want: { ok: false, error: 'A ticket an agent runs has to say how it is known to be done.' },
+    want: { ok: false, error: 'Say how we’ll know this ticket is done before an agent starts on it.' },
     wantCalls: [],
   },
   {
@@ -264,12 +264,12 @@ const CASES: Case[] = [
     makeDeps: (calls) =>
       deps(calls, {
         gate: async () => {
-          throw new Error('That blocker would close a circle of tickets.');
+          throw new Error('Those two tickets would wait on each other. Choose a ticket that isn’t already blocked by this one.');
         },
       }),
     call: 'gate',
     args: ['ticket-1', 'FND-2'],
-    want: { ok: false, error: 'That blocker would close a circle of tickets.' },
+    want: { ok: false, error: 'Those two tickets would wait on each other. Choose a ticket that isn’t already blocked by this one.' },
     wantCalls: [],
   },
   {

@@ -539,13 +539,13 @@ test('a refusal is passed on in the server’s own words', async () => {
   const held = tracker(calls, {
     changeTicket: async () => ({
       kind: 'refused',
-      message: 'A ticket an agent runs has to say how it is known to be done.',
+      message: 'Say how we’ll know this ticket is done before an agent starts on it.',
     }),
   });
 
   assert.equal(
     await tried(() => held.held.change(ticket.id, { gate: 'ready-for-agent' })),
-    'refused A ticket an agent runs has to say how it is known to be done.',
+    'refused Say how we’ll know this ticket is done before an agent starts on it.',
   );
 });
 

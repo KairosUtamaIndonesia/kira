@@ -83,7 +83,7 @@ describe('spec breakdown publication', () => {
     expect(response.status).toBe(400);
     expect((await response.json()).error).toEqual({
       code: 'GATE_CIRCLE',
-      message: 'That blocker would close a circle of tickets.',
+      message: 'Those two tickets would wait on each other. Choose a ticket that isn’t already blocked by this one.',
     });
 
     const queue = await send(made.app, `/api/projects/${made.projectId}`, {
@@ -132,7 +132,7 @@ describe('spec breakdown publication', () => {
     expect(refused.status).toBe(400);
     expect((await refused.json()).error).toEqual({
       code: 'CRITERIA_REQUIRED',
-      message: 'A ticket an agent runs has to say how it is known to be done.',
+      message: 'Say how we’ll know this ticket is done before an agent starts on it.',
     });
 
     const queue = await send(made.app, `/api/projects/${made.projectId}`, {
