@@ -48,6 +48,8 @@ export interface ChatDeps {
   restoreChat(id: string): Promise<void>;
   /** Throw a chat away, and everything said in it. */
   deleteChat(id: string): Promise<void>;
+  /** File a chat under a workspace, so it works in that workspace's folder. */
+  fileChat(id: string, workspaceId: string): Promise<void>;
 }
 
 export interface ChatHandlers {
@@ -67,6 +69,7 @@ export interface ChatHandlers {
   archive(id: unknown): Promise<Result<null>>;
   restore(id: unknown): Promise<Result<null>>;
   delete(id: unknown): Promise<Result<null>>;
+  file(id: unknown, workspaceId: unknown): Promise<Result<null>>;
 }
 
 export interface ShapeChatHandlers {
@@ -105,6 +108,7 @@ export function chatHandlers({
   archiveChat,
   restoreChat,
   deleteChat,
+  fileChat,
 }: ChatDeps): ChatHandlers & ShapeChatHandlers {
   return {
     load: () => envelope(() => state()),
@@ -271,6 +275,17 @@ export function chatHandlers({
     restore: (id) => withId(id, 'A chat needs an id to be brought back.', restoreChat),
 
     delete: (id) => withId(id, 'A chat needs an id to be deleted.', deleteChat),
+
+    file: (id, workspaceId) => {
+      if (!isId(id) || !isId(workspaceId)) {
+        return Promise.resolve({
+          ok: false,
+          error: 'A chat needs an id and a workspace to be moved.',
+        });
+      }
+
+      return nothing(() => fileChat(id, workspaceId));
+    },
   };
 }
 
@@ -280,10 +295,7 @@ function isLane(value: unknown): value is QueuedLine['lane'] {
 }
 
 function validWorkTicketIds(value: unknown): value is string[] {
-  return (
-    Array.isArray(value) &&
-    value.every((id) => typeof id === 'string' && id.trim() !== '')
-  );
+  return Array.isArray(value) && value.every((id) => typeof id === 'string' && id.trim() !== '');
 }
 
 /** The workspace an incoming start files a chat under: an id, or nothing at all. */

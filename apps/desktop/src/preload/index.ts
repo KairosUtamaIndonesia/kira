@@ -116,6 +116,7 @@ const bridge: KiraBridge = {
   restoreChat: (id) => ask<null>(CHAT_CHANNELS.restore, id),
 
   deleteChat: (id) => ask<null>(CHAT_CHANNELS.delete, id),
+  fileChat: (id, workspaceId) => ask<null>(CHAT_CHANNELS.file, id, workspaceId),
 
   switchBranch: (messageId) => ask<null>(CHAT_CHANNELS.branch, messageId),
 

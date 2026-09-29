@@ -146,6 +146,7 @@ function registerChatChannels(): void {
     archiveChat: (id) => chats.archiveChat(id),
     restoreChat: (id) => chats.restoreChat(id),
     deleteChat: (id) => chats.deleteChat(id),
+    fileChat: (id, workspaceId) => chats.fileChat(id, workspaceId),
   });
 
   ipcMain.handle(CHAT_CHANNELS.load, () => handlers.load());
@@ -220,6 +221,9 @@ function registerChatChannels(): void {
   ipcMain.handle(CHAT_CHANNELS.archive, (_event, id: unknown) => handlers.archive(id));
   ipcMain.handle(CHAT_CHANNELS.restore, (_event, id: unknown) => handlers.restore(id));
   ipcMain.handle(CHAT_CHANNELS.delete, (_event, id: unknown) => handlers.delete(id));
+  ipcMain.handle(CHAT_CHANNELS.file, (_event, id: unknown, workspaceId: unknown) =>
+    handlers.file(id, workspaceId),
+  );
 }
 
 /** What the window hears about a turn: words as they are written, then the record. */

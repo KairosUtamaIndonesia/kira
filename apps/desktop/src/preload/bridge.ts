@@ -595,6 +595,7 @@ export const CHAT_CHANNELS = {
   archive: 'chat:archive',
   restore: 'chat:restore',
   delete: 'chat:delete',
+  file: 'chat:file',
   branch: 'chat:branch',
   edit: 'chat:edit',
   fork: 'chat:fork',
@@ -1446,6 +1447,12 @@ export interface KiraBridge {
    * and so is any chat forked from it.
    */
   deleteChat(id: string): Promise<Result<null>>;
+  /**
+   * File a chat under a workspace, so it works in that workspace's folder from then on.
+   * Its words come with it. A chat Kira is writing in is refused, and a refusal leaves
+   * the chat exactly as it was.
+   */
+  fileChat(id: string, workspaceId: string): Promise<Result<null>>;
   /** Show the branch ending at `messageId`, and carry on from there. */
   switchBranch(messageId: string): Promise<Result<null>>;
   /**

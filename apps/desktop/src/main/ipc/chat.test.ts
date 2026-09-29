@@ -103,6 +103,9 @@ function deps(calls: string[], overrides: Partial<ChatDeps> = {}): ChatDeps {
     deleteChat: async (id) => {
       calls.push(`delete ${id}`);
     },
+    fileChat: async (id, workspaceId) => {
+      calls.push(`file ${id} ${workspaceId}`);
+    },
     ...overrides,
   };
 }
@@ -606,6 +609,47 @@ const CASES: Case[] = [
     want: { ok: false, error: 'A chat needs an id to be deleted.' },
     wantCalls: [],
   },
+  {
+    name: 'file moves the named chat under the named workspace',
+    makeDeps: (calls) => deps(calls),
+    call: 'file',
+    argument: 'first',
+    secondArgument: 'api',
+    want: { ok: true, value: null },
+    wantCalls: ['file first api'],
+  },
+  {
+    name: 'file reports a failure as a value',
+    makeDeps: (calls) =>
+      deps(calls, {
+        fileChat: async () => {
+          throw new Error('Kira is writing in this chat.');
+        },
+      }),
+    call: 'file',
+    argument: 'first',
+    secondArgument: 'api',
+    want: { ok: false, error: 'Kira is writing in this chat.' },
+    wantCalls: [],
+  },
+  {
+    name: 'file refuses a chat that is not named by an id',
+    makeDeps: (calls) => deps(calls, { fileChat: async () => assert.fail('the chat was moved') }),
+    call: 'file',
+    argument: ['first'],
+    secondArgument: 'api',
+    want: { ok: false, error: 'A chat needs an id and a workspace to be moved.' },
+    wantCalls: [],
+  },
+  {
+    name: 'file refuses a workspace that is not named by an id',
+    makeDeps: (calls) => deps(calls, { fileChat: async () => assert.fail('the chat was moved') }),
+    call: 'file',
+    argument: 'first',
+    secondArgument: '',
+    want: { ok: false, error: 'A chat needs an id and a workspace to be moved.' },
+    wantCalls: [],
+  },
 ];
 
 for (const testCase of CASES) {
@@ -629,6 +673,7 @@ for (const testCase of CASES) {
       archive: () => handlers.archive(testCase.argument),
       restore: () => handlers.restore(testCase.argument),
       delete: () => handlers.delete(testCase.argument),
+      file: () => handlers.file(testCase.argument, testCase.secondArgument),
     } as const;
 
     assert.deepEqual(await run[testCase.call](), testCase.want);

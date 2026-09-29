@@ -700,6 +700,19 @@ export class ThreadStore {
     return record;
   }
 
+  /**
+   * File a chat under a workspace and point it at that workspace's folder.
+   *
+   * A chat works in the folder it was stored with, and reads it back from here each time
+   * it is opened, so this is all the moving there is: the words are kept by the chat's
+   * id, not by where it worked.
+   */
+  fileThread(threadId: string, workspace: WorkspaceRecord): void {
+    this.db
+      .prepare('UPDATE threads SET cwd = ?, workspace_id = ? WHERE id = ?')
+      .run(workspace.folder, workspace.id, threadId);
+  }
+
   /** The workspace this folder is, or undefined when it has never been opened. */
   workspaceAt(folder: string): WorkspaceRecord | undefined {
     const row = this.db.prepare(`${WORKSPACE_COLUMNS} WHERE folder = ?`).get(folder) as

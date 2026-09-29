@@ -156,6 +156,14 @@ export interface OpenChats {
    * keeps its own words and only forgets where it came from.
    */
   deleteChat(id: string): Promise<void>;
+  /**
+   * File a chat under a workspace, so it works in that workspace's folder from then on.
+   *
+   * A chat that Kira is writing in is refused, and so is a workspace nobody remembers;
+   * either leaves the chat exactly as it was. The chat on screen stays on screen, reopened
+   * in its new folder, and a chat that is not open simply works there when it is opened.
+   */
+  fileChat(id: string, workspaceId: string): Promise<void>;
   /** Show the stored chat `threadId`, opening it if it is not already open. */
   open(threadId: string): Promise<void>;
   /**
@@ -459,7 +467,13 @@ export function openChats(
 
     draft = draft
       ? { ...draft, workspaceId, workTicketIds: [...new Set(workTicketIds)] }
-      : { id: randomUUID(), workspaceId, workTicketIds: [...new Set(workTicketIds)], modelId, mode: 'build' };
+      : {
+          id: randomUUID(),
+          workspaceId,
+          workTicketIds: [...new Set(workTicketIds)],
+          modelId,
+          mode: 'build',
+        };
     shown = null;
 
     if (left) {
@@ -660,9 +674,7 @@ export function openChats(
             status: 'approved',
             decisionId: proposal.id,
           });
-          await conversation.send(
-            'The person approved the Decision proposal. Kira recorded it.',
-          );
+          await conversation.send('The person approved the Decision proposal. Kira recorded it.');
           return;
         }
         case 'outcome': {
@@ -870,6 +882,36 @@ export function openChats(
       }
 
       await leaveIfShown(id);
+    },
+
+    fileChat: async (id, workspaceId) => {
+      const workspace = store.findWorkspace(workspaceId);
+      if (workspace === undefined) {
+        throw new Error('That folder is not a workspace.');
+      }
+
+      const chat = store.findThread(id);
+      if (chat === undefined) {
+        throw new Error('That chat no longer exists.');
+      }
+
+      whileIdle(id);
+      if (chat.workspaceId === workspace.id && chat.cwd === workspace.folder) {
+        return;
+      }
+
+      store.fileThread(id, workspace);
+
+      // An open session keeps the folder it started in, so it is let go and read back from
+      // the store: the same chat, the same words, working in the new folder. One that is not
+      // on screen is left closed, and opens there the next time it is asked for.
+      const conversation = open.get(id);
+      if (conversation) {
+        close(conversation);
+        if (shown === id) {
+          await showStored(id);
+        }
+      }
     },
 
     open: (threadId) => showStored(threadId),
