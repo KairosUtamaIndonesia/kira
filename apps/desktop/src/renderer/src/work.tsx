@@ -101,7 +101,6 @@ import {
   Plus,
   Rows3,
   Search,
-  SlidersHorizontal,
   Sparkles,
   SquareKanban,
   Ticket as TicketIcon,
@@ -155,12 +154,7 @@ import type {
 } from '../../preload/bridge.ts';
 import { ExecutionWorkspacePanel } from './executionWorkspace.tsx';
 import { BlockersPrototype } from './workBlockersPrototype.tsx';
-import {
-  FilterBar,
-  FilterSwitcher,
-  FilterToolbar,
-  type FilterVariant,
-} from './workFiltersPrototype.tsx';
+import { FilterBar, FilterToolbar } from './workFilters.tsx';
 import {
   executionWorkspaceView,
   fromHome,
@@ -290,19 +284,6 @@ const styles = stylex.create({
       minWidth: 0,
       justifyContent: 'flex-start',
     },
-  },
-  filterBar: {
-    display: 'flex',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: spacingVars['--spacing-1'],
-    paddingBlock: spacingVars['--spacing-2'],
-    // The filters are ghost buttons edge to edge: the bar's 16px less their own 12px, so
-    // the first filter's words line up with the table's and the board's (desktop-conventions).
-    paddingInline: `calc(${spacingVars['--spacing-4']} - ${spacingVars['--spacing-3']})`,
-    borderBlockEndWidth: borderVars['--border-width'],
-    borderBlockEndStyle: 'solid',
-    borderBlockEndColor: colorVars['--color-background-muted'],
   },
   scroll: {
     flex: 1,
@@ -1417,11 +1398,8 @@ export function WorkSurface({
   const [isWriting, setIsWriting] = useState(false);
   /** What the server last refused, in its own words. */
   const [refusal, setRefusal] = useState<string | null>(null);
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [attachedIds, setAttachedIds] = useState<string[]>([]);
   const [isFull, setIsFull] = useState(false);
-  // PROTOTYPE: filter layouts (workFiltersPrototype.tsx); development builds only.
-  const [filterVariant, setFilterVariant] = useState<FilterVariant>('menu');
   const [executionWorkspaces, setExecutionWorkspaces] = useState<
     Record<string, ExecutionWorkspace[]>
   >({});
@@ -1824,38 +1802,14 @@ export function WorkSurface({
               />
             ))}
           </SegmentedControl>
-          {import.meta.env.DEV ? (
-            // PROTOTYPE: search, filters and display (workFiltersPrototype.tsx).
-            <FilterToolbar
-              variant={filterVariant}
-              display={display}
-              onChange={updateDisplay}
-              tickets={tickets}
-              lanes={BANDS}
-              isDisabled={queue === null}
-            />
-          ) : (
-            <>
-              <TextInput
-                label="Search tickets"
-                isLabelHidden
-                size="sm"
-                width={190}
-                value={display.search}
-                placeholder="Search tickets"
-                isDisabled={queue === null}
-                disabledMessage={trouble === null ? 'Work is loading.' : undefined}
-                onChange={(next) => updateDisplay((current) => ({ ...current, search: next }))}
-              />
-              <Button
-                label={filtersOpen ? 'Hide filters' : 'Filters'}
-                icon={<Icon icon={SlidersHorizontal} size="sm" />}
-                size="sm"
-                variant={filtersOpen ? 'secondary' : 'ghost'}
-                onClick={() => setFiltersOpen((open) => !open)}
-              />
-            </>
-          )}
+          <FilterToolbar
+            display={display}
+            onChange={updateDisplay}
+            tickets={tickets}
+            lanes={BANDS}
+            kindIcons={KIND_ICON}
+            isDisabled={queue === null}
+          />
           <Button
             label="New ticket"
             icon={<Icon icon={Plus} size="sm" />}
@@ -1880,109 +1834,13 @@ export function WorkSurface({
         </div>
       </div>
 
-      {import.meta.env.DEV && (
-        <>
-          <FilterBar
-            variant={filterVariant}
-            display={display}
-            onChange={updateDisplay}
-            tickets={tickets}
-            lanes={BANDS}
-            isDisabled={queue === null}
-            shown={visibleTickets.length}
-            total={tickets.filter((each) => display.showDone || each.band !== 'done').length}
-          />
-          <FilterSwitcher variant={filterVariant} onChange={setFilterVariant} />
-        </>
-      )}
-      {!import.meta.env.DEV && filtersOpen && (
-        <div {...stylex.props(styles.filterBar)} aria-label="Ticket filters">
-          <Button
-            label={`Status: ${display.band === 'all' ? 'all' : BANDS.find((each) => each.id === display.band)?.label}`}
-            size="sm"
-            variant="ghost"
-            onClick={() =>
-              updateDisplay((current) => {
-                const index =
-                  current.band === 'all' ? -1 : BANDS.findIndex((each) => each.id === current.band);
-                const next = index >= BANDS.length - 1 ? 'all' : (BANDS[index + 1]?.id ?? 'all');
-                return { ...current, band: next };
-              })
-            }
-          />
-          <Button
-            label={`Kind: ${display.kind === 'all' ? 'all' : display.kind}`}
-            size="sm"
-            variant="ghost"
-            onClick={() =>
-              updateDisplay((current) => {
-                const index = current.kind === 'all' ? -1 : KINDS.indexOf(current.kind);
-                return {
-                  ...current,
-                  kind: index >= KINDS.length - 1 ? 'all' : (KINDS[index + 1] ?? 'all'),
-                };
-              })
-            }
-          />
-          <Button
-            label={`Being worked on: ${display.claim === 'all' ? 'any' : display.claim === 'claimed' ? 'yes' : 'no'}`}
-            size="sm"
-            variant="ghost"
-            onClick={() =>
-              updateDisplay((current) => ({
-                ...current,
-                claim:
-                  current.claim === 'all'
-                    ? 'claimed'
-                    : current.claim === 'claimed'
-                      ? 'unclaimed'
-                      : 'all',
-              }))
-            }
-          />
-          <Button
-            label={display.group === 'status' ? 'Group: status' : 'Group: kind'}
-            size="sm"
-            variant="ghost"
-            onClick={() =>
-              updateDisplay((current) => ({
-                ...current,
-                group: current.group === 'status' ? 'kind' : 'status',
-              }))
-            }
-          />
-          <Button
-            label={display.order === 'rank' ? 'Order: priority' : `Order: ${display.order}`}
-            size="sm"
-            variant="ghost"
-            onClick={() =>
-              updateDisplay((current) => ({
-                ...current,
-                order:
-                  current.order === 'rank'
-                    ? 'updated'
-                    : current.order === 'updated'
-                      ? 'created'
-                      : 'rank',
-              }))
-            }
-          />
-          <Button
-            label={display.showDone ? 'Hide done' : 'Show done'}
-            size="sm"
-            variant="ghost"
-            onClick={() =>
-              updateDisplay((current) => ({ ...current, showDone: !current.showDone }))
-            }
-          />
-          <Button
-            label="Clear filters"
-            size="sm"
-            variant="ghost"
-            onClick={() => updateDisplay(DEFAULT_WORK_DISPLAY)}
-          />
-        </div>
-      )}
+      <FilterBar
+        display={display}
+        onChange={updateDisplay}
+        lanes={BANDS}
+        shown={visibleTickets.length}
+        total={tickets.filter((each) => display.showDone || each.band !== 'done').length}
+      />
 
       {dropIntent !== null && (
         <DropActionBar
