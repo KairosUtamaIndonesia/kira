@@ -10,6 +10,8 @@ function dependencies(
   ) => Promise<{ command: string; output: string; exitCode: number }>,
 ) {
   return {
+    chooseCheckout: async () => '/work/repo',
+    branches: async () => ({ branches: ['main', 'develop'], current: 'main' }),
     command,
     startDevServer: async () => ({ running: true, output: '', previewUrl: null, exitCode: null }),
     readDevServer: async () => ({ running: true, output: '', previewUrl: null, exitCode: null }),
@@ -83,5 +85,20 @@ test('dev server commands are validated and process read or stop requires named 
   assert.deepEqual(await handlers.stopDevServer('issue', 'workspace'), {
     ok: true,
     value: { running: false, output: '', previewUrl: null, exitCode: 0 },
+  });
+});
+
+test('checkout channels answer the picked folder and its branches, and refuse a missing folder', async () => {
+  const handlers = executionHandlers(
+    dependencies(async (_ticket, _workspace, command) => ({ command, output: '', exitCode: 0 })),
+  );
+  assert.deepEqual(await handlers.chooseCheckout(), { ok: true, value: '/work/repo' });
+  assert.deepEqual(await handlers.branches('/work/repo'), {
+    ok: true,
+    value: { branches: ['main', 'develop'], current: 'main' },
+  });
+  assert.deepEqual(await handlers.branches(' '), {
+    ok: false,
+    error: 'Choose a checkout folder first.',
   });
 });

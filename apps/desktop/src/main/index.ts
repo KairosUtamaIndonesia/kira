@@ -30,6 +30,7 @@ import { CHAT_CHANNELS, chatHandlers } from './ipc/chat.ts';
 import { TRACKER_CHANNELS, trackerHandlers } from './ipc/tracker.ts';
 import { DELIVERY_CHANNELS, deliveryHandlers } from './ipc/delivery.ts';
 import { EXECUTION_CHANNELS, executionHandlers } from './ipc/execution.ts';
+import { branchesOf } from './workspace/git.ts';
 import { WORKER_CHANNELS, workerHandlers } from './ipc/worker.ts';
 import { WORKSPACE_CHANNELS, workspaceHandlers } from './ipc/workspaces.ts';
 import { workspaceSummaryOf } from './pi/conversations.ts';
@@ -455,6 +456,8 @@ function registerExecutionChannel(): void {
   }
 
   const handlers = executionHandlers({
+    chooseCheckout: chooseFolder,
+    branches: (folder) => branchesOf(folder),
     command: async (ticketId, workspaceId, command) => {
       return await runExecutionCommand(await checkoutFor(ticketId, workspaceId), command);
     },
@@ -489,6 +492,10 @@ function registerExecutionChannel(): void {
       return executionTerminals.stop(workspaceId);
     },
   });
+  ipcMain.handle(EXECUTION_CHANNELS.chooseCheckout, () => handlers.chooseCheckout());
+  ipcMain.handle(EXECUTION_CHANNELS.branches, (_event, folder: unknown) =>
+    handlers.branches(folder),
+  );
   ipcMain.handle(
     EXECUTION_CHANNELS.command,
     (_event, ticketId: unknown, workspaceId: unknown, command: unknown) =>

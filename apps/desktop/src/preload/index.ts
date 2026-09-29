@@ -45,6 +45,7 @@ import {
   type ReviewFeedback,
   type DeliveryAudit,
   type ExecutionCommandResult,
+  type CheckoutBranches,
   type ExecutionProcessSnapshot,
   type ExecutionProcessEvent,
   type ExecutionTerminalSnapshot,
@@ -187,6 +188,10 @@ const bridge: KiraBridge = {
       workspaceId,
       command,
     ),
+
+  chooseCheckout: () => ask<string | null>(EXECUTION_CHANNELS.chooseCheckout),
+
+  listCheckoutBranches: (folder) => ask<CheckoutBranches>(EXECUTION_CHANNELS.branches, folder),
 
   readExecutionDevServer: (ticketId, workspaceId) =>
     ask<ExecutionProcessSnapshot>(EXECUTION_CHANNELS.devServerRead, ticketId, workspaceId),

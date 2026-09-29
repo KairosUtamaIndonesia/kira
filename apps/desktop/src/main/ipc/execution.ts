@@ -1,5 +1,6 @@
 import {
   EXECUTION_CHANNELS,
+  type CheckoutBranches,
   type ExecutionCommandResult,
   type ExecutionProcessSnapshot,
   type ExecutionTerminalSnapshot,
@@ -10,6 +11,8 @@ import { envelope, isId } from './result.ts';
 export { EXECUTION_CHANNELS };
 
 export interface ExecutionDeps {
+  chooseCheckout(): Promise<string | null>;
+  branches(folder: string): Promise<CheckoutBranches>;
   command(ticketId: string, workspaceId: string, command: string): Promise<ExecutionCommandResult>;
   startDevServer(
     ticketId: string,
@@ -26,6 +29,8 @@ export interface ExecutionDeps {
 }
 
 export interface ExecutionHandlers {
+  chooseCheckout(): Promise<Result<string | null>>;
+  branches(folder: unknown): Promise<Result<CheckoutBranches>>;
   command(
     ticketId: unknown,
     workspaceId: unknown,
@@ -54,6 +59,8 @@ export interface ExecutionHandlers {
 }
 
 export function executionHandlers({
+  chooseCheckout,
+  branches,
   command,
   startDevServer,
   readDevServer,
@@ -67,6 +74,11 @@ export function executionHandlers({
   const validWorkspace = (ticketId: unknown, workspaceId: unknown): boolean =>
     isId(ticketId) && isId(workspaceId);
   return {
+    chooseCheckout: () => envelope(() => chooseCheckout()),
+    branches: (folder) =>
+      typeof folder !== 'string' || folder.trim() === ''
+        ? Promise.resolve({ ok: false, error: 'Choose a checkout folder first.' })
+        : envelope(() => branches(folder)),
     command: (ticketId, workspaceId, input) => {
       if (!validWorkspace(ticketId, workspaceId)) {
         return Promise.resolve({

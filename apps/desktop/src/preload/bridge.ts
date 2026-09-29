@@ -715,6 +715,8 @@ export const EXECUTION_CHANNELS = {
   terminalResize: 'execution:terminal:resize',
   terminalStop: 'execution:terminal:stop',
   terminalEvent: 'execution:terminal:event',
+  chooseCheckout: 'execution:checkout:choose',
+  branches: 'execution:checkout:branches',
 } as const;
 
 /**
@@ -910,6 +912,12 @@ export interface Ticket {
   /** What runs of it have done, newest first. */
   runs: TicketRun[];
   workspaces?: ExecutionWorkspace[];
+}
+
+/** The local branches of a checkout, and the one it has out, when git could say. */
+export interface CheckoutBranches {
+  branches: string[];
+  current: string | null;
 }
 
 export interface ExecutionWorkspace {
@@ -1538,6 +1546,10 @@ export interface KiraBridge {
     ticketId: string,
     workspaceId: string,
   ): Promise<Result<ExecutionProcessSnapshot>>;
+  /** Ask for a checkout folder without registering it as a workspace. Null when none is chosen. */
+  chooseCheckout(): Promise<Result<string | null>>;
+  /** The local branches of a checkout folder. */
+  listCheckoutBranches(folder: string): Promise<Result<CheckoutBranches>>;
   onExecutionProcess(listener: (event: ExecutionProcessEvent) => void): () => void;
   startExecutionTerminal(
     ticketId: string,

@@ -2,7 +2,6 @@ import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
 import { Divider } from '@astryxdesign/core/Divider';
 import { Icon } from '@astryxdesign/core/Icon';
-import { Selector } from '@astryxdesign/core/Selector';
 import { TextArea } from '@astryxdesign/core/TextArea';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { Text } from '@astryxdesign/core/Text';
@@ -23,7 +22,6 @@ import type {
   ExecutionProcessEvent,
   ExecutionTerminalEvent,
   ExecutionTerminalSnapshot,
-  ModelOption,
   Ticket,
   TicketSaid,
 } from '../../preload/bridge.ts';
@@ -31,11 +29,10 @@ import {
   executionDiffFiles,
   executionPreviewLabel,
   executionStatusLabel,
-  suggestExecutionBranch,
   executionWorkspaceView,
   type ExecutionWorkspaceView,
 } from './executionWorkspace.ts';
-import { WorkspaceSetupPrototype } from './workSetupPrototype.tsx';
+import { NoWorkspaceRow, WorkspaceSetupDialog } from './workspaceSetup.tsx';
 
 export function ExecutionWorkspacePanel({
   ticket,
@@ -74,30 +71,18 @@ export function ExecutionWorkspacePanel({
   };
 
   if (selected === undefined) {
-    if (import.meta.env.DEV) {
-      // PROTOTYPE: ways to set up a workspace (workSetupPrototype.tsx).
-      return (
-        <section {...stylex.props(styles.section)} aria-label="Execution workspaces">
-          <WorkspaceSetupPrototype
-            ticket={ticket}
-            initial={{
-              repository,
-              baseBranch: 'main',
-              branch: suggestExecutionBranch(ticket.branch, []),
-              agentConfig: 'default',
-            }}
-          />
-        </section>
-      );
-    }
     return (
       <section {...stylex.props(styles.section)} aria-label="Execution workspaces">
-        <WorkspaceForm
-          ticket={ticket}
-          repository={repository}
-          existingBranches={workspaces.map((workspace) => workspace.branch)}
-          onCreated={workspaceCreated}
-        />
+        <NoWorkspaceRow onSetUp={() => setCreating(true)} />
+        {creating && (
+          <WorkspaceSetupDialog
+            ticket={ticket}
+            repository={repository}
+            existingBranches={[]}
+            onClose={() => setCreating(false)}
+            onCreated={workspaceCreated}
+          />
+        )}
       </section>
     );
   }
@@ -144,19 +129,19 @@ export function ExecutionWorkspacePanel({
         </div>
       )}
 
-      {creating ? (
-        <WorkspaceForm
+      <Button
+        label="Add execution workspace"
+        size="sm"
+        variant="secondary"
+        onClick={() => setCreating(true)}
+      />
+      {creating && (
+        <WorkspaceSetupDialog
           ticket={ticket}
           repository={repository}
           existingBranches={workspaces.map((workspace) => workspace.branch)}
+          onClose={() => setCreating(false)}
           onCreated={workspaceCreated}
-        />
-      ) : (
-        <Button
-          label="Add execution workspace"
-          size="sm"
-          variant="secondary"
-          onClick={() => setCreating(true)}
         />
       )}
 
@@ -188,94 +173,6 @@ export function ExecutionWorkspacePanel({
         }}
       />
     </section>
-  );
-}
-
-function WorkspaceForm({
-  ticket,
-  repository: initialRepository,
-  existingBranches,
-  onCreated,
-}: {
-  ticket: Ticket;
-  repository: string;
-  existingBranches: string[];
-  onCreated: (id: string) => Promise<void>;
-}) {
-  const [repository, setRepository] = useState(initialRepository);
-  const [baseBranch, setBaseBranch] = useState('main');
-  const [branch, setBranch] = useState(() =>
-    suggestExecutionBranch(ticket.branch, existingBranches),
-  );
-  const [agentConfig, setAgentConfig] = useState('default');
-  const [models, setModels] = useState<ModelOption[]>([]);
-  const [trouble, setTrouble] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  useMountEffect(() => {
-    void window.kira.loadModels().then((answer) => {
-      if (answer.ok) setModels(answer.value);
-    });
-  });
-
-  const create = async (): Promise<void> => {
-    setBusy(true);
-    const result = await window.kira.createExecutionWorkspace(ticket.id, {
-      repository,
-      baseBranch,
-      branch,
-      agentConfig,
-    });
-    setBusy(false);
-    if (!result.ok) {
-      setTrouble(result.error);
-      return;
-    }
-    setTrouble(null);
-    await onCreated(result.value.id);
-  };
-
-  return (
-    <div {...stylex.props(styles.form)}>
-      <Text type="label" weight="medium">
-        Create execution workspace
-      </Text>
-      <Text type="supporting" color="secondary">
-        Choose the repository, base branch, working branch, and agent configuration. Creating this
-        workspace starts its agent when the issue is ready.
-      </Text>
-      <TextInput
-        label="Repository folder"
-        value={repository}
-        onChange={setRepository}
-        description="The local checkout the agent will work in."
-        size="sm"
-      />
-      <TextInput label="Base branch" value={baseBranch} onChange={setBaseBranch} size="sm" />
-      <TextInput label="Workspace branch" value={branch} onChange={setBranch} size="sm" />
-      <Selector
-        label="Agent configuration"
-        options={[
-          { value: 'default', label: 'Default model' },
-          ...models.map((model) => ({ value: model.id, label: model.name })),
-        ]}
-        value={agentConfig}
-        onChange={setAgentConfig}
-        isDisabled={busy}
-      />
-      {trouble !== null && (
-        <Text type="supporting" color="secondary">
-          {trouble}
-        </Text>
-      )}
-      <Button
-        label={busy ? 'Creating workspace' : 'Create workspace and start agent'}
-        size="sm"
-        variant="primary"
-        isDisabled={busy}
-        onClick={() => void create()}
-      />
-    </div>
   );
 }
 
