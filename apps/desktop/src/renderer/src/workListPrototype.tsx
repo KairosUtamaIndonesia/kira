@@ -9,6 +9,23 @@
  */
 import { Icon } from '@astryxdesign/core/Icon';
 import {
+  closestCenter,
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import {
   borderVars,
   colorVars,
   focusVars,
@@ -25,6 +42,7 @@ import {
   FileText,
   FlaskConical,
   GitBranch,
+  GripVertical,
   History,
   Map as MapIcon,
   MessageSquare,
@@ -33,7 +51,13 @@ import {
   Wrench,
   type LucideIcon,
 } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useState,
+  type PointerEventHandler,
+  type ReactNode,
+} from 'react';
 import type { Band, ChatSummary, Ticket, TicketKind } from '../../preload/bridge.ts';
 import { groupedWork, type WorkGroup } from './workDisplay.ts';
 import { age, holding, inBand, when } from './workRows.ts';
@@ -110,6 +134,9 @@ export function ListPrototype({
   chatSummaries,
   onOpen,
   panel,
+  canReorder,
+  onReorder,
+  onDrop,
 }: {
   tickets: Ticket[];
   lanes: Lane[];
@@ -118,6 +145,9 @@ export function ListPrototype({
   chatSummaries: ChatSummary[];
   onOpen: (id: string) => void;
   panel: ReactNode;
+  canReorder: boolean;
+  onReorder: (activeId: string, overId: string) => void;
+  onDrop: (ticketId: string, target: Band) => void;
 }) {
   const [variant, setVariant] = useState<Variant>('line');
   const [note, setNote] = useState<string | null>(null);
@@ -130,16 +160,62 @@ export function ListPrototype({
       current.includes(key) ? current.filter((each) => each !== key) : [...current, key],
     );
   const shared = { groups, selected, chatsFor, onOpen, folded, onToggle: toggle };
+  // Dropping between groups asks for the same actions the board's lanes do. Grouped by
+  // kind there is nothing a drop could mean, so rows are not dragged at all.
+  const canDrag = group === 'status';
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const dragging = tickets.find((each) => each.id === draggingId) ?? null;
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  const handleDragEnd = ({ active, over }: DragEndEvent): void => {
+    setDraggingId(null);
+    if (over === null || active.id === over.id) return;
+    const moved = tickets.find((each) => each.id === active.id);
+    if (moved === undefined) return;
+    const overId = String(over.id);
+    const target = overId.startsWith('lane:')
+      ? lanes.find((lane) => lane.id === overId.slice('lane:'.length))?.id
+      : tickets.find((each) => each.id === overId)?.band;
+    if (target === undefined) return;
+    if (moved.band === target) {
+      if (canReorder && target === 'ready') onReorder(moved.id, overId);
+      return;
+    }
+    onDrop(moved.id, target);
+  };
 
   return (
     <div {...stylex.props(ui.frame)}>
-      <div {...stylex.props(ui.scroll)}>
-        {variant === 'line' && <OneLine {...shared} />}
-        {variant === 'two' && <TwoLines {...shared} />}
-        {variant === 'table' && (
-          <TableList {...shared} onSort={(by) => setNote(`Sorting by ${by} is stubbed.`)} />
-        )}
-      </div>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={({ active }) => setDraggingId(String(active.id))}
+        onDragCancel={() => setDraggingId(null)}
+        onDragEnd={handleDragEnd}
+      >
+        <DragContext.Provider value={canDrag}>
+          <div {...stylex.props(ui.scroll)}>
+            {variant === 'line' && <OneLine {...shared} />}
+            {variant === 'two' && <TwoLines {...shared} />}
+            {variant === 'table' && (
+              <TableList {...shared} onSort={(by) => setNote(`Sorting by ${by} is stubbed.`)} />
+            )}
+          </div>
+        </DragContext.Provider>
+        <DragOverlay dropAnimation={null}>
+          {dragging !== null && (
+            <div {...stylex.props(ui.overlay)}>
+              <span {...stylex.props(ui.kindIcon)}>
+                <Icon icon={KIND_ICON[dragging.kind]} size="xsm" />
+              </span>
+              <span {...stylex.props(ui.id)}>{dragging.name}</span>
+              <span {...stylex.props(ui.title)}>{dragging.title || 'Untitled'}</span>
+            </div>
+          )}
+        </DragOverlay>
+      </DndContext>
       {panel !== null && <div {...stylex.props(ui.drawer)}>{panel}</div>}
       <div {...stylex.props(ui.switcher)} role="toolbar" aria-label="List prototypes">
         {VARIANTS.map((each, index) => (
@@ -260,6 +336,86 @@ function Person({ ticket }: { ticket: Ticket }) {
   );
 }
 
+const DragContext = createContext(false);
+
+/** A group that takes drops, as a board lane does: the whole section is the target. */
+function DropGroup({
+  group,
+  xstyle,
+  children,
+}: {
+  group: Group;
+  xstyle: stylex.StyleXStyles;
+  children: ReactNode;
+}) {
+  const canDrag = useContext(DragContext);
+  const { isOver, setNodeRef } = useDroppable({
+    id: `lane:${group.key}`,
+    disabled: !canDrag || group.band === undefined,
+  });
+  return (
+    <div ref={setNodeRef} {...stylex.props(xstyle, isOver && ui.groupOver)}>
+      <SortableContext
+        items={group.tickets.map((each) => each.id)}
+        strategy={verticalListSortingStrategy}
+      >
+        {children}
+      </SortableContext>
+    </div>
+  );
+}
+
+/**
+ * One row that can be dragged: by pointer anywhere on it, and by keyboard from the handle
+ * that shows in its left gutter on hover or focus — Enter and Space on the row open it.
+ */
+function SortableRow({
+  ticket,
+  xstyle,
+  children,
+}: {
+  ticket: Ticket;
+  xstyle: ReadonlyArray<stylex.StyleXStyles | false>;
+  children: ReactNode;
+}) {
+  const canDrag = useContext(DragContext);
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: ticket.id, disabled: !canDrag });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: transform === null ? undefined : `translate3d(0, ${transform.y}px, 0)`,
+        transition,
+      }}
+      onPointerDown={listeners?.onPointerDown as PointerEventHandler<HTMLDivElement> | undefined}
+      {...stylex.props(...xstyle, ui.reveal, isDragging && ui.rowDragging)}
+    >
+      {children}
+      {canDrag && (
+        <button
+          ref={setActivatorNodeRef}
+          type="button"
+          {...attributes}
+          {...listeners}
+          aria-label={`Move ${ticket.name} to another group`}
+          title="Drag to reorder or move to another group"
+          {...stylex.props(ui.handle)}
+        >
+          <Icon icon={GripVertical} size="xsm" />
+        </button>
+      )}
+    </div>
+  );
+}
+
 function OpenCover({ ticket, onOpen }: { ticket: Ticket; onOpen: (id: string) => void }) {
   return (
     <button
@@ -277,7 +433,7 @@ function OneLine({ groups, selected, chatsFor, onOpen, folded, onToggle }: Share
   return (
     <div {...stylex.props(line.grid)}>
       {groups.map((group) => (
-        <div key={group.key} {...stylex.props(line.section)}>
+        <DropGroup key={group.key} group={group} xstyle={line.section}>
           <GroupHead
             group={group}
             folded={folded.includes(group.key)}
@@ -286,9 +442,10 @@ function OneLine({ groups, selected, chatsFor, onOpen, folded, onToggle }: Share
           />
           {!folded.includes(group.key) &&
             group.tickets.map((ticket) => (
-              <div
+              <SortableRow
                 key={ticket.id}
-                {...stylex.props(ui.row, line.row, ticket.id === selected && ui.rowSelected)}
+                ticket={ticket}
+                xstyle={[ui.row, line.row, ticket.id === selected && ui.rowSelected]}
               >
                 <OpenCover ticket={ticket} onOpen={onOpen} />
                 <span />
@@ -304,9 +461,9 @@ function OneLine({ groups, selected, chatsFor, onOpen, folded, onToggle }: Share
                   {age(ticket.updatedAt)}
                 </span>
                 <span />
-              </div>
+              </SortableRow>
             ))}
-        </div>
+        </DropGroup>
       ))}
     </div>
   );
@@ -318,7 +475,7 @@ function TwoLines({ groups, selected, chatsFor, onOpen, folded, onToggle }: Shar
   return (
     <div>
       {groups.map((group) => (
-        <section key={group.key} aria-label={group.label}>
+        <DropGroup key={group.key} group={group} xstyle={two.section}>
           <GroupHead
             group={group}
             folded={folded.includes(group.key)}
@@ -326,9 +483,10 @@ function TwoLines({ groups, selected, chatsFor, onOpen, folded, onToggle }: Shar
           />
           {!folded.includes(group.key) &&
             group.tickets.map((ticket) => (
-              <div
+              <SortableRow
                 key={ticket.id}
-                {...stylex.props(ui.row, two.row, ticket.id === selected && ui.rowSelected)}
+                ticket={ticket}
+                xstyle={[ui.row, two.row, ticket.id === selected && ui.rowSelected]}
               >
                 <OpenCover ticket={ticket} onOpen={onOpen} />
                 <span {...stylex.props(two.main)}>
@@ -350,9 +508,9 @@ function TwoLines({ groups, selected, chatsFor, onOpen, folded, onToggle }: Shar
                     {age(ticket.updatedAt)}
                   </span>
                 </span>
-              </div>
+              </SortableRow>
             ))}
-        </section>
+        </DropGroup>
       ))}
     </div>
   );
@@ -389,7 +547,7 @@ function TableList({
         ))}
       </div>
       {groups.map((group) => (
-        <div key={group.key} {...stylex.props(table.section)}>
+        <DropGroup key={group.key} group={group} xstyle={table.section}>
           <GroupHead
             group={group}
             folded={folded.includes(group.key)}
@@ -402,9 +560,10 @@ function TableList({
               const open = ticket.children.filter((each) => !each.closed).length;
               const person = ticket.claim?.holder.name ?? ticket.author?.name ?? null;
               return (
-                <div
+                <SortableRow
                   key={ticket.id}
-                  {...stylex.props(ui.row, table.row, ticket.id === selected && ui.rowSelected)}
+                  ticket={ticket}
+                  xstyle={[ui.row, table.row, ticket.id === selected && ui.rowSelected]}
                 >
                   <OpenCover ticket={ticket} onOpen={onOpen} />
                   <span />
@@ -432,10 +591,10 @@ function TableList({
                   <span {...stylex.props(ui.age)} title={`Updated ${when(ticket.updatedAt)}`}>
                     {age(ticket.updatedAt)}
                   </span>
-                </div>
+                </SortableRow>
               );
             })}
-        </div>
+        </DropGroup>
       ))}
     </div>
   );
@@ -540,6 +699,42 @@ const ui = stylex.create({
     position: 'relative',
     ...hairline,
     backgroundColor: { default: 'transparent', ':hover': colorVars['--color-overlay-hover'] },
+  },
+  reveal: { '--row-reveal': { default: '0', ':hover': '1', ':focus-within': '1' } },
+  rowDragging: { opacity: 0.4 },
+  groupOver: { backgroundColor: colorVars['--color-overlay-hover'] },
+  handle: {
+    position: 'absolute',
+    insetBlock: 0,
+    insetInlineStart: 0,
+    zIndex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 16,
+    padding: 0,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    color: colorVars['--color-icon-secondary'],
+    cursor: { default: 'grab', ':active': 'grabbing' },
+    touchAction: 'none',
+    opacity: 'var(--row-reveal)',
+    outlineStyle: { default: 'none', ':focus-visible': focusVars['--focus-outline-style'] },
+    outlineWidth: focusVars['--focus-outline-width'],
+    outlineColor: focusVars['--focus-outline-color'],
+    outlineOffset: -2,
+  },
+  overlay: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: spacingVars['--spacing-3'],
+    width: 520,
+    height: 40,
+    paddingInline: spacingVars['--spacing-4'],
+    borderRadius: 6,
+    backgroundColor: colorVars['--color-background-popover'],
+    boxShadow: shadowVars['--shadow-med'],
+    cursor: 'grabbing',
   },
   rowSelected: {
     backgroundColor: {
@@ -680,6 +875,7 @@ const line = stylex.create({
 });
 
 const two = stylex.create({
+  section: { display: 'block' },
   row: {
     display: 'flex',
     alignItems: 'center',

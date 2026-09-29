@@ -1838,7 +1838,7 @@ export function WorkSurface({
         </div>
       )}
 
-      {view === 'board' && dropIntent !== null && (
+      {dropIntent !== null && (
         <DropActionBar
           intent={dropIntent}
           ticket={tickets.find((each) => each.id === dropIntent.ticketId) ?? null}
@@ -1941,6 +1941,9 @@ export function WorkSurface({
           chatSummaries={chatSummaries}
           onOpen={openTicket}
           panel={panel}
+          canReorder={readyCanReorder}
+          onReorder={(activeId, overId) => void reorder(activeId, overId)}
+          onDrop={beginTicketDrop}
         />
       ) : (
         <QueueView
