@@ -7,6 +7,9 @@ import {
   executionDiffFiles,
   suggestExecutionBranch,
   executionWorkspaceView,
+  fromHome,
+  shortenMiddle,
+  workspaceStateWords,
 } from './executionWorkspace.ts';
 
 const workspace: ExecutionWorkspace = {
@@ -172,4 +175,43 @@ test('unified diffs are grouped by file and assign reviewable new-side line numb
       testCase.name,
     );
   }
+});
+
+test('a long branch keeps its start and its end, where two branches differ', () => {
+  const cases: { name: string; text: string; keep: number; want: string }[] = [
+    { name: 'short enough', text: 'fnd-1-execution', keep: 20, want: 'fnd-1-execution' },
+    { name: 'exactly the limit', text: 'abcdefghij', keep: 10, want: 'abcdefghij' },
+    {
+      name: 'long branch',
+      text: 'demo-2-build-the-bookmarks-page-and-accessible',
+      keep: 20,
+      want: 'demo-2-build…essible',
+    },
+  ];
+
+  for (const testCase of cases) {
+    const shortened = shortenMiddle(testCase.text, testCase.keep);
+    assert.equal(shortened, testCase.want, testCase.name);
+    assert.ok(shortened.length <= testCase.keep, `${testCase.name} fits`);
+  }
+});
+
+test('a checkout under the home folder reads from ~, the way a terminal shows it', () => {
+  const cases: { name: string; path: string; want: string }[] = [
+    { name: 'Linux home', path: '/home/brandon/Workspace/demo', want: '~/Workspace/demo' },
+    { name: 'macOS home', path: '/Users/brandon/Workspace/demo/', want: '~/Workspace/demo' },
+    { name: 'outside home', path: '/work/kira', want: '/work/kira' },
+    { name: 'a folder named home deeper down', path: '/srv/home/x', want: '/srv/home/x' },
+  ];
+
+  for (const testCase of cases) {
+    assert.equal(fromHome(testCase.path), testCase.want, testCase.name);
+  }
+});
+
+test('a workspace state is said as what a person would do about it', () => {
+  assert.deepEqual(
+    (['not-started', 'running', 'completed', 'failed'] as const).map(workspaceStateWords),
+    ['Not started', 'Agent working', 'Ready to review', 'Stopped'],
+  );
 });

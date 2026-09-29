@@ -150,3 +150,33 @@ export function executionStatusLabel(status: ExecutionStatus): string {
 export function executionPreviewLabel(preview: ExecutionWorkspaceView['preview']): string {
   return preview === null ? 'No development preview is available.' : preview.url;
 }
+
+/** What a workspace's state asks of a person, as the ticket's box says it. */
+export function workspaceStateWords(status: ExecutionStatus): string {
+  switch (status) {
+    case 'not-started':
+      return 'Not started';
+    case 'running':
+      return 'Agent working';
+    case 'completed':
+      return 'Ready to review';
+    case 'failed':
+      return 'Stopped';
+  }
+}
+
+/**
+ * A long branch shortened to `keep` characters in the middle, not at the end: branches for
+ * one project share their start and differ at their ends, so both have to survive.
+ */
+export function shortenMiddle(text: string, keep: number): string {
+  if (text.length <= keep) return text;
+
+  const head = Math.ceil((keep - 1) * 0.6);
+  return `${text.slice(0, head)}…${text.slice(text.length - (keep - 1 - head))}`;
+}
+
+/** A checkout under the home folder, written from `~` as a terminal would show it. */
+export function fromHome(path: string): string {
+  return path.replace(/^\/(home|Users)\/[^/]+(?=\/|$)/, '~').replace(/(.)\/$/, '$1');
+}

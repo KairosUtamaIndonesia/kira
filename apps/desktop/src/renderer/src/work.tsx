@@ -39,6 +39,7 @@ import {
   borderVars,
   colorVars,
   focusVars,
+  radiusVars,
   shadowVars,
   spacingVars,
   textSizeVars,
@@ -71,7 +72,9 @@ import {
   type ReactNode,
 } from 'react';
 import {
+  ArrowDownToLine,
   ArrowLeft,
+  ArrowRight,
   ArrowUp,
   Bug,
   CircleAlert,
@@ -81,14 +84,15 @@ import {
   Copy,
   FileText,
   FlaskConical,
+  Folder,
   FolderOpen,
   GitBranch,
   GripVertical,
   History,
   Map as MapIcon,
   Maximize2,
-  Minimize2,
   MessageSquare,
+  Minimize2,
   Paperclip,
   Play,
   Plus,
@@ -149,12 +153,11 @@ import type {
 } from '../../preload/bridge.ts';
 import { ExecutionWorkspacePanel } from './executionWorkspace.tsx';
 import {
-  BranchBlockPrototype,
-  BranchPrototypeSwitcher,
-  withBranchState,
-  type BranchState,
-  type BranchVariant,
-} from './workBranchPrototype.tsx';
+  executionWorkspaceView,
+  fromHome,
+  shortenMiddle,
+  workspaceStateWords,
+} from './executionWorkspace.ts';
 
 /** Two readings of the same issues. */
 type View = 'board' | 'list';
@@ -860,6 +863,102 @@ const styles = stylex.create({
     minWidth: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  workspaceAnchor: { scrollMarginBlockStart: spacingVars['--spacing-6'] },
+  branchLine: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: spacingVars['--spacing-1'],
+    minWidth: 0,
+  },
+  branchPill: {
+    height: 22,
+    paddingInline: 7,
+    borderRadius: radiusVars['--radius-element'],
+    fontFamily: typographyVars['--font-family-code'],
+    fontSize: textSizeVars['--font-size-sm'],
+    lineHeight: '22px',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+  },
+  branchBase: {
+    flexShrink: 0,
+    color: colorVars['--color-text-secondary'],
+    backgroundColor: colorVars['--color-background-muted'],
+  },
+  branchWork: {
+    minWidth: 0,
+    color: colorVars['--color-text-primary'],
+    backgroundColor: colorVars['--color-neutral'],
+  },
+  branchPlanned: {
+    borderWidth: borderVars['--border-width'],
+    borderStyle: 'dashed',
+    borderColor: colorVars['--color-border-emphasized'],
+    backgroundColor: 'transparent',
+    lineHeight: '20px',
+  },
+  branchArrow: {
+    display: 'inline-flex',
+    flexShrink: 0,
+    color: colorVars['--color-icon-secondary'],
+  },
+  branchFacts: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: spacingVars['--spacing-1'],
+    margin: 0,
+    padding: 0,
+    listStyle: 'none',
+    minWidth: 0,
+  },
+  branchFact: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: spacingVars['--spacing-2'],
+    minWidth: 0,
+    fontSize: textSizeVars['--font-size-sm'],
+    color: colorVars['--color-text-secondary'],
+  },
+  branchState: { color: colorVars['--color-text-primary'] },
+  branchMore: { color: colorVars['--color-text-secondary'] },
+  branchPath: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  stateDot: {
+    width: 7,
+    height: 7,
+    flexShrink: 0,
+    borderRadius: radiusVars['--radius-full'],
+    backgroundColor: colorVars['--color-icon-secondary'],
+  },
+  stateDotRunning: { backgroundColor: colorVars['--color-icon-blue'] },
+  stateDotDone: { backgroundColor: colorVars['--color-success'] },
+  stateDotFailed: { backgroundColor: colorVars['--color-error'] },
+  goLink: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: spacingVars['--spacing-1'],
+    padding: 0,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    color: colorVars['--color-text-accent'],
+    fontSize: textSizeVars['--font-size-sm'],
+    fontWeight: 600,
+    textDecorationLine: { default: 'none', ':hover': 'underline' },
+    textUnderlineOffset: 3,
+    cursor: 'pointer',
+    outlineStyle: { default: 'none', ':focus-visible': focusVars['--focus-outline-style'] },
+    outlineWidth: focusVars['--focus-outline-width'],
+    outlineColor: focusVars['--focus-outline-color'],
+    outlineOffset: 2,
+  },
+  srOnly: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    overflow: 'hidden',
+    clipPath: 'inset(50%)',
     whiteSpace: 'nowrap',
   },
   panelBody: {
@@ -3091,9 +3190,7 @@ function TicketReading({
   const [named, setNamed] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
-  const [branchVariant, setBranchVariant] = useState<BranchVariant>('card');
-  const [branchState, setBranchState] = useState<BranchState>('real');
-  const [branchBlockNote, setBranchBlockNote] = useState<string | null>(null);
+  const workspaceRef = useRef<HTMLDivElement | null>(null);
   const hasDescription = ticket.body.trim().length > 0;
 
   async function run(act: () => Promise<unknown>): Promise<void> {
@@ -3106,14 +3203,16 @@ function TicketReading({
   // out in the open: each is drawn once, and only where it sits differs.
   const runs = <RunHistory ticket={ticket} chatIds={chatIds} onOpenChat={onOpenChat} />;
   const workspace = (
-    <ExecutionWorkspacePanel
-      ticket={ticket}
-      workspaces={executionWorkspaces}
-      repository={repository}
-      onStart={onRun}
-      onDeliver={onDeliver}
-      onChanged={onChanged}
-    />
+    <div ref={workspaceRef} {...stylex.props(styles.workspaceAnchor)}>
+      <ExecutionWorkspacePanel
+        ticket={ticket}
+        workspaces={executionWorkspaces}
+        repository={repository}
+        onStart={onRun}
+        onDeliver={onDeliver}
+        onChanged={onChanged}
+      />
+    </div>
   );
   const gatedBy = (
     <section {...stylex.props(styles.section)}>
@@ -3299,30 +3398,15 @@ function TicketReading({
             </div>
           ))}
         </dl>
-        {import.meta.env.DEV ? (
-          // PROTOTYPE: the branch-and-workspace block (workBranchPrototype.tsx).
-          <div {...stylex.props(styles.fullGroup)}>
-            <BranchBlockPrototype
-              variant={branchVariant}
-              {...withBranchState(ticket, executionWorkspaces, branchState)}
-              onJump={() =>
-                document
-                  .querySelector('[aria-label="Execution workspaces"]')
-                  ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-              }
-              onStub={(action) => setBranchBlockNote(`“${action}” is stubbed in the prototype.`)}
-            />
-            <BranchPrototypeSwitcher
-              variant={branchVariant}
-              state={branchState}
-              note={branchBlockNote}
-              onVariant={setBranchVariant}
-              onState={setBranchState}
-            />
-          </div>
-        ) : (
-          <div {...stylex.props(styles.fullGroup)}>{branch}</div>
-        )}
+        <div {...stylex.props(styles.fullGroup)}>
+          <BranchLine
+            ticket={ticket}
+            workspaces={executionWorkspaces}
+            onGoToWorkspace={() =>
+              workspaceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            }
+          />
+        </div>
         <section {...stylex.props(styles.fullGroup)}>
           <Text type="label" weight="medium">
             Linked chats
@@ -3677,6 +3761,98 @@ function TicketReading({
         </>
       )}
     </TicketPanel>
+  );
+}
+
+/**
+ * Where a ticket's work happens, as the full view's box says it: the branch it comes from
+ * and the branch it makes, how its workspace stands, and the way to that workspace's panel.
+ * The first workspace is the one summed up; the panel is where the others are chosen.
+ */
+function BranchLine({
+  ticket,
+  workspaces,
+  onGoToWorkspace,
+}: {
+  ticket: Ticket;
+  workspaces: ExecutionWorkspace[];
+  onGoToWorkspace: () => void;
+}) {
+  const first = workspaces[0];
+  const view = first === undefined ? null : executionWorkspaceView(first, ticket);
+  const branch = view?.branch ?? ticket.branch;
+
+  return (
+    <section {...stylex.props(styles.section)} aria-label="Branch and workspace">
+      <Text type="label" weight="medium">
+        Branch
+      </Text>
+      <div {...stylex.props(styles.branchLine)}>
+        {view !== null && (
+          <>
+            <span {...stylex.props(styles.branchPill, styles.branchBase)}>
+              {view.workspace.baseBranch}
+            </span>
+            <span {...stylex.props(styles.branchArrow)}>
+              <Icon icon={ArrowRight} size="xsm" />
+            </span>
+          </>
+        )}
+        <span
+          title={branch}
+          {...stylex.props(
+            styles.branchPill,
+            styles.branchWork,
+            view === null && styles.branchPlanned,
+          )}
+        >
+          <span aria-hidden>{shortenMiddle(branch, view === null ? 26 : 20)}</span>
+          <span {...stylex.props(styles.srOnly)}>{branch}</span>
+        </span>
+        <IconButton
+          label={`Copy ${branch}`}
+          icon={<Icon icon={Copy} size="sm" />}
+          size="sm"
+          onClick={() => copyText(branch)}
+        />
+      </div>
+      <ul {...stylex.props(styles.branchFacts)}>
+        {view === null ? (
+          <li {...stylex.props(styles.branchFact)}>
+            Named, not made — a run makes it, or work it by hand.
+          </li>
+        ) : (
+          <>
+            <li {...stylex.props(styles.branchFact, styles.branchState)}>
+              <span
+                aria-hidden
+                {...stylex.props(
+                  styles.stateDot,
+                  view.status === 'running' && styles.stateDotRunning,
+                  view.status === 'completed' && styles.stateDotDone,
+                  view.status === 'failed' && styles.stateDotFailed,
+                )}
+              />
+              {workspaceStateWords(view.status)}
+              {workspaces.length > 1 && (
+                <span {...stylex.props(styles.branchMore)}>
+                  · {workspaces.length - 1} more{' '}
+                  {workspaces.length === 2 ? 'workspace' : 'workspaces'}
+                </span>
+              )}
+            </li>
+            <li {...stylex.props(styles.branchFact)} title={view.repository}>
+              <Icon icon={Folder} size="xsm" />
+              <span {...stylex.props(styles.branchPath)}>{fromHome(view.repository)}</span>
+            </li>
+          </>
+        )}
+      </ul>
+      <button type="button" {...stylex.props(styles.goLink)} onClick={onGoToWorkspace}>
+        {view === null ? 'Set up a workspace' : 'Open workspace'}
+        <Icon icon={view === null ? Plus : ArrowDownToLine} size="xsm" />
+      </button>
+    </section>
   );
 }
 
