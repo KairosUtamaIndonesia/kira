@@ -38,6 +38,16 @@ place that can say it:
    theming target and nothing else. Lengths there use Astryx's CSS variables
    (`var(--spacing-3)`).
 
+A ghost button at the edge of a layout Kira draws itself lines up by its glyph, not its
+box. Its padding is transparent until hover, so without help its icon sits 8–12px in from
+the text beside it. Astryx's own containers (Toolbar, Banner) pull an edge ghost button out
+by its padding with `edgeCompSlot` from `@astryxdesign/core/Layout`; a header of ours asks
+for the same thing on a wrapper around the button — `edgeCompSlot.inset(spacingVars['--spacing-3'])`
+for a text button, which Astryx marks as compensable. `IconButton` carries no mark, so an
+icon button at an edge takes a negative margin of half the space around its 16px icon.
+`work.tsx` does both (`EDGE_TEXT_BUTTON`, `styles.edgeEndIcon`). A ghost button between
+other controls keeps its box; only the edges are compensated.
+
 Colors, type, and radii are the theme's, and the theme is `packages/theme`: change them
 in `kiraTheme.ts` so every surface moves together. That package stays plain CSS so a
 surface that imports it needs no StyleX compiler.
@@ -200,7 +210,7 @@ serves.
 | `ipc/`       | the renderer seam: the channels' handlers                                                                            |
 | `db/`        | persistence: owns the SQLite file, the only place SQL is written                                                     |
 | `pi/`        | the agent harness: pi's SDK, and the live sessions it must dispose                                                   |
-| `mcp/`       | app-level MCP server connections, child processes, status and tool calls; it never imports pi                       |
+| `mcp/`       | app-level MCP server connections, child processes, status and tool calls; it never imports pi                        |
 | `workspace/` | a workspace on disk: git's exclusions, one folder at a time, reading one file                                        |
 
 Root files are single-instance modules that more than one folder needs: `memory.ts`

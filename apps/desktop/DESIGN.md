@@ -179,6 +179,7 @@ Components are crisp and lightly lifted. Prefer Astryx primitives and Kira theme
 - **Primary:** semantic Kira red fill with the theme-selected on-accent text; standard horizontal padding is 12px.
 - **Hover / Focus:** use Astryx's restrained interaction overlay and the 2px accent focus outline with 3px offset.
 - **Secondary / Ghost / Destructive:** secondary uses a neutral fill, ghost stays transparent until interaction, and destructive is reserved for consequential removal or closure.
+- **Ghost at an edge:** a ghost button at the start or end of a header aligns its icon with the content beside it and lets its padding hang into the gutter, so it sits in line at rest and its hover background grows outward. How: `docs/internal/desktop-conventions.md` (Where a style goes).
 
 ### Chips
 
