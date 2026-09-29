@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { Band, SaidBy, Ticket, TicketRun } from '../../preload/bridge.ts';
+import { copy } from './workCopy.ts';
 
 /**
  * The icon a ticket's state is drawn with, wherever it is drawn small.
@@ -53,8 +54,8 @@ export function holding(
 ): { icon: LucideIcon; words: string } {
   if (ticket.closedAt !== null) {
     return ticket.closure === 'wontfix'
-      ? { icon: CircleAlert, words: 'closed, won’t do' }
-      : { icon: CircleCheck, words: 'done' };
+      ? { icon: CircleAlert, words: copy.holding.wontDo }
+      : { icon: CircleCheck, words: copy.holding.done };
   }
 
   // Somebody is on it. Who, and for how long: a claim that has gone quiet reads the same
@@ -66,8 +67,8 @@ export function holding(
     return {
       icon: ticket.claim.stale ? CircleAlert : Loader,
       words: ticket.claim.stale
-        ? `${name} went quiet`
-        : `${name} working on it ${howLong(ticket.claim.startedAt, now)}`,
+        ? copy.holding.quiet(name)
+        : copy.holding.working(name, howLong(ticket.claim.startedAt, now)),
     };
   }
 
@@ -79,13 +80,13 @@ export function holding(
   if (open > 0) {
     return {
       icon: Clock,
-      words: `${ticket.children.length - open} of ${ticket.children.length} closed`,
+      words: copy.holding.blockersClosed(ticket.children.length - open, ticket.children.length),
     };
   }
 
   return {
     icon: ticket.gate === 'draft' ? CircleDashed : Play,
-    words: GATE_WORDS[ticket.gate],
+    words: copy.holding.readiness[ticket.gate],
   };
 }
 
@@ -98,9 +99,9 @@ export function holding(
  */
 export function whyWaiting(ticket: Ticket): string {
   const last = ticket.runs[0];
-  if (last === undefined) return 'waiting on a person';
+  if (last === undefined) return copy.holding.waitingForPerson;
 
-  return last.stoppedBecause ?? 'waiting for your review';
+  return last.stoppedBecause ?? copy.holding.waitingForReview;
 }
 
 /**
@@ -112,21 +113,14 @@ export function whyWaiting(ticket: Ticket): string {
 export function howLong(iso: string, now: number = Date.now()): string {
   const minutes = Math.floor((now - new Date(iso).getTime()) / 60000);
 
-  if (minutes < 1) return 'for a moment';
-  if (minutes < 60) return `for ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`;
+  if (minutes < 1) return copy.time.moment;
+  if (minutes < 60) return copy.time.forMinutes(minutes);
 
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `for ${hours} ${hours === 1 ? 'hour' : 'hours'}`;
+  if (hours < 24) return copy.time.forHours(hours);
 
-  return 'for days';
+  return copy.time.forDays;
 }
-
-/** Where a ticket stands with whoever might resolve it, in a row's own words. */
-const GATE_WORDS: Record<Ticket['gate'], string> = {
-  draft: 'draft',
-  'ready-for-agent': 'ready for an agent',
-  'ready-for-human': 'ready for a person',
-};
 
 /** The tickets in one band, in the order the server put them in. */
 export function inBand(tickets: Ticket[], band: Band | 'draft'): Ticket[] {
@@ -158,11 +152,11 @@ export function when(iso: string, now: number = Date.now()): string {
   // minute has passed is a clock that cannot be trusted for anything else either.
   const minutes = Math.floor((now - at.getTime()) / 60000);
 
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'} ago`;
+  if (minutes < 1) return copy.time.now;
+  if (minutes < 60) return copy.time.minutesAgo(minutes);
 
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} ${hours === 1 ? 'hour' : 'hours'} ago`;
+  if (hours < 24) return copy.time.hoursAgo(hours);
 
   return at.toLocaleDateString(undefined, { dateStyle: 'medium' });
 }
@@ -193,12 +187,12 @@ export function age(iso: string, now: number = Date.now()): string {
  * nobody has answered otherwise, and only one of those is waiting on anybody.
  */
 export function howItWent(run: TicketRun): string {
-  if (run.endedAt === null) return 'still going';
-  if (run.verdict === 'accepted') return 'accepted';
-  if (run.verdict === 'sent-back') return 'sent back';
-  if (run.stoppedBecause !== null) return 'stopped';
+  if (run.endedAt === null) return copy.sessions.how.going;
+  if (run.verdict === 'accepted') return copy.sessions.how.accepted;
+  if (run.verdict === 'sent-back') return copy.sessions.how.sentBack;
+  if (run.stoppedBecause !== null) return copy.sessions.how.stopped;
 
-  return 'waiting for you';
+  return copy.sessions.how.waiting;
 }
 
 /**
@@ -208,17 +202,17 @@ export function howItWent(run: TicketRun): string {
  * because what a person is waiting on is the run's own account of it.
  */
 export function runTelling(run: TicketRun, now: number = Date.now()): string {
-  if (run.endedAt === null) return `started ${when(run.startedAt, now)} · ${howItWent(run)}`;
+  if (run.endedAt === null) return copy.sessions.started(when(run.startedAt, now), howItWent(run));
 
-  const ended = `ended ${when(run.endedAt, now)}`;
+  const ended = when(run.endedAt, now);
 
   // A run that stopped says why, unless it has since been answered: the reason is what
   // somebody was waiting on, and once there is a verdict that is no longer true.
   if (run.verdict === null && run.stoppedBecause !== null) {
-    return `${ended} · stopped: ${run.stoppedBecause}`;
+    return copy.sessions.stopped(ended, run.stoppedBecause);
   }
 
-  return `${ended} · ${howItWent(run)}`;
+  return copy.sessions.ended(ended, howItWent(run));
 }
 
 /**
@@ -251,11 +245,9 @@ export function runChoiceLabel(run: TicketRun): string {
  * was actually asked for (GH #74).
  */
 export function saidByLabel(saidBy: SaidBy, opening = false): string {
-  if (opening && saidBy === 'person') return 'the brief it started from';
-  if (saidBy === 'agent') return 'Kira';
-  if (saidBy === 'note') return 'Kira';
+  if (opening && saidBy === 'person') return copy.sessions.saidBy.brief;
 
-  return 'you';
+  return copy.sessions.saidBy[saidBy];
 }
 
 /**
@@ -269,9 +261,7 @@ export function saidByLabel(saidBy: SaidBy, opening = false): string {
 export function branchNote(ticket: Ticket): string {
   const made = ticket.runs.some((each) => each.branch === ticket.branch);
 
-  return made
-    ? 'The branch a session made for this ticket. It is kept when the session\u2019s checkout is removed.'
-    : 'What a branch for this ticket would be called. Nothing has created it yet: work on it by hand, or start the agent and it creates it.';
+  return made ? copy.branch.made : copy.branch.notMade;
 }
 
 /**

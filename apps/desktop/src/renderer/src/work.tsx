@@ -1,9 +1,9 @@
 /**
- * The Work surface: one project's issues, on a board or in a list.
+ * The Work surface: one project's tickets, on a board or in a list.
  *
- * Board and List are two readings of the same issues. Opening an issue puts the
- * same detail panel over either view, so its execution workspace stays close to
- * the plan without replacing the board or list.
+ * Board and List are two readings of the same tickets. Opening a ticket puts the
+ * same detail panel over either view, so its workspace stays close to the plan
+ * without replacing the board or list. All of its wording lives in `workCopy.ts`.
  *
  * Nothing here derives a band. The server decides what band a ticket is in and
  * the surface groups what it was handed, because a window that derived one could
@@ -153,6 +153,7 @@ import { ExecutionWorkspacePanel } from './executionWorkspace.tsx';
 import { Blockers } from './workBlockers.tsx';
 import { NewTicketDialog, TicketFields } from './workNewTicket.tsx';
 import { FilterBar, FilterToolbar } from './workFilters.tsx';
+import { copy } from './workCopy.ts';
 import {
   executionWorkspaceView,
   fromHome,
@@ -170,37 +171,14 @@ interface DropIntent {
 }
 
 const VIEWS: { id: View; label: string; icon: LucideIcon; note: string }[] = [
-  {
-    id: 'board',
-    label: 'Board',
-    icon: SquareKanban,
-    note: 'tickets grouped by status',
-  },
-  {
-    id: 'list',
-    label: 'List',
-    icon: Rows3,
-    note: 'all tickets in a list',
-  },
+  { id: 'board', icon: SquareKanban, ...copy.views.board },
+  { id: 'list', icon: Rows3, ...copy.views.list },
 ];
 
 /** The six server-derived lanes, ordered from the next human action to completed work. */
-const BANDS: { id: Band; label: string; note: string }[] = [
-  {
-    id: 'needs-you',
-    label: 'Needs review',
-    note: 'a question or a session’s result needs your answer',
-  },
-  {
-    id: 'ready',
-    label: 'Ready',
-    note: 'ready for its next action',
-  },
-  { id: 'running', label: 'Running', note: 'someone is working on it now' },
-  { id: 'blocked', label: 'Blocked', note: 'child work remains open or a breakdown is needed' },
-  { id: 'draft', label: 'Drafts', note: 'captured, but not ready to start' },
-  { id: 'done', label: 'Done', note: 'closed with a recorded outcome' },
-];
+const BANDS: { id: Band; label: string; note: string }[] = (
+  ['needs-you', 'ready', 'running', 'blocked', 'draft', 'done'] as const
+).map((id) => ({ id, ...copy.statuses[id] }));
 
 /**
  * How often the queue is read again while the Work surface is open.
@@ -1646,8 +1624,8 @@ export function WorkSurface({
       <div {...stylex.props(styles.root)}>
         <div {...stylex.props(styles.scroll)}>
           <EmptyState
-            title="No workspace selected"
-            description="Open a folder from the sidebar. A folder is a workspace, and a workspace is where a project's agents do their work."
+            title={copy.states.noFolder.title}
+            description={copy.states.noFolder.description}
             icon={<Icon icon={FolderOpen} size="lg" />}
             headingLevel={2}
           />
@@ -1739,7 +1717,7 @@ export function WorkSurface({
           {onBack !== undefined && (
             <span {...stylex.props(EDGE_TEXT_BUTTON)}>
               <Button
-                label="Back to projects"
+                label={copy.header.backToProjects}
                 icon={<Icon icon={ArrowLeft} size="sm" />}
                 variant="ghost"
                 size="sm"
@@ -1751,7 +1729,7 @@ export function WorkSurface({
             {queue?.project.name ?? workspace.name}
           </Text>
           <Text type="supporting" color="secondary" maxLines={1}>
-            {queue?.project.prefix ?? '—'} · {VIEWS.find((each) => each.id === view)?.note}
+            {queue?.project.prefix ?? copy.none} · {VIEWS.find((each) => each.id === view)?.note}
           </Text>
         </div>
         <div {...stylex.props(styles.topActions)}>
@@ -1771,7 +1749,7 @@ export function WorkSurface({
                 query ? `${window.location.pathname}?${query}` : window.location.pathname,
               );
             }}
-            label="Ticket view"
+            label={copy.views.label}
             size="sm"
           >
             {VIEWS.map((each) => (
@@ -1792,7 +1770,7 @@ export function WorkSurface({
             isDisabled={queue === null}
           />
           <Button
-            label="New ticket"
+            label={copy.header.newTicket}
             icon={<Icon icon={Plus} size="sm" />}
             variant="primary"
             size="sm"
@@ -1805,7 +1783,7 @@ export function WorkSurface({
           />
           {view === 'board' && attachedIds.length > 0 && (
             <Button
-              label={`Start chat with ${attachedIds.length} ${attachedIds.length === 1 ? 'ticket' : 'tickets'}`}
+              label={copy.header.startChat(attachedIds.length)}
               icon={<Icon icon={TicketIcon} size="sm" />}
               variant="primary"
               size="sm"
@@ -1868,7 +1846,7 @@ export function WorkSurface({
       ) : queue === null && !isWriting ? (
         // The shape of what is coming, rather than a spinner in the middle of
         // nothing: a queue is rows, and three of them say so while it is read.
-        <div {...stylex.props(styles.waiting)} aria-busy="true" aria-label="Loading tickets">
+        <div {...stylex.props(styles.waiting)} aria-busy="true" aria-label={copy.states.loading}>
           <Skeleton width="30%" height={14} />
           <Skeleton width="75%" height={14} index={1} />
           <Skeleton width="65%" height={14} index={2} />
@@ -1877,13 +1855,13 @@ export function WorkSurface({
       ) : tickets.length === 0 && !isWriting ? (
         <div {...stylex.props(styles.scroll)}>
           <EmptyState
-            title="No tickets yet"
-            description="Write a ticket to plan work, start an agent on it, and review what it made."
+            title={copy.states.noTickets.title}
+            description={copy.states.noTickets.description}
             icon={<Icon icon={FileText} size="lg" />}
             headingLevel={2}
             actions={
               <Button
-                label="New ticket"
+                label={copy.header.newTicket}
                 icon={<Icon icon={Plus} size="sm" />}
                 variant="primary"
                 onClick={() => setIsWriting(true)}
@@ -1894,13 +1872,13 @@ export function WorkSurface({
       ) : visibleTickets.length === 0 && !isWriting ? (
         <div {...stylex.props(styles.scroll)}>
           <EmptyState
-            title="No matching tickets"
-            description="Try a different search or clear the current filters."
+            title={copy.states.noMatches.title}
+            description={copy.states.noMatches.description}
             icon={<Icon icon={FileText} size="lg" />}
             headingLevel={2}
             actions={
               <Button
-                label="Clear filters"
+                label={copy.filter.clear}
                 variant="primary"
                 onClick={() => updateDisplay(DEFAULT_WORK_DISPLAY)}
               />
@@ -1953,9 +1931,11 @@ function QueueReadFailure({ trouble, onRetry }: { trouble: string; onRetry: () =
     <div {...stylex.props(styles.refusal)}>
       <Banner
         status="error"
-        title="Could not load work"
+        title={copy.states.loadFailed}
         description={trouble}
-        endContent={<Button label="Try again" size="sm" variant="secondary" onClick={onRetry} />}
+        endContent={
+          <Button label={copy.states.tryAgain} size="sm" variant="secondary" onClick={onRetry} />
+        }
       />
     </div>
   );
@@ -2024,7 +2004,7 @@ function Join({
             {workspace.name}
           </Text>
           <Text type="supporting" color="secondary" maxLines={1}>
-            this folder is not working a project yet
+            {copy.join.topNote}
           </Text>
         </div>
       </div>
@@ -2032,22 +2012,20 @@ function Join({
       <div {...stylex.props(styles.scroll)}>
         <div {...stylex.props(styles.join)}>
           <Text type="large" weight="medium">
-            Which project does this folder work?
+            {copy.join.title}
           </Text>
           <Text type="supporting" color="secondary">
-            A project is where the work is kept, and it outlives any one checkout. Join one the
-            server already holds, or start a new one here. Nothing is written into the folder, and
-            its chats stay where they are.
+            {copy.join.intro}
           </Text>
 
           {trouble !== null && (
             <Banner
               status="error"
-              title="Kira could not answer"
+              title={copy.refused.joinTitle}
               description={trouble}
               endContent={
                 <Button
-                  label="Try again"
+                  label={copy.states.tryAgain}
                   size="sm"
                   variant="secondary"
                   onClick={() => void read()}
@@ -2057,11 +2035,7 @@ function Join({
           )}
 
           {projects === null && trouble === null && (
-            <div
-              {...stylex.props(styles.waiting)}
-              aria-busy="true"
-              aria-label="Reading the projects"
-            >
+            <div {...stylex.props(styles.waiting)} aria-busy="true" aria-label={copy.join.loading}>
               <Skeleton width="40%" height={14} />
               <Skeleton width="70%" height={14} index={1} />
             </div>
@@ -2071,11 +2045,11 @@ function Join({
             <>
               <Divider />
               <Text type="label" weight="medium">
-                Already on the server
+                {copy.join.existing}
               </Text>
               {projects.length === 0 ? (
                 <Text type="supporting" color="secondary">
-                  The server holds no projects yet. This folder can be the first.
+                  {copy.join.noneYet}
                 </Text>
               ) : (
                 <List density="compact" hasDividers>
@@ -2083,10 +2057,10 @@ function Join({
                     <Item
                       key={each.id}
                       label={each.name}
-                      description={`${each.prefix} · tickets are named ${each.prefix}-1, ${each.prefix}-2`}
+                      description={copy.join.prefixNote(each.prefix)}
                       endContent={
                         <Button
-                          label="Join"
+                          label={copy.join.join}
                           variant="secondary"
                           size="sm"
                           isDisabled={isJoining}
@@ -2100,40 +2074,38 @@ function Join({
 
               <Divider />
               <Text type="label" weight="medium">
-                Or start a new project
+                {copy.join.startHeading}
               </Text>
               <div {...stylex.props(styles.joinFields)}>
                 <div {...stylex.props(styles.fieldGrow)}>
                   <TextInput
-                    label="Name"
+                    label={copy.join.name}
                     value={name}
                     onChange={setName}
-                    description="What the project is called on the server."
+                    description={copy.join.nameNote}
                     size="sm"
                   />
                 </div>
                 <div {...stylex.props(styles.fieldGrow)}>
                   <TextInput
-                    label="Prefix"
+                    label={copy.join.prefix}
                     value={prefix}
                     onChange={(next) => setPrefix(next.toUpperCase())}
-                    description="Two to six letters and digits. Ticket names use this prefix, which cannot change later."
+                    description={copy.join.prefixHelp}
                     size="sm"
                   />
                 </div>
               </div>
               <div {...stylex.props(styles.joinActions)}>
                 <Button
-                  label="Start it, and work here"
+                  label={copy.join.start}
                   variant="primary"
                   size="sm"
                   isDisabled={isJoining || name.trim() === '' || prefix.trim() === ''}
                   onClick={() => void join({ kind: 'new', name, prefix })}
                 />
                 <Text type="supporting" color="secondary">
-                  {auth?.signedIn === false
-                    ? 'Nobody is signed in — a project lives on the server.'
-                    : 'The folder keeps working for chat either way.'}
+                  {auth?.signedIn === false ? copy.join.signedOut : copy.join.chatStillWorks}
                 </Text>
               </div>
             </>
@@ -2239,13 +2211,17 @@ function TicketTable({
           <div {...stylex.props(styles.table)}>
             <div {...stylex.props(styles.tableHead)}>
               <span />
-              <span {...stylex.props(styles.tableHeadCell, styles.tableHeadTicket)}>Ticket</span>
-              <span {...stylex.props(styles.tableHeadCell)}>Status</span>
-              <span {...stylex.props(styles.tableHeadCell)}>Kind</span>
-              <span {...stylex.props(styles.tableHeadCell)}>Blockers</span>
-              <span {...stylex.props(styles.tableHeadCell)}>Sessions</span>
-              <span {...stylex.props(styles.tableHeadCell)}>Owner</span>
-              <span {...stylex.props(styles.tableHeadCell, styles.tableHeadEnd)}>Updated</span>
+              <span {...stylex.props(styles.tableHeadCell, styles.tableHeadTicket)}>
+                {copy.table.ticket}
+              </span>
+              <span {...stylex.props(styles.tableHeadCell)}>{copy.table.status}</span>
+              <span {...stylex.props(styles.tableHeadCell)}>{copy.table.kind}</span>
+              <span {...stylex.props(styles.tableHeadCell)}>{copy.table.blockers}</span>
+              <span {...stylex.props(styles.tableHeadCell)}>{copy.table.sessions}</span>
+              <span {...stylex.props(styles.tableHeadCell)}>{copy.table.owner}</span>
+              <span {...stylex.props(styles.tableHeadCell, styles.tableHeadEnd)}>
+                {copy.table.updated}
+              </span>
             </div>
             {groups.map((each) => (
               <TableSection
@@ -2275,7 +2251,7 @@ function TicketTable({
               <Icon icon={KIND_ICON[dragging.kind]} size="xsm" />
             </span>
             <span {...stylex.props(styles.rowName)}>{dragging.name}</span>
-            <span {...stylex.props(styles.tableTitle)}>{dragging.title || 'Untitled'}</span>
+            <span {...stylex.props(styles.tableTitle)}>{dragging.title || copy.untitled}</span>
           </div>
         )}
       </DragOverlay>
@@ -2405,7 +2381,7 @@ function TableRow({
     >
       <button
         type="button"
-        aria-label={`Open ticket ${ticket.name}: ${ticket.title || 'Untitled'}`}
+        aria-label={copy.row.open(ticket.name, ticket.title)}
         aria-current={isSelected || undefined}
         {...stylex.props(styles.rowOpen)}
         onClick={() => onOpen(ticket.id)}
@@ -2415,7 +2391,7 @@ function TableRow({
         <Icon icon={KIND_ICON[ticket.kind]} size="xsm" />
       </span>
       <span {...stylex.props(styles.rowName)}>{ticket.name}</span>
-      <span {...stylex.props(styles.tableTitle)}>{ticket.title || 'Untitled'}</span>
+      <span {...stylex.props(styles.tableTitle)}>{ticket.title || copy.untitled}</span>
       <span {...stylex.props(styles.rowState, ticket.closure === 'wontfix' && styles.abandoned)}>
         <span {...stylex.props(styles.rowStateIcon, BAND_TONE[ticket.band])}>
           <Icon icon={said.icon} size="xsm" />
@@ -2428,16 +2404,16 @@ function TableRow({
       </span>
       <span {...stylex.props(styles.tableNumber)}>
         {ticket.children.length === 0
-          ? '—'
+          ? copy.none
           : `${ticket.children.length - openBlockers}/${ticket.children.length}`}
       </span>
       <span {...stylex.props(styles.tableNumber)}>
-        {ticket.runs.length === 0 ? '—' : ticket.runs.length}
+        {ticket.runs.length === 0 ? copy.none : ticket.runs.length}
       </span>
       <span {...stylex.props(styles.tableOwner)} title={owner ?? undefined}>
-        {owner ?? '—'}
+        {owner ?? copy.none}
       </span>
-      <span {...stylex.props(styles.tableAge)} title={`Updated ${when(ticket.updatedAt)}`}>
+      <span {...stylex.props(styles.tableAge)} title={copy.row.updated(when(ticket.updatedAt))}>
         {age(ticket.updatedAt)}
       </span>
       {canDrag && (
@@ -2446,8 +2422,8 @@ function TableRow({
           type="button"
           {...attributes}
           {...listeners}
-          aria-label={`Move ${ticket.name} to another group`}
-          title="Drag to reorder or move to another group"
+          aria-label={copy.table.move(ticket.name)}
+          title={copy.table.dragTitle}
           {...stylex.props(styles.tableHandle)}
         >
           <Icon icon={GripVertical} size="xsm" />
@@ -2504,38 +2480,34 @@ function DropActionBar({
     workspaces.find((each) => each.id === selectedWorkspaceId) ?? workspaces[0];
   const destination = bandLabel(intent.target);
 
-  let message = `Move ${ticket.name} from ${bandLabel(ticket.band)} to ${destination}.`;
+  let message = copy.drop.move(ticket.name, bandLabel(ticket.band), destination);
   if (intent.plan.kind === 'choose-ready-gate') {
-    message = `Choose who should take the next turn on ${ticket.name}.`;
+    message = copy.drop.chooseReady(ticket.name);
   } else if (intent.plan.kind === 'change-gate') {
-    message = `Put ${ticket.name} back in Drafts. Its blockers and sessions will stay.`;
+    message = copy.drop.backToDrafts(ticket.name);
   } else if (intent.plan.kind === 'prepare-agent-run') {
-    message = `${ticket.name} has to be ready for an agent before an agent can start on it.`;
+    message = copy.drop.prepareAgent(ticket.name);
   } else if (intent.plan.kind === 'start-run') {
-    message = `Confirm the execution workspace for ${ticket.name}, then start its agent.`;
+    message = copy.drop.startAgent(ticket.name);
   } else if (intent.plan.kind === 'add-blocker') {
-    message = `Choose an open ticket that should block ${ticket.name}.`;
+    message = copy.drop.addBlocker(ticket.name);
   } else if (intent.plan.kind === 'resolve-blockers') {
-    message = `Choose a blocker to remove from ${ticket.name}.`;
+    message = copy.drop.removeBlocker(ticket.name);
   } else if (intent.plan.kind === 'send-back') {
-    message = `Send ${ticket.name} back? The agent tries again from Ready.`;
+    message = copy.drop.sendBack(ticket.name);
   } else if (intent.plan.kind === 'accept-result') {
-    message = `Accept what the session made and close ${ticket.name}?`;
+    message = copy.drop.accept(ticket.name);
   } else if (intent.plan.kind === 'choose-closure') {
-    message = `Choose how to resolve ${ticket.name}.`;
+    message = copy.drop.resolve(ticket.name);
   } else if (intent.plan.kind === 'unavailable') {
     message = intent.plan.reason;
   }
 
   return (
-    <section
-      {...stylex.props(styles.dropAction)}
-      aria-label="Confirm lane action"
-      aria-live="polite"
-    >
+    <section {...stylex.props(styles.dropAction)} aria-label={copy.drop.aria} aria-live="polite">
       <div {...stylex.props(styles.dropActionCopy)}>
         <Text type="label" weight="medium">
-          {ticket.name} → {destination}
+          {copy.drop.heading(ticket.name, destination)}
         </Text>
         <Text type="supporting" color="secondary">
           {message}
@@ -2545,14 +2517,14 @@ function DropActionBar({
         {intent.plan.kind === 'choose-ready-gate' && (
           <>
             <Button
-              label="Ready for an agent"
+              label={copy.actions.readyForAgent}
               size="sm"
               variant="primary"
               isDisabled={isBusy || !ticket.criteria.some((criterion) => criterion.trim() !== '')}
               onClick={() => void onChangeTicket(ticket.id, { gate: 'ready-for-agent' })}
             />
             <Button
-              label="Ready for a person"
+              label={copy.actions.readyForPerson}
               size="sm"
               variant="secondary"
               isDisabled={isBusy}
@@ -2562,7 +2534,7 @@ function DropActionBar({
         )}
         {intent.plan.kind === 'change-gate' && (
           <Button
-            label="Back to draft"
+            label={copy.actions.backToDraft}
             size="sm"
             variant="primary"
             isDisabled={isBusy}
@@ -2571,7 +2543,7 @@ function DropActionBar({
         )}
         {intent.plan.kind === 'prepare-agent-run' && (
           <Button
-            label="Ready for an agent"
+            label={copy.actions.readyForAgent}
             size="sm"
             variant="primary"
             isDisabled={isBusy}
@@ -2581,11 +2553,11 @@ function DropActionBar({
         {intent.plan.kind === 'start-run' &&
           (isLoading ? (
             <Text type="supporting" color="secondary">
-              Checking execution workspaces…
+              {copy.drop.checkingWorkspaces}
             </Text>
           ) : workspaces.length === 0 ? (
             <Button
-              label="Open ticket to set up a workspace"
+              label={copy.drop.openToSetUp}
               size="sm"
               variant="primary"
               isDisabled={isBusy || executionWorkspaces === null}
@@ -2596,7 +2568,7 @@ function DropActionBar({
               {workspaces.length > 1 && (
                 <div {...stylex.props(styles.dropSelector)}>
                   <Selector
-                    label="Execution workspace"
+                    label={copy.drop.workspace}
                     options={workspaces.map((each) => ({
                       value: each.id,
                       label: each.branch,
@@ -2609,7 +2581,7 @@ function DropActionBar({
                 </div>
               )}
               <Button
-                label={`Start agent${chosenWorkspace === undefined ? '' : ` in ${chosenWorkspace.branch}`}`}
+                label={copy.drop.startAgentIn(chosenWorkspace?.branch)}
                 size="sm"
                 variant="primary"
                 isDisabled={isBusy || chosenWorkspace === undefined}
@@ -2625,10 +2597,10 @@ function DropActionBar({
               <>
                 <div {...stylex.props(styles.dropSelector)}>
                   <Selector
-                    label="Blocker"
+                    label={copy.drop.blocker}
                     options={addableBlockers.map((each) => ({
                       value: each.id,
-                      label: `${each.name} · ${each.title || 'Untitled'}`,
+                      label: `${each.name} · ${each.title || copy.untitled}`,
                     }))}
                     value={chosenBlocker?.id}
                     onChange={setSelectedBlockerId}
@@ -2636,7 +2608,7 @@ function DropActionBar({
                   />
                 </div>
                 <Button
-                  label="Add blocker"
+                  label={copy.drop.addBlockerButton}
                   size="sm"
                   variant="primary"
                   isDisabled={isBusy || chosenBlocker === undefined}
@@ -2649,7 +2621,7 @@ function DropActionBar({
               </>
             ) : (
               <Text type="supporting" color="secondary">
-                No open tickets can block this one.
+                {copy.drop.noBlockerCandidates}
               </Text>
             )}
           </>
@@ -2660,7 +2632,7 @@ function DropActionBar({
               <>
                 <div {...stylex.props(styles.dropSelector)}>
                   <Selector
-                    label="Open blocker"
+                    label={copy.drop.openBlocker}
                     options={openBlockers.map((each) => ({ value: each.id, label: each.name }))}
                     value={chosenOpenBlocker?.id}
                     onChange={setSelectedBlockerId}
@@ -2668,7 +2640,7 @@ function DropActionBar({
                   />
                 </div>
                 <Button
-                  label="Remove blocker"
+                  label={copy.drop.removeBlockerButton}
                   size="sm"
                   variant="primary"
                   isDisabled={isBusy || chosenOpenBlocker === undefined}
@@ -2681,14 +2653,14 @@ function DropActionBar({
               </>
             ) : (
               <Text type="supporting" color="secondary">
-                It has no open blockers.
+                {copy.drop.noOpenBlockers}
               </Text>
             )}
           </>
         )}
         {intent.plan.kind === 'send-back' && (
           <Button
-            label="Send back"
+            label={copy.actions.sendBack}
             size="sm"
             variant="primary"
             isDisabled={isBusy}
@@ -2697,7 +2669,7 @@ function DropActionBar({
         )}
         {intent.plan.kind === 'accept-result' && (
           <Button
-            label="Accept and close"
+            label={copy.actions.acceptAndClose}
             size="sm"
             variant="primary"
             isDisabled={isBusy}
@@ -2707,14 +2679,14 @@ function DropActionBar({
         {intent.plan.kind === 'choose-closure' && (
           <>
             <Button
-              label="Mark done"
+              label={copy.actions.markDone}
               size="sm"
               variant="primary"
               isDisabled={isBusy}
               onClick={() => void onChangeTicket(ticket.id, { closure: 'done' })}
             />
             <Button
-              label="Won’t do"
+              label={copy.actions.wontDo}
               size="sm"
               variant="secondary"
               isDisabled={isBusy}
@@ -2724,13 +2696,19 @@ function DropActionBar({
         )}
         {intent.plan.kind === 'unavailable' && (
           <Button
-            label="Open ticket"
+            label={copy.drop.openTicket}
             size="sm"
             variant="secondary"
             onClick={() => onOpen(ticket.id)}
           />
         )}
-        <Button label="Cancel" size="sm" variant="ghost" isDisabled={isBusy} onClick={onCancel} />
+        <Button
+          label={copy.actions.cancel}
+          size="sm"
+          variant="ghost"
+          isDisabled={isBusy}
+          onClick={onCancel}
+        />
       </div>
     </section>
   );
@@ -2802,10 +2780,7 @@ function BoardView({
       onDragEnd={handleDragEnd}
     >
       <div {...stylex.props(styles.board)}>
-        <section
-          aria-label="Ticket lanes; scroll horizontally to see all states"
-          {...stylex.props(styles.boardColumns)}
-        >
+        <section aria-label={copy.board.lanes} {...stylex.props(styles.boardColumns)}>
           {bands.map((band) => {
             const held = inBand(tickets, band.id);
             return (
@@ -2950,9 +2925,7 @@ function BoardLane({
       </ol>
       {tickets.length === 0 && (
         <p {...stylex.props(styles.laneEmpty)}>
-          {band.id === 'done' && !showDone
-            ? 'Done tickets are hidden in Filters.'
-            : 'Nothing here.'}
+          {band.id === 'done' && !showDone ? copy.board.doneHidden : copy.board.empty}
         </p>
       )}
     </div>
@@ -3013,7 +2986,7 @@ function SortableTicketRow({
     >
       <button
         type="button"
-        aria-label={`Open ticket ${ticket.name}: ${ticket.title || 'Untitled'}`}
+        aria-label={copy.row.open(ticket.name, ticket.title)}
         aria-current={selected || undefined}
         {...stylex.props(styles.rowOpen)}
         onClick={() => onOpen(ticket.id)}
@@ -3028,23 +3001,23 @@ function SortableTicketRow({
         {canStart && (
           <button
             type="button"
-            aria-label={`Start agent on ${ticket.name}`}
+            aria-label={copy.row.startOn(ticket.name)}
             {...stylex.props(styles.stripStart)}
             onClick={() => onRequestRun(ticket.id)}
           >
             <Icon icon={Play} size="xsm" />
-            Start
+            {copy.row.start}
           </button>
         )}
         {ticket.band === 'ready' && (
           <StripButton
-            label={`Move ${ticket.name} to the top of Ready`}
+            label={copy.row.toTop(ticket.name)}
             icon={ArrowUp}
             onClick={() => onPromote(ticket.id)}
           />
         )}
         <StripButton
-          label={`${attached ? 'Remove' : 'Attach'} ${ticket.name} ${attached ? 'from' : 'to'} chat context`}
+          label={attached ? copy.row.removeFromChat(ticket.name) : copy.row.addToChat(ticket.name)}
           icon={attached ? CircleCheck : Paperclip}
           isOn={attached}
           onClick={() => onToggleAttached(ticket.id)}
@@ -3054,8 +3027,8 @@ function SortableTicketRow({
           type="button"
           {...attributes}
           {...listeners}
-          aria-label={`Move ${ticket.name} to another lane`}
-          title={canReorder ? 'Reorder or move to another lane' : 'Move to another lane'}
+          aria-label={copy.row.moveStatus(ticket.name)}
+          title={canReorder ? copy.row.handleReorder : copy.row.handleMove}
           {...stylex.props(styles.stripButton, styles.stripHandle)}
         >
           <Icon icon={GripVertical} size="sm" />
@@ -3114,7 +3087,7 @@ function TicketRowBody({
           <Icon icon={KIND_ICON[ticket.kind]} size="xsm" />
         </span>
         <span {...stylex.props(styles.rowName)}>{ticket.name}</span>
-        <span {...stylex.props(styles.rowAge)} title={`Updated ${when(ticket.updatedAt)}`}>
+        <span {...stylex.props(styles.rowAge)} title={copy.row.updated(when(ticket.updatedAt))}>
           {age(ticket.updatedAt)}
         </span>
         {person !== null && (
@@ -3123,7 +3096,7 @@ function TicketRowBody({
           </span>
         )}
       </span>
-      <span {...stylex.props(styles.rowTitle)}>{ticket.title || 'Untitled'}</span>
+      <span {...stylex.props(styles.rowTitle)}>{ticket.title || copy.untitled}</span>
       <span {...stylex.props(styles.rowState, ticket.closure === 'wontfix' && styles.abandoned)}>
         <span {...stylex.props(styles.rowStateIcon, BAND_TONE[ticket.band])}>
           <Icon icon={said.icon} size="xsm" />
@@ -3136,13 +3109,13 @@ function TicketRowBody({
           {ticket.kind}
         </span>
         {ticket.children.length > 0 && (
-          <span {...stylex.props(styles.rowTag)} title="Blockers closed">
+          <span {...stylex.props(styles.rowTag)} title={copy.row.blockersClosed}>
             <Icon icon={GitBranch} size="xsm" />
             {ticket.children.length - openChildren}/{ticket.children.length}
           </span>
         )}
         {ticket.runs.length > 0 && (
-          <span {...stylex.props(styles.rowTag)} title="Sessions">
+          <span {...stylex.props(styles.rowTag)} title={copy.row.sessions}>
             <Icon icon={History} size="xsm" />
             {ticket.runs.length}
           </span>
@@ -3150,8 +3123,8 @@ function TicketRowBody({
         {firstChat !== undefined && (
           <button
             type="button"
-            aria-label={`Open chat: ${firstChat.title}${linkedChats.length > 1 ? `, and ${linkedChats.length - 1} more linked` : ''}`}
-            title={`Open chat: ${firstChat.title}`}
+            aria-label={copy.row.openChat(firstChat.title, linkedChats.length - 1)}
+            title={copy.row.openChatTitle(firstChat.title)}
             {...stylex.props(styles.rowTag, styles.rowTagButton)}
             onClick={() => onOpenChat?.(firstChat.id)}
           >
@@ -3162,7 +3135,7 @@ function TicketRowBody({
         {attached && (
           <span {...stylex.props(styles.rowTag, styles.rowTagAttached)}>
             <Icon icon={CircleCheck} size="xsm" />
-            in chat context
+            {copy.row.inNewChat}
           </span>
         )}
       </span>
@@ -3235,7 +3208,7 @@ function TicketPanel({
 }) {
   const banner = refusal !== null && (
     <div {...stylex.props(styles.refusal)}>
-      <Banner status="error" title="That didn’t go through" description={refusal} />
+      <Banner status="error" title={copy.refused.panelTitle} description={refusal} />
     </div>
   );
 
@@ -3249,7 +3222,7 @@ function TicketPanel({
               // said the way the header's "Back to projects" is, and not as Expand's mirror.
               <span {...stylex.props(EDGE_TEXT_BUTTON)}>
                 <Button
-                  label="Back to Work"
+                  label={copy.actions.backToWork}
                   icon={<Icon icon={ArrowLeft} size="sm" />}
                   variant="ghost"
                   size="sm"
@@ -3262,7 +3235,11 @@ function TicketPanel({
             </Text>
           </span>
           <span {...stylex.props(styles.edgeEndIcon)}>
-            <IconButton label="Close" icon={<Icon icon={X} size="sm" />} onClick={onLeave} />
+            <IconButton
+              label={copy.actions.close}
+              icon={<Icon icon={X} size="sm" />}
+              onClick={onLeave}
+            />
           </span>
         </div>
         {banner}
@@ -3272,7 +3249,7 @@ function TicketPanel({
               {head}
               {children}
             </article>
-            <aside aria-label="Ticket actions and details" {...stylex.props(styles.fullBox)}>
+            <aside aria-label={copy.ticket.asideLabel} {...stylex.props(styles.fullBox)}>
               {foot !== undefined && <div {...stylex.props(styles.fullActions)}>{foot}</div>}
               {aside}
             </aside>
@@ -3288,7 +3265,7 @@ function TicketPanel({
         <div {...stylex.props(styles.panelHeadBar)}>
           <span {...stylex.props(EDGE_TEXT_BUTTON)}>
             <Button
-              label={placement === 'inline' ? 'Back to Work' : 'Close'}
+              label={placement === 'inline' ? copy.actions.backToWork : copy.actions.close}
               icon={<Icon icon={placement === 'inline' ? ArrowLeft : X} size="sm" />}
               variant="ghost"
               size="sm"
@@ -3298,8 +3275,8 @@ function TicketPanel({
           {onExpand !== undefined && (
             <span {...stylex.props(styles.edgeEndIcon)}>
               <IconButton
-                label="Open the full view"
-                tooltip="Open the full view"
+                label={copy.actions.openFullView}
+                tooltip={copy.actions.openFullView}
                 icon={<Icon icon={Maximize2} size="sm" />}
                 onClick={onExpand}
               />
@@ -3411,12 +3388,12 @@ function TicketReading({
   const branch = (
     <section {...stylex.props(styles.section)}>
       <Text type="label" weight="medium">
-        The branch
+        {copy.branch.heading}
       </Text>
       <div {...stylex.props(styles.branch)}>
         <Text type="code">{ticket.branch}</Text>
         <IconButton
-          label={`Copy ${ticket.branch}`}
+          label={copy.branch.copy}
           icon={<Icon icon={Copy} size="sm" />}
           onClick={() => copyText(ticket.branch)}
         />
@@ -3430,28 +3407,20 @@ function TicketReading({
   // In the full view, what the drawer lists under its disclosure sits in the floating
   // box instead: the facts a person scans, then the branch, then the chats it came from.
   const facts: { label: string; value: string }[] = [
-    { label: 'Status', value: ticket.band === 'draft' ? 'Draft' : bandLabel(ticket.band) },
-    {
-      label: 'Ready for',
-      value:
-        ticket.gate === 'draft'
-          ? 'Not yet (draft)'
-          : ticket.gate === 'ready-for-agent'
-            ? 'An agent'
-            : 'A person',
-    },
-    { label: 'Kind', value: ticket.kind },
-    { label: 'Working on it', value: ticket.claim?.holder.name ?? 'Nobody' },
-    { label: 'Created by', value: ticket.author?.name ?? '—' },
-    { label: 'Priority', value: String(ticket.rank) },
-    { label: 'Created', value: when(ticket.createdAt) },
-    { label: 'Updated', value: when(ticket.updatedAt) },
+    { label: copy.facts.status, value: copy.statusWord[ticket.band] },
+    { label: copy.facts.readyFor, value: copy.facts.readyForValues[ticket.gate] },
+    { label: copy.facts.kind, value: ticket.kind },
+    { label: copy.facts.workingOnIt, value: ticket.claim?.holder.name ?? copy.facts.nobody },
+    { label: copy.facts.createdBy, value: ticket.author?.name ?? copy.none },
+    { label: copy.facts.priority, value: String(ticket.rank) },
+    { label: copy.facts.created, value: when(ticket.createdAt) },
+    { label: copy.facts.updated, value: when(ticket.updatedAt) },
     ...(ticket.closedAt === null
       ? []
       : [
           {
-            label: 'Closed',
-            value: `${when(ticket.closedAt)}, ${ticket.closure === 'wontfix' ? 'not done' : 'done'}`,
+            label: copy.facts.closed,
+            value: copy.ticket.closedAs(when(ticket.closedAt), ticket.closure === 'wontfix'),
           },
         ]),
   ];
@@ -3477,17 +3446,17 @@ function TicketReading({
         </div>
         <section {...stylex.props(styles.fullGroup)}>
           <Text type="label" weight="medium">
-            Linked chats
+            {copy.ticket.linkedChats}
           </Text>
           {linkedChats.length === 0 ? (
             <Text type="supporting" color="secondary">
-              No chats are linked to this ticket.
+              {copy.ticket.noLinkedChats}
             </Text>
           ) : (
             linkedChats.map((chat) => (
               <Button
                 key={chat.id}
-                label={`Open chat: ${chat.title}`}
+                label={copy.ticket.openChat(chat.title)}
                 icon={<Icon icon={MessageSquare} size="sm" />}
                 size="sm"
                 variant="ghost"
@@ -3509,7 +3478,7 @@ function TicketReading({
       onLeave={onLeave}
       onExpand={onExpand}
       onCollapse={onCollapse}
-      crumb={`${bandLabel(ticket.band)} / ${ticket.name}`}
+      crumb={copy.ticket.crumb(bandLabel(ticket.band), ticket.name)}
       aside={aside}
       refusal={refusal}
       head={
@@ -3523,7 +3492,7 @@ function TicketReading({
             <TicketState ticket={ticket} />
           </div>
           {!isEditing && (
-            <h2 {...stylex.props(styles.ticketTitle)}>{ticket.title || 'Untitled'}</h2>
+            <h2 {...stylex.props(styles.ticketTitle)}>{ticket.title || copy.untitled}</h2>
           )}
         </div>
       }
@@ -3531,7 +3500,7 @@ function TicketReading({
         ticket.closedAt !== null || isEditing ? undefined : isClosing ? (
           <>
             <Button
-              label="Mark done"
+              label={copy.actions.markDone}
               size="sm"
               variant="primary"
               isDisabled={isBusy}
@@ -3543,7 +3512,7 @@ function TicketReading({
               }
             />
             <Button
-              label="Won’t do"
+              label={copy.actions.wontDo}
               size="sm"
               variant="secondary"
               isDisabled={isBusy}
@@ -3554,7 +3523,12 @@ function TicketReading({
                 })
               }
             />
-            <Button label="Cancel" size="sm" variant="ghost" onClick={() => setIsClosing(false)} />
+            <Button
+              label={copy.actions.cancel}
+              size="sm"
+              variant="ghost"
+              onClick={() => setIsClosing(false)}
+            />
           </>
         ) : (
           <>
@@ -3562,7 +3536,7 @@ function TicketReading({
                 applies at a time, so the footer leads with a single decision. */}
             {planTicketDrop(ticket, 'running')?.kind === 'start-run' && (
               <Button
-                label="Start agent"
+                label={copy.actions.startAgent}
                 size="sm"
                 variant="primary"
                 isDisabled={isBusy}
@@ -3575,7 +3549,11 @@ function TicketReading({
             {ticket.kind === 'question' &&
               (ticket.band === 'ready' || ticket.band === 'needs-you') && (
                 <Button
-                  label={ticket.band === 'needs-you' ? 'Continue with Kira' : 'Ask Kira'}
+                  label={
+                    ticket.band === 'needs-you'
+                      ? copy.actions.continueWithKira
+                      : copy.actions.askKira
+                  }
                   size="sm"
                   variant="primary"
                   isDisabled={isBusy}
@@ -3585,7 +3563,7 @@ function TicketReading({
             {/* A claim whose machine stopped answering, which only a person can take on. */}
             {ticket.claim?.stale === true && (
               <Button
-                label={`Take over from ${ticket.claim.holder.name}`}
+                label={copy.actions.takeOver(ticket.claim.holder.name)}
                 size="sm"
                 variant="primary"
                 isDisabled={isBusy}
@@ -3597,7 +3575,7 @@ function TicketReading({
               <>
                 {refusal?.startsWith('Merge conflict:') === true && (
                   <Button
-                    label="Fix conflicts with Kira"
+                    label={copy.actions.fixConflicts}
                     size="sm"
                     variant="primary"
                     isDisabled={isBusy}
@@ -3605,14 +3583,14 @@ function TicketReading({
                   />
                 )}
                 <Button
-                  label="Accept and close"
+                  label={copy.actions.acceptAndClose}
                   size="sm"
                   variant="primary"
                   isDisabled={isBusy}
                   onClick={() => void run(() => onJudge('accepted'))}
                 />
                 <Button
-                  label="Send back"
+                  label={copy.actions.sendBack}
                   size="sm"
                   variant="secondary"
                   isDisabled={isBusy}
@@ -3623,14 +3601,14 @@ function TicketReading({
             {ticket.gate === 'draft' && (
               <>
                 <Button
-                  label="Ready for an agent"
+                  label={copy.actions.readyForAgent}
                   size="sm"
                   variant="primary"
                   isDisabled={isBusy}
                   onClick={() => void run(() => onWrite({ gate: 'ready-for-agent' }))}
                 />
                 <Button
-                  label="Ready for a person"
+                  label={copy.actions.readyForPerson}
                   size="sm"
                   variant="secondary"
                   isDisabled={isBusy}
@@ -3645,7 +3623,7 @@ function TicketReading({
                 drawer's footer it sits between buttons and keeps its box. */}
             <span {...stylex.props(styles.footTail, placement === 'full' && EDGE_TEXT_BUTTON)}>
               <Button
-                label="Edit"
+                label={copy.actions.edit}
                 size="sm"
                 variant="ghost"
                 isDisabled={isBusy}
@@ -3656,7 +3634,7 @@ function TicketReading({
               />
               <span {...stylex.props(styles.edgeEndIconSm)}>
                 <MoreMenu
-                  label="More ticket actions"
+                  label={copy.actions.more}
                   size="sm"
                   alignment="end"
                   placement={placement === 'full' ? 'below' : 'above'}
@@ -3666,8 +3644,8 @@ function TicketReading({
                       ? []
                       : [
                           {
-                            label: 'Back to draft',
-                            description: 'Stop it being picked up until it is ready again.',
+                            label: copy.actions.backToDraft,
+                            description: copy.actions.backToDraftNote,
                             onClick: () => void run(() => onWrite({ gate: 'draft' })),
                           },
                         ]),
@@ -3676,15 +3654,15 @@ function TicketReading({
                     ...(ticket.claim !== null && ticket.claim.workerId === null
                       ? [
                           {
-                            label: 'Stop working on it',
-                            description: 'Put it back in its column for someone else.',
+                            label: copy.actions.stopWorking,
+                            description: copy.actions.stopWorkingNote,
                             onClick: () => void run(onLetGo),
                           },
                         ]
                       : []),
                     {
-                      label: 'Resolve…',
-                      description: 'Close it as done, or as something that won’t be done.',
+                      label: copy.actions.resolve,
+                      description: copy.actions.resolveNote,
                       onClick: () => {
                         setIsClosing(true);
                         onRefuse(null);
@@ -3721,7 +3699,7 @@ function TicketReading({
         <>
           <section {...stylex.props(styles.section)}>
             <Text type="label" weight="medium">
-              About
+              {copy.ticket.about}
             </Text>
             {hasDescription ? (
               <Markdown
@@ -3734,7 +3712,7 @@ function TicketReading({
               </Markdown>
             ) : (
               <Text type="supporting" color="secondary">
-                No description yet.
+                {copy.ticket.noDescription}
               </Text>
             )}
           </section>
@@ -3742,17 +3720,17 @@ function TicketReading({
           <section {...stylex.props(styles.section)}>
             <div {...stylex.props(styles.ticketSectionHeading)}>
               <Text type="label" weight="medium">
-                Done when
+                {copy.ticket.doneWhen}
               </Text>
               {ticket.criteria.length > 0 && (
                 <Text type="supporting" color="secondary">
-                  {ticket.criteria.length} {ticket.criteria.length === 1 ? 'check' : 'checks'}
+                  {copy.ticket.checks(ticket.criteria.length)}
                 </Text>
               )}
             </div>
             {ticket.criteria.length === 0 ? (
               <Text type="supporting" color="secondary">
-                No finish line yet. Add one before making this ready for an agent.
+                {copy.ticket.noChecks}
               </Text>
             ) : (
               <ul {...stylex.props(styles.ticketCriteria)}>
@@ -3765,7 +3743,7 @@ function TicketReading({
                     />
                     <Text type="body" {...stylex.props(styles.ticketCriterionText)}>
                       {line === '' ? (
-                        '(an empty line)'
+                        copy.ticket.emptyCheck
                       ) : (
                         <Markdown display="inline" onLinkClick={openLink}>
                           {line}
@@ -3781,7 +3759,7 @@ function TicketReading({
           {ticket.kind === 'map' && (ticket.decisionsSoFar?.length ?? 0) > 0 && (
             <section {...stylex.props(styles.section)}>
               <Text type="label" weight="medium">
-                Decisions so far
+                {copy.ticket.outcomesSoFar}
               </Text>
               <ul {...stylex.props(styles.lines)}>
                 {ticket.decisionsSoFar?.map((outcome) => (
@@ -3808,10 +3786,10 @@ function TicketReading({
               <summary {...stylex.props(styles.ticketDetailsSummary)}>
                 <span {...stylex.props(styles.ticketDetailsSummaryText)}>
                   <Text type="label" weight="medium">
-                    More ticket details
+                    {copy.ticket.moreDetails}
                   </Text>
                   <Text type="supporting" color="secondary">
-                    Sessions, blockers, and branch
+                    {copy.ticket.moreDetailsNote}
                   </Text>
                 </span>
                 <span
@@ -3827,7 +3805,7 @@ function TicketReading({
                 <div {...stylex.props(styles.ticketFacts)}>
                   <div {...stylex.props(styles.ticketFact)}>
                     <Text type="supporting" color="secondary">
-                      Priority
+                      {copy.facts.priority}
                     </Text>
                     <Text type="supporting" {...stylex.props(styles.ticketFactValue)}>
                       {ticket.rank}
@@ -3836,7 +3814,7 @@ function TicketReading({
                   {ticket.author !== null && (
                     <div {...stylex.props(styles.ticketFact)}>
                       <Text type="supporting" color="secondary">
-                        Created by
+                        {copy.facts.createdBy}
                       </Text>
                       <Text type="supporting" {...stylex.props(styles.ticketFactValue)}>
                         {ticket.author.name}
@@ -3855,13 +3833,19 @@ function TicketReading({
 
                 <section {...stylex.props(styles.section)}>
                   <Text type="label" weight="medium">
-                    Created and updated
+                    {copy.ticket.datesHeading}
                   </Text>
                   <Text type="supporting" color="secondary">
-                    created {when(ticket.createdAt)} · updated {when(ticket.updatedAt)}
-                    {ticket.closedAt === null
-                      ? ''
-                      : ` · closed ${when(ticket.closedAt)} as ${ticket.closure === 'wontfix' ? 'won’t do' : 'done'}`}
+                    {copy.ticket.dates(
+                      when(ticket.createdAt),
+                      when(ticket.updatedAt),
+                      ticket.closedAt === null
+                        ? null
+                        : copy.ticket.closedAsShort(
+                            when(ticket.closedAt),
+                            ticket.closure === 'wontfix',
+                          ),
+                    )}
                   </Text>
                 </section>
               </div>
@@ -3892,9 +3876,9 @@ function BranchLine({
   const branch = view?.branch ?? ticket.branch;
 
   return (
-    <section {...stylex.props(styles.section)} aria-label="Branch and workspace">
+    <section {...stylex.props(styles.section)} aria-label={copy.branch.aria}>
       <Text type="label" weight="medium">
-        Branch
+        {copy.branch.heading}
       </Text>
       <div {...stylex.props(styles.branchLine)}>
         {view !== null && (
@@ -3919,7 +3903,7 @@ function BranchLine({
           <span {...stylex.props(styles.srOnly)}>{branch}</span>
         </span>
         <IconButton
-          label={`Copy ${branch}`}
+          label={copy.branch.copy}
           icon={<Icon icon={Copy} size="sm" />}
           variant="ghost"
           size="sm"
@@ -3928,9 +3912,7 @@ function BranchLine({
       </div>
       <ul {...stylex.props(styles.branchFacts)}>
         {view === null ? (
-          <li {...stylex.props(styles.branchFact)}>
-            Not created yet. Starting the agent creates it.
-          </li>
+          <li {...stylex.props(styles.branchFact)}>{copy.branch.notCreated}</li>
         ) : (
           <>
             <li {...stylex.props(styles.branchFact, styles.branchState)}>
@@ -3946,8 +3928,7 @@ function BranchLine({
               {workspaceStateWords(view.status)}
               {workspaces.length > 1 && (
                 <span {...stylex.props(styles.branchMore)}>
-                  · {workspaces.length - 1} more{' '}
-                  {workspaces.length === 2 ? 'workspace' : 'workspaces'}
+                  {copy.branch.moreWorkspaces(workspaces.length - 1)}
                 </span>
               )}
             </li>
@@ -3959,7 +3940,7 @@ function BranchLine({
         )}
       </ul>
       <button type="button" {...stylex.props(styles.goLink)} onClick={onGoToWorkspace}>
-        {view === null ? 'Set up a workspace' : 'Open workspace'}
+        {view === null ? copy.branch.setUp : copy.branch.open}
         <Icon icon={view === null ? Plus : ArrowDownToLine} size="xsm" />
       </button>
     </section>
@@ -4012,7 +3993,7 @@ function RunHistory({
       {others.length > 0 && (
         <section {...stylex.props(styles.section)}>
           <Text type="label" weight="medium">
-            Earlier sessions
+            {copy.sessions.earlier}
           </Text>
           <ul {...stylex.props(styles.lines)}>
             {others.map((each) => (
@@ -4094,7 +4075,7 @@ function RunReading({
   return (
     <section {...stylex.props(styles.section)}>
       <Text type="label" weight="medium">
-        The session
+        {copy.sessions.heading}
       </Text>
       <Text type="supporting" color="secondary">
         {runTelling(run)}
@@ -4103,7 +4084,7 @@ function RunReading({
       {run.changed !== null && (
         <div {...stylex.props(styles.evidence)}>
           <Text type="supporting" color="secondary">
-            What it changed
+            {copy.sessions.changes}
           </Text>
           <Text type="code">{run.changed}</Text>
         </div>
@@ -4112,7 +4093,7 @@ function RunReading({
       {run.checks !== null && run.checks.length > 0 && (
         <div {...stylex.props(styles.evidence)}>
           <Text type="supporting" color="secondary">
-            What it ran
+            {copy.sessions.commands}
           </Text>
           <ul {...stylex.props(styles.lines)}>
             {run.checks.map((each, at) => (
@@ -4126,13 +4107,13 @@ function RunReading({
 
       <div {...stylex.props(styles.evidence)}>
         <Text type="supporting" color="secondary">
-          What it said
+          {copy.sessions.transcript}
         </Text>
 
         {chatId !== null ? (
           <div>
             <Button
-              label="Read the session"
+              label={copy.sessions.read}
               icon={<Icon icon={TicketIcon} size="sm" />}
               size="sm"
               variant="secondary"
@@ -4156,7 +4137,7 @@ function RunReading({
           // ticket as they settle, so a run that is still on its first turn has none here
           // yet — and that is a different thing from a run that said nothing at all.
           <Text type="supporting" color="secondary">
-            {going ? 'Nothing yet — it is still working.' : 'It said nothing.'}
+            {going ? copy.sessions.stillWorking : copy.sessions.saidNothing}
           </Text>
         ) : (
           <ul {...stylex.props(styles.said)}>
@@ -4225,8 +4206,14 @@ function TicketEdit({
         focusTitle
       />
       <div {...stylex.props(styles.actions)}>
-        <Button label="Save" size="sm" variant="primary" isDisabled={isBusy} onClick={save} />
-        <Button label="Cancel" size="sm" variant="ghost" onClick={onCancel} />
+        <Button
+          label={copy.actions.save}
+          size="sm"
+          variant="primary"
+          isDisabled={isBusy}
+          onClick={save}
+        />
+        <Button label={copy.actions.cancel} size="sm" variant="ghost" onClick={onCancel} />
       </div>
     </div>
   );

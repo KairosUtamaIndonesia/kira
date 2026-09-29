@@ -1,4 +1,5 @@
 import type { ExecutionWorkspace, Ticket, TicketRun } from '../../preload/bridge.ts';
+import { copy } from './workCopy.ts';
 
 export type ExecutionStatus = 'not-started' | 'running' | 'completed' | 'failed';
 
@@ -135,16 +136,7 @@ export function suggestExecutionBranch(baseBranch: string, existing: readonly st
 }
 
 export function executionStatusLabel(status: ExecutionStatus): string {
-  switch (status) {
-    case 'not-started':
-      return 'Not started';
-    case 'running':
-      return 'Running';
-    case 'completed':
-      return 'Completed';
-    case 'failed':
-      return 'Failed';
-  }
+  return copy.workspace.states[status];
 }
 
 export function executionPreviewLabel(preview: ExecutionWorkspaceView['preview']): string {
@@ -153,16 +145,7 @@ export function executionPreviewLabel(preview: ExecutionWorkspaceView['preview']
 
 /** What a workspace's state asks of a person, as the ticket's box says it. */
 export function workspaceStateWords(status: ExecutionStatus): string {
-  switch (status) {
-    case 'not-started':
-      return 'Not started';
-    case 'running':
-      return 'Agent working';
-    case 'completed':
-      return 'Ready to review';
-    case 'failed':
-      return 'Stopped';
-  }
+  return copy.workspace.stateWords[status];
 }
 
 /**

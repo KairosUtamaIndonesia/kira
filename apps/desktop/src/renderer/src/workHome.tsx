@@ -12,6 +12,7 @@ import { Folder, Ticket } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { ProjectSummary, WorkspaceSummary } from '../../preload/bridge.ts';
 import { destinationForProject, projectWorkspaces } from './workNavigation.ts';
+import { copy } from './workCopy.ts';
 
 const styles = stylex.create({
   root: {
@@ -153,10 +154,10 @@ export function WorkHome({
     <div {...stylex.props(styles.root)}>
       <header {...stylex.props(styles.top)}>
         <Text type="large" weight="medium">
-          Work
+          {copy.home.title}
         </Text>
         <Text type="supporting" color="secondary">
-          Projects and the workspaces where you run their tickets.
+          {copy.home.subtitle}
         </Text>
       </header>
 
@@ -166,11 +167,11 @@ export function WorkHome({
             <div {...stylex.props(styles.message)}>
               <Banner
                 status="error"
-                title="Work could not continue"
+                title={copy.home.loadFailed}
                 description={trouble}
                 endContent={
                   <Button
-                    label="Try again"
+                    label={copy.home.tryAgain}
                     size="sm"
                     variant="secondary"
                     isDisabled={isLoading || isLinking}
@@ -182,7 +183,7 @@ export function WorkHome({
           )}
 
           {projects === null && trouble === null && (
-            <div {...stylex.props(styles.message)} aria-busy="true" aria-label="Reading projects">
+            <div {...stylex.props(styles.message)} aria-busy="true" aria-label={copy.home.loading}>
               <Skeleton width="35%" height={16} />
               <Skeleton width="75%" height={16} index={1} />
               <Skeleton width="65%" height={16} index={2} />
@@ -191,8 +192,8 @@ export function WorkHome({
 
           {projects !== null && projects.length === 0 && (
             <EmptyState
-              title="No projects yet"
-              description="Projects shared with your account appear here. Choose one to open its ticket queue and the local folder where agent work runs."
+              title={copy.home.emptyTitle}
+              description={copy.home.emptyNote}
               icon={<Icon icon={Ticket} size="lg" />}
               headingLevel={2}
             />
@@ -202,19 +203,18 @@ export function WorkHome({
             <>
               <section {...stylex.props(styles.intro)}>
                 <Text type="large" weight="medium">
-                  Choose a project
+                  {copy.home.choose}
                 </Text>
                 <Text type="supporting" color="secondary">
-                  Each project has one shared ticket queue. A linked workspace is the local folder
-                  where its agents run.
+                  {copy.home.chooseNote}
                 </Text>
               </section>
               <div {...stylex.props(styles.projectHeading)}>
                 <Text type="label" weight="medium">
-                  Available projects
+                  {copy.home.projects}
                 </Text>
                 <Text type="supporting" color="secondary">
-                  {projects.length} {projects.length === 1 ? 'project' : 'projects'} shared with you
+                  {copy.home.sharedCount(projects.length)}
                 </Text>
               </div>
               <div>
@@ -224,18 +224,18 @@ export function WorkHome({
                   const destination = destinationForProject(project, workspaces);
                   const actionLabel =
                     destination.kind === 'open'
-                      ? 'Open tickets'
+                      ? copy.home.openTickets
                       : destination.kind === 'choose'
                         ? selected
-                          ? 'Hide workspaces'
-                          : 'Choose workspace'
-                        : 'Link this folder';
+                          ? copy.home.hideFolders
+                          : copy.home.chooseFolder
+                        : copy.home.linkFolder;
                   const description =
                     linked.length === 0
-                      ? 'No local workspace linked'
+                      ? copy.home.noFolder
                       : linked.length === 1
-                        ? `Workspace · ${linked[0]!.name}`
-                        : `${linked.length} local workspaces`;
+                        ? copy.home.oneFolder(linked[0]!.name)
+                        : copy.home.manyFolders(linked.length);
 
                   return (
                     <div key={project.id} {...stylex.props(styles.projectRow)}>
@@ -275,10 +275,10 @@ export function WorkHome({
                 <section {...stylex.props(styles.workspaceList)}>
                   <div {...stylex.props(styles.workspaceHeading)}>
                     <Text type="label" weight="medium">
-                      Choose a workspace for {selectedProject.name}
+                      {copy.home.folderHeading(selectedProject.name)}
                     </Text>
                     <Text type="supporting" color="secondary">
-                      The ticket queue is shared; this choice selects where local agent runs happen.
+                      {copy.home.folderNote}
                     </Text>
                   </div>
                   <List density="compact">

@@ -237,7 +237,8 @@ test('planTicketDrop maps cross-lane drops to supported ticket actions', () => {
       target: 'needs-you' as const,
       want: {
         kind: 'unavailable',
-        reason: 'Needs review is created by a real question or run result, not a board action.',
+        reason:
+          'Tickets reach Needs review on their own, when a question needs an answer or a session finishes.',
       },
     },
     {
@@ -257,7 +258,7 @@ test('planTicketDrop maps cross-lane drops to supported ticket actions', () => {
       target: 'draft' as const,
       want: {
         kind: 'unavailable',
-        reason: 'A ticket with an active run cannot be moved by hand.',
+        reason: 'A ticket with a running session can’t be moved by hand.',
       },
     },
     {
@@ -270,7 +271,7 @@ test('planTicketDrop maps cross-lane drops to supported ticket actions', () => {
       target: 'ready' as const,
       want: {
         kind: 'unavailable',
-        reason: 'Closed tickets cannot be reopened from the board.',
+        reason: 'A closed ticket can’t be reopened from the board.',
       },
     },
     {
@@ -279,7 +280,7 @@ test('planTicketDrop maps cross-lane drops to supported ticket actions', () => {
       target: 'done' as const,
       want: {
         kind: 'unavailable',
-        reason: 'A map closes only when its destination spec is approved.',
+        reason: 'A map closes once its destination spec is approved.',
       },
     },
     {
@@ -288,7 +289,7 @@ test('planTicketDrop maps cross-lane drops to supported ticket actions', () => {
       target: 'ready' as const,
       want: {
         kind: 'unavailable',
-        reason: 'This ticket is blocked by a rule that cannot be changed from the board.',
+        reason: 'This ticket has no blockers to remove. Open it to see why it is blocked.',
       },
     },
   ];

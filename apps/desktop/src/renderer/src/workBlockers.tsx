@@ -19,6 +19,7 @@ import * as stylex from '@stylexjs/stylex';
 import { CircleAlert, CircleCheck, Lock, LockOpen, Plus, X } from 'lucide-react';
 import { useState } from 'react';
 import type { Band, NamedTicket, Ticket } from '../../preload/bridge.ts';
+import { copy } from './workCopy.ts';
 import { bandIcon } from './workRows.ts';
 
 interface Props {
@@ -40,18 +41,11 @@ function links(named: NamedTicket[], tickets: Ticket[]): Link[] {
   return named.map((each) => ({ named: each, full: tickets.find((t) => t.id === each.id) }));
 }
 
-const STATE_WORDS: Record<Band, string> = {
-  'needs-you': 'Needs review',
-  ready: 'Ready',
-  running: 'Running',
-  blocked: 'Blocked',
-  draft: 'Draft',
-  done: 'Done',
-};
-
 function stateWords(link: Link): string {
-  if (link.named.closed) return link.named.closure === 'wontfix' ? 'Won’t do' : 'Done';
-  return link.full === undefined ? 'Open' : STATE_WORDS[link.full.band];
+  if (link.named.closed) {
+    return link.named.closure === 'wontfix' ? copy.actions.wontDo : copy.statusWord.done;
+  }
+  return link.full === undefined ? copy.blockers.openState : copy.statusWord[link.full.band];
 }
 
 type Tone = 'done' | 'wontfix' | 'open' | 'running' | 'review' | 'blocked';
@@ -72,14 +66,14 @@ function verdict(
 ): { tone: 'clear' | 'waiting' | 'check'; words: string } {
   const open = blockers.filter((each) => !each.named.closed);
   const dropped = blockers.filter((each) => each.named.closure === 'wontfix');
-  if (blockers.length === 0) return { tone: 'clear', words: 'Nothing blocks it.' };
+  if (blockers.length === 0) return { tone: 'clear', words: copy.blockers.none };
   if (open.length > 0) {
     return {
       tone: 'waiting',
       words:
         open.length === 1
-          ? `Waiting on ${open[0]!.named.name}. ${ticket.name} can start once it closes.`
-          : `Waiting on ${open.length} of ${blockers.length} blockers. ${ticket.name} can start once they close.`,
+          ? copy.blockers.waitingOne(open[0]!.named.name, ticket.name)
+          : copy.blockers.waitingMany(open.length, blockers.length, ticket.name),
     };
   }
   // Closed is not the same as done: a blocker closed as won't do means the work this
@@ -87,15 +81,19 @@ function verdict(
   if (dropped.length > 0) {
     return {
       tone: 'check',
-      words: `${dropped.map((each) => each.named.name).join(', ')} ${dropped.length === 1 ? 'was' : 'were'} closed as won’t do. Check ${ticket.name} still makes sense before starting it.`,
+      words: copy.blockers.wontDo(
+        dropped.map((each) => each.named.name).join(', '),
+        dropped.length > 1,
+        ticket.name,
+      ),
     };
   }
   return {
     tone: 'clear',
     words:
       blockers.length === 1
-        ? `Its blocker is done, so ${ticket.name} can start.`
-        : `All ${blockers.length} blockers are done, so ${ticket.name} can start.`,
+        ? copy.blockers.allDoneOne(ticket.name)
+        : copy.blockers.allDoneMany(blockers.length, ticket.name),
   };
 }
 
@@ -116,7 +114,7 @@ function AddBlocker({ ticket, tickets, onGate }: Props) {
     return (
       <span {...stylex.props(ui.addRow)}>
         <Button
-          label="Add blocker"
+          label={copy.blockers.add}
           icon={<Icon icon={Plus} size="sm" />}
           size="sm"
           variant="ghost"
@@ -129,20 +127,20 @@ function AddBlocker({ ticket, tickets, onGate }: Props) {
     <div {...stylex.props(ui.adding)}>
       <div {...stylex.props(ui.grow)}>
         <Selector
-          label="Blocker"
+          label={copy.blockers.pick}
           isLabelHidden
           isDisabled={busy}
-          placeholder="Choose a ticket that has to close first"
+          placeholder={copy.blockers.pickPlaceholder}
           options={candidates.map((each) => ({
             value: each.id,
-            label: `${each.name} · ${each.title || 'Untitled'}`,
+            label: `${each.name} · ${each.title || copy.untitled}`,
           }))}
           value={chosen}
           onChange={setChosen}
         />
       </div>
       <Button
-        label="Add"
+        label={copy.blockers.confirm}
         size="sm"
         variant="primary"
         isDisabled={chosen === '' || busy}
@@ -157,7 +155,7 @@ function AddBlocker({ ticket, tickets, onGate }: Props) {
         }}
       />
       <Button
-        label="Cancel"
+        label={copy.blockers.cancel}
         size="sm"
         variant="ghost"
         isDisabled={busy}
@@ -214,14 +212,14 @@ function Row({
     <li {...stylex.props(ui.row, onRemove !== undefined && ui.rowRemovable)}>
       <button
         type="button"
-        aria-label={`Open ${link.named.name}${link.full === undefined ? '' : `: ${link.full.title}`}`}
+        aria-label={copy.blockers.open(link.named.name, link.full?.title ?? null)}
         {...stylex.props(ui.rowOpen)}
         onClick={() => onOpen(link.named.id)}
       />
       <StateMark link={link} />
       <span {...stylex.props(ui.id)}>{link.named.name}</span>
       <span {...stylex.props(ui.title, link.named.closed && ui.titleClosed)}>
-        {link.full?.title ?? 'Not in this view'}
+        {link.full?.title ?? copy.blockers.titleUnavailable}
       </span>
       <span {...stylex.props(ui.meta)}>
         {hint !== undefined && <span {...stylex.props(ui.hint)}>{hint}</span>}
@@ -235,7 +233,7 @@ function Row({
       {onRemove !== undefined && (
         <span {...stylex.props(ui.remove)}>
           <IconButton
-            label={`Remove ${link.named.name} as a blocker`}
+            label={copy.blockers.remove(link.named.name)}
             icon={<Icon icon={X} size="sm" />}
             variant="ghost"
             size="sm"
@@ -255,13 +253,13 @@ export function Blockers(props: Props) {
   const closed = blockers.filter((each) => each.named.closed).length;
 
   return (
-    <section {...stylex.props(ui.section)} aria-label="Blockers">
+    <section {...stylex.props(ui.section)} aria-label={copy.blockers.aria}>
       <header {...stylex.props(ui.head)}>
-        <h3 {...stylex.props(ui.heading)}>Blocked by</h3>
+        <h3 {...stylex.props(ui.heading)}>{copy.blockers.blockedBy}</h3>
         {blockers.length > 0 && (
           <span
             {...stylex.props(ui.progress)}
-            aria-label={`${closed} of ${blockers.length} closed`}
+            aria-label={copy.blockers.progressAria(closed, blockers.length)}
           >
             <span {...stylex.props(ui.bar)}>
               <span
@@ -269,7 +267,7 @@ export function Blockers(props: Props) {
                 style={{ width: `${(closed / blockers.length) * 100}%` }}
               />
             </span>
-            {closed}/{blockers.length} closed
+            {copy.blockers.progress(closed, blockers.length)}
           </span>
         )}
       </header>
@@ -295,13 +293,11 @@ export function Blockers(props: Props) {
       <AddBlocker {...props} />
 
       <header {...stylex.props(ui.head, ui.headGap)}>
-        <h3 {...stylex.props(ui.heading)}>Blocking</h3>
-        <span {...stylex.props(ui.count)}>
-          {blocking.length} {blocking.length === 1 ? 'ticket' : 'tickets'}
-        </span>
+        <h3 {...stylex.props(ui.heading)}>{copy.blockers.blocking}</h3>
+        <span {...stylex.props(ui.count)}>{copy.blockers.blockingCount(blocking.length)}</span>
       </header>
       {blocking.length === 0 ? (
-        <p {...stylex.props(ui.muted)}>No other ticket waits on {ticket.name}.</p>
+        <p {...stylex.props(ui.muted)}>{copy.blockers.nothingWaits(ticket.name)}</p>
       ) : (
         <ul {...stylex.props(ui.list)}>
           {blocking.map((each) => (
@@ -309,7 +305,7 @@ export function Blockers(props: Props) {
               key={each.named.id}
               link={each}
               onOpen={onOpen}
-              hint={lastHold(ticket, each) ? 'last blocker' : undefined}
+              hint={lastHold(ticket, each) ? copy.blockers.lastBlocker : undefined}
             />
           ))}
         </ul>

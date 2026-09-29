@@ -11,6 +11,7 @@ import '@xterm/xterm/css/xterm.css';
 import * as stylex from '@stylexjs/stylex';
 import { ExternalLink, GitBranch, Laptop, Terminal as TerminalIcon } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { copy } from './workCopy.ts';
 import type {
   ExecutionWorkspace,
   ExecutionReview,
@@ -72,7 +73,7 @@ export function ExecutionWorkspacePanel({
 
   if (selected === undefined) {
     return (
-      <section {...stylex.props(styles.section)} aria-label="Execution workspaces">
+      <section {...stylex.props(styles.section)} aria-label={copy.workspace.aria}>
         <NoWorkspaceRow onSetUp={() => setCreating(true)} />
         {creating && (
           <WorkspaceSetupDialog
@@ -90,14 +91,14 @@ export function ExecutionWorkspacePanel({
   const view = executionWorkspaceView(selected, ticket);
 
   return (
-    <section {...stylex.props(styles.section)} aria-label="Execution workspaces">
+    <section {...stylex.props(styles.section)} aria-label={copy.workspace.aria}>
       <div {...stylex.props(styles.heading)}>
         <div>
           <Text type="label" weight="medium">
-            Execution workspace
+            {copy.workspace.heading}
           </Text>
           <Text type="supporting" color="secondary">
-            Follow the agent, its checkout, its changes, and your review from this ticket.
+            {copy.workspace.headingNote}
           </Text>
         </div>
         <Badge
@@ -119,7 +120,7 @@ export function ExecutionWorkspacePanel({
             return (
               <Button
                 key={workspace.id}
-                label={`${workspace.branch} · ${executionStatusLabel(choice.status)}`}
+                label={copy.workspace.choice(workspace.branch, executionStatusLabel(choice.status))}
                 size="sm"
                 variant={workspace.id === selected.id ? 'primary' : 'ghost'}
                 onClick={() => setSelectedId(workspace.id)}
@@ -130,7 +131,7 @@ export function ExecutionWorkspacePanel({
       )}
 
       <Button
-        label="Add execution workspace"
+        label={copy.workspace.add}
         size="sm"
         variant="secondary"
         onClick={() => setCreating(true)}
@@ -147,7 +148,7 @@ export function ExecutionWorkspacePanel({
 
       {ticket.band === 'ready' && view.status !== 'running' && (
         <Button
-          label={view.run === null ? 'Start agent' : 'Start a new session'}
+          label={view.run === null ? copy.workspace.startAgent : copy.workspace.startNewSession}
           size="sm"
           variant="primary"
           isDisabled={starting}
@@ -156,7 +157,7 @@ export function ExecutionWorkspacePanel({
       )}
       {ticket.band !== 'ready' && view.run === null && (
         <Text type="supporting" color="secondary">
-          Make this ticket ready for an agent before starting one.
+          {copy.workspace.makeReadyFirst}
         </Text>
       )}
 

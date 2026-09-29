@@ -33,6 +33,7 @@ import {
   Quote,
   SquareCode,
 } from 'lucide-react';
+import { copy } from './workCopy.ts';
 
 interface Action {
   label: string;
@@ -43,43 +44,43 @@ interface Action {
 
 const ACTIONS: Action[] = [
   {
-    label: 'Bold',
+    label: copy.toolbar.bold,
     icon: Bold,
     isActive: (e) => e.isActive('bold'),
     run: (e) => e.chain().focus().toggleBold().run(),
   },
   {
-    label: 'Italic',
+    label: copy.toolbar.italic,
     icon: Italic,
     isActive: (e) => e.isActive('italic'),
     run: (e) => e.chain().focus().toggleItalic().run(),
   },
   {
-    label: 'Code',
+    label: copy.toolbar.code,
     icon: Code,
     isActive: (e) => e.isActive('code'),
     run: (e) => e.chain().focus().toggleCode().run(),
   },
   {
-    label: 'Bulleted list',
+    label: copy.toolbar.bulletedList,
     icon: List,
     isActive: (e) => e.isActive('bulletList'),
     run: (e) => e.chain().focus().toggleBulletList().run(),
   },
   {
-    label: 'Numbered list',
+    label: copy.toolbar.numberedList,
     icon: ListOrdered,
     isActive: (e) => e.isActive('orderedList'),
     run: (e) => e.chain().focus().toggleOrderedList().run(),
   },
   {
-    label: 'Quote',
+    label: copy.toolbar.quote,
     icon: Quote,
     isActive: (e) => e.isActive('blockquote'),
     run: (e) => e.chain().focus().toggleBlockquote().run(),
   },
   {
-    label: 'Code block',
+    label: copy.toolbar.codeBlock,
     icon: SquareCode,
     isActive: (e) => e.isActive('codeBlock'),
     run: (e) => e.chain().focus().toggleCodeBlock().run(),
@@ -171,7 +172,7 @@ function Toolbar({ editor }: { editor: Editor }) {
 
   return (
     <>
-      <div {...stylex.props(styles.toolbar)} role="toolbar" aria-label="Formatting">
+      <div {...stylex.props(styles.toolbar)} role="toolbar" aria-label={copy.toolbar.label}>
         {ACTIONS.map((action, at) => (
           <IconButton
             key={action.label}
@@ -184,8 +185,8 @@ function Toolbar({ editor }: { editor: Editor }) {
           />
         ))}
         <IconButton
-          label="Link"
-          tooltip="Link"
+          label={copy.toolbar.link}
+          tooltip={copy.toolbar.link}
           icon={<Icon icon={LinkIcon} size="sm" />}
           size="sm"
           variant={link || linking ? 'secondary' : 'ghost'}
@@ -196,9 +197,9 @@ function Toolbar({ editor }: { editor: Editor }) {
         <div {...stylex.props(styles.linkRow)}>
           <div {...stylex.props(styles.linkField)}>
             <TextInput
-              label="Link address"
+              label={copy.toolbar.linkAddress}
               isLabelHidden
-              placeholder="https://"
+              placeholder={copy.toolbar.linkPlaceholder}
               size="sm"
               value={address}
               onChange={setAddress}
@@ -216,7 +217,7 @@ function Toolbar({ editor }: { editor: Editor }) {
             />
           </div>
           <Button
-            label="Apply"
+            label={copy.toolbar.apply}
             size="sm"
             variant="secondary"
             isDisabled={linkAddress(address) === null}
@@ -224,7 +225,7 @@ function Toolbar({ editor }: { editor: Editor }) {
           />
           {link && (
             <Button
-              label="Remove link"
+              label={copy.toolbar.removeLink}
               size="sm"
               variant="ghost"
               onClick={() => {

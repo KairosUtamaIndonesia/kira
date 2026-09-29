@@ -143,7 +143,7 @@ test('a row says one thing, and its icon agrees with it', () => {
         band: 'blocked',
         children: [child(false), child(false), child(false)],
       }),
-      words: '0 of 3 closed',
+      words: '0 of 3 blockers closed',
       icon: Clock,
     },
     {
@@ -153,7 +153,7 @@ test('a row says one thing, and its icon agrees with it', () => {
         band: 'blocked',
         children: [child(true, 'done'), child(false), child(false)],
       }),
-      words: '1 of 3 closed',
+      words: '1 of 3 blockers closed',
       icon: Clock,
     },
     {
@@ -185,7 +185,7 @@ test('a row says one thing, and its icon agrees with it', () => {
     {
       name: 'a ticket closed without being done',
       held: ticket({ band: 'done', closedAt: '2026-01-02T00:00:00.000Z', closure: 'wontfix' }),
-      words: 'closed, won’t do',
+      words: 'won’t do',
       icon: CircleAlert,
     },
   ];
@@ -351,7 +351,7 @@ test('a claim whose machine stopped answering reads as gone quiet, and can be ta
 
   // The difference between a run being worked and one whose machine went away is the
   // whole of what a person needs to decide whether to step in, so it is the row's words.
-  assert.deepEqual(holding(held), { icon: CircleAlert, words: 'Ada Lovelace went quiet' });
+  assert.deepEqual(holding(held), { icon: CircleAlert, words: 'Ada Lovelace stopped responding' });
   assert.equal(bandIcon(held), Loader);
 });
 
@@ -452,7 +452,7 @@ test('a ticket that ran several times lists runs a person can tell apart', () =>
 });
 
 test('a line in a run is drawn by who said it, not by name', () => {
-  assert.equal(saidByLabel('person'), 'you');
+  assert.equal(saidByLabel('person'), 'You');
   assert.equal(saidByLabel('agent'), 'Kira');
   assert.equal(saidByLabel('note'), 'Kira');
 });
@@ -460,8 +460,8 @@ test('a line in a run is drawn by who said it, not by name', () => {
 test('the line a run opens with is drawn as the brief it was given, not as a person', () => {
   // Kira writes the run's opening itself, so the same speaker is drawn differently in
   // the one place where nobody spoke.
-  assert.equal(saidByLabel('person', true), 'the brief it started from');
-  assert.equal(saidByLabel('person', false), 'you');
+  assert.equal(saidByLabel('person', true), 'Starting brief');
+  assert.equal(saidByLabel('person', false), 'You');
   // And it is only the opening: an agent line first in a list is still the agent.
   assert.equal(saidByLabel('agent', true), 'Kira');
   assert.equal(saidByLabel('note', true), 'Kira');
@@ -469,12 +469,12 @@ test('the line a run opens with is drawn as the brief it was given, not as a per
 
 test('the branch line knows whether a run has made the branch yet', () => {
   const derived = ticket({ branch: 'fnd-1-a-ticket' });
-  assert.match(branchNote(derived), /^What a branch for this ticket would be called/);
+  assert.match(branchNote(derived), /^This is the name the ticket’s branch will have/);
 
   // The run made it: the ticket answers with the branch the run recorded, so the line
   // stops calling it a suggestion.
   const worked = ticket({ branch: 'fnd-1-a-ticket', runs: [run()] });
-  assert.match(branchNote(worked), /^The branch a session made/);
+  assert.match(branchNote(worked), /^A session made this branch/);
 
   // A run that made some other branch — the ticket was retitled and the branch kept its
   // name, or the run was on an older branch — does not claim this one.
@@ -482,5 +482,5 @@ test('the branch line knows whether a run has made the branch yet', () => {
     branch: 'fnd-1-a-ticket',
     runs: [run({ branch: 'fnd-1-something-else' })],
   });
-  assert.match(branchNote(other), /^What a branch for this ticket would be called/);
+  assert.match(branchNote(other), /^This is the name the ticket’s branch will have/);
 });

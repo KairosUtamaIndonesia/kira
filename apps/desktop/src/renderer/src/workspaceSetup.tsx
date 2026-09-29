@@ -31,6 +31,7 @@ import { ArrowRight, Folder, Plus, Sparkles } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { ModelOption, Ticket } from '../../preload/bridge.ts';
 import { fromHome, shortenMiddle, suggestExecutionBranch } from './executionWorkspace.ts';
+import { copy } from './workCopy.ts';
 
 interface Choices {
   repository: string;
@@ -49,32 +50,32 @@ const OTHER_FOLDER = '__other__';
 
 /** Why a new branch's name would be refused, or null when git would take it. */
 function branchTrouble(name: string, base: string): string | null {
-  if (name.trim() === '') return 'Name the branch the agent will work on.';
-  if (/\s/.test(name)) return 'A branch name cannot contain spaces.';
+  if (name.trim() === '') return copy.setup.branchTrouble.empty;
+  if (/\s/.test(name)) return copy.setup.branchTrouble.spaces;
   if (/[~^:?*[\\]|\.\.|@\{|\/$|\.lock$|^-/.test(name)) {
-    return 'Git will not take this name; use letters, numbers, - and /.';
+    return copy.setup.branchTrouble.invalid;
   }
-  if (name === base) return 'The work branch must differ from the branch it comes from.';
+  if (name === base) return copy.setup.branchTrouble.sameAsBase;
   return null;
 }
 
 /** The row that stands where a ticket's workspace will be, until it has one. */
 export function NoWorkspaceRow({ onSetUp }: { onSetUp: () => void }) {
   return (
-    <section {...stylex.props(styles.empty)} aria-label="Set up a workspace">
+    <section {...stylex.props(styles.empty)} aria-label={copy.setup.emptyAria}>
       <span {...stylex.props(styles.emptyIcon)}>
         <Icon icon={Folder} size="md" />
       </span>
       <span {...stylex.props(styles.emptyCopy)}>
         <Text type="label" weight="medium">
-          No workspace yet
+          {copy.setup.emptyTitle}
         </Text>
         <Text type="supporting" color="secondary">
-          A workspace is the checkout and branch this ticket&apos;s agent works in.
+          {copy.setup.emptyNote}
         </Text>
       </span>
       <Button
-        label="Set up workspace"
+        label={copy.setup.button}
         icon={<Icon icon={Plus} size="sm" />}
         size="sm"
         variant="secondary"
@@ -145,7 +146,7 @@ export function WorkspaceSetupDialog({
   const canCreate =
     branches.state === 'ready' && choices.baseBranch !== '' && branchTroubled === null && !busy;
   const startsNow = ticket.band === 'ready';
-  const actionLabel = startsNow ? 'Create and start agent' : 'Create workspace';
+  const actionLabel = startsNow ? copy.setup.createAndStart : copy.setup.create;
 
   const chooseFolder = async (): Promise<void> => {
     const answer = await window.kira.chooseCheckout();
@@ -182,8 +183,8 @@ export function WorkspaceSetupDialog({
     (branches.state === 'failed'
       ? branches.why
       : startsNow
-        ? 'The agent starts as soon as the workspace is made.'
-        : 'The agent waits until this ticket is ready.');
+        ? copy.setup.startsNow
+        : copy.setup.startsLater);
   const shownTrouble = branchTroubled;
 
   return (
@@ -196,14 +197,14 @@ export function WorkspaceSetupDialog({
       width={520}
     >
       <FlushDialogHeader
-        title="Set up a workspace"
-        subtitle={`Where ${ticket.name}’s agent works.`}
+        title={copy.setup.title}
+        subtitle={copy.setup.subtitle(ticket.name)}
         onOpenChange={(next) => {
           if (!next && !busy) onClose();
         }}
       />
       <div {...stylex.props(styles.body)}>
-        <div {...stylex.props(styles.route)} aria-label="The branch the agent will make">
+        <div {...stylex.props(styles.route)} aria-label={copy.setup.route}>
           <span {...stylex.props(styles.pill, styles.pillBase)}>{choices.baseBranch || '…'}</span>
           <span {...stylex.props(styles.arrow)}>
             <Icon icon={ArrowRight} size="xsm" />
@@ -215,16 +216,16 @@ export function WorkspaceSetupDialog({
             {shortenMiddle(choices.branch || 'unnamed', 34)}
           </span>
           <span {...stylex.props(styles.routeWhere)} title={choices.repository}>
-            in {fromHome(choices.repository)}
+            {copy.setup.in(fromHome(choices.repository))}
           </span>
         </div>
 
         <Selector
-          label="Checkout"
-          description="The local repository the agent works in."
+          label={copy.setup.checkout}
+          description={copy.setup.checkoutNote}
           options={[
             ...checkouts.map((each) => ({ value: each, label: fromHome(each) })),
-            { value: OTHER_FOLDER, label: 'Choose another folder…' },
+            { value: OTHER_FOLDER, label: copy.setup.otherFolder },
           ]}
           value={choices.repository}
           isDisabled={busy}
@@ -241,8 +242,8 @@ export function WorkspaceSetupDialog({
 
         <div {...stylex.props(styles.pair)}>
           <Selector
-            label="From branch"
-            description={branches.state === 'loading' ? 'Reading branches…' : undefined}
+            label={copy.setup.fromBranch}
+            description={branches.state === 'loading' ? copy.setup.readingBranches : undefined}
             options={
               branches.state === 'ready'
                 ? branches.names.map((each) => ({ value: each, label: each }))
@@ -253,8 +254,8 @@ export function WorkspaceSetupDialog({
             onChange={(baseBranch) => setChoices({ ...choices, baseBranch })}
           />
           <Field
-            label="New branch"
-            description="Suggested from the ticket."
+            label={copy.setup.newBranch}
+            description={copy.setup.newBranchNote}
             inputID={branchId}
             descriptionID={`${branchId}-description`}
             status={
@@ -286,8 +287,8 @@ export function WorkspaceSetupDialog({
                 onChange={(event) => setChoices({ ...choices, branch: event.target.value })}
               />
               <IconButton
-                label="Use the suggested name"
-                tooltip="Use the suggested name"
+                label={copy.setup.useSuggested}
+                tooltip={copy.setup.useSuggested}
                 icon={<Icon icon={Sparkles} size="sm" />}
                 variant="ghost"
                 size="sm"
@@ -299,9 +300,9 @@ export function WorkspaceSetupDialog({
         </div>
 
         <Selector
-          label="Agent"
+          label={copy.setup.agent}
           options={[
-            { value: 'default', label: 'Default model' },
+            { value: 'default', label: copy.setup.defaultModel },
             ...models.map((model) => ({ value: model.id, label: model.name })),
           ]}
           value={choices.agentConfig}
@@ -314,9 +315,15 @@ export function WorkspaceSetupDialog({
           {note}
         </Text>
         <span {...stylex.props(styles.footButtons)}>
-          <Button label="Cancel" size="sm" variant="ghost" isDisabled={busy} onClick={onClose} />
           <Button
-            label={busy ? 'Creating workspace' : actionLabel}
+            label={copy.setup.cancel}
+            size="sm"
+            variant="ghost"
+            isDisabled={busy}
+            onClick={onClose}
+          />
+          <Button
+            label={busy ? copy.setup.creating : actionLabel}
             size="sm"
             variant="primary"
             isDisabled={!canCreate}

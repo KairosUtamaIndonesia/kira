@@ -1,4 +1,5 @@
 import type { Band, Gate, Ticket, TicketKind } from '../../preload/bridge.ts';
+import { copy } from './workCopy.ts';
 
 export type WorkOrder = 'rank' | 'updated' | 'created';
 export type WorkGroup = 'status' | 'kind';
@@ -71,15 +72,6 @@ function isBand(value: string): value is Band {
   return ['draft', 'ready', 'blocked', 'running', 'needs-you', 'done'].includes(value);
 }
 
-const BAND_LABELS: Record<Band, string> = {
-  draft: 'Drafts',
-  ready: 'Ready',
-  blocked: 'Blocked',
-  running: 'Running',
-  'needs-you': 'Needs review',
-  done: 'Done',
-};
-
 export type TicketDropPlan =
   | { kind: 'choose-ready-gate' }
   | { kind: 'change-gate'; gate: Gate }
@@ -99,10 +91,10 @@ export type TicketDropPlan =
 export function planTicketDrop(ticket: Ticket, target: Band): TicketDropPlan | null {
   if (ticket.band === target) return null;
   if (ticket.closedAt !== null || ticket.band === 'done') {
-    return { kind: 'unavailable', reason: 'Closed tickets cannot be reopened from the board.' };
+    return { kind: 'unavailable', reason: copy.drop.unavailable.closed };
   }
   if (ticket.claim !== null || ticket.band === 'running') {
-    return { kind: 'unavailable', reason: 'A ticket with an active run cannot be moved by hand.' };
+    return { kind: 'unavailable', reason: copy.drop.unavailable.running };
   }
 
   if (ticket.band === 'needs-you') {
@@ -114,21 +106,21 @@ export function planTicketDrop(ticket: Ticket, target: Band): TicketDropPlan | n
     ) {
       return {
         kind: 'unavailable',
-        reason: 'This ticket is waiting on a person, but has no run proposal to answer here.',
+        reason: copy.drop.unavailable.noResult,
       };
     }
     if (target === 'ready') return { kind: 'send-back' };
     if (target === 'done') return { kind: 'accept-result' };
     return {
       kind: 'unavailable',
-      reason: 'Answer the run proposal before moving this ticket to another lane.',
+      reason: copy.drop.unavailable.answerFirst,
     };
   }
 
   if (target === 'needs-you') {
     return {
       kind: 'unavailable',
-      reason: 'Needs review is created by a real question or run result, not a board action.',
+      reason: copy.drop.unavailable.reviewIsAutomatic,
     };
   }
 
@@ -137,20 +129,20 @@ export function planTicketDrop(ticket: Ticket, target: Band): TicketDropPlan | n
   if (target === 'ready') {
     if (ticket.band === 'draft') {
       return ticket.kind === 'map'
-        ? { kind: 'unavailable', reason: 'A map moves to review when its children have outcomes.' }
+        ? { kind: 'unavailable', reason: copy.drop.unavailable.mapToReady }
         : { kind: 'choose-ready-gate' };
     }
     if (ticket.band === 'blocked') {
       if (ticket.kind === 'map') {
         return {
           kind: 'unavailable',
-          reason: 'A map moves to review after its children have approved outcomes.',
+          reason: copy.drop.unavailable.mapToReady,
         };
       }
       if (!ticket.children.some((child) => !child.closed)) {
         return {
           kind: 'unavailable',
-          reason: 'This ticket is blocked by a rule that cannot be changed from the board.',
+          reason: copy.drop.unavailable.noBlockersToRemove,
         };
       }
       return { kind: 'resolve-blockers' };
@@ -159,14 +151,14 @@ export function planTicketDrop(ticket: Ticket, target: Band): TicketDropPlan | n
 
   if (target === 'running') {
     if (ticket.kind === 'map') {
-      return { kind: 'unavailable', reason: 'Maps coordinate work; they do not run as tickets.' };
+      return { kind: 'unavailable', reason: copy.drop.unavailable.mapCannotStart };
     }
     if (ticket.band === 'draft' || ticket.gate === 'ready-for-human') {
       return ticket.criteria.some((criterion) => criterion.trim() !== '')
         ? { kind: 'prepare-agent-run' }
         : {
             kind: 'unavailable',
-            reason: 'Add acceptance criteria before making this ticket ready for an agent.',
+            reason: copy.drop.unavailable.needsCheckToPrepare,
           };
     }
     if (ticket.band === 'ready' && ticket.gate === 'ready-for-agent') {
@@ -174,12 +166,12 @@ export function planTicketDrop(ticket: Ticket, target: Band): TicketDropPlan | n
         ? { kind: 'start-run' }
         : {
             kind: 'unavailable',
-            reason: 'Add acceptance criteria before starting an agent run.',
+            reason: copy.drop.unavailable.needsCheckToStart,
           };
     }
     return {
       kind: 'unavailable',
-      reason: 'This ticket must be ready for an agent before a run can start.',
+      reason: copy.drop.unavailable.notReadyForAgent,
     };
   }
 
@@ -187,7 +179,7 @@ export function planTicketDrop(ticket: Ticket, target: Band): TicketDropPlan | n
     if (ticket.band !== 'ready') {
       return {
         kind: 'unavailable',
-        reason: 'Only ready tickets can add a blocker from the board.',
+        reason: copy.drop.unavailable.blockerFromReadyOnly,
       };
     }
     return { kind: 'add-blocker' };
@@ -197,19 +189,19 @@ export function planTicketDrop(ticket: Ticket, target: Band): TicketDropPlan | n
     if (ticket.kind === 'map') {
       return {
         kind: 'unavailable',
-        reason: 'A map closes only when its destination spec is approved.',
+        reason: copy.drop.unavailable.mapNeedsDestination,
       };
     }
     if ((ticket.kind === 'question' || ticket.kind === 'research') && ticket.outcome == null) {
       return {
         kind: 'unavailable',
-        reason: 'Approve this ticket’s outcome before closing it.',
+        reason: copy.drop.unavailable.needsOutcome,
       };
     }
     return { kind: 'choose-closure' };
   }
 
-  return { kind: 'unavailable', reason: 'That lane has no supported action for this ticket.' };
+  return { kind: 'unavailable', reason: copy.drop.unavailable.noMove };
 }
 
 export function displayWork(tickets: Ticket[], display: WorkDisplay): Ticket[] {
@@ -258,7 +250,7 @@ export function groupedWork(
 
   return [...groups].map(([key, held]) => ({
     key,
-    label: group === 'status' ? BAND_LABELS[key as Band] : key,
+    label: group === 'status' ? copy.statuses[key as Band].label : key,
     tickets: held,
   }));
 }
@@ -277,5 +269,5 @@ export function reorderReady(tickets: Ticket[], activeId: string, overId: string
 }
 
 export function bandLabel(band: Band): string {
-  return BAND_LABELS[band];
+  return copy.statuses[band].label;
 }

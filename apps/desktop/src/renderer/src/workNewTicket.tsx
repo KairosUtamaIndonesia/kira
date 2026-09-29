@@ -26,6 +26,7 @@ import { Check, Plus, X } from 'lucide-react';
 import { useState, type KeyboardEvent } from 'react';
 import type { TicketDraft, TicketKind } from '../../preload/bridge.ts';
 import { MarkdownEditor } from './markdownEditor.tsx';
+import { copy } from './workCopy.ts';
 
 interface Props {
   kinds: TicketKind[];
@@ -34,17 +35,6 @@ interface Props {
   onCancel: () => void;
   onWrite: (draft: TicketDraft) => Promise<void>;
 }
-
-const KIND_WORDS: Record<TicketKind, string> = {
-  prototype: 'Try an idea and throw it away',
-  bug: 'Something is broken',
-  feature: 'Something new to build',
-  refactor: 'Change the code, not the behavior',
-  question: 'Something to find out',
-  research: 'Read and report back',
-  spec: 'Say what to build, in detail',
-  map: 'Plan work too big for one ticket',
-};
 
 export function NewTicketDialog({ kinds, kindIcons, refusal, onCancel, onWrite }: Props) {
   const [kind, setKind] = useState<TicketKind>('feature');
@@ -80,8 +70,8 @@ export function NewTicketDialog({ kinds, kindIcons, refusal, onCancel, onWrite }
       width={640}
     >
       <FlushDialogHeader
-        title="New ticket"
-        subtitle="It starts as a draft. Make it ready when it is clear enough to start."
+        title={copy.editor.newTitle}
+        subtitle={copy.editor.newSubtitle}
         onOpenChange={(next) => {
           if (!next && !busy) onCancel();
         }}
@@ -89,7 +79,7 @@ export function NewTicketDialog({ kinds, kindIcons, refusal, onCancel, onWrite }
       {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
       <div {...stylex.props(ui.body)} onKeyDown={onKeyDown}>
         {refusal !== null && (
-          <Banner status="error" title="Ticket was not created" description={refusal} />
+          <Banner status="error" title={copy.refused.createTitle} description={refusal} />
         )}
         <Document
           kinds={kinds}
@@ -105,12 +95,18 @@ export function NewTicketDialog({ kinds, kindIcons, refusal, onCancel, onWrite }
       </div>
       <div {...stylex.props(ui.foot)}>
         <Text type="supporting" color="secondary">
-          <kbd {...stylex.props(ui.kbd)}>⌘ Enter</kbd> to create
+          <kbd {...stylex.props(ui.kbd)}>⌘ Enter</kbd> {copy.editor.createHint}
         </Text>
         <span {...stylex.props(ui.footButtons)}>
-          <Button label="Cancel" size="sm" variant="ghost" isDisabled={busy} onClick={onCancel} />
           <Button
-            label={busy ? 'Creating ticket' : 'Create ticket'}
+            label={copy.actions.cancel}
+            size="sm"
+            variant="ghost"
+            isDisabled={busy}
+            onClick={onCancel}
+          />
+          <Button
+            label={busy ? copy.editor.creating : copy.editor.create}
             size="sm"
             variant="primary"
             isDisabled={busy}
@@ -159,13 +155,13 @@ function Document({
           menuWidth={300}
           items={kinds.map((each) => ({
             label: each,
-            description: KIND_WORDS[each],
+            description: copy.kinds[each],
             icon: <Icon icon={kindIcons[each]} size="sm" />,
             endContent: each === kind ? <Icon icon={Check} size="sm" /> : undefined,
             onClick: () => setKind(each),
           }))}
         />
-        <span {...stylex.props(ui.docHint)}>can’t change once written</span>
+        <span {...stylex.props(ui.docHint)}>{copy.editor.kindLocked}</span>
       </div>
       <TicketFields
         title={title}
@@ -206,8 +202,8 @@ export function TicketFields({
     <>
       <textarea
         rows={1}
-        aria-label="Title"
-        placeholder="Ticket title"
+        aria-label={copy.editor.titleLabel}
+        placeholder={copy.editor.titlePlaceholder}
         value={title}
         // eslint-disable-next-line jsx-a11y/no-autofocus
         autoFocus={focusTitle}
@@ -216,24 +212,24 @@ export function TicketFields({
         {...stylex.props(ui.docTitle)}
       />
       <div {...stylex.props(ui.docSection)}>
-        <span {...stylex.props(ui.docLabel)}>About</span>
+        <span {...stylex.props(ui.docLabel)}>{copy.ticket.about}</span>
         <MarkdownEditor
-          label="Description"
+          label={copy.ticket.about}
           initial={initialBody}
-          placeholder="What to build, and why. Markdown works."
+          placeholder={copy.editor.aboutPlaceholder}
           onChange={setBody}
         />
       </div>
       <div {...stylex.props(ui.docSection)}>
-        <span {...stylex.props(ui.docLabel)}>Done when</span>
+        <span {...stylex.props(ui.docLabel)}>{copy.ticket.doneWhen}</span>
         <ul {...stylex.props(ui.checks)}>
           {criteria.map((line, at) => (
             <li key={at} {...stylex.props(ui.check)}>
               <span {...stylex.props(ui.checkMark)} aria-hidden />
               <textarea
                 rows={1}
-                aria-label={`Criterion ${at + 1}`}
-                placeholder="A check that says it is done"
+                aria-label={copy.editor.checkLabel(at + 1)}
+                placeholder={copy.editor.checkPlaceholder}
                 value={line}
                 onChange={(event) =>
                   setCriteria(criteria.map((each, i) => (i === at ? event.target.value : each)))
@@ -244,7 +240,7 @@ export function TicketFields({
               {criteria.length > 1 && (
                 <span {...stylex.props(ui.checkRemove)}>
                   <IconButton
-                    label={`Remove criterion ${at + 1}`}
+                    label={copy.editor.removeCheck(at + 1)}
                     icon={<Icon icon={X} size="sm" />}
                     variant="ghost"
                     size="sm"
@@ -257,7 +253,7 @@ export function TicketFields({
         </ul>
         <span {...stylex.props(ui.docAdd)}>
           <Button
-            label="Add criterion"
+            label={copy.editor.addCheck}
             icon={<Icon icon={Plus} size="sm" />}
             size="sm"
             variant="ghost"

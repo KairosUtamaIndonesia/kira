@@ -176,7 +176,10 @@ const CASES: Case[] = [
       }),
     call: 'write',
     args: ['api', draft],
-    want: { ok: false, error: 'Say how we’ll know this ticket is done before an agent starts on it.' },
+    want: {
+      ok: false,
+      error: 'Say how we’ll know this ticket is done before an agent starts on it.',
+    },
     wantCalls: [],
   },
   {
@@ -264,12 +267,18 @@ const CASES: Case[] = [
     makeDeps: (calls) =>
       deps(calls, {
         gate: async () => {
-          throw new Error('Those two tickets would wait on each other. Choose a ticket that isn’t already blocked by this one.');
+          throw new Error(
+            'Those two tickets would wait on each other. Choose a ticket that isn’t already blocked by this one.',
+          );
         },
       }),
     call: 'gate',
     args: ['ticket-1', 'FND-2'],
-    want: { ok: false, error: 'Those two tickets would wait on each other. Choose a ticket that isn’t already blocked by this one.' },
+    want: {
+      ok: false,
+      error:
+        'Those two tickets would wait on each other. Choose a ticket that isn’t already blocked by this one.',
+    },
     wantCalls: [],
   },
   {
@@ -344,7 +353,10 @@ for (const testCase of CASES) {
       removeExecutionWorkspace: () => handlers.removeExecutionWorkspace(first, second),
     } as const;
 
-    assert.deepEqual(await (run as Record<string, (() => Promise<unknown>) | undefined>)[testCase.call]!(), testCase.want);
+    assert.deepEqual(
+      await (run as Record<string, (() => Promise<unknown>) | undefined>)[testCase.call]!(),
+      testCase.want,
+    );
     assert.deepEqual(calls, testCase.wantCalls);
   });
 }
