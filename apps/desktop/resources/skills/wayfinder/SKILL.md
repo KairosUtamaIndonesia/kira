@@ -22,4 +22,4 @@ Decision tickets are `question` or `research` tickets, the only children a map t
 4. Work one unblocked child at a time. Propose its answer with `propose_outcome`, attaching a Decision proposal when the answer is durable, and wait for the approval card.
 5. When the map has no unresolved decisions, hand off to `/to-spec` and `/to-tickets`, then build the approved spec with Kira's implementation guidance.
 
-If the whole effort is already clear and small enough for one run, skip wayfinding and implement it directly. A map produces decisions, not a disguised build queue.
+If the whole effort is already clear and small enough for one ticket, skip wayfinding and implement it directly. A map produces decisions, not a disguised build queue.
