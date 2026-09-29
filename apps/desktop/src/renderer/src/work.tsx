@@ -457,9 +457,7 @@ const styles = stylex.create({
   rowDragging: { opacity: 0.4 },
   rowOverlay: {
     width: 295,
-    borderWidth: borderVars['--border-width'],
-    borderStyle: 'solid',
-    borderColor: colorVars['--color-border-emphasized'],
+    borderBlockEndWidth: 0,
     borderRadius: 6,
     backgroundColor: colorVars['--color-background-popover'],
     boxShadow: shadowVars['--shadow-med'],
