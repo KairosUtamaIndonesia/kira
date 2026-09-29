@@ -1114,7 +1114,11 @@
 }
 
 .rich-editor h2 {
-  font-size: var(--font-size-lg);
+  font-size: var(--font-size-base);
+}
+
+.rich-editor h3 {
+  font-size: var(--font-size-sm);
 }
 
 .rich-editor ul,
