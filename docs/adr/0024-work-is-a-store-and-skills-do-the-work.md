@@ -19,9 +19,15 @@ committing, the person accepted, and acceptance merged an empty branch and close
 Done with nothing in it. The verdict was recorded; nothing checked that work had landed.
 
 The shaping half needed none of that. The interview, the spec, the breakdown and their approval
-cards need only the store and the skills (ADR 0022). And the skills the store was modelled on
-(`/implement`, `/implement-spec`) already assume something simpler: the agent works in a session
-the person is in, in their own checkout, and the tracker is where the work is written down.
+cards need only the store and the skills (ADR 0022). The skills the store was modelled on
+(`/to-spec`, `/to-tickets`, `/implement`, `/pr`) already assume something simpler: the agent works
+in a session the person is in, in their own checkout, and a tracker is where the work is written
+down. They were written against several trackers (local files, GitHub Issues), so what Kira owes
+them is one more: a store with the same few operations.
+
+The server already holds most of it. A ticket has a stored `status` (`backlog`, `todo`,
+`in-progress`, `in-review`, `done`, `cancelled`), an assignee, tags, blockers and children. The
+desktop ignores the status and derives its own bands from claims and runs.
 
 ## Decision
 
@@ -29,31 +35,36 @@ the person is in, in their own checkout, and the tracker is where the work is wr
 Kira's server for the team (ADR 0010, ADR 0020), read and written by people through the board and
 by Kira through her tools. It is GitHub Issues, in Kira. Nothing in it runs anything.
 
-**A ticket is draft, ready, running or closed.** Blocked stays derived from open blockers
-(ADR 0017), and closed is Done or Won't do. There is no Needs review, and ready no longer says
-whether an agent or a person picks it up: anyone can work a ready ticket.
+**A ticket has one stored status, and an assignee.** The status is Draft, Ready, Running, In
+review, Done or Won't do (the server's `backlog`, `todo`, `in-progress`, `in-review`, `done`,
+`cancelled`). People and agents set it; it is never derived from claims or runs. Blocked is shown
+for a ticket with an open blocker, whatever its status. `gate`, `closure` and the derived band go.
 
-**Running is an assignee.** A ticket is running when it is open and someone is assigned to it, as
-in GitHub Issues. There is no claim record, lease, heartbeat, worker, run or takeover, and no
-new column or route: the ticket already has an assignee that the server can set. Stopping is
-unassigning. A running ticket nobody is working shows in the list with its last update, and
-staleness is never acted on by a clock, as ADR 0012 already said.
+**Linking a ticket is starting it.** A person links a ticket in the composer, which the app already
+allows, and the agent works it with the skill its kind names (ADR 0022). When it begins it sets the
+ticket Running and assigns the chat's person. There is no Work on this button, and no claim, lease,
+heartbeat, worker or run. A ticket stays Running until someone changes it. Staleness is displayed
+and never acted on by a clock, as ADR 0012 already said.
 
-**Working a ticket is a chat.** "Work on this" assigns the ticket to the person and starts an
-ordinary chat in the project's folder with the ticket attached, which the app already does: the
-chat is given the ticket's body and checks each turn, and Kira picks the skill from its kind
-(ADR 0022). Only a person presses it, and it spends their allowance like any chat (ADR 0005).
-Kira has no tool to start a ticket herself.
+**The agent moves only its own ticket.** Kira gives it one tool for status and assignee. The tool
+acts only on tickets linked in the agent's own chat, and only between Ready, Running and In review.
+Publishing tickets, approving a spec or a Decision, and setting Done or Won't do stay a person's
+press (ADR 0022).
 
-**Done is a person's press.** A person closes a ticket (Resolve…, then Mark done or Won't do)
-when they are satisfied. Nothing merges on acceptance: the skills branch and commit in the
-project's folder, and the person lands the work through git as they land anything else. Kira does
-not manage a branch, a worktree, a remote or a pull request.
+**A pull request is the review.** When the work is done the agent opens a pull request with the
+`pr` skill and sets the ticket In review. The chat that opened it is linked to the ticket. Review
+and merge happen where pull requests already are, and Kira has no diff pane, review comments,
+delivery or merge of its own. Where a project has no remote or no `gh`, the agent commits on a
+branch and sets In review anyway, and the person merges with git. The person sets Done once it has
+merged.
+
+**Each ticket is its own branch off the default branch.** A ticket blocked by another can start
+when its blocker is Done, which means merged, so it branches from the merged work. There is no spec
+branch. A spec's integration pass is a session on the spec ticket, started once its children are
+Done, that reviews them together against the spec.
 
 **A kind names a skill and what it leaves behind, and nothing more.** A question or research
-ticket still ends in an Outcome the person approves. A spec still has an integration pass, which
-is a session on the spec ticket, started once its children are done, that reviews them together
-against the spec.
+ticket still ends in an Outcome the person approves.
 
 ## Considered options
 
@@ -64,19 +75,26 @@ against the spec.
 - **Keep runs, drop the leases.** The lease is the smallest part of the cost. The verdict, the
   execution workspace and the spec branch are what made a fresh folder unusable and let an empty
   merge close a ticket.
-- **Keep Needs review as a status without the merge.** A ticket waiting for a person to look is
-  already running, and looking at it is the person's own chat.
+- **Kira reviews and merges pull requests itself.** ADR 0023 did this, and it rebuilds the review
+  surface GitHub already has, with the reviewers, CI and branch protection that go with it.
+- **Derive the status from claims, runs and blockers (ADR 0017).** That was needed while a machine
+  held claims. With a person and their chat in charge, a stored status is what GitHub Projects does
+  and what people expect to drag.
 
 ## Consequences
 
 - **Isolation goes.** Two tickets running at once share one checkout, and Kira no longer gives
   each agent a worktree. The skills can branch or use worktrees themselves. Revisit this when two
   running tickets colliding in one folder becomes a real complaint, not before.
-- **The per-run record goes.** A ticket keeps its linked chats, and a chat is its transcript.
-  Runs, verdicts, review comments on diffs and deliveries are not kept. The diff pane may return
-  as a Workbench tab for any chat.
+- **The per-run record goes.** A ticket keeps its linked chats, a chat is its transcript, and the
+  pull request is the record of the change. Runs, verdicts and deliveries are not kept.
+- **An agent can now change a ticket's status.** The tool is bounded to the tickets linked in its
+  own chat and to the states between Ready and In review.
+- **Done after a merge is manual.** Nothing tells Kira a pull request merged, so the person sets
+  Done. If that is forgotten often, the smallest fix is for the agent to check its pull request
+  when its chat is reopened and offer to close the ticket.
 - **Two numbers in ADR 0005 need a second look:** "runs in flight" in the allowance becomes chats
   running at once, or goes.
-- **Existing tickets keep their state.** Anything with an open claim or an unjudged run becomes
-  running; the rest follow their readiness. The order of the removal and the size of each piece
-  are in `docs/internal/work-store-migration.md`.
+- **Existing tickets are rewritten.** Every stored status is `backlog` today, so the migration sets
+  it from the ticket's band, readiness and closure. The order of the removal and the size of each
+  piece are in `docs/internal/work-store-migration.md`.

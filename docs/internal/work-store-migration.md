@@ -6,14 +6,18 @@ when the last slice lands, and let the ADR and `CONTEXT.md` carry what stays tru
 
 ## The target, in six lines
 
-- A ticket is draft, ready, running or closed. Blocked is derived from open blockers.
-- **Work on this** assigns the ticket to the person and starts a chat with the ticket attached,
-  both of which the app can already do. Running means open and assigned. Only a person presses it.
-- **Resolve…** (Mark done, Won't do) is the only way a ticket closes. Nothing merges on accept.
-- Kira keeps no claim, lease, worker, run, branch, worktree, remote or pull request.
+- A ticket has one stored status (Draft, Ready, Running, In review, Done, Won't do) and an assignee.
+  Blocked is shown when a blocker is open.
+- **Linking a ticket in the composer starts it.** The agent works it with its kind's skill, sets it
+  Running (assigning the chat's person), opens a pull request with the `pr` skill, and sets In review.
+  The person reviews and merges on GitHub, then sets Done.
+- The agent gets one status tool. It acts only on tickets linked in its own chat, between Ready and
+  In review. Publishing, approving and Done or Won't do stay presses.
+- Kira keeps no claim, lease, worker, run, worktree, spec branch, diff or review pane, or delivery.
 - The board, list, filters, ticket editor, blockers, approval cards (spec, tickets, Outcome,
   Decision), Glossary, chat and skill bundle are unchanged.
-- Nothing needs a git repository or a remote to start work.
+- Nothing needs a git repository to start work. A pull request needs a remote and `gh`; without
+  them the agent commits on a branch and the person merges with git.
 
 ## What goes
 
@@ -32,65 +36,70 @@ them as size, not as a savings promise.
 | Desktop bridge   | types `TicketRun`, `TicketClaim`, `WorkerStanding`, `ExecutionWorkspace`, `ExecutionReview`, `ReviewComment`, `ReviewFeedback`, `DeliveryAudit`, `DeliveryPath`; channels `WORKER`, `RUN`, `EXECUTION`, `DELIVERY`, and the claim and workspace parts of `TRACKER` | 300           |
 | Wording          | `workCopy.ts` groups `drop`, `setup`, `branch`, `sessions`, `holding`, `workspace`                                                                                                                                                                                 | 150           |
 
-That is roughly 10,000 lines out of a much larger codebase. **What replaces it is tiny**, by
-estimate under 100 lines: the server derives a ticket's status from its blockers, assignee and
-readiness; the desktop's `TicketChange` gains `assigneeId`, which the server's PATCH already
-accepts; and a Work on this button calls that and then the existing `startChat` with the ticket
-attached. No new column, route, main-process action or brief.
+That is roughly 10,000 lines out of a much larger codebase. **What replaces it is small**, by
+estimate 150 to 250 lines with tests: the desktop reads the stored `status` instead of deriving a
+band, and `TicketChange` gains `status` and `assigneeId`, which the server's PATCH already accepts;
+a status tool for the agent that only touches tickets linked in its chat; and a change to the text
+an attached ticket carries, so the agent knows to work it and move it. No new column, route or
+button.
 
 ## What stays, and what shrinks
 
 - **Stays:** `workspace/git.ts`, `listing.ts`, `reading.ts`, `watching.ts` (the Workbench's file tree),
   the Workbench's **Workspace** tab (it shows a chat's folder, not an execution workspace), the
   approval cards, `moveToProject`, `fileChat`.
-- **Shrinks:** `bandOf` (six bands become five statuses), `planTicketDrop` (three drops: Work on
-  this, stop, Resolve…), `TicketReading` in `work.tsx` (no runs, branch or workspace rows), the
-  server's `Ticket` shape (`claim`, `runs`, `workspaces` fields go).
+- **Shrinks:** `bandOf` goes (the board reads `status`), `planTicketDrop` (a drop sets a status),
+  `TicketReading` in `work.tsx` (no runs, branch or workspace rows), the server's `Ticket` shape
+  (`claim`, `runs`, `workspaces`, `gate`, `closure` fields go).
 
 ## Data
 
-| Today                                              | After                                       |
-| -------------------------------------------------- | ------------------------------------------- |
-| closed, done or won't do                           | unchanged                                   |
-| an open claim, or a run with no verdict            | **running**; assignee is the claim's holder |
-| readiness `draft`                                  | draft                                       |
-| readiness `ready-for-agent` or `ready-for-human`   | ready                                       |
-| runs, transcripts, workspaces, reviews, deliveries | dropped                                     |
+| Today                                              | After                                   |
+| -------------------------------------------------- | --------------------------------------- |
+| closed as done                                     | Done                                    |
+| closed as won't do                                 | Won't do                                |
+| an open claim, or a run with no verdict            | Running; assignee is the claim's holder |
+| readiness `draft`                                  | Draft                                   |
+| readiness `ready-for-agent` or `ready-for-human`   | Ready                                   |
+| runs, transcripts, workspaces, reviews, deliveries | dropped                                 |
 
-Dropping run transcripts on the server cannot be undone. Before the migration runs anywhere but a
-development database, check that nobody needs what is in them. Desktop chats that were a run's
-chat are ordinary local chats already, and keep their words; give each the attached ticket it
-was a run of.
+The stored `status` column reads `backlog` on every ticket today, so the migration rewrites it from
+the rules above rather than trusting it. Dropping run transcripts on the server cannot be undone.
+Before the migration runs anywhere but a development database, check that nobody needs what is in
+them. Desktop chats that were a run's chat are ordinary local chats already, and keep their words;
+give each the attached ticket it was a run of.
 
 ## Order
 
 Each slice ends with the tests and typecheck green and can be committed on its own. Tests come
 first in every slice.
 
-1. **Running, beside the old path (the tracer bullet).** Server: derive `running` from an open,
-   assigned ticket. Desktop: `assigneeId` in `TicketChange` and its IPC check, and a Work on this
-   button. Verify on a new project in an empty folder with no git: spec, tickets, Work on this,
-   the chat opens with the ticket attached, the ticket reads running, Mark done closes it.
-2. **The board reads five statuses.** Remove the Needs review lane; simplify `planTicketDrop`;
-   remove the run, branch and accept or send back parts of the panel.
+1. **The agent moves its ticket, beside the old path (the tracer bullet).** Desktop: `status` and
+   `assigneeId` in `TicketChange` and its IPC check; a status tool limited to tickets linked in the
+   chat; the attached-ticket text tells the agent to work the ticket and move it. Verify in an empty
+   folder with no git: link a ticket in the composer, the agent sets it Running, does the work, and
+   sets In review; the person sets Done. Then once by hand in a folder with a GitHub remote, where the
+   agent also opens the pull request.
+2. **The board reads the stored status.** Six lanes become Draft, Ready, Running, In review, Done
+   and Won't do, with Blocked shown on the row; drops set the status; remove the run, branch and
+   accept or send back parts of the panel.
 3. **Remove the desktop run machinery:** `runs.ts`, `worker.ts`, `runChat.ts`, their IPC, and the
    registrations in `main/index.ts` and the preload. Nothing moves out first: a chat with a ticket
    attached is already given its body and checks.
 4. **Remove the execution workspace:** the panel, setup dialog, `execution/`, `delivery/`,
    `worktrees.ts`, their IPC and bridge types.
-5. **Remove the server layer:** routes, helpers, tables, the two files, the tests, and the
-   migration above. Last, because nothing then calls it. There is no compatibility to keep: the
-   product is pre-release.
+5. **Remove the server layer:** routes, helpers, tables, the two files, the tests, `gate`,
+   `closure`, `bandOf`, and the migration above. Last, because nothing then calls it. There is no
+   compatibility to keep: the product is pre-release.
 6. **Docs sweep:** `DESIGN.md` Work section (lanes, Start agent, refusals), `desktop-conventions.md`,
    the `workCopy.ts` header (with execution workspaces gone, "workspace" means the folder again,
    which reverses that file's rule), `CHANGELOG.md`, and this file.
 
 ## Open, with a recommendation
 
-1. **Terminal, dev-server preview and the diff and review panes.** Drop them with the panel. A
+1. **How a ticket learns its pull request merged.** The person sets Done. Nothing polls GitHub.
+2. **Terminal, dev-server preview and the diff and review panes.** Drop them with the panel. A
    Changes tab for any chat can come back later on its own merits.
-2. **The `gate` column.** Keep the column and collapse its values to `draft` and `ready`; rename
-   it later so the migration runs once.
 3. **The author-owned question chat** (`startQuestion`, `/question-chat`): a question ticket's
    chat is linked to it through the server. Drop it, and let a question be worked like any
    ticket, unless something needs its author-only rule.

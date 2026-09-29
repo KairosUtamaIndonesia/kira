@@ -105,17 +105,16 @@ drawn twice, so that reach is where it was first worked out.
 _Avoid_: Reflection (what the code says), insight, summary (that is the compaction's own)
 
 **Running**:
-What a ticket is while it is open and assigned to someone: they pressed Work on this, and it is
-theirs until they close it or unassign it. There is nothing to expire (ADR 0024).
+The status of a ticket someone is working: the agent sets it when it begins on a ticket linked in its
+chat, and assigns the chat's person. Nothing expires it; anyone can change it (ADR 0024).
 _Avoid_: Claim, lease, lock
 
 **Ticket**:
 One unit of work on a project, written so that whoever works it needs nothing else to hand:
 what to build, how it is known to be done, and the other tickets that block it. A ticket may
 have children, and a child blocks its parent, so a ticket can be worked only when nothing
-under it and nothing blocking it is open and it has been marked ready. It is draft, ready,
-running or closed; blocked is derived from open blockers, never set (ADR 0017, ADR 0024).
-Its **kind** — prototype, bug, feature, refactor, question, research, spec or map — is set when
+under it and nothing blocking it is open and it has been marked ready. It has one stored status
+(ADR 0024). Its **kind** — prototype, bug, feature, refactor, question, research, spec or map — is set when
 it is written and names the skill that works it and what that leaves behind. Its **rank**
 orders it within a status, which is the only ordering there is.
 _Avoid_: Issue, task, card
@@ -168,13 +167,13 @@ can name others it waits on. A blocked ticket sits in Blocked until its blockers
 _Avoid_: Gate, dependency, prerequisite
 
 **Status**:
-The column a ticket appears in on the board: Draft, Ready, Running, Blocked or Done. Derived from
-the ticket, never set directly.
-_Avoid_: Readiness, execution state, claim
+The stored stage of a ticket: Draft, Ready, Running, In review, Done or Won't do. People set it, and so
+does the agent for the ticket linked in its chat. A ticket with an open blocker also shows Blocked.
+_Avoid_: Readiness, band, execution state, claim
 
 **Session**:
-A chat working a ticket: Work on this opens one in the project's folder with the ticket attached
-and the skill its kind names. A ticket lists every session it has had, and only a person starts one.
+A chat with a ticket linked, in which the agent works it with the skill its kind names. A ticket lists
+its sessions. The person starts one by linking the ticket in the composer.
 _Avoid_: Run (in anything a person reads), Worker, job
 
 The central relationship is:
