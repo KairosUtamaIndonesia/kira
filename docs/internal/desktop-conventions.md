@@ -18,19 +18,32 @@ we want repeated.
 - **What the chat looks like** is `@astryxdesign/core`: every pixel. Primitives are
   unstyled, and Astryx components go inside them (`asChild`), never the other way round.
 
-Astryx is styled with StyleX, which compiles before it ships: `astryx.css` is its
-finished output, so using Astryx means importing that CSS rather than running its
-compiler, and the `@stylexjs/stylex` the app depends on is the runtime those compiled
-components call into. `renderer/src/styles.css` therefore has two jobs — it is where
-Astryx's entry points are imported, and it holds the panes' layout, which is structure
-rather than looks: which pane is which, what scrolls, what stays put. The frame above
-those panes is not ours to lay out: `AppShell` owns the nav column, its width, the main
-region, the landmarks and the skip link, so anything about the shell is said with the
-shell's props rather than in this file. Where no prop exists, one rule names Astryx's own
-theming target for the nav panel instead — its horizontal overflow has no prop to say it
-with — and that is the only reason this file should reach the shell at all. Put lengths
-there in Astryx's own tokens (`var(--spacing-3)`) so the file says one step of the rhythm
-rather than a number; a length that is genuinely ours is written plainly.
+### Where a style goes
+
+Astryx is written in StyleX, and the renderer compiles StyleX too
+(`@stylexjs/rollup-plugin` in `electron.vite.config.ts`). A style lands in the first
+place that can say it:
+
+1. **An Astryx prop.** `variant`, `size`, `gap`, `padding`, and the shell's own props
+   come before any style. `AppShell` owns the nav column, its width, the main region, the
+   landmarks and the skip link, so anything about the shell is said with its props.
+2. **StyleX beside the component.** A component's own look and layout live in a
+   `stylex.create` in its file, with values from Astryx's tokens
+   (`colorVars`, `spacingVars`, `radiusVars` from
+   `@astryxdesign/core/theme/tokens.stylex`) so they follow the theme. A value that is
+   genuinely ours is written plainly. `work.tsx` is the pattern to copy.
+3. **`renderer/src/styles.css`** holds only what belongs to no one component: the pane
+   layout (which pane is which, what scrolls, what stays put), window-wide browser
+   surfaces, and rules for placements no prop can express, which name Astryx's own
+   theming target and nothing else. Lengths there use Astryx's CSS variables
+   (`var(--spacing-3)`).
+
+Colors, type, and radii are the theme's, and the theme is `packages/theme`: change them
+in `kiraTheme.ts` so every surface moves together. That package stays plain CSS so a
+surface that imports it needs no StyleX compiler.
+
+Two rules in `styles.css` reach Astryx's targets today. The first names the nav panel's
+theming target, because its horizontal overflow has no prop to say it with.
 
 The nav is not the only place a prop is missing. Astryx anchors a `Selector`'s list below
 its trigger and then nudges the list up by whatever it would overflow — which, at the
