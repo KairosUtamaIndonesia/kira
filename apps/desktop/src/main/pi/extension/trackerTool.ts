@@ -18,7 +18,6 @@ import {
 } from '../../../preload/bridge.ts';
 import type { ThreadStore } from '../../db/threads.ts';
 import type { Tracker } from '../../tracker.ts';
-import { hasRemote } from '../../workspace/git.ts';
 
 const EMPTY = Type.Object({});
 const TICKET = Type.Object({ ref: Type.String({ minLength: 1 }) });
@@ -286,24 +285,37 @@ export function trackerTools(
           if (!['running', 'needs-review'].includes(edit.status)) {
             throw new Error('The agent can set only Running or Needs review.');
           }
-          if (edit.status === 'needs-review') {
-            const pullRequestUrl =
-              edit.pullRequestUrl === undefined ? current.pullRequestUrl : edit.pullRequestUrl;
-            if (pullRequestUrl === null) {
-              const thread = store.findThread(threadId);
-              const remote = thread ? await hasRemote(thread.cwd) : null;
-              if (remote === null) {
-                throw new Error(
-                  'Could not determine whether this checkout has a remote. Leave the ticket Running and report the blocker.',
-                );
-              }
-              if (remote) {
-                throw new Error(
-                  'A pull request URL is required when this checkout has a remote. Leave the ticket Running and report why a pull request could not be opened.',
-                );
-              }
-            }
+        }
+        const statusAfter = edit.status ?? current.status;
+        const pullRequestUrlAfter =
+          edit.pullRequestUrl === undefined ? current.pullRequestUrl : edit.pullRequestUrl;
+        const clearingReviewLink =
+          edit.status === undefined &&
+          edit.pullRequestUrl === null &&
+          current.status === 'needs-review';
+        if (
+          (edit.status === 'needs-review' || edit.pullRequestUrl !== undefined) &&
+          statusAfter === 'needs-review' &&
+          pullRequestUrlAfter === null
+        ) {
+          const thread = store.findThread(threadId);
+          const remote = thread ? await tracker.checkoutHasRemote(thread.cwd) : null;
+          if (remote === null && !clearingReviewLink) {
+            throw new Error(
+              'Could not determine whether this checkout has a remote. Leave the ticket Running and report the blocker.',
+            );
           }
+          if (remote && !clearingReviewLink) {
+            throw new Error(
+              'With a remote, Needs review requires a pull request URL. Leave or set the ticket to Running until the URL is available, and report any blocker.',
+            );
+          }
+          if (remote !== false && clearingReviewLink) {
+            change.status = 'running';
+            change.assigneeId = await tracker.currentUserId();
+          }
+        }
+        if (edit.status !== undefined) {
           change.status = edit.status as TicketStatus;
           if (edit.status === 'running') change.assigneeId = await tracker.currentUserId();
         }

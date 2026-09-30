@@ -146,6 +146,8 @@ export interface TrackerWire {
 
 export interface Tracker {
   queue(workspaceId: string): Promise<TicketQueue>;
+  /** Whether a checkout has a remote, or null when Git cannot answer. */
+  checkoutHasRemote(folder: string): Promise<boolean | null>;
   /** Read the id of the signed-in person who owns this desktop key. */
   currentUserId(): Promise<string>;
   /** Read one ticket by its id or human-readable name. */
@@ -217,6 +219,7 @@ export function trackerFor({
   projectOf,
   joinLocally,
   wire,
+  checkoutHasRemote = async () => null,
 }: {
   /** The key this device holds, or null when nobody has signed in. */
   token: () => Promise<string | null>;
@@ -225,6 +228,8 @@ export function trackerFor({
   /** Remember that a workspace works a project, answering it as it stands after. */
   joinLocally: (workspaceId: string, projectId: string) => WorkspaceSummary | undefined;
   wire: TrackerWire;
+  /** Read Git's local remote configuration; null fails closed for Needs review. */
+  checkoutHasRemote?: (folder: string) => Promise<boolean | null>;
 }): Tracker {
   /** The key, or the sentence a window shows when there is none. */
   async function key(): Promise<string> {
@@ -243,6 +248,8 @@ export function trackerFor({
   }
 
   return {
+    checkoutHasRemote,
+
     async queue(workspaceId) {
       const held = await key();
       const projectId = projectIn(workspaceId);

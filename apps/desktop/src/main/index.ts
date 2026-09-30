@@ -35,6 +35,7 @@ import { trackerFor, type Tracker } from './tracker.ts';
 import { usageFor, type UsageKeeper } from './usage.ts';
 import { type OpenChats, openChats } from './pi/openChats.ts';
 import { listFolder } from './workspace/listing.ts';
+import { hasRemote } from './workspace/git.ts';
 import {
   createWorkspaceItem,
   readWorkspaceAsset,
@@ -848,6 +849,7 @@ if (claimTheScheme()) {
 
           return joined === undefined ? undefined : workspaceSummaryOf(joined);
         },
+        checkoutHasRemote: hasRemote,
         wire,
       });
 

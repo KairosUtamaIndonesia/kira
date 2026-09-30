@@ -1,5 +1,4 @@
 import { strict as assert } from 'node:assert';
-import { execFileSync } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -458,7 +457,7 @@ test('linked-ticket status updates allow only Running and Needs review', async (
       allowed: false,
       schemaValid: true,
       error:
-        'A pull request URL is required when this checkout has a remote. Leave the ticket Running and report why a pull request could not be opened.',
+        'With a remote, Needs review requires a pull request URL. Leave or set the ticket to Running until the URL is available, and report any blocker.',
     },
     {
       edit: { status: 'needs-review', pullRequestUrl: null },
@@ -469,7 +468,36 @@ test('linked-ticket status updates allow only Running and Needs review', async (
       allowed: false,
       schemaValid: true,
       error:
-        'A pull request URL is required when this checkout has a remote. Leave the ticket Running and report why a pull request could not be opened.',
+        'With a remote, Needs review requires a pull request URL. Leave or set the ticket to Running until the URL is available, and report any blocker.',
+    },
+    {
+      edit: { pullRequestUrl: null },
+      status: 'clearing a review link with a remote returns the ticket to Running',
+      remote: true,
+      currentStatus: 'needs-review',
+      currentPullRequestUrl: 'https://github.com/example/kira/pull/42',
+      allowed: true,
+      schemaValid: true,
+      change: { pullRequestUrl: null, status: 'running', assigneeId: 'ada' },
+    },
+    {
+      edit: { pullRequestUrl: null },
+      status: 'clearing a review link with unknown remote state returns the ticket to Running',
+      currentStatus: 'needs-review',
+      currentPullRequestUrl: 'https://github.com/example/kira/pull/42',
+      allowed: true,
+      schemaValid: true,
+      change: { pullRequestUrl: null, status: 'running', assigneeId: 'ada' },
+    },
+    {
+      edit: { status: 'running', pullRequestUrl: null },
+      status: 'a cleared review link returns the ticket to Running',
+      remote: true,
+      currentStatus: 'needs-review',
+      currentPullRequestUrl: 'https://github.com/example/kira/pull/42',
+      allowed: true,
+      schemaValid: true,
+      change: { status: 'running', pullRequestUrl: null, assigneeId: 'ada' },
     },
     {
       edit: { status: 'needs-review' },
@@ -504,28 +532,13 @@ test('linked-ticket status updates allow only Running and Needs review', async (
   ];
 
   for (const item of cases) {
-    test(item.status, async (t) => {
-      if (!gitRuns()) {
-        t.skip('Git is required to test the checkout remote rule.');
-        return;
-      }
-
+    test(item.status, async () => {
       const store = new ThreadStore(
         join(mkdtempSync(join(tmpdir(), 'kira-tracker-tool-store-')), 'threads.db'),
       );
       const workspace = store.rememberWorkspace(
         mkdtempSync(join(tmpdir(), 'kira-tracker-tool-space-')),
       );
-      if (item.remote !== undefined) {
-        execFileSync('git', ['-C', workspace.folder, 'init'], { stdio: 'ignore' });
-        if (item.remote) {
-          execFileSync(
-            'git',
-            ['-C', workspace.folder, 'remote', 'add', 'origin', 'https://example.test/kira.git'],
-            { stdio: 'ignore' },
-          );
-        }
-      }
       const current = {
         ...ticket(item.currentStatus ?? 'ready'),
         pullRequestUrl: item.currentPullRequestUrl ?? null,
@@ -538,6 +551,10 @@ test('linked-ticket status updates allow only Running and Needs review', async (
       const tools = trackerTools(store, thread.threadId, {
         queue: async () => ({}) as TicketQueue,
         readTicket: async () => current,
+        checkoutHasRemote: async (folder: string) => {
+          assert.equal(folder, workspace.folder);
+          return item.remote ?? null;
+        },
         currentUserId: async () => 'ada',
         change: async (_id: string, change: unknown) => {
           changes.push(change);
@@ -564,12 +581,3 @@ test('linked-ticket status updates allow only Running and Needs review', async (
     });
   }
 });
-
-function gitRuns(): boolean {
-  try {
-    execFileSync('git', ['--version'], { stdio: 'ignore' });
-    return true;
-  } catch {
-    return false;
-  }
-}
