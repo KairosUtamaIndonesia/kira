@@ -1,7 +1,14 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import type { ChatConclusion, ChatMemory, MemoryKind } from '../../preload/bridge.ts';
-import { conclusionGroupIn, coverageLine, groupsIn } from './memoryGroups.ts';
+import {
+  commitParts,
+  conclusionGroupIn,
+  coverageLine,
+  groupsIn,
+  opensInWorkspace,
+  pathParts,
+} from './memoryGroups.ts';
 
 const said = (kind: MemoryKind, text: string): ChatMemory => ({
   kind,
@@ -147,5 +154,79 @@ const COVERAGE_CASES: CoverageCase[] = [
 for (const testCase of COVERAGE_CASES) {
   test(testCase.name, () => {
     assert.equal(coverageLine(testCase.coversThrough), testCase.want);
+  });
+}
+
+interface PartsCase {
+  name: string;
+  path: string;
+  want: { name: string; folder: string };
+}
+
+const PATH_CASES: PartsCase[] = [
+  {
+    name: 'a nested file leads with its name and keeps its folder',
+    path: 'src/auth/session.ts',
+    want: { name: 'session.ts', folder: 'src/auth' },
+  },
+  {
+    name: 'a file at the root has no folder',
+    path: 'deploy.toml',
+    want: { name: 'deploy.toml', folder: '' },
+  },
+];
+
+for (const testCase of PATH_CASES) {
+  test(testCase.name, () => {
+    assert.deepEqual(pathParts(testCase.path), testCase.want);
+  });
+}
+
+interface CommitCase {
+  name: string;
+  text: string;
+  want: { hash: string; subject: string };
+}
+
+const COMMIT_CASES: CommitCase[] = [
+  {
+    name: 'a commit is its hash and its subject',
+    text: 'a1b2c3d: fix(auth): refresh the token',
+    want: { hash: 'a1b2c3d', subject: 'fix(auth): refresh the token' },
+  },
+  {
+    name: 'a line with no hash is all subject',
+    text: 'fix the deploy',
+    want: { hash: '', subject: 'fix the deploy' },
+  },
+];
+
+for (const testCase of COMMIT_CASES) {
+  test(testCase.name, () => {
+    assert.deepEqual(commitParts(testCase.text), testCase.want);
+  });
+}
+
+interface OpensCase {
+  name: string;
+  path: string;
+  want: boolean;
+}
+
+const OPENS_CASES: OpensCase[] = [
+  { name: 'a path inside the folder opens', path: 'src/auth/session.ts', want: true },
+  { name: 'a file at the root opens', path: 'deploy.toml', want: true },
+  { name: 'an absolute path is outside the folder', path: '/tmp/pomo-timer.png', want: false },
+  { name: 'a path that climbs out is outside the folder', path: '../notes.md', want: false },
+  {
+    name: 'a Windows drive path is outside the folder',
+    path: 'C:\\Users\\a\\notes.md',
+    want: false,
+  },
+];
+
+for (const testCase of OPENS_CASES) {
+  test(testCase.name, () => {
+    assert.equal(opensInWorkspace(testCase.path), testCase.want);
   });
 }

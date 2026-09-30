@@ -208,6 +208,10 @@ Components are crisp and lightly lifted. Prefer Astryx primitives and Kira theme
 
 A chat with no messages starts the sentence the composer finishes: one line saying what to do, the two modes as ruled rows (Build, Spec; the wording of the composer's own tooltips), and the keys that send and break a line. It is left-aligned to the message column, with no icon, illustration, or starter buttons. It is a definition list, not an Astryx `EmptyState`, because the chat's next step is the composer beside it.
 
+### Context tab
+
+The workbench's Context tab is a ledger like Work: no header, then a hairline and heading with a zero-padded mono count per kind, and ruled rows. What Kira concluded comes first, then what you asked for and the work as body-size prose; changed files and commits follow as scannable rows (file-type icon, name, then folder; mono hash, then subject). A changed file opens in the workspace; a file outside the folder, which the workspace cannot open, is drawn the same but is not a button. Files read is the longest list and folds by default.
+
 ### Work
 
 Work is the reference for how Kira draws dense, task-shaped UI. The rules below are the direction that produced it; hold new Work UI to them rather than to what looks plausible.

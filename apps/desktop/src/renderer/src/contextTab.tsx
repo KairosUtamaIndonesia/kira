@@ -12,111 +12,156 @@
  * and what Kira concluded from it, which is what a person checking Kira's memory
  * needs to see.
  *
+ * Drawn as a ledger, the way Work is: a hairline and a heading per kind, a
+ * zero-padded count, and ruled rows. What the person said and what Kira worked
+ * out are prose; a file or a commit is a row to scan, and a file is a way into
+ * the workspace. Files Kira only read are folded, since they are the longest list
+ * and the one least worth checking.
+ *
  * The pane around it — how wide it is, whether it is showing, the tab that names
  * it — belongs to the workbench, so nothing here draws a panel of its own.
  */
+import { Collapsible } from '@astryxdesign/core/Collapsible';
 import { Text } from '@astryxdesign/core/Text';
-import { borderVars, colorVars, spacingVars } from '@astryxdesign/core/theme/tokens.stylex';
+import {
+  borderVars,
+  colorVars,
+  focusVars,
+  radiusVars,
+  spacingVars,
+} from '@astryxdesign/core/theme/tokens.stylex';
 import * as stylex from '@stylexjs/stylex';
 import type { ReactNode } from 'react';
 import type { ChatConclusion, ChatMemory, MemoryKind } from '../../preload/bridge';
-import { conclusionGroupIn, coverageLine, groupsIn, type ConclusionGroup } from './memoryGroups';
+import { FileTypeIcon } from './fileTypeIcon';
+import {
+  commitParts,
+  conclusionGroupIn,
+  coverageLine,
+  groupsIn,
+  opensInWorkspace,
+  pathParts,
+  type ConclusionGroup,
+} from './memoryGroups';
 
 const styles = stylex.create({
   tab: {
     display: 'flex',
     flexDirection: 'column',
   },
-  head: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: spacingVars['--spacing-1'],
+  section: {
     paddingBlockEnd: spacingVars['--spacing-3'],
-    marginBlockEnd: spacingVars['--spacing-3'],
-    borderBlockEndWidth: borderVars['--border-width'],
-    borderBlockEndStyle: 'solid',
-    borderBlockEndColor: colorVars['--color-border'],
+    borderBlockStartWidth: { default: borderVars['--border-width'], ':first-child': 0 },
+    borderBlockStartStyle: 'solid',
+    borderBlockStartColor: colorVars['--color-border'],
+    paddingBlockStart: { default: spacingVars['--spacing-3'], ':first-child': 0 },
   },
-  groups: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: spacingVars['--spacing-4'],
-  },
-  group: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: spacingVars['--spacing-2'],
-  },
-  /**
-   * The heading and how many are under it, which is what makes it skimmable.
-   *
-   * Laid out here and nowhere else: what a heading looks like is Astryx's, so the
-   * two are told apart by weight and colour rather than by this reaching in to
-   * restyle its output.
-   */
   heading: {
     display: 'flex',
     alignItems: 'baseline',
     gap: spacingVars['--spacing-2'],
+    width: '100%',
+    paddingBlockEnd: spacingVars['--spacing-1'],
   },
-  items: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: spacingVars['--spacing-1-5'],
+  rows: {
     margin: 0,
     padding: 0,
     listStyleType: 'none',
   },
-  item: {
-    paddingInlineStart: spacingVars['--spacing-2'],
-    borderInlineStartWidth: borderVars['--border-width'],
-    borderInlineStartStyle: 'solid',
-    borderInlineStartColor: colorVars['--color-border'],
+  row: {
+    borderBlockEndWidth: { default: borderVars['--border-width'], ':last-child': 0 },
+    borderBlockEndStyle: 'solid',
+    borderBlockEndColor: colorVars['--color-border'],
   },
-  /** A file Kira read is context, not work: quieter than the rest. */
-  quiet: { borderInlineStartColor: 'transparent' },
-  /** A conclusion and how far it had read, stacked rather than run together. */
-  concluded: {
+  prose: {
     display: 'flex',
     flexDirection: 'column',
     gap: spacingVars['--spacing-1'],
+    paddingBlock: spacingVars['--spacing-2'],
   },
+  commit: {
+    display: 'grid',
+    gridTemplateColumns: 'max-content 1fr',
+    alignItems: 'baseline',
+    columnGap: spacingVars['--spacing-3'],
+    minHeight: 32,
+    paddingBlock: spacingVars['--spacing-1'],
+  },
+  /**
+   * A file opens in the workspace, so it is a button. Its hover strip reaches past
+   * the rule by the padding it has, which keeps the icon on the heading's left edge.
+   */
+  file: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: spacingVars['--spacing-2'],
+    boxSizing: 'border-box',
+    width: 'calc(100% + 16px)',
+    minHeight: 32,
+    marginInline: -8,
+    paddingInline: spacingVars['--spacing-2'],
+  },
+  /** A file outside the folder is remembered but is no way in, so it is not a button. */
+  fileButton: {
+    borderWidth: 0,
+    borderRadius: radiusVars['--radius-element'],
+    backgroundColor: { default: 'transparent', ':hover': colorVars['--color-overlay-hover'] },
+    color: colorVars['--color-text-primary'],
+    textAlign: 'start',
+    cursor: 'pointer',
+    outlineStyle: { default: 'none', ':focus-visible': focusVars['--focus-outline-style'] },
+    outlineWidth: focusVars['--focus-outline-width'],
+    outlineColor: focusVars['--focus-outline-color'],
+    outlineOffset: '-2px',
+  },
+  fileName: { flexShrink: 0 },
+  /** The folder gives way before the name does. */
+  fileFolder: { flexShrink: 1, minWidth: 0 },
 });
+
+/** How many, always two figures wide, as Work draws a lane's count. */
+function countOf(items: readonly unknown[]): string {
+  return String(items.length).padStart(2, '0');
+}
 
 /** What Kira is holding for `memory`, or nothing while Kira is holding nothing. */
 export function ContextTab({
   memory,
   conclusions,
+  onOpenFile,
 }: {
   memory: readonly ChatMemory[];
   conclusions: readonly ChatConclusion[];
+  /** Open a remembered file in the workspace. */
+  onOpenFile: (path: string) => void;
 }) {
   const groups = groupsIn(memory);
   const concluded = conclusionGroupIn(conclusions);
 
+  if (concluded === null && groups.length === 0) {
+    return (
+      <Text type="supporting" color="secondary">
+        Nothing yet. Kira learns as you work.
+      </Text>
+    );
+  }
+
   return (
     <div {...stylex.props(styles.tab)}>
-      <div {...stylex.props(styles.head)}>
-        <Text type="supporting" weight="medium">
-          What Kira is holding
-        </Text>
-        <Text type="supporting" color="secondary">
-          Kept outside the conversation, so reading it costs nothing.
-        </Text>
-      </div>
-
-      {concluded === null && groups.length === 0 ? (
-        <Text type="supporting" color="secondary">
-          Nothing yet. Kira learns as you work.
-        </Text>
-      ) : (
-        <div {...stylex.props(styles.groups)}>
-          {concluded !== null && <Concluded group={concluded} />}
-          {groups.map((group) => (
-            <Group key={group.kind} label={group.label} items={group.items} kind={group.kind} />
+      {concluded !== null && <Concluded group={concluded} />}
+      {groups.map((group) => (
+        <Section
+          key={group.kind}
+          label={group.label}
+          count={countOf(group.items)}
+          // The longest list and the least worth checking, so it starts folded.
+          isFolded={group.kind === 'read'}
+        >
+          {group.items.map((item) => (
+            <MemoryRow key={item.text} kind={group.kind} item={item} onOpenFile={onOpenFile} />
           ))}
-        </div>
-      )}
+        </Section>
+      ))}
     </div>
   );
 }
@@ -130,7 +175,7 @@ export function ContextTab({
  */
 function Concluded({ group }: { group: ConclusionGroup }) {
   return (
-    <Section label={group.label} count={group.items.length}>
+    <Section label={group.label} count={countOf(group.items)}>
       {group.items.map((conclusion) => (
         <Conclusion key={conclusion.text} conclusion={conclusion} />
       ))}
@@ -142,10 +187,8 @@ function Conclusion({ conclusion }: { conclusion: ChatConclusion }) {
   const coverage = coverageLine(conclusion.coversThrough);
 
   return (
-    <li {...stylex.props(styles.item, styles.concluded)}>
-      <Text type="supporting" color="primary">
-        {conclusion.text}
-      </Text>
+    <li {...stylex.props(styles.row, styles.prose)}>
+      <Text>{conclusion.text}</Text>
       {coverage !== null && (
         <Text type="supporting" color="secondary">
           {coverage}
@@ -158,52 +201,121 @@ function Conclusion({ conclusion }: { conclusion: ChatConclusion }) {
 /**
  * A heading, how many are under it, and the list itself.
  *
- * The frame both kinds of thing are drawn in, so what a heading looks like and
- * how a list is spaced are decided once. What goes in the list is the caller's:
- * a conclusion carries how far it had read, and nothing Kira was told does.
+ * The frame every kind is drawn in, so what a heading looks like and how a list
+ * is ruled are decided once. What goes in the list is the caller's: a conclusion
+ * carries how far it had read, and nothing Kira was told does.
  */
 function Section({
   label,
   count,
+  isFolded = false,
   children,
 }: {
   label: string;
-  count: number;
+  count: string;
+  /** Whether the list starts out put away behind its heading. */
+  isFolded?: boolean;
   children: ReactNode;
 }) {
+  const heading = (
+    <div {...stylex.props(styles.heading)}>
+      <Text type="label" weight="medium">
+        {label}
+      </Text>
+      <Text type="code" color="secondary">
+        {count}
+      </Text>
+    </div>
+  );
+  const rows = (
+    <ul aria-label={label} {...stylex.props(styles.rows)}>
+      {children}
+    </ul>
+  );
+
   return (
-    <section {...stylex.props(styles.group)}>
-      <div {...stylex.props(styles.heading)}>
-        <Text type="supporting" weight="medium" color="secondary">
-          {label}
-        </Text>
-        <Text type="supporting" color="secondary">
-          {count}
-        </Text>
-      </div>
-      <ul {...stylex.props(styles.items)}>{children}</ul>
+    <section {...stylex.props(styles.section)}>
+      {isFolded ? (
+        <Collapsible trigger={heading} defaultIsOpen={false}>
+          {rows}
+        </Collapsible>
+      ) : (
+        <>
+          {heading}
+          {rows}
+        </>
+      )}
     </section>
   );
 }
 
-function Group({
-  label,
+function MemoryRow({
   kind,
-  items,
+  item,
+  onOpenFile,
 }: {
-  label: string;
   kind: MemoryKind;
-  items: readonly ChatMemory[];
+  item: ChatMemory;
+  onOpenFile: (path: string) => void;
 }) {
-  return (
-    <Section label={label} count={items.length}>
-      {items.map((item) => (
-        <li key={item.text} {...stylex.props(styles.item, kind === 'read' && styles.quiet)}>
-          <Text type="supporting" color={kind === 'read' ? 'secondary' : 'primary'}>
-            {item.text}
+  if (kind === 'changed' || kind === 'read') {
+    const { name, folder } = pathParts(item.text);
+    const file = (
+      <>
+        <FileTypeIcon name={name} kind="file" />
+        <span {...stylex.props(styles.fileName)}>
+          <Text type="label" color={kind === 'read' ? 'secondary' : 'primary'}>
+            {name}
           </Text>
-        </li>
-      ))}
-    </Section>
+        </span>
+        {folder !== '' && (
+          <span {...stylex.props(styles.fileFolder)}>
+            <Text type="supporting" color="secondary" maxLines={1}>
+              {folder}
+            </Text>
+          </span>
+        )}
+      </>
+    );
+
+    return (
+      <li {...stylex.props(styles.row)}>
+        {opensInWorkspace(item.text) ? (
+          <button
+            type="button"
+            title={item.text}
+            {...stylex.props(styles.file, styles.fileButton)}
+            onClick={() => onOpenFile(item.text)}
+          >
+            {file}
+          </button>
+        ) : (
+          <div title={item.text} {...stylex.props(styles.file)}>
+            {file}
+          </div>
+        )}
+      </li>
+    );
+  }
+
+  if (kind === 'commit') {
+    const { hash, subject } = commitParts(item.text);
+
+    return (
+      <li {...stylex.props(styles.row, styles.commit)}>
+        {hash !== '' && (
+          <Text type="code" color="secondary">
+            {hash}
+          </Text>
+        )}
+        <Text maxLines={2}>{subject}</Text>
+      </li>
+    );
+  }
+
+  return (
+    <li {...stylex.props(styles.row, styles.prose)}>
+      <Text>{item.text}</Text>
+    </li>
   );
 }

@@ -92,3 +92,37 @@ export function conclusionGroupIn(conclusions: readonly ChatConclusion[]): Concl
 export function coverageLine(coversThrough: number | null): string | null {
   return coversThrough === null ? null : `Read through turn ${coversThrough}`;
 }
+
+/**
+ * A remembered path as the file's name and the folder it is in, so a row can lead
+ * with the name a reader looks for and leave the folder to trail after it. A path
+ * with no folder has an empty one.
+ */
+export function pathParts(path: string): { name: string; folder: string } {
+  const slash = path.lastIndexOf('/');
+  return slash === -1
+    ? { name: path, folder: '' }
+    : { name: path.slice(slash + 1), folder: path.slice(0, slash) };
+}
+
+/**
+ * A remembered commit as its hash and its subject. The ledger keeps them as one
+ * line, `a1b2c3d: fix the deploy`; a line without that shape has no hash to lead
+ * with, and is all subject.
+ */
+export function commitParts(text: string): { hash: string; subject: string } {
+  const colon = text.indexOf(': ');
+  return colon === -1
+    ? { hash: '', subject: text }
+    : { hash: text.slice(0, colon), subject: text.slice(colon + 2) };
+}
+
+/**
+ * Whether a remembered path is one the workspace can open. The workspace reads
+ * only what is inside the chat's folder, by a path relative to it, so a file Kira
+ * read elsewhere — a skill in the home directory, a screenshot in `/tmp` — is
+ * remembered but is not a way in.
+ */
+export function opensInWorkspace(path: string): boolean {
+  return !path.startsWith('/') && !path.startsWith('../') && !/^[A-Za-z]:[\\/]/.test(path);
+}

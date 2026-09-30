@@ -300,7 +300,7 @@ export function Workbench({
           className="workbench-tab"
           hidden={showing !== CONTEXT}
         >
-          <ContextTab memory={memory} conclusions={conclusions} />
+          <ContextTab memory={memory} conclusions={conclusions} onOpenFile={openFile} />
         </div>
         <div
           id={panelOf(SPEC)}
