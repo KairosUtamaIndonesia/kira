@@ -204,6 +204,10 @@ Components are crisp and lightly lifted. Prefer Astryx primitives and Kira theme
 
 - **Style:** keep the app's persistent navigation quiet at rest; use primary text for the active destination, secondary text for inactive items, and a muted accent surface for selected emphasis. Preserve keyboard focus and the compact mobile navigation affordance.
 
+### Chat empty state
+
+A chat with no messages starts the sentence the composer finishes: one line saying what to do, the two modes as ruled rows (Build, Spec; the wording of the composer's own tooltips), and the keys that send and break a line. It is left-aligned to the message column, with no icon, illustration, or starter buttons. It is a definition list, not an Astryx `EmptyState`, because the chat's next step is the composer beside it.
+
 ### Work
 
 Work is the reference for how Kira draws dense, task-shaped UI. The rules below are the direction that produced it; hold new Work UI to them rather than to what looks plausible.
