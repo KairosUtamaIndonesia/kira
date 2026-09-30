@@ -196,6 +196,7 @@ export const copy = {
     asideLabel: 'Ticket actions and details',
     crumb: (status: string, name: string) => `${status} / ${name}`,
     about: 'About',
+    openPullRequest: 'Open pull request',
     noDescription: 'No description yet. Edit the ticket to add one.',
     doneWhen: 'Done when',
     checks: (n: number) => count(n, 'check'),

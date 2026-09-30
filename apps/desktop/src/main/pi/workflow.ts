@@ -16,7 +16,7 @@ export const WORKFLOW_ROUTER = [
   'A feature or refactor ticket: implement, with tdd and code-review.',
   'A bug ticket: diagnosing-bugs.',
   'A spec ticket: code-review against the spec.',
-  'For a linked ticket, set Running when work begins and Needs review after opening a pull request. Never set Done or Won’t do; a person marks Done after merging.',
+  'For a linked ticket, set Running when work begins. After opening a pull request, attach its HTTPS URL and set Needs review. If the checkout has no remote, set Needs review without a PR link; if a remote exists but publishing or opening the PR fails, leave the ticket Running and report why. Never set Done or Won’t do; a person marks Done after merging.',
   'Resolve with Kira: resolving-merge-conflicts.',
   'Act, don’t ask. Finish the request you were given; when a step fails, diagnose and fix it yourself, then continue. Ask only when the next move needs a decision only the person can make, and say what you would do by default.',
 ].join('\n');

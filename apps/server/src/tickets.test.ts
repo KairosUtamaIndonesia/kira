@@ -78,6 +78,57 @@ describe('tickets', () => {
     expect(ticket).not.toHaveProperty('runs');
   });
 
+  test('stores and returns one current pull request link, which can be cleared', async () => {
+    const { app, key } = await signedIn();
+    const project = await makeProject(app, key);
+    const made = await makeTicket(app, key, project.id);
+    const pullRequestUrl = 'https://github.com/example/kira/pull/42';
+
+    const reviewed = await send(
+      app,
+      `/api/tickets/${made.id}`,
+      json('PATCH', key, { status: 'needs-review', pullRequestUrl }),
+    );
+
+    expect(reviewed.status).toBe(200);
+    expect((await reviewed.json()).ticket).toMatchObject({
+      status: 'needs-review',
+      pullRequestUrl,
+    });
+
+    const cleared = await send(
+      app,
+      `/api/tickets/${made.id}`,
+      json('PATCH', key, { pullRequestUrl: null }),
+    );
+    expect((await cleared.json()).ticket.pullRequestUrl).toBeNull();
+
+    const read = await send(app, `/api/tickets/${made.id}`, { headers: bearer(key) });
+    expect((await read.json()).ticket.pullRequestUrl).toBeNull();
+  });
+
+  test.each([
+    'http://github.com/example/kira/pull/42',
+    'javascript:alert(1)',
+    'https://user:password@github.com/example/kira/pull/42',
+    'not a URL',
+  ])('rejects an unsafe pull request link (%s)', async (pullRequestUrl) => {
+    const { app, key } = await signedIn();
+    const project = await makeProject(app, key);
+    const made = await makeTicket(app, key, project.id);
+
+    const refused = await send(
+      app,
+      `/api/tickets/${made.id}`,
+      json('PATCH', key, { pullRequestUrl }),
+    );
+
+    expect(refused.status).toBe(400);
+    expect((await refused.json()).error.code).toBe('PULL_REQUEST_URL_INVALID');
+    const unchanged = await send(app, `/api/tickets/${made.id}`, { headers: bearer(key) });
+    expect((await unchanged.json()).ticket.pullRequestUrl).toBeNull();
+  });
+
   test.each(['draft', 'ready', 'running', 'needs-review', 'done', 'wont-do'])(
     'accepts stored status %s',
     async (status) => {

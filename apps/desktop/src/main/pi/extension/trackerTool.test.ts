@@ -29,6 +29,7 @@ const ticket = (status: TicketStatus): Ticket => ({
   blocked: false,
   rank: 0,
   priority: 'none',
+  pullRequestUrl: null,
   assignee: null,
   tags: [],
   author: null,
@@ -403,23 +404,47 @@ test('ticket updates and blocker edits require a chat link', async () => {
 test('linked-ticket status updates allow only Running and Needs review', async () => {
   const cases = [
     {
+      edit: { status: 'running' },
       status: 'running',
       allowed: true,
       schemaValid: true,
       change: { status: 'running', assigneeId: 'ada' },
     },
     {
+      edit: { status: 'needs-review' },
       status: 'needs-review',
       allowed: true,
       schemaValid: true,
       change: { status: 'needs-review' },
     },
-    { status: 'Needs review', allowed: false, schemaValid: false },
-    { status: 'draft', allowed: false, schemaValid: false },
-    { status: 'ready', allowed: false, schemaValid: false },
-    { status: 'done', allowed: false, schemaValid: false },
-    { status: 'wont-do', allowed: false, schemaValid: false },
-    { status: 'blocked', allowed: false, schemaValid: false },
+    {
+      edit: { status: 'needs-review', pullRequestUrl: 'https://github.com/example/kira/pull/42' },
+      status: 'needs-review with a pull request',
+      allowed: true,
+      schemaValid: true,
+      change: {
+        status: 'needs-review',
+        pullRequestUrl: 'https://github.com/example/kira/pull/42',
+      },
+    },
+    {
+      edit: { status: 'needs-review', pullRequestUrl: null },
+      status: 'needs-review without a pull request',
+      allowed: true,
+      schemaValid: true,
+      change: { status: 'needs-review', pullRequestUrl: null },
+    },
+    {
+      edit: { status: 'Needs review' },
+      status: 'Needs review',
+      allowed: false,
+      schemaValid: false,
+    },
+    { edit: { status: 'draft' }, status: 'draft', allowed: false, schemaValid: false },
+    { edit: { status: 'ready' }, status: 'ready', allowed: false, schemaValid: false },
+    { edit: { status: 'done' }, status: 'done', allowed: false, schemaValid: false },
+    { edit: { status: 'wont-do' }, status: 'wont-do', allowed: false, schemaValid: false },
+    { edit: { status: 'blocked' }, status: 'blocked', allowed: false, schemaValid: false },
   ] as const;
 
   for (const item of cases) {
@@ -445,20 +470,11 @@ test('linked-ticket status updates allow only Running and Needs review', async (
       },
     } as never);
 
-    assert.equal(
-      Check(tools[6]!.parameters, { ref: current.name, status: item.status }),
-      item.schemaValid,
-      item.status,
-    );
+    const parameters = { ref: current.name, ...item.edit };
+    assert.equal(Check(tools[6]!.parameters, parameters), item.schemaValid, item.status);
 
     const call = () =>
-      tools[6]!.execute(
-        'call-status',
-        { ref: current.name, status: item.status },
-        undefined,
-        undefined,
-        {} as never,
-      );
+      tools[6]!.execute('call-status', parameters, undefined, undefined, {} as never);
 
     if (item.allowed) {
       await call();

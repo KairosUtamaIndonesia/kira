@@ -33,6 +33,7 @@ const ticket = (id: string, kind: 'spec' | 'feature' = 'feature') => ({
   blocked: false,
   rank: 1,
   priority: 'none' as const,
+  pullRequestUrl: null,
   assignee: null,
   tags: [],
   author: null,

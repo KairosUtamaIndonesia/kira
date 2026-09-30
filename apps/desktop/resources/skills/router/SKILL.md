@@ -25,6 +25,6 @@ Use Kira's tracker as the source of truth. Tickets have acceptance criteria, dep
 
 ## Kira rules
 
-Prefer the existing tracker over parallel records. Change only linked tickets through Kira actions: an agent sets Running when work starts and Needs review after opening a PR; a person handles Ready, Done after merge, and Won’t do. Agents cannot delete tickets or write tracker storage directly.
+Prefer the existing tracker over parallel records. Change only linked tickets through Kira actions: set Running when work starts; after opening a PR, attach its HTTPS URL and set Needs review. A checkout with no remote may go to Needs review without a link. If a remote exists but publishing or opening the PR fails, leave the ticket Running and report why. Manual PR-link attachment is not available yet. A person handles Ready, Done after merge, and Won’t do. Agents cannot delete tickets or write tracker storage directly.
 
 A small change with a linked ticket can go straight to Build mode. A larger effort should pass through `/to-spec` and `/to-tickets` so each ticket has clear criteria and blockers.

@@ -50,6 +50,7 @@ const ticket: Ticket = {
   blocked: false,
   rank: 1,
   priority: 'none',
+  pullRequestUrl: null,
   assignee: null,
   tags: [],
   author: null,

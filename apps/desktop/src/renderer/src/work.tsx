@@ -1010,6 +1010,21 @@ const styles = stylex.create({
     lineHeight: 1.25,
     overflowWrap: 'anywhere',
   },
+  pullRequestLink: {
+    alignSelf: 'flex-start',
+    color: colorVars['--color-text-accent'],
+    fontSize: textSizeVars['--font-size-sm'],
+    fontWeight: 500,
+    textDecorationLine: 'underline',
+    textUnderlineOffset: 3,
+    borderRadius: radiusVars['--radius-element'],
+    ':focus-visible': {
+      outlineStyle: focusVars['--focus-outline-style'],
+      outlineWidth: focusVars['--focus-outline-width'],
+      outlineColor: focusVars['--focus-outline-color'],
+      outlineOffset: focusVars['--focus-outline-offset'],
+    },
+  },
   ticketSectionHeading: {
     display: 'flex',
     alignItems: 'baseline',
@@ -2900,6 +2915,7 @@ function TicketReading({
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
   const hasDescription = ticket.body.trim().length > 0;
+  const pullRequestUrl = ticket.pullRequestUrl;
 
   async function run(act: () => Promise<unknown>): Promise<void> {
     setIsBusy(true);
@@ -3031,6 +3047,18 @@ function TicketReading({
         />
       ) : (
         <>
+          {pullRequestUrl !== null && (
+            <a
+              href={pullRequestUrl}
+              {...stylex.props(styles.pullRequestLink)}
+              onClick={(event) => {
+                event.preventDefault();
+                openLink(pullRequestUrl);
+              }}
+            >
+              {copy.ticket.openPullRequest}
+            </a>
+          )}
           <section {...stylex.props(styles.section)}>
             <Text type="label" weight="medium">
               {copy.ticket.about}

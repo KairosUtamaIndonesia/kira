@@ -23,6 +23,7 @@ const draft: Ticket = {
   blocked: false,
   rank: 0,
   priority: 'none',
+  pullRequestUrl: null,
   assignee: null,
   tags: [],
   author: null,
@@ -188,7 +189,12 @@ test('a real Kira session reads and edits through the main-process tracker seam'
     )?.content;
     assert.match(systemPrompt ?? '', /Workflow router/);
     assert.match(systemPrompt ?? '', /to-spec/);
-    assert.match(systemPrompt ?? '', /Set a ticket to Running when you begin work/);
+    assert.match(systemPrompt ?? '', /attach its HTTPS URL and set Needs review/);
+    assert.match(systemPrompt ?? '', /no remote, set Needs review without a PR link/);
+    assert.match(
+      systemPrompt ?? '',
+      /remote exists but publishing or opening the PR fails, leave the ticket Running/,
+    );
     assert.match(systemPrompt ?? '', /Never mark a ticket Done/);
     assert.equal(edited.body, 'Updated');
   } finally {

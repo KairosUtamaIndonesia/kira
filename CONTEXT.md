@@ -172,6 +172,11 @@ choose any status. For tickets linked in its chat, the agent may set Running or 
 cannot set Done or Won't do. An open blocker also shows Blocked without changing the stored status.
 _Avoid_: Readiness, band, execution state, claim
 
+**Pull request link**:
+The one current link on a ticket to the pull request opened for its work. Kira attaches it after
+opening the PR; if the checkout has no remote, a ticket can be Needs review without one.
+_Avoid_: PR URL
+
 **Linked chat**:
 A chat with a ticket linked, in which the agent works it with the skill its kind names. A ticket
 lists its linked chats. Linking a ticket in the composer is the person's way to ask for that work;

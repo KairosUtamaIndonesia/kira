@@ -15,6 +15,7 @@ export const messages = {
   relatedTicketNotFound: 'The related ticket no longer exists.',
   projectNotFound: 'That project no longer exists.',
   assigneeNotFound: 'That person is not a member of this project.',
+  pullRequestUrlInvalid: 'Use a secure HTTPS link for the pull request.',
 
   kindUnknown: (kinds: readonly string[]) => `Choose a ticket kind: ${list(kinds)}.`,
   statusUnknown: (statuses: readonly string[]) => `Choose a status: ${list(statuses)}.`,

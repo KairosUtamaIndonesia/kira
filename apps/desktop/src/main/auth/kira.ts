@@ -476,7 +476,12 @@ function asTicket(body: unknown): Ticket | null {
 
   if (kind === null || status === null) return null;
 
-  return { ...held, kind, status } as Ticket;
+  return {
+    ...held,
+    kind,
+    status,
+    pullRequestUrl: typeof held.pullRequestUrl === 'string' ? held.pullRequestUrl : null,
+  } as Ticket;
 }
 
 function asBreakdown(body: unknown): BreakdownResult | null {

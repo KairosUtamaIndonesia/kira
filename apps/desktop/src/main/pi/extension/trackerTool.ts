@@ -37,6 +37,11 @@ const EDIT = Type.Object({
       description: 'Use "running" for Running or "needs-review" for Needs review.',
     }),
   ),
+  pullRequestUrl: Type.Optional(
+    Type.Union([Type.String(), Type.Null()], {
+      description: 'The HTTPS URL of the pull request Kira just opened.',
+    }),
+  ),
   priority: Type.Optional(Type.String()),
   tags: Type.Optional(Type.Array(Type.String())),
 });
@@ -254,9 +259,9 @@ export function trackerTools(
       name: 'tracker_update_ticket',
       label: 'Update tracker ticket',
       description:
-        'Update a ticket linked to this chat. Set status to `running` (Running) or `needs-review` (Needs review); Done and Won’t do stay with the person. Running assigns the ticket to the signed-in person.',
+        'Update a ticket linked to this chat. Set status to `running` (Running) or `needs-review` (Needs review); Done and Won’t do stay with the person. After opening a pull request, attach its HTTPS URL. With no remote, Needs review needs no URL; if a remote exists but publishing or opening the pull request fails, leave the ticket Running. Running assigns the ticket to the signed-in person.',
       promptSnippet:
-        'Update a linked ticket; set status to `running` when work starts and `needs-review` after opening a pull request. Never set Done or Won’t do.',
+        'Update a linked ticket: set `running` when work starts. After opening a pull request, set `needs-review` and attach its HTTPS URL. With no remote, set `needs-review` without a URL; if a remote exists but publishing or opening the pull request fails, leave the ticket `running` and report why. Never set Done or Won’t do.',
       parameters: EDIT,
       async execute(params) {
         const edit = params as {
@@ -265,6 +270,7 @@ export function trackerTools(
           body?: string;
           criteria?: string[];
           status?: string;
+          pullRequestUrl?: string | null;
           priority?: string;
           tags?: string[];
         };
@@ -274,6 +280,7 @@ export function trackerTools(
         if (edit.title !== undefined) change.title = edit.title;
         if (edit.body !== undefined) change.body = edit.body;
         if (edit.criteria !== undefined) change.criteria = edit.criteria;
+        if (edit.pullRequestUrl !== undefined) change.pullRequestUrl = edit.pullRequestUrl;
         if (edit.status !== undefined) {
           if (!['running', 'needs-review'].includes(edit.status)) {
             throw new Error('The agent can set only Running or Needs review.');

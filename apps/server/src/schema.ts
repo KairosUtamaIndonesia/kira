@@ -328,6 +328,8 @@ export const ticket = pgTable(
       .array()
       .notNull()
       .default(sql`ARRAY[]::text[]`),
+    /** The ticket's one current pull request, when its review happens remotely. */
+    pullRequestUrl: text('pullRequestUrl'),
     /** Orders it within a status. Ties are broken by the number, so the order is total. */
     rank: integer('rank').notNull(),
     /** Cleared rather than cascaded, for the same reason a project's is. */

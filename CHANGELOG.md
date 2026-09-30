@@ -28,6 +28,8 @@
 
 - Work is a ticket store. A ticket linked in a chat is worked there with the skill for its kind. Agent-created tickets start as Draft; the agent can update only tickets linked to that chat, and its status changes are limited to Running and Needs review. It cannot delete or close tickets. Pull-request review and merge happen on GitHub, and a person marks a ticket Done afterward.
 
+- Tickets can show one current **Open pull request** link. Kira attaches it after opening a PR; with no remote, it can set Needs review without one, while a remote that cannot publish or open a PR leaves the ticket Running.
+
 - Kira's desktop now runs on Electron, with its own Bun-powered platform API and administration console.
 - Packaged desktop builds check for updates automatically, download them in the background, and offer a restart to install from Settings. macOS, Windows, and Linux AppImage are supported.
 

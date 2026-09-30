@@ -753,6 +753,7 @@ export interface Ticket {
   blocked: boolean;
   rank: number;
   priority: TicketPriority;
+  pullRequestUrl: string | null;
   assignee: { id: string; name: string } | null;
   tags: string[];
   author: { id: string; name: string } | null;
@@ -812,6 +813,7 @@ export interface TicketChange {
   assigneeId?: string | null;
   tags?: string[];
   rank?: number;
+  pullRequestUrl?: string | null;
 }
 
 /**

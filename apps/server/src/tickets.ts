@@ -143,6 +143,7 @@ const TICKET = t.Object({
   rank: t.Integer(),
   status: t.String(),
   priority: t.String(),
+  pullRequestUrl: t.Union([t.String(), t.Null()]),
   assignee: ASSIGNEE,
   tags: t.Array(t.String()),
   author: t.Union([t.Object({ id: t.String(), name: t.String() }), t.Null()]),
@@ -868,6 +869,13 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
         if (body.priority !== undefined && !isOneOf(PRIORITIES, body.priority)) {
           return status(400, refusal('PRIORITY_UNKNOWN', messages.priorityUnknown(PRIORITIES)));
         }
+        if (
+          body.pullRequestUrl !== undefined &&
+          body.pullRequestUrl !== null &&
+          !isHttpsUrl(body.pullRequestUrl)
+        ) {
+          return status(400, refusal('PULL_REQUEST_URL_INVALID', messages.pullRequestUrlInvalid));
+        }
         if (body.tags?.some((tag) => tag.trim() === '')) {
           return status(400, refusal('TAG_INVALID', messages.tagEmpty));
         }
@@ -887,6 +895,8 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
           rank: body.rank ?? found.ticket.rank,
           status: body.status ?? found.ticket.status,
           priority: body.priority ?? found.ticket.priority,
+          pullRequestUrl:
+            body.pullRequestUrl === undefined ? found.ticket.pullRequestUrl : body.pullRequestUrl,
           assigneeId: body.assigneeId === undefined ? found.ticket.assigneeId : body.assigneeId,
           tags: body.tags === undefined ? found.ticket.tags : cleanTags(body.tags),
         };
@@ -898,6 +908,7 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
           rank: after.rank,
           status: after.status,
           priority: after.priority,
+          pullRequestUrl: after.pullRequestUrl,
           assigneeId: after.assigneeId,
           tags: after.tags,
           updatedAt: new Date(),
@@ -918,6 +929,7 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
           rank: t.Optional(t.Integer()),
           status: t.Optional(t.String()),
           priority: t.Optional(t.String()),
+          pullRequestUrl: t.Optional(t.Union([t.String(), t.Null()])),
           assigneeId: t.Optional(t.Union([t.String(), t.Null()])),
           tags: t.Optional(t.Array(t.String())),
         }),
@@ -1533,6 +1545,7 @@ async function allocate(
       ...written,
       status: written.status ?? 'draft',
       priority: written.priority ?? 'none',
+      pullRequestUrl: null,
       assigneeId: written.assigneeId ?? null,
       tags: written.tags ?? [],
       number: Number(highest?.number ?? 0) + 1,
@@ -1583,6 +1596,7 @@ function asTicket(row: Row, prefix: string, context: Context) {
     status: row.status,
     blocked: context.children.some((each) => !isClosed(each.status)),
     priority: row.priority,
+    pullRequestUrl: row.pullRequestUrl,
     assignee: context.assignee,
     tags: row.tags,
     rank: row.rank,
@@ -1618,6 +1632,16 @@ function cleanTags(tags: string[]): string[] {
 
 function isClosed(status: string): boolean {
   return status === 'done' || status === 'wont-do';
+}
+
+function isHttpsUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+
+    return url.protocol === 'https:' && url.username === '' && url.password === '';
+  } catch {
+    return false;
+  }
 }
 
 /** The code Postgres refused with, however many wrappers it arrived in. */

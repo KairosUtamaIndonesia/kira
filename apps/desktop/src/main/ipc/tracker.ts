@@ -243,6 +243,15 @@ function changeIn(value: unknown): TicketChange | null {
     if (!TICKET_STATUSES.some((status) => status === held.status)) return null;
     change.status = held.status as TicketChange['status'];
   }
+  if (held.pullRequestUrl !== undefined) {
+    if (
+      held.pullRequestUrl !== null &&
+      (typeof held.pullRequestUrl !== 'string' || !isHttpsUrl(held.pullRequestUrl))
+    ) {
+      return null;
+    }
+    change.pullRequestUrl = held.pullRequestUrl as string | null;
+  }
   if (held.priority !== undefined) {
     if (!TICKET_PRIORITIES.includes(held.priority as TicketPriority)) return null;
     change.priority = held.priority as TicketPriority;
@@ -261,6 +270,16 @@ function changeIn(value: unknown): TicketChange | null {
     change.rank = held.rank as number;
   }
   return change;
+}
+
+function isHttpsUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+
+    return url.protocol === 'https:' && url.username === '' && url.password === '';
+  } catch {
+    return false;
+  }
 }
 
 /** Criteria as they arrive: every one a line of text, which is all a criterion is. */

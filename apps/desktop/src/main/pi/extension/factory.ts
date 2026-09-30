@@ -80,7 +80,7 @@ async function attachedTicketContext(
   return [
     '',
     '## Attached project tickets',
-    'Work on these linked tickets using the matching workflow skill. Use tracker tools only for tickets linked to this chat. Set a ticket to Running when you begin work and Needs review after opening its pull request. Never mark a ticket Done; a person does that after merging. The agent cannot delete tickets or mark them Won’t do.',
+    'Work on these linked tickets using the matching workflow skill. Use tracker tools only for tickets linked to this chat. Set Running when work begins. After opening a pull request, attach its HTTPS URL and set Needs review. With no remote, set Needs review without a link; if a remote exists but publishing or opening the PR fails, leave the ticket Running and report why. Never mark a ticket Done; a person does that after merging. The agent cannot delete tickets or mark them Won’t do.',
     ...lines,
   ].join('\n');
 }

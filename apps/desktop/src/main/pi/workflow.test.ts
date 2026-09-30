@@ -128,6 +128,12 @@ test('the workflow router is appended to every system prompt', async () => {
       WORKFLOW_ROUTER,
       /Never claim approval, publication, or readiness unless Kira state confirms it/,
     );
+    assert.match(WORKFLOW_ROUTER, /attach its HTTPS URL and set Needs review/);
+    assert.match(WORKFLOW_ROUTER, /no remote, set Needs review without a PR link/);
+    assert.match(
+      WORKFLOW_ROUTER,
+      /remote exists but publishing or opening the PR fails, leave the ticket Running/,
+    );
   } finally {
     close();
   }
