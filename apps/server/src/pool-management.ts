@@ -3,6 +3,7 @@ import type { Auth } from './auth';
 import type { Config } from './config';
 import type { Database } from './database';
 import { recentPoolAudit } from './pool-audit';
+import { recordPoolAudit } from './pool-audit';
 import { REFUSAL, refusal } from './refusals';
 
 type ManagementState = 'unconfigured' | 'rejected' | 'unavailable' | 'ready';
@@ -41,6 +42,10 @@ const COOLDOWN_FIELDS = [
   'http_status',
 ] as const;
 const managementRejected = new WeakSet<Config>();
+type OAuthProvider = 'codex' | 'claude';
+type ManagementCall =
+  | { kind: 'ok'; response: Response }
+  | { kind: 'unconfigured' | 'rejected' | 'unavailable' };
 
 export function createPoolManagement({
   auth,
@@ -113,26 +118,135 @@ export function createPoolManagement({
         {
           detail: { summary: 'Read recent safe audit events for Pool management' },
         },
+      )
+      .post(
+        '/oauth',
+        async ({ body, request }) => {
+          const path = body.provider === 'codex' ? 'codex-auth-url' : 'anthropic-auth-url';
+          const result = await managementRequest(config, path);
+          if (result.kind !== 'ok' || !result.response.ok) {
+            if (result.kind === 'ok') await result.response.body?.cancel();
+            await recordOAuthAttempt(database, auth, request, body.provider, 'failed', 'Provider login could not be started');
+            return { status: result.kind === 'ok' ? 'unavailable' : result.kind };
+          }
+
+          let answer: { url?: unknown; state?: unknown };
+          try {
+            answer = (await result.response.json()) as { url?: unknown; state?: unknown };
+          } catch {
+            await recordOAuthAttempt(database, auth, request, body.provider, 'failed', 'Provider login could not be started');
+            return { status: 'unavailable' as const };
+          }
+          if (typeof answer.url !== 'string' || typeof answer.state !== 'string' || answer.state === '') {
+            await recordOAuthAttempt(database, auth, request, body.provider, 'failed', 'Provider login could not be started');
+            return { status: 'unavailable' as const };
+          }
+
+          await recordOAuthAttempt(database, auth, request, body.provider, 'succeeded', 'Authorization started');
+          return { status: 'pending' as const, provider: body.provider, url: answer.url, state: answer.state };
+        },
+        {
+          body: t.Object({ provider: t.Union([t.Literal('codex'), t.Literal('claude')]) }),
+          detail: { summary: 'Start a provider OAuth login' },
+        },
+      )
+      .post(
+        '/oauth/callback',
+        async ({ body, request, status }) => {
+          if (!validCallback(body.redirectUrl)) {
+            return status(400, refusal('INVALID_CALLBACK', 'Paste the localhost callback address returned by the provider.'));
+          }
+          const result = await managementRequest(config, 'oauth-callback', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ provider: body.provider === 'claude' ? 'anthropic' : 'codex', redirect_url: body.redirectUrl }),
+          });
+          if (result.kind !== 'ok' || !result.response.ok) {
+            if (result.kind === 'ok') await result.response.body?.cancel();
+            await recordOAuthAttempt(database, auth, request, body.provider, 'failed', 'Callback was not accepted');
+            return { status: result.kind === 'ok' ? 'unavailable' : result.kind };
+          }
+
+          await result.response.body?.cancel();
+          await recordOAuthAttempt(database, auth, request, body.provider, 'succeeded', 'Callback relayed');
+          return { status: 'accepted' as const };
+        },
+        {
+          body: t.Object({
+            provider: t.Union([t.Literal('codex'), t.Literal('claude')]),
+            redirectUrl: t.String({ minLength: 1, maxLength: 4096 }),
+          }),
+          detail: { summary: 'Relay a pasted localhost OAuth callback without storing it' },
+        },
+      )
+      .get(
+        '/oauth/status',
+        async ({ query }) => {
+          if (!validState(query.state)) return { status: 'expired' as const };
+          const result = await managementRequest(config, `get-auth-status?${new URLSearchParams({ state: query.state })}`);
+          if (result.kind !== 'ok') return { status: result.kind };
+          if (!result.response.ok) {
+            await result.response.body?.cancel();
+            return { status: 'unavailable' as const };
+          }
+          let body: { status?: unknown; error?: unknown };
+          try {
+            body = (await result.response.json()) as { status?: unknown; error?: unknown };
+          } catch {
+            return { status: 'unavailable' as const };
+          }
+          if (body.status === 'wait') return { status: 'pending' as const };
+          if (body.status === 'ok') return { status: 'succeeded' as const };
+          if (body.status === 'error') {
+            return {
+              status: typeof body.error === 'string' && body.error.includes('unknown or expired')
+                ? 'expired' as const
+                : 'failed' as const,
+            };
+          }
+          return { status: 'unavailable' as const };
+        },
+        {
+          query: t.Object({ state: t.String() }),
+          detail: { summary: 'Poll a provider OAuth login held by CLIProxyAPI' },
+        },
+      )
+      .delete(
+        '/oauth',
+        async ({ query }) => {
+          if (!validState(query.state)) return { status: 'expired' as const };
+          const result = await managementRequest(
+            config,
+            `oauth-session?${new URLSearchParams({ state: query.state })}`,
+            { method: 'DELETE' },
+          );
+          if (result.kind !== 'ok') return { status: result.kind };
+          if (!result.response.ok) {
+            await result.response.body?.cancel();
+            return { status: 'unavailable' as const };
+          }
+          let body: { cancelled?: unknown };
+          try {
+            body = (await result.response.json()) as { cancelled?: unknown };
+          } catch {
+            return { status: 'unavailable' as const };
+          }
+          return { status: body.cancelled === true ? 'cancelled' as const : 'expired' as const };
+        },
+        {
+          query: t.Object({ state: t.String() }),
+          detail: { summary: 'Cancel a pending provider OAuth login' },
+        },
       ),
   );
 }
 
 async function credentials(config: Config): Promise<{ status: ManagementState; credentials: Credential[] }> {
-  if (!config.pool.managementKey) return { status: 'unconfigured', credentials: [] };
-  if (managementRejected.has(config)) return { status: 'rejected', credentials: [] };
-
-  let response: Response;
-  try {
-    response = await fetch(`${config.pool.url}/v0/management/auth-files`, {
-      headers: { authorization: `Bearer ${config.pool.managementKey}` },
-      signal: AbortSignal.timeout(5_000),
-    });
-  } catch {
-    return { status: 'unavailable', credentials: [] };
-  }
+  const result = await managementRequest(config, 'auth-files');
+  if (result.kind !== 'ok') return { status: result.kind, credentials: [] };
+  const { response } = result;
 
   if (response.status === 401 || response.status === 403) {
-    managementRejected.add(config);
     await response.body?.cancel();
     return { status: 'rejected', credentials: [] };
   }
@@ -148,6 +262,78 @@ async function credentials(config: Config): Promise<{ status: ManagementState; c
   } catch {
     return { status: 'unavailable', credentials: [] };
   }
+}
+
+async function managementRequest(
+  config: Config,
+  path: string,
+  init: RequestInit = {},
+  { authenticated = true }: { authenticated?: boolean } = {},
+): Promise<ManagementCall> {
+  if (managementRejected.has(config)) return { kind: 'rejected' };
+  if (!config.pool.managementKey) return { kind: 'unconfigured' };
+
+  const headers = new Headers(init.headers);
+  if (authenticated) headers.set('authorization', `Bearer ${config.pool.managementKey}`);
+  if (init.body !== undefined && !headers.has('content-type')) {
+    headers.set('content-type', 'application/json');
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${config.pool.url.replace(/\/+$/, '')}/v0/management/${path}`, {
+      ...init,
+      headers,
+      signal: AbortSignal.timeout(5_000),
+    });
+  } catch {
+    return { kind: 'unavailable' };
+  }
+
+  if (authenticated && (response.status === 401 || response.status === 403)) {
+    managementRejected.add(config);
+    await response.body?.cancel();
+    return { kind: 'rejected' };
+  }
+  return { kind: 'ok', response };
+}
+
+function validState(state: string): boolean {
+  return state.length > 0 && state.length <= 512;
+}
+
+function validCallback(callback: string): boolean {
+  try {
+    const url = new URL(callback);
+    return (
+      ['http:', 'https:'].includes(url.protocol) &&
+      ['localhost', '127.0.0.1', '[::1]', '::1'].includes(url.hostname) &&
+      validState(url.searchParams.get('state') ?? '') &&
+      (Boolean(url.searchParams.get('code')) || Boolean(url.searchParams.get('error')))
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function recordOAuthAttempt(
+  database: Database,
+  auth: Auth,
+  request: Request,
+  provider: OAuthProvider,
+  outcome: 'succeeded' | 'failed',
+  detail: string,
+) {
+  const session = await auth.api.getSession({ headers: request.headers });
+  await recordPoolAudit(database, {
+    actorId: session?.user.id ?? null,
+    actorLabel: session?.user.email ?? 'Kira admin',
+    action: 'login',
+    provider,
+    credentialLabel: null,
+    outcome,
+    detail,
+  });
 }
 
 function credentialOf(raw: unknown): Credential | null {

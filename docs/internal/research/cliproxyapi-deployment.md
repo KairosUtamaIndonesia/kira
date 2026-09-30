@@ -37,10 +37,11 @@ production.
   do not provide per-key model scopes or rate limits. Do not reuse development
   credentials.
 - Kira's admin console can use the management API through the server. Set the
-  same high-entropy `MANAGEMENT_PASSWORD` secret in Kira and CLIProxyAPI. This
-  enables remote management in CLIProxyAPI v7.3.7, so keep it private to the
-  internal Docker network, disable the bundled control panel, and never publish
-  management or OAuth callback ports.
+  same high-entropy `MANAGEMENT_PASSWORD` secret in Kira and CLIProxyAPI. Set
+  `remote-management.allow-remote: true` in the proxy config so the Kira
+  container can reach the management API; the private backend network is then
+  the network boundary. Keep it private, disable the bundled control panel, and
+  never publish management or OAuth callback ports.
 
 ## State and operations
 
@@ -81,13 +82,14 @@ Before starting it:
 2. Create `${CLIPROXY_CONFIG_DIR}/config.yaml` outside the repository. Set
    `host: ""`, `port: 8317`, and `auth-dir: /root/.cli-proxy-api`; put exactly
    the same long random caller key as `KIRA_POOL_KEY` under `api-keys`. Leave
-    `remote-management.disable-control-panel: true` and remove the development
-    fake-upstream entry. `MANAGEMENT_PASSWORD` enables the management API without
-    writing the secret into this config. The auth directory must be writable for
-    OAuth login; the config file can remain read-only.
+   `remote-management.allow-remote: true` and
+   `remote-management.disable-control-panel: true`, and remove the development
+   fake-upstream entry. `MANAGEMENT_PASSWORD` enables the management API without
+   writing the secret into this config. The auth directory must be writable for
+   OAuth login; the config file can remain read-only.
    This file contains a secret: restrict its permissions and do not commit it.
 3. Start with `docker compose --env-file <protected-env-file> -f
-   deploy/compose.production.yaml up -d`. Check container health and then
+deploy/compose.production.yaml up -d`. Check container health and then
    `GET /ready` through Kira. Docker's proxy check only calls `/healthz`, which
    establishes process liveness; Kira's readiness check also authenticates to
    `/v1/models` and requires a non-empty catalog.
