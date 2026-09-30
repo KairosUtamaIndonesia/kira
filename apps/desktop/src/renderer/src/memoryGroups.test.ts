@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import type { ChatConclusion, ChatMemory, MemoryKind } from '../../preload/bridge.ts';
 import {
+  type GroupKind,
   commitParts,
   conclusionGroupIn,
   coverageLine,
@@ -9,6 +10,7 @@ import {
   opensInWorkspace,
   pathParts,
   sayingsIn,
+  skillParts,
 } from './memoryGroups.ts';
 
 const said = (kind: MemoryKind, text: string): ChatMemory => ({
@@ -20,7 +22,7 @@ const said = (kind: MemoryKind, text: string): ChatMemory => ({
 interface Case {
   name: string;
   memory: ChatMemory[];
-  want: { kind: MemoryKind; label: string; texts: string[] }[];
+  want: { kind: GroupKind; label: string; texts: string[] }[];
 }
 
 /**
@@ -66,6 +68,29 @@ const CASES: Case[] = [
       { kind: 'goal', label: 'The work', texts: ['Fix the auth bug'] },
       { kind: 'read', label: 'Files read', texts: ['deploy.toml'] },
     ],
+  },
+  {
+    name: 'a skill Kira loaded is told apart from the files she read, and sits below the work',
+    // Loading a skill is reading its SKILL.md, which the ledger keeps as a read. A
+    // skill is what shapes how Kira works, so it reads before any file does.
+    memory: [
+      said('read', 'deploy.toml'),
+      said('read', '/home/a/.agents/skills/research/SKILL.md'),
+      said('changed', 'src/a.ts'),
+      said('goal', 'Fix the auth bug'),
+      said('read', 'skills/SKILL.md.bak'),
+    ],
+    want: [
+      { kind: 'goal', label: 'The work', texts: ['Fix the auth bug'] },
+      { kind: 'skill', label: 'Skills', texts: ['/home/a/.agents/skills/research/SKILL.md'] },
+      { kind: 'changed', label: 'Files changed', texts: ['src/a.ts'] },
+      { kind: 'read', label: 'Files read', texts: ['deploy.toml', 'skills/SKILL.md.bak'] },
+    ],
+  },
+  {
+    name: 'a chat whose only reads were skills has no files-read heading',
+    memory: [said('read', 'skills/to-spec/SKILL.md')],
+    want: [{ kind: 'skill', label: 'Skills', texts: ['skills/to-spec/SKILL.md'] }],
   },
   {
     name: 'nothing at all, from a chat that has not started',
@@ -295,5 +320,35 @@ for (const testCase of SAYINGS_CASES) {
       sayingsIn(testCase.items).map(({ lines, isScopeChange }) => ({ lines, isScopeChange })),
       testCase.want,
     );
+  });
+}
+
+interface SkillCase {
+  name: string;
+  path: string;
+  want: { name: string; folder: string };
+}
+
+const SKILL_CASES: SkillCase[] = [
+  {
+    name: 'a skill is named by its folder and sourced by the folder above',
+    path: '/home/brandon/.agents/skills/research/SKILL.md',
+    want: { name: 'research', folder: '/home/brandon/.agents/skills' },
+  },
+  {
+    name: 'a project skill is sourced inside the project',
+    path: '.agents/skills/tdd/SKILL.md',
+    want: { name: 'tdd', folder: '.agents/skills' },
+  },
+  {
+    name: 'a skill at the top of the folder has no source',
+    path: 'research/SKILL.md',
+    want: { name: 'research', folder: '' },
+  },
+];
+
+for (const testCase of SKILL_CASES) {
+  test(testCase.name, () => {
+    assert.deepEqual(skillParts(testCase.path), testCase.want);
   });
 }

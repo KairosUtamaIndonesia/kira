@@ -7,10 +7,18 @@
  */
 import type { ChatConclusion, ChatMemory, MemoryKind } from '../../preload/bridge.ts';
 
+/**
+ * What the pane groups by: the ledger's kinds, and the skills Kira loaded. A skill
+ * is not a kind of its own in the ledger — Kira loads one by reading its
+ * `SKILL.md`, which the ledger keeps as a file read — so it is told apart here.
+ */
+export type GroupKind = MemoryKind | 'skill';
+
 /** What each kind is called where a person reads it. */
-export const MEMORY_LABELS: Record<MemoryKind, string> = {
+export const MEMORY_LABELS: Record<GroupKind, string> = {
   preference: 'What you asked for',
   goal: 'The work',
+  skill: 'Skills',
   changed: 'Files changed',
   commit: 'Commits',
   read: 'Files read',
@@ -24,17 +32,18 @@ export const MEMORY_LABELS: Record<MemoryKind, string> = {
  * compile until it is placed here — the failure worth having, since a kind left
  * out of a list would simply never be drawn.
  */
-const ORDER: Record<MemoryKind, number> = {
+const ORDER: Record<GroupKind, number> = {
   preference: 0,
   goal: 1,
-  changed: 2,
-  commit: 3,
-  read: 4,
+  skill: 2,
+  changed: 3,
+  commit: 4,
+  read: 5,
 };
 
 /** One heading and what is under it. */
 export interface MemoryGroup {
-  kind: MemoryKind;
+  kind: GroupKind;
   label: string;
   items: ChatMemory[];
 }
@@ -48,15 +57,35 @@ export interface MemoryGroup {
  * touched on it — which is the order it happened in.
  */
 export function groupsIn(memory: readonly ChatMemory[]): MemoryGroup[] {
-  const kinds = [...new Set(memory.map((each) => each.kind))].sort(
+  const kinds = [...new Set(memory.map(groupKindOf))].sort(
     (left, right) => ORDER[left] - ORDER[right],
   );
 
   return kinds.map((kind) => ({
     kind,
     label: MEMORY_LABELS[kind],
-    items: memory.filter((each) => each.kind === kind),
+    items: memory.filter((each) => groupKindOf(each) === kind),
   }));
+}
+
+/**
+ * The group a thing is drawn under. A file Kira read that is a `SKILL.md` is a
+ * skill she loaded — the same reading the transcript makes of that call — and
+ * is drawn with the skills rather than with the files.
+ */
+function groupKindOf(item: ChatMemory): GroupKind {
+  return item.kind === 'read' && basenameOf(item.text) === 'SKILL.md' ? 'skill' : item.kind;
+}
+
+const basenameOf = (path: string): string => path.slice(path.lastIndexOf('/') + 1);
+
+/**
+ * A loaded skill as its name and the folder it was loaded from: the folder its
+ * `SKILL.md` is in names it, and the folder above that says whose it is — Kira's
+ * own, the person's, or the project's.
+ */
+export function skillParts(path: string): { name: string; folder: string } {
+  return pathParts(pathParts(path).folder);
 }
 
 /** What a conclusion is called where a person reads it. */

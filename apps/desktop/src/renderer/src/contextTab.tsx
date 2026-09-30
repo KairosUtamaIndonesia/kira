@@ -22,6 +22,7 @@
  * it — belongs to the workbench, so nothing here draws a panel of its own.
  */
 import { Collapsible } from '@astryxdesign/core/Collapsible';
+import { Icon } from '@astryxdesign/core/Icon';
 import { Text } from '@astryxdesign/core/Text';
 import {
   borderVars,
@@ -31,17 +32,20 @@ import {
   spacingVars,
 } from '@astryxdesign/core/theme/tokens.stylex';
 import * as stylex from '@stylexjs/stylex';
+import { BookOpen } from 'lucide-react';
 import type { ReactNode } from 'react';
-import type { ChatConclusion, ChatMemory, MemoryKind } from '../../preload/bridge';
+import type { ChatConclusion, ChatMemory } from '../../preload/bridge';
 import { FileTypeIcon } from './fileTypeIcon';
 import {
   commitParts,
   conclusionGroupIn,
   coverageLine,
   groupsIn,
+  type GroupKind,
   opensInWorkspace,
   pathParts,
   sayingsIn,
+  skillParts,
   type ConclusionGroup,
 } from './memoryGroups';
 
@@ -284,15 +288,19 @@ function MemoryRow({
   item,
   onOpenFile,
 }: {
-  kind: MemoryKind;
+  kind: GroupKind;
   item: ChatMemory;
   onOpenFile: (path: string) => void;
 }) {
-  if (kind === 'changed' || kind === 'read') {
-    const { name, folder } = pathParts(item.text);
+  if (kind === 'changed' || kind === 'read' || kind === 'skill') {
+    const { name, folder } = kind === 'skill' ? skillParts(item.text) : pathParts(item.text);
     const file = (
       <>
-        <FileTypeIcon name={name} kind="file" />
+        {kind === 'skill' ? (
+          <Icon icon={BookOpen} size="sm" color="secondary" />
+        ) : (
+          <FileTypeIcon name={name} kind="file" />
+        )}
         <span {...stylex.props(styles.fileName)}>
           <Text type="label" color={kind === 'read' ? 'secondary' : 'primary'}>
             {name}
