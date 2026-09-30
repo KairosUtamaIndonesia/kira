@@ -64,6 +64,7 @@ import {
   type ReactNode,
 } from 'react';
 import { Composer } from './composer';
+import { EmptyThreadPrototype } from './emptyThreadPrototype';
 import { CHAT_SORT_LABELS, type ChatSort, relativeTime, sortChats } from './chatOrdering';
 import { SignIn } from './signIn';
 import { Workbench, useWorkbench } from './workbench';
@@ -2009,7 +2010,7 @@ function ChatPane({
         <ThreadPrimitive.Viewport className="thread-viewport">
           <div className="thread-viewport-inner">
             <AuiIf condition={(state) => state.thread.isEmpty}>
-              <Text color="secondary">Send a message to start.</Text>
+              <EmptyThreadPrototype />
             </AuiIf>
             <ThreadPrimitive.Messages>
               {({ message }) => {
