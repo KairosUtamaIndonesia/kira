@@ -175,6 +175,15 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     },
   });
 
+  if (env.NODE_ENV === 'production') {
+    const missing: string[] = [];
+    if (!env.KIRA_POOL_URL?.trim()) missing.push('KIRA_POOL_URL');
+    if (!env.KIRA_POOL_KEY?.trim() || env.KIRA_POOL_KEY.trim() === DEV_POOL_KEY) {
+      missing.push('KIRA_POOL_KEY (must be set and must not be the development key)');
+    }
+    if (missing.length > 0) throw new Error(`Kira cannot start:\n  ${missing.join('\n  ')}`);
+  }
+
   return {
     baseUrl: parsed.KIRA_BASE_URL,
     port: listenPort(parsed.KIRA_BASE_URL),

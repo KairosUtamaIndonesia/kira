@@ -12,6 +12,7 @@ import { createGlossary } from './glossary';
 import { createPool } from './pool';
 import { REFUSAL, refusal } from './refusals';
 import { createTickets } from './tickets';
+import { readiness } from './pool-health';
 
 const SIGN_IN_PAGE = `<!doctype html>
 <html lang="en">
@@ -82,6 +83,18 @@ export function createApp({
         response: t.Object({ status: t.String() }),
         detail: { summary: 'Liveness check' },
       })
+      .get(
+        '/ready',
+        async ({ status }) => {
+          const ready = await readiness(database, config);
+          return ready
+            ? { status: 'ready' as const }
+            : status(503, { status: 'not_ready' as const });
+        },
+        {
+          detail: { summary: 'Readiness check for Kira dependencies' },
+        },
+      )
       .get('/sign-in', () => html(SIGN_IN_PAGE), {
         detail: { summary: 'Page that starts sign-in' },
       })
