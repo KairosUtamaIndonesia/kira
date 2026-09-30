@@ -3,6 +3,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { Check } from 'typebox/value';
 import type { GlossaryEntry, Ticket, TicketQueue, TicketStatus } from '../../../preload/bridge.ts';
 import { ThreadStore } from '../../db/threads.ts';
 import { createThread } from '../storage.ts';
@@ -401,13 +402,24 @@ test('ticket updates and blocker edits require a chat link', async () => {
 
 test('linked-ticket status updates allow only Running and Needs review', async () => {
   const cases = [
-    { status: 'running', allowed: true, change: { status: 'running', assigneeId: 'ada' } },
-    { status: 'needs-review', allowed: true, change: { status: 'needs-review' } },
-    { status: 'draft', allowed: false },
-    { status: 'ready', allowed: false },
-    { status: 'done', allowed: false },
-    { status: 'wont-do', allowed: false },
-    { status: 'blocked', allowed: false },
+    {
+      status: 'running',
+      allowed: true,
+      schemaValid: true,
+      change: { status: 'running', assigneeId: 'ada' },
+    },
+    {
+      status: 'needs-review',
+      allowed: true,
+      schemaValid: true,
+      change: { status: 'needs-review' },
+    },
+    { status: 'Needs review', allowed: false, schemaValid: false },
+    { status: 'draft', allowed: false, schemaValid: false },
+    { status: 'ready', allowed: false, schemaValid: false },
+    { status: 'done', allowed: false, schemaValid: false },
+    { status: 'wont-do', allowed: false, schemaValid: false },
+    { status: 'blocked', allowed: false, schemaValid: false },
   ] as const;
 
   for (const item of cases) {
@@ -432,6 +444,12 @@ test('linked-ticket status updates allow only Running and Needs review', async (
         return current;
       },
     } as never);
+
+    assert.equal(
+      Check(tools[6]!.parameters, { ref: current.name, status: item.status }),
+      item.schemaValid,
+      item.status,
+    );
 
     const call = () =>
       tools[6]!.execute(

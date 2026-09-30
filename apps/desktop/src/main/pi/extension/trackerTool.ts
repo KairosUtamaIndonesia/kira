@@ -32,7 +32,11 @@ const EDIT = Type.Object({
   title: Type.Optional(Type.String()),
   body: Type.Optional(Type.String()),
   criteria: Type.Optional(Type.Array(Type.String())),
-  status: Type.Optional(Type.String()),
+  status: Type.Optional(
+    Type.Union([Type.Literal('running'), Type.Literal('needs-review')], {
+      description: 'Use "running" for Running or "needs-review" for Needs review.',
+    }),
+  ),
   priority: Type.Optional(Type.String()),
   tags: Type.Optional(Type.Array(Type.String())),
 });
@@ -250,9 +254,9 @@ export function trackerTools(
       name: 'tracker_update_ticket',
       label: 'Update tracker ticket',
       description:
-        'Update a ticket linked to this chat. You may set Running or Needs review; Done and Won’t do stay with the person. Running assigns the ticket to the signed-in person.',
+        'Update a ticket linked to this chat. Set status to `running` (Running) or `needs-review` (Needs review); Done and Won’t do stay with the person. Running assigns the ticket to the signed-in person.',
       promptSnippet:
-        'Update a linked ticket; set Running when work starts and Needs review after opening a pull request. Never set Done or Won’t do.',
+        'Update a linked ticket; set status to `running` when work starts and `needs-review` after opening a pull request. Never set Done or Won’t do.',
       parameters: EDIT,
       async execute(params) {
         const edit = params as {
