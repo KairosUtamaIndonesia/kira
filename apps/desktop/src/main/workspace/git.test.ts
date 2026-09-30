@@ -4,7 +4,14 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { devNull } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { branchesOf, changedByGit, insideFolder, listedByGit, splitListing } from './git.ts';
+import {
+  branchesOf,
+  changedByGit,
+  hasRemote,
+  insideFolder,
+  listedByGit,
+  splitListing,
+} from './git.ts';
 import { tempDir } from '../test-support/temp.ts';
 import { listFolder } from './listing.ts';
 
@@ -256,6 +263,23 @@ test('a folder that is not a checkout is null, which is git saying nothing', asy
   assert.equal(await listedByGit(folder), null);
   assert.equal(await changedByGit(folder), null);
 });
+
+test(
+  'hasRemote distinguishes a checkout with a remote from one without',
+  { skip: !gitRuns() },
+  async () => {
+    const root = tempDir('kira-remotes-');
+    execFileSync('git', ['-C', root, 'init'], { stdio: 'ignore' });
+
+    assert.equal(await hasRemote(root), false);
+
+    execFileSync('git', ['-C', root, 'remote', 'add', 'origin', 'https://example.test/kira.git'], {
+      stdio: 'ignore',
+    });
+    assert.equal(await hasRemote(root), true);
+    assert.equal(await hasRemote(tempDir('kira-not-a-checkout-')), null);
+  },
+);
 
 test(
   'branchesOf names a local branches of a checkout and the one it has out',

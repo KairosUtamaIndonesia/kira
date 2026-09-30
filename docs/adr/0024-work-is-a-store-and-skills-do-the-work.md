@@ -52,15 +52,13 @@ linked to that chat. A person makes it Ready when it is ready to start. Updates 
 Needs review as a status. Done and Won't do, publishing tickets, and approving a spec or Decision
 stay a person's press (ADR 0022).
 
-**A pull request is the review.** When the work is done and the working checkout has a remote, the
-agent opens a pull request and attaches its HTTPS URL to the ticket before setting Needs review.
-Each ticket stores one current pull request link, shown in Work as “Open pull request”; only Kira
+**A pull request is the review.** When the work is done and the checkout has a remote, Kira opens a
+pull request, attaches its HTTPS URL to the ticket, and sets Needs review; if publishing or opening
+the PR fails, the ticket stays Running, while a checkout without a remote may reach Needs review
+without a link. A ticket holds one current PR link, shown in Work as “Open pull request”; only Kira
 attaches it for now, with manual attachment deferred until the GitHub integration. The chat that
-opened the PR is linked to the ticket. Review and merge happen where pull requests already are, and
-Kira has no diff pane, review comments, delivery or merge of its own. With no remote, the agent
-commits on a branch and sets Needs review without a link. If a remote exists but publishing or
-opening the PR fails, the agent leaves the ticket Running and reports why. The person sets Done once
-the change has merged.
+opened the PR is linked to the ticket; review and merge stay on GitHub—Kira has no diff pane, review
+comments, delivery, or merge—and a person marks the ticket Done after merging.
 
 **Each ticket is its own branch off the default branch.** A ticket blocked by another should start
 when its blocker is Done, which means merged, so it branches from the merged work. There is no spec

@@ -78,6 +78,17 @@ export async function changedByGit(folder: string): Promise<string[] | null> {
   }
 }
 
+/** Whether this checkout has a configured remote, or null when git cannot answer. */
+export async function hasRemote(folder: string): Promise<boolean | null> {
+  try {
+    const remotes = await simpleGit(folder).raw(['remote']);
+
+    return remotes.trim() !== '';
+  } catch {
+    return null;
+  }
+}
+
 /**
  * The paths of git's status answer as paths from the folder it was asked about.
  *

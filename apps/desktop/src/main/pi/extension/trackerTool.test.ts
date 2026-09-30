@@ -1,4 +1,5 @@
 import { strict as assert } from 'node:assert';
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -402,7 +403,19 @@ test('ticket updates and blocker edits require a chat link', async () => {
 });
 
 test('linked-ticket status updates allow only Running and Needs review', async () => {
-  const cases = [
+  interface StatusCase {
+    edit: Record<string, unknown>;
+    status: string;
+    remote?: boolean;
+    currentStatus?: TicketStatus;
+    currentPullRequestUrl?: string;
+    allowed: boolean;
+    schemaValid: boolean;
+    change?: Record<string, unknown>;
+    error?: string;
+  }
+
+  const cases: StatusCase[] = [
     {
       edit: { status: 'running' },
       status: 'running',
@@ -413,6 +426,7 @@ test('linked-ticket status updates allow only Running and Needs review', async (
     {
       edit: { status: 'needs-review' },
       status: 'needs-review',
+      remote: false,
       allowed: true,
       schemaValid: true,
       change: { status: 'needs-review' },
@@ -420,6 +434,7 @@ test('linked-ticket status updates allow only Running and Needs review', async (
     {
       edit: { status: 'needs-review', pullRequestUrl: 'https://github.com/example/kira/pull/42' },
       status: 'needs-review with a pull request',
+      remote: true,
       allowed: true,
       schemaValid: true,
       change: {
@@ -430,9 +445,50 @@ test('linked-ticket status updates allow only Running and Needs review', async (
     {
       edit: { status: 'needs-review', pullRequestUrl: null },
       status: 'needs-review without a pull request',
+      remote: false,
       allowed: true,
       schemaValid: true,
       change: { status: 'needs-review', pullRequestUrl: null },
+    },
+    {
+      edit: { status: 'needs-review' },
+      status: 'needs-review requires a pull request when a remote exists',
+      remote: true,
+      currentStatus: 'running',
+      allowed: false,
+      schemaValid: true,
+      error:
+        'A pull request URL is required when this checkout has a remote. Leave the ticket Running and report why a pull request could not be opened.',
+    },
+    {
+      edit: { status: 'needs-review', pullRequestUrl: null },
+      status: 'needs-review cannot clear its only pull request link',
+      remote: true,
+      currentStatus: 'running',
+      currentPullRequestUrl: 'https://github.com/example/kira/pull/42',
+      allowed: false,
+      schemaValid: true,
+      error:
+        'A pull request URL is required when this checkout has a remote. Leave the ticket Running and report why a pull request could not be opened.',
+    },
+    {
+      edit: { status: 'needs-review' },
+      status: 'needs-review fails closed when Git cannot answer',
+      currentStatus: 'running',
+      allowed: false,
+      schemaValid: true,
+      error:
+        'Could not determine whether this checkout has a remote. Leave the ticket Running and report the blocker.',
+    },
+    {
+      edit: { status: 'needs-review' },
+      status: 'needs-review accepts an existing pull request when a remote exists',
+      remote: true,
+      currentStatus: 'running',
+      currentPullRequestUrl: 'https://github.com/example/kira/pull/42',
+      allowed: true,
+      schemaValid: true,
+      change: { status: 'needs-review' },
     },
     {
       edit: { status: 'Needs review' },
@@ -445,44 +501,75 @@ test('linked-ticket status updates allow only Running and Needs review', async (
     { edit: { status: 'done' }, status: 'done', allowed: false, schemaValid: false },
     { edit: { status: 'wont-do' }, status: 'wont-do', allowed: false, schemaValid: false },
     { edit: { status: 'blocked' }, status: 'blocked', allowed: false, schemaValid: false },
-  ] as const;
+  ];
 
   for (const item of cases) {
-    const store = new ThreadStore(
-      join(mkdtempSync(join(tmpdir(), 'kira-tracker-tool-store-')), 'threads.db'),
-    );
-    const workspace = store.rememberWorkspace(
-      mkdtempSync(join(tmpdir(), 'kira-tracker-tool-space-')),
-    );
-    const current = ticket('ready');
-    const thread = createThread(store, workspace.folder, {
-      workspaceId: workspace.id,
-      workTicketIds: [current.id],
+    test(item.status, async (t) => {
+      if (!gitRuns()) {
+        t.skip('Git is required to test the checkout remote rule.');
+        return;
+      }
+
+      const store = new ThreadStore(
+        join(mkdtempSync(join(tmpdir(), 'kira-tracker-tool-store-')), 'threads.db'),
+      );
+      const workspace = store.rememberWorkspace(
+        mkdtempSync(join(tmpdir(), 'kira-tracker-tool-space-')),
+      );
+      if (item.remote !== undefined) {
+        execFileSync('git', ['-C', workspace.folder, 'init'], { stdio: 'ignore' });
+        if (item.remote) {
+          execFileSync(
+            'git',
+            ['-C', workspace.folder, 'remote', 'add', 'origin', 'https://example.test/kira.git'],
+            { stdio: 'ignore' },
+          );
+        }
+      }
+      const current = {
+        ...ticket(item.currentStatus ?? 'ready'),
+        pullRequestUrl: item.currentPullRequestUrl ?? null,
+      };
+      const thread = createThread(store, workspace.folder, {
+        workspaceId: workspace.id,
+        workTicketIds: [current.id],
+      });
+      const changes: unknown[] = [];
+      const tools = trackerTools(store, thread.threadId, {
+        queue: async () => ({}) as TicketQueue,
+        readTicket: async () => current,
+        currentUserId: async () => 'ada',
+        change: async (_id: string, change: unknown) => {
+          changes.push(change);
+          return current;
+        },
+      } as never);
+
+      const parameters = { ref: current.name, ...item.edit };
+      assert.equal(Check(tools[6]!.parameters, parameters), item.schemaValid, item.status);
+
+      const call = () =>
+        tools[6]!.execute('call-status', parameters, undefined, undefined, {} as never);
+
+      if (item.allowed) {
+        await call();
+        assert.deepEqual(changes, [item.change], item.status);
+      } else {
+        await assert.rejects(call, {
+          message: item.error ?? 'The agent can set only Running or Needs review.',
+        });
+        assert.deepEqual(changes, [], item.status);
+      }
+      store.close();
     });
-    const changes: unknown[] = [];
-    const tools = trackerTools(store, thread.threadId, {
-      queue: async () => ({}) as TicketQueue,
-      readTicket: async () => current,
-      currentUserId: async () => 'ada',
-      change: async (_id: string, change: unknown) => {
-        changes.push(change);
-        return current;
-      },
-    } as never);
-
-    const parameters = { ref: current.name, ...item.edit };
-    assert.equal(Check(tools[6]!.parameters, parameters), item.schemaValid, item.status);
-
-    const call = () =>
-      tools[6]!.execute('call-status', parameters, undefined, undefined, {} as never);
-
-    if (item.allowed) {
-      await call();
-      assert.deepEqual(changes, [item.change], item.status);
-    } else {
-      await assert.rejects(call, { message: 'The agent can set only Running or Needs review.' });
-      assert.deepEqual(changes, [], item.status);
-    }
-    store.close();
   }
 });
+
+function gitRuns(): boolean {
+  try {
+    execFileSync('git', ['--version'], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
