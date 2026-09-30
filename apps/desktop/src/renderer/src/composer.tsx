@@ -202,34 +202,45 @@ export function Composer({
         {usage === null && chatUsage === null ? null : (
           <ContextGauge usage={usage} chatUsage={chatUsage} />
         )}
+        {/*
+         * One choice drawn two ways. Side by side the modes are two buttons; when
+         * the composer is too narrow for them (styles.css) they are one menu,
+         * which keeps the row from running out of the box. Whichever is hidden is
+         * `display: none`, so it is out of the tab order and the accessibility tree.
+         */}
         <fieldset className="chat-mode-switcher" aria-label="Chat mode">
-          <Tooltip
-            content="Build mode: Kira makes the requested changes in your workspace."
-            placement="above"
-          >
-            <Button
-              label="Build"
-              size="sm"
-              variant={mode === 'build' ? 'primary' : 'ghost'}
-              aria-pressed={mode === 'build'}
-              isDisabled={isRunning || onChooseMode === undefined}
-              onClick={() => onChooseMode?.('build')}
-            />
-          </Tooltip>
-          <Tooltip
-            content="Spec mode: Kira helps shape and plan the work before building it."
-            placement="above"
-          >
-            <Button
-              label="Spec"
-              size="sm"
-              variant={mode === 'spec' ? 'primary' : 'ghost'}
-              aria-pressed={mode === 'spec'}
-              isDisabled={isRunning || onChooseMode === undefined}
-              onClick={() => onChooseMode?.('spec')}
-            />
-          </Tooltip>
+          {MODES.map((each) => (
+            <Tooltip key={each.value} content={each.says} placement="above">
+              <Button
+                label={each.label}
+                size="sm"
+                variant={mode === each.value ? 'primary' : 'ghost'}
+                aria-pressed={mode === each.value}
+                isDisabled={isRunning || onChooseMode === undefined}
+                onClick={() => onChooseMode?.(each.value)}
+              />
+            </Tooltip>
+          ))}
         </fieldset>
+        <div className="chat-mode-menu">
+          <Selector
+            label="Chat mode"
+            isLabelHidden
+            size="sm"
+            variant="ghost"
+            options={MODES.map((each) => ({
+              value: each.value,
+              label: each.label,
+              description: each.says,
+            }))}
+            value={mode}
+            onChange={(chosen) => {
+              const next = MODES.find((each) => each.value === chosen);
+              if (next !== undefined) onChooseMode?.(next.value);
+            }}
+            isDisabled={isRunning || onChooseMode === undefined}
+          />
+        </div>
       </div>
     ),
     // The same button, in its other state: while Kira is writing there is
@@ -399,6 +410,20 @@ export function Composer({
   );
 }
 
+/** What each chat mode is called, and what it promises. */
+const MODES: { value: ChatMode; label: string; says: string }[] = [
+  {
+    value: 'build',
+    label: 'Build',
+    says: 'Build mode: Kira makes the requested changes in your workspace.',
+  },
+  {
+    value: 'spec',
+    label: 'Spec',
+    says: 'Spec mode: Kira helps shape and plan the work before building it.',
+  },
+];
+
 /**
  * What this person has used of their allowance, behind an icon.
  *
@@ -488,6 +513,16 @@ const styles = stylex.create({
     display: 'flex',
     alignItems: 'center',
     gap: spacingVars['--spacing-1'],
+  },
+  /**
+   * The model's name takes what the composer has left after the controls that
+   * cannot shrink (14rem, measured with the modes folded into their menu) and
+   * gives way to an ellipsis before the row runs out of the box. `cqi` is the
+   * composer's own width: `.composer-stack` is its container. Below about 17.5rem
+   * of composer even the floor does not fit; nothing narrower is supported.
+   */
+  modelPicker: {
+    maxWidth: 'clamp(3.5rem, calc(100cqi - 14rem), 12rem)',
   },
   ticketPickerList: {
     display: 'flex',
@@ -678,6 +713,7 @@ function pickerFor(
       isLabelHidden
       size="sm"
       variant="ghost"
+      xstyle={styles.modelPicker}
       options={models.map((model) => ({ value: model.id, label: model.name }))}
       value={modelId ?? models[0]?.id}
       onChange={onChoose}

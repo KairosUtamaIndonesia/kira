@@ -208,6 +208,10 @@ Components are crisp and lightly lifted. Prefer Astryx primitives and Kira theme
 
 A chat with no messages starts the sentence the composer finishes: one line saying what to do, the two modes as ruled rows (Build, Spec; the wording of the composer's own tooltips), and the keys that send and break a line. It is left-aligned to the message column, with no icon, illustration, or starter buttons. It is a definition list, not an Astryx `EmptyState`, because the chat's next step is the composer beside it.
 
+### Chat composer
+
+The composer is sized by its own width, not the window's, because the workbench can take half the window. Wide, the row under the box is the model picker on the left and the gauge, the Build/Spec buttons and Send on the right. Below 27rem of composer the two modes become one menu, and the model's name gives way to an ellipsis before the row overflows; the row holds down to about 17.5rem (280px) of composer, and nothing narrower is supported. The queries use `container` on `.composer-stack` (`styles.css`), not `@media`.
+
 ### Context tab
 
 The workbench's Context tab is a ledger like Work: no header, then a hairline and heading with a zero-padded mono count per kind, and ruled rows. What Kira concluded comes first, then what you asked for and the work as body-size prose (the work is one row per message, its lines stacked, and a change of plan says "Scope change" above it; the ledger stores one row per line, so the tab puts lines from one turn back together); the skills Kira loaded come next (a book icon, the skill's name, then the folder it came from; a skill is a `SKILL.md` Kira read, told apart from the files read, which is how the transcript already reads that call); changed files and commits follow as scannable rows (file-type icon, name, then folder; mono hash, then subject). A changed file opens in the workspace; a file outside the folder, which the workspace cannot open, is drawn the same but is not a button. Files read is the longest list and folds by default.
