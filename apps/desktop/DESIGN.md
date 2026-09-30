@@ -210,7 +210,7 @@ A chat with no messages starts the sentence the composer finishes: one line sayi
 
 ### Context tab
 
-The workbench's Context tab is a ledger like Work: no header, then a hairline and heading with a zero-padded mono count per kind, and ruled rows. What Kira concluded comes first, then what you asked for and the work as body-size prose; changed files and commits follow as scannable rows (file-type icon, name, then folder; mono hash, then subject). A changed file opens in the workspace; a file outside the folder, which the workspace cannot open, is drawn the same but is not a button. Files read is the longest list and folds by default.
+The workbench's Context tab is a ledger like Work: no header, then a hairline and heading with a zero-padded mono count per kind, and ruled rows. What Kira concluded comes first, then what you asked for and the work as body-size prose (the work is one row per message, its lines stacked, and a change of plan says "Scope change" above it; the ledger stores one row per line, so the tab puts lines from one turn back together); changed files and commits follow as scannable rows (file-type icon, name, then folder; mono hash, then subject). A changed file opens in the workspace; a file outside the folder, which the workspace cannot open, is drawn the same but is not a button. Files read is the longest list and folds by default.
 
 ### Work
 

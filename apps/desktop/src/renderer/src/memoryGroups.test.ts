@@ -8,6 +8,7 @@ import {
   groupsIn,
   opensInWorkspace,
   pathParts,
+  sayingsIn,
 } from './memoryGroups.ts';
 
 const said = (kind: MemoryKind, text: string): ChatMemory => ({
@@ -228,5 +229,71 @@ const OPENS_CASES: OpensCase[] = [
 for (const testCase of OPENS_CASES) {
   test(testCase.name, () => {
     assert.equal(opensInWorkspace(testCase.path), testCase.want);
+  });
+}
+
+const goalAt = (at: string, text: string): ChatMemory => ({ kind: 'goal', at, text });
+
+interface SayingsCase {
+  name: string;
+  items: ChatMemory[];
+  want: { lines: string[]; isScopeChange: boolean }[];
+}
+
+const SAYINGS_CASES: SayingsCase[] = [
+  {
+    name: 'lines from one turn are one saying',
+    items: [
+      goalAt('t1', 'Build a timer'),
+      goalAt('t1', 'It is done when:'),
+      goalAt('t1', 'It runs from a local file'),
+    ],
+    want: [
+      {
+        lines: ['Build a timer', 'It is done when:', 'It runs from a local file'],
+        isScopeChange: false,
+      },
+    ],
+  },
+  {
+    name: 'a change of plan is its own saying, and the marker is not shown',
+    items: [
+      goalAt('t1', 'Fix the auth bug'),
+      goalAt('t1', '[Scope change]'),
+      goalAt('t3', 'Switch to the refresh path instead'),
+    ],
+    want: [
+      { lines: ['Fix the auth bug'], isScopeChange: false },
+      { lines: ['Switch to the refresh path instead'], isScopeChange: true },
+    ],
+  },
+  {
+    name: 'a marker written a turn before the plan it announces still marks it',
+    // The marker is held from the first turn a change was seen; the lines under it
+    // may be from a later turn that replaced them.
+    items: [
+      goalAt('t1', 'Fix the auth bug'),
+      goalAt('t2', '[Scope change]'),
+      goalAt('t4', 'Add the refresh path'),
+      goalAt('t4', 'And its tests'),
+    ],
+    want: [
+      { lines: ['Fix the auth bug'], isScopeChange: false },
+      { lines: ['Add the refresh path', 'And its tests'], isScopeChange: true },
+    ],
+  },
+  {
+    name: 'nothing said, nothing drawn',
+    items: [],
+    want: [],
+  },
+];
+
+for (const testCase of SAYINGS_CASES) {
+  test(testCase.name, () => {
+    assert.deepEqual(
+      sayingsIn(testCase.items).map(({ lines, isScopeChange }) => ({ lines, isScopeChange })),
+      testCase.want,
+    );
   });
 }

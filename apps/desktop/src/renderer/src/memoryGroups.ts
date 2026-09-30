@@ -126,3 +126,49 @@ export function commitParts(text: string): { hash: string; subject: string } {
 export function opensInWorkspace(path: string): boolean {
   return !path.startsWith('/') && !path.startsWith('../') && !/^[A-Za-z]:[\\/]/.test(path);
 }
+
+/**
+ * The marker the goal extractor writes between the opening of the work and a
+ * change of plan (`goalIn`, in `main/pi/extension/extract.ts`). It is a line of
+ * the ledger like any other, so it reaches the window as text and is recognised
+ * here by that text.
+ */
+const SCOPE_CHANGE = '[Scope change]';
+
+/** What a person said in one turn about the work, as they wrote it. */
+export interface Saying {
+  at: string;
+  lines: string[];
+  /** Whether it came after the person changed their mind about the work. */
+  isScopeChange: boolean;
+}
+
+/**
+ * The goal as what was said rather than as the lines it was cut into.
+ *
+ * The ledger keeps one row per line so that a line is held once however often it
+ * is read again, and the summary can pick among them. A person checking what
+ * Kira was asked reads a message, not its lines, so lines that came from the same
+ * turn — the same moment — are put back together. The scope-change marker is not
+ * a saying: it says that everything after it is one, and is dropped here.
+ */
+export function sayingsIn(items: readonly ChatMemory[]): Saying[] {
+  const sayings: Saying[] = [];
+  let isScopeChange = false;
+
+  for (const item of items) {
+    if (item.text === SCOPE_CHANGE) {
+      isScopeChange = true;
+      continue;
+    }
+
+    const last = sayings.at(-1);
+    if (last !== undefined && last.at === item.at && last.isScopeChange === isScopeChange) {
+      last.lines.push(item.text);
+    } else {
+      sayings.push({ at: item.at, lines: [item.text], isScopeChange });
+    }
+  }
+
+  return sayings;
+}

@@ -41,6 +41,7 @@ import {
   groupsIn,
   opensInWorkspace,
   pathParts,
+  sayingsIn,
   type ConclusionGroup,
 } from './memoryGroups';
 
@@ -149,20 +150,49 @@ export function ContextTab({
   return (
     <div {...stylex.props(styles.tab)}>
       {concluded !== null && <Concluded group={concluded} />}
-      {groups.map((group) => (
-        <Section
-          key={group.kind}
-          label={group.label}
-          count={countOf(group.items)}
-          // The longest list and the least worth checking, so it starts folded.
-          isFolded={group.kind === 'read'}
-        >
-          {group.items.map((item) => (
-            <MemoryRow key={item.text} kind={group.kind} item={item} onOpenFile={onOpenFile} />
-          ))}
-        </Section>
-      ))}
+      {groups.map((group) =>
+        group.kind === 'goal' ? (
+          <Said key={group.kind} label={group.label} items={group.items} />
+        ) : (
+          <Section
+            key={group.kind}
+            label={group.label}
+            count={countOf(group.items)}
+            // The longest list and the least worth checking, so it starts folded.
+            isFolded={group.kind === 'read'}
+          >
+            {group.items.map((item) => (
+              <MemoryRow key={item.text} kind={group.kind} item={item} onOpenFile={onOpenFile} />
+            ))}
+          </Section>
+        ),
+      )}
     </div>
+  );
+}
+
+/**
+ * The work as it was asked for: one row per message, its lines stacked, rather
+ * than a row per line. A change of plan says so above what it changed to.
+ */
+function Said({ label, items }: { label: string; items: readonly ChatMemory[] }) {
+  const sayings = sayingsIn(items);
+
+  return (
+    <Section label={label} count={countOf(sayings)}>
+      {sayings.map((saying) => (
+        <li key={`${saying.at}:${saying.lines[0]}`} {...stylex.props(styles.row, styles.prose)}>
+          {saying.isScopeChange && (
+            <Text type="supporting" color="secondary">
+              Scope change
+            </Text>
+          )}
+          {saying.lines.map((line) => (
+            <Text key={line}>{line}</Text>
+          ))}
+        </li>
+      ))}
+    </Section>
   );
 }
 
