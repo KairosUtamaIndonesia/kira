@@ -112,13 +112,9 @@ export function createPoolManagement({
           detail: { summary: 'Read safe live health for shared provider credentials' },
         },
       )
-      .get(
-        '/audit',
-        async () => ({ events: await recentPoolAudit(database) }),
-        {
-          detail: { summary: 'Read recent safe audit events for Pool management' },
-        },
-      )
+      .get('/audit', async () => ({ events: await recentPoolAudit(database) }), {
+        detail: { summary: 'Read recent safe audit events for Pool management' },
+      })
       .post(
         '/oauth',
         async ({ body, request }) => {
@@ -126,7 +122,14 @@ export function createPoolManagement({
           const result = await managementRequest(config, path);
           if (result.kind !== 'ok' || !result.response.ok) {
             if (result.kind === 'ok') await result.response.body?.cancel();
-            await recordOAuthAttempt(database, auth, request, body.provider, 'failed', 'Provider login could not be started');
+            await recordOAuthAttempt(
+              database,
+              auth,
+              request,
+              body.provider,
+              'failed',
+              'Provider login could not be started',
+            );
             return { status: result.kind === 'ok' ? 'unavailable' : result.kind };
           }
 
@@ -134,16 +137,46 @@ export function createPoolManagement({
           try {
             answer = (await result.response.json()) as { url?: unknown; state?: unknown };
           } catch {
-            await recordOAuthAttempt(database, auth, request, body.provider, 'failed', 'Provider login could not be started');
+            await recordOAuthAttempt(
+              database,
+              auth,
+              request,
+              body.provider,
+              'failed',
+              'Provider login could not be started',
+            );
             return { status: 'unavailable' as const };
           }
-          if (typeof answer.url !== 'string' || typeof answer.state !== 'string' || answer.state === '') {
-            await recordOAuthAttempt(database, auth, request, body.provider, 'failed', 'Provider login could not be started');
+          if (
+            typeof answer.url !== 'string' ||
+            typeof answer.state !== 'string' ||
+            answer.state === ''
+          ) {
+            await recordOAuthAttempt(
+              database,
+              auth,
+              request,
+              body.provider,
+              'failed',
+              'Provider login could not be started',
+            );
             return { status: 'unavailable' as const };
           }
 
-          await recordOAuthAttempt(database, auth, request, body.provider, 'succeeded', 'Authorization started');
-          return { status: 'pending' as const, provider: body.provider, url: answer.url, state: answer.state };
+          await recordOAuthAttempt(
+            database,
+            auth,
+            request,
+            body.provider,
+            'succeeded',
+            'Authorization started',
+          );
+          return {
+            status: 'pending' as const,
+            provider: body.provider,
+            url: answer.url,
+            state: answer.state,
+          };
         },
         {
           body: t.Object({ provider: t.Union([t.Literal('codex'), t.Literal('claude')]) }),
@@ -154,21 +187,44 @@ export function createPoolManagement({
         '/oauth/callback',
         async ({ body, request, status }) => {
           if (!validCallback(body.redirectUrl)) {
-            return status(400, refusal('INVALID_CALLBACK', 'Paste the localhost callback address returned by the provider.'));
+            return status(
+              400,
+              refusal(
+                'INVALID_CALLBACK',
+                'Paste the localhost callback address returned by the provider.',
+              ),
+            );
           }
           const result = await managementRequest(config, 'oauth-callback', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ provider: body.provider === 'claude' ? 'anthropic' : 'codex', redirect_url: body.redirectUrl }),
+            body: JSON.stringify({
+              provider: body.provider === 'claude' ? 'anthropic' : 'codex',
+              redirect_url: body.redirectUrl,
+            }),
           });
           if (result.kind !== 'ok' || !result.response.ok) {
             if (result.kind === 'ok') await result.response.body?.cancel();
-            await recordOAuthAttempt(database, auth, request, body.provider, 'failed', 'Callback was not accepted');
+            await recordOAuthAttempt(
+              database,
+              auth,
+              request,
+              body.provider,
+              'failed',
+              'Callback was not accepted',
+            );
             return { status: result.kind === 'ok' ? 'unavailable' : result.kind };
           }
 
           await result.response.body?.cancel();
-          await recordOAuthAttempt(database, auth, request, body.provider, 'succeeded', 'Callback relayed');
+          await recordOAuthAttempt(
+            database,
+            auth,
+            request,
+            body.provider,
+            'succeeded',
+            'Callback relayed',
+          );
           return { status: 'accepted' as const };
         },
         {
@@ -183,7 +239,10 @@ export function createPoolManagement({
         '/oauth/status',
         async ({ query }) => {
           if (!validState(query.state)) return { status: 'expired' as const };
-          const result = await managementRequest(config, `get-auth-status?${new URLSearchParams({ state: query.state })}`);
+          const result = await managementRequest(
+            config,
+            `get-auth-status?${new URLSearchParams({ state: query.state })}`,
+          );
           if (result.kind !== 'ok') return { status: result.kind };
           if (!result.response.ok) {
             await result.response.body?.cancel();
@@ -199,9 +258,10 @@ export function createPoolManagement({
           if (body.status === 'ok') return { status: 'succeeded' as const };
           if (body.status === 'error') {
             return {
-              status: typeof body.error === 'string' && body.error.includes('unknown or expired')
-                ? 'expired' as const
-                : 'failed' as const,
+              status:
+                typeof body.error === 'string' && body.error.includes('unknown or expired')
+                  ? ('expired' as const)
+                  : ('failed' as const),
             };
           }
           return { status: 'unavailable' as const };
@@ -231,17 +291,86 @@ export function createPoolManagement({
           } catch {
             return { status: 'unavailable' as const };
           }
-          return { status: body.cancelled === true ? 'cancelled' as const : 'expired' as const };
+          return {
+            status: body.cancelled === true ? ('cancelled' as const) : ('expired' as const),
+          };
         },
         {
           query: t.Object({ state: t.String() }),
           detail: { summary: 'Cancel a pending provider OAuth login' },
         },
+      )
+      .patch(
+        '/credentials/:id/status',
+        async ({ params, body, request }) =>
+          mutateCredential({
+            config,
+            database,
+            auth,
+            request,
+            id: params.id,
+            action: body.disabled ? 'disable' : 'enable',
+            path: 'auth-files/status',
+            method: 'PATCH',
+            payload: (credential) => ({
+              name: credential.name,
+              auth_index: credential.id,
+              disabled: body.disabled,
+            }),
+            successDetail: body.disabled ? 'Credential disabled' : 'Credential enabled',
+          }),
+        {
+          params: t.Object({ id: t.String({ minLength: 1, maxLength: 512 }) }),
+          body: t.Object({ disabled: t.Boolean() }),
+          detail: { summary: 'Enable or disable a provider Credential' },
+        },
+      )
+      .post(
+        '/credentials/:id/refresh',
+        async ({ params, request }) =>
+          mutateCredential({
+            config,
+            database,
+            auth,
+            request,
+            id: params.id,
+            action: 'refresh',
+            path: 'auth-files/refresh',
+            method: 'POST',
+            payload: (credential) => ({ name: credential.name, auth_index: credential.id }),
+            successDetail: 'Credential refresh requested',
+          }),
+        {
+          params: t.Object({ id: t.String({ minLength: 1, maxLength: 512 }) }),
+          detail: { summary: 'Refresh a provider Credential' },
+        },
+      )
+      .delete(
+        '/credentials/:id',
+        async ({ params, request }) =>
+          mutateCredential({
+            config,
+            database,
+            auth,
+            request,
+            id: params.id,
+            action: 'delete',
+            path: 'auth-files',
+            method: 'DELETE',
+            payload: (credential) => ({ name: credential.name }),
+            successDetail: 'Credential deleted',
+          }),
+        {
+          params: t.Object({ id: t.String({ minLength: 1, maxLength: 512 }) }),
+          detail: { summary: 'Delete a provider Credential' },
+        },
       ),
   );
 }
 
-async function credentials(config: Config): Promise<{ status: ManagementState; credentials: Credential[] }> {
+async function credentials(
+  config: Config,
+): Promise<{ status: ManagementState; credentials: Credential[] }> {
   const result = await managementRequest(config, 'auth-files');
   if (result.kind !== 'ok') return { status: result.kind, credentials: [] };
   const { response } = result;
@@ -334,6 +463,73 @@ async function recordOAuthAttempt(
     outcome,
     detail,
   });
+}
+
+async function mutateCredential({
+  config,
+  database,
+  auth,
+  request,
+  id,
+  action,
+  path,
+  method,
+  payload,
+  successDetail,
+}: {
+  config: Config;
+  database: Database;
+  auth: Auth;
+  request: Request;
+  id: string;
+  action: 'enable' | 'disable' | 'refresh' | 'delete';
+  path: string;
+  method: 'PATCH' | 'POST' | 'DELETE';
+  payload?: (credential: Credential) => Record<string, unknown>;
+  successDetail: string;
+}) {
+  const inventory = await credentials(config);
+  const credential = inventory.credentials.find((item) => item.id === id);
+  const supported =
+    credential &&
+    ['codex', 'claude', 'anthropic'].includes((credential.provider ?? '').toLowerCase());
+  const session = await auth.api.getSession({ headers: request.headers });
+  const audit = async (outcome: 'succeeded' | 'failed', detail: string) =>
+    recordPoolAudit(database, {
+      actorId: session?.user.id ?? null,
+      actorLabel: session?.user.email ?? 'Kira admin',
+      action,
+      provider: credential?.provider ?? null,
+      credentialLabel: credential
+        ? (credential.email ?? credential.label ?? credential.name)
+        : null,
+      outcome,
+      detail,
+    });
+
+  if (inventory.status !== 'ready' || !credential || !supported) {
+    await audit(
+      'failed',
+      inventory.status === 'ready'
+        ? 'Credential was not found or is unsupported'
+        : 'Pool management unavailable',
+    );
+    return { status: inventory.status === 'ready' ? ('not-found' as const) : inventory.status };
+  }
+
+  const result = await managementRequest(config, path, {
+    method,
+    ...(payload ? { body: JSON.stringify(payload(credential)) } : {}),
+  });
+  if (result.kind !== 'ok' || !result.response.ok) {
+    if (result.kind === 'ok') await result.response.body?.cancel();
+    await audit('failed', 'The proxy did not complete the requested action');
+    return { status: result.kind === 'ok' ? ('unavailable' as const) : result.kind };
+  }
+
+  await result.response.body?.cancel();
+  await audit('succeeded', successDetail);
+  return { status: 'succeeded' as const };
 }
 
 function credentialOf(raw: unknown): Credential | null {

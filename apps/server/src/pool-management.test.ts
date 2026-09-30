@@ -24,7 +24,9 @@ describe('the admin console reads Pool health', () => {
       const ordinary = await fetch(`${server.origin}/api/admin/pool`, { headers: { cookie } });
       expect(ordinary.status).toBe(403);
       expect((await ordinary.json()).error.code).toBe('NOT_AN_ADMIN');
-      const ordinaryAudit = await fetch(`${server.origin}/api/admin/pool/audit`, { headers: { cookie } });
+      const ordinaryAudit = await fetch(`${server.origin}/api/admin/pool/audit`, {
+        headers: { cookie },
+      });
       expect(ordinaryAudit.status).toBe(403);
     } finally {
       await server.stop();
@@ -137,7 +139,12 @@ describe('the admin console reads Pool health', () => {
 
 describe('provider login through the admin console', () => {
   test('relays a pasted localhost callback and polls the proxy-owned state', async () => {
-    const received: { method: string; url: string; authorization: string | undefined; body: string }[] = [];
+    const received: {
+      method: string;
+      url: string;
+      authorization: string | undefined;
+      body: string;
+    }[] = [];
     let polls = 0;
     const proxy = createServer(async (request, response) => {
       const chunks: Buffer[] = [];
@@ -151,15 +158,30 @@ describe('provider login through the admin console', () => {
       });
       response.setHeader('content-type', 'application/json');
       if (request.url === '/v0/management/codex-auth-url') {
-        response.end(JSON.stringify({ status: 'ok', url: 'https://provider.example/authorize', state: 'pending-state' }));
+        response.end(
+          JSON.stringify({
+            status: 'ok',
+            url: 'https://provider.example/authorize',
+            state: 'pending-state',
+          }),
+        );
       } else if (request.url === '/v0/management/anthropic-auth-url') {
-        response.end(JSON.stringify({ status: 'ok', url: 'https://provider.example/claude', state: 'claude-state' }));
+        response.end(
+          JSON.stringify({
+            status: 'ok',
+            url: 'https://provider.example/claude',
+            state: 'claude-state',
+          }),
+        );
       } else if (request.url === '/v0/management/oauth-callback' && request.method === 'POST') {
         response.end('{"status":"ok"}');
       } else if (request.url === '/v0/management/get-auth-status?state=pending-state') {
         polls += 1;
         response.end(JSON.stringify(polls === 1 ? { status: 'wait' } : { status: 'ok' }));
-      } else if (request.url === '/v0/management/oauth-session?state=claude-state' && request.method === 'DELETE') {
+      } else if (
+        request.url === '/v0/management/oauth-session?state=claude-state' &&
+        request.method === 'DELETE'
+      ) {
         response.end('{"status":"ok","cancelled":true}');
       } else {
         response.writeHead(404).end('{}');
@@ -179,38 +201,62 @@ describe('provider login through the admin console', () => {
       const headers = { cookie, 'content-type': 'application/json' };
 
       const started = await fetch(`${server.origin}/api/admin/pool/oauth`, {
-        method: 'POST', headers, body: JSON.stringify({ provider: 'codex' }),
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ provider: 'codex' }),
       });
       expect(await started.json()).toEqual({
-        status: 'pending', provider: 'codex', url: 'https://provider.example/authorize', state: 'pending-state',
+        status: 'pending',
+        provider: 'codex',
+        url: 'https://provider.example/authorize',
+        state: 'pending-state',
       });
 
-      const callbackUrl = 'http://localhost:1455/auth/callback?code=one-time-code&state=pending-state';
+      const callbackUrl =
+        'http://localhost:1455/auth/callback?code=one-time-code&state=pending-state';
       const callback = await fetch(`${server.origin}/api/admin/pool/oauth/callback`, {
-        method: 'POST', headers, body: JSON.stringify({ provider: 'codex', redirectUrl: callbackUrl }),
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ provider: 'codex', redirectUrl: callbackUrl }),
       });
       expect(await callback.json()).toEqual({ status: 'accepted' });
 
-      const pending = await fetch(`${server.origin}/api/admin/pool/oauth/status?state=pending-state`, { headers: { cookie } });
+      const pending = await fetch(
+        `${server.origin}/api/admin/pool/oauth/status?state=pending-state`,
+        { headers: { cookie } },
+      );
       expect(await pending.json()).toEqual({ status: 'pending' });
-      const complete = await fetch(`${server.origin}/api/admin/pool/oauth/status?state=pending-state`, { headers: { cookie } });
+      const complete = await fetch(
+        `${server.origin}/api/admin/pool/oauth/status?state=pending-state`,
+        { headers: { cookie } },
+      );
       expect(await complete.json()).toEqual({ status: 'succeeded' });
 
       const second = await fetch(`${server.origin}/api/admin/pool/oauth`, {
-        method: 'POST', headers, body: JSON.stringify({ provider: 'claude' }),
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ provider: 'claude' }),
       });
       expect((await second.json()).state).toBe('claude-state');
       const cancelled = await fetch(`${server.origin}/api/admin/pool/oauth?state=claude-state`, {
-        method: 'DELETE', headers: { cookie },
+        method: 'DELETE',
+        headers: { cookie },
       });
       expect(await cancelled.json()).toEqual({ status: 'cancelled' });
 
-      const callbackRequest = received.find((request) => request.url === '/v0/management/oauth-callback');
+      const callbackRequest = received.find(
+        (request) => request.url === '/v0/management/oauth-callback',
+      );
       expect(callbackRequest?.authorization).toBe('Bearer management-test-secret');
-      expect(JSON.parse(callbackRequest?.body ?? '{}')).toEqual({ provider: 'codex', redirect_url: callbackUrl });
-      expect(received.filter((request) => request.url.includes('auth-url')).every((request) =>
-        request.authorization === 'Bearer management-test-secret',
-      )).toBe(true);
+      expect(JSON.parse(callbackRequest?.body ?? '{}')).toEqual({
+        provider: 'codex',
+        redirect_url: callbackUrl,
+      });
+      expect(
+        received
+          .filter((request) => request.url.includes('auth-url'))
+          .every((request) => request.authorization === 'Bearer management-test-secret'),
+      ).toBe(true);
 
       const audit = await fetch(`${server.origin}/api/admin/pool/audit`, { headers: { cookie } });
       const auditText = await audit.text();
@@ -240,13 +286,191 @@ describe('provider login through the admin console', () => {
       const response = await fetch(`${server.origin}/api/admin/pool/oauth/callback`, {
         method: 'POST',
         headers: { cookie, 'content-type': 'application/json' },
-        body: JSON.stringify({ provider: 'codex', redirectUrl: 'https://attacker.example/callback?code=secret&state=x' }),
+        body: JSON.stringify({
+          provider: 'codex',
+          redirectUrl: 'https://attacker.example/callback?code=secret&state=x',
+        }),
       });
       expect(response.status).toBe(400);
       expect((await response.json()).error.code).toBe('INVALID_CALLBACK');
     } finally {
       await server.stop();
-      await new Promise<void>((resolve, reject) => proxy.close((error) => error ? reject(error) : resolve()));
+      await new Promise<void>((resolve, reject) =>
+        proxy.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  });
+});
+
+describe('shared Credential actions', () => {
+  test('enables, disables, refreshes and deletes a credential and audits each attempt safely', async () => {
+    const requests: { method: string; url: string; body: string }[] = [];
+    const proxy = createServer(async (request, response) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) chunks.push(Buffer.from(chunk));
+      const body = Buffer.concat(chunks).toString();
+      requests.push({ method: request.method ?? '', url: request.url ?? '', body });
+      response.setHeader('content-type', 'application/json');
+      if (request.method === 'GET' && request.url === '/v0/management/auth-files') {
+        response.end(
+          JSON.stringify({
+            files: [
+              {
+                auth_index: 'credential-1',
+                name: 'codex-ada.json',
+                provider: 'codex',
+                email: 'ada@company.example',
+                status: 'active',
+                disabled: false,
+              },
+            ],
+          }),
+        );
+      } else if (request.method === 'PATCH' && request.url === '/v0/management/auth-files/status') {
+        response.end('{"status":"ok"}');
+      } else if (request.method === 'POST' && request.url === '/v0/management/auth-files/refresh') {
+        response.end('{"status":"ok"}');
+      } else if (
+        request.method === 'DELETE' &&
+        request.url === '/v0/management/auth-files' &&
+        JSON.parse(body).name === 'codex-ada.json'
+      ) {
+        response.end('{"status":"ok"}');
+      } else {
+        response.writeHead(404).end('{}');
+      }
+    });
+    await new Promise<void>((resolve) => proxy.listen(0, '127.0.0.1', resolve));
+    const address = proxy.address();
+    if (!address || typeof address === 'string') throw new Error('fake proxy did not bind');
+    const server = await listening(ADA, {
+      url: `http://127.0.0.1:${address.port}`,
+      managementKey: 'management-test-secret',
+    });
+
+    try {
+      const cookie = await consoleSession(server.origin);
+      await grantAdmin(server.auth, ADA.email);
+      const headers = { cookie, 'content-type': 'application/json' };
+      const disable = await fetch(
+        `${server.origin}/api/admin/pool/credentials/credential-1/status`,
+        {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({ disabled: true }),
+        },
+      );
+      expect(await disable.json()).toEqual({ status: 'succeeded' });
+      const enable = await fetch(
+        `${server.origin}/api/admin/pool/credentials/credential-1/status`,
+        {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({ disabled: false }),
+        },
+      );
+      expect(await enable.json()).toEqual({ status: 'succeeded' });
+      const refresh = await fetch(
+        `${server.origin}/api/admin/pool/credentials/credential-1/refresh`,
+        { method: 'POST', headers },
+      );
+      expect(await refresh.json()).toEqual({ status: 'succeeded' });
+      const deleted = await fetch(`${server.origin}/api/admin/pool/credentials/credential-1`, {
+        method: 'DELETE',
+        headers,
+      });
+      expect(await deleted.json()).toEqual({ status: 'succeeded' });
+
+      expect(
+        requests.filter((request) => request.method !== 'GET').map((request) => request.method),
+      ).toEqual(['PATCH', 'PATCH', 'POST', 'DELETE']);
+      expect(
+        JSON.parse(
+          requests.find(
+            (request) => request.method === 'PATCH' && JSON.parse(request.body).disabled === false,
+          )?.body ?? '{}',
+        ),
+      ).toMatchObject({ disabled: false, auth_index: 'credential-1' });
+      expect(
+        JSON.parse(requests.find((request) => request.method === 'POST')?.body ?? '{}'),
+      ).toMatchObject({ auth_index: 'credential-1' });
+
+      const audit = await fetch(`${server.origin}/api/admin/pool/audit`, { headers: { cookie } });
+      const events = (await audit.json()).events;
+      expect(events).toHaveLength(4);
+      expect(events.map((event: { action: string }) => event.action).sort()).toEqual([
+        'delete',
+        'disable',
+        'enable',
+        'refresh',
+      ]);
+      expect(
+        events.every(
+          (event: { outcome: string; credentialLabel: string; provider: string }) =>
+            event.outcome === 'succeeded' &&
+            event.credentialLabel === 'ada@company.example' &&
+            event.provider === 'codex',
+        ),
+      ).toBe(true);
+      expect(JSON.stringify(events)).not.toContain('management-test-secret');
+    } finally {
+      await server.stop();
+      await new Promise<void>((resolve, reject) =>
+        proxy.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  });
+
+  test('does not log sensitive upstream response content after a failed mutation', async () => {
+    const proxy = createServer(async (request, response) => {
+      if (request.url === '/v0/management/auth-files') {
+        response.writeHead(200, { 'content-type': 'application/json' }).end(
+          JSON.stringify({
+            files: [
+              {
+                auth_index: 'credential-1',
+                name: 'codex-ada.json',
+                provider: 'codex',
+                email: 'ada@company.example',
+              },
+            ],
+          }),
+        );
+      } else {
+        response
+          .writeHead(500, { 'content-type': 'application/json' })
+          .end('{"error":"token=super-secret"}');
+      }
+    });
+    await new Promise<void>((resolve) => proxy.listen(0, '127.0.0.1', resolve));
+    const address = proxy.address();
+    if (!address || typeof address === 'string') throw new Error('fake proxy did not bind');
+    const server = await listening(ADA, {
+      url: `http://127.0.0.1:${address.port}`,
+      managementKey: 'management-test-secret',
+    });
+    try {
+      const cookie = await consoleSession(server.origin);
+      await grantAdmin(server.auth, ADA.email);
+      const response = await fetch(
+        `${server.origin}/api/admin/pool/credentials/credential-1/refresh`,
+        {
+          method: 'POST',
+          headers: { cookie },
+        },
+      );
+      expect(await response.json()).toEqual({ status: 'unavailable' });
+      const audit = await fetch(`${server.origin}/api/admin/pool/audit`, { headers: { cookie } });
+      const text = await audit.text();
+      expect(text).toContain('refresh');
+      expect(text).toContain('failed');
+      expect(text).not.toContain('super-secret');
+      expect(text).not.toContain('management-test-secret');
+    } finally {
+      await server.stop();
+      await new Promise<void>((resolve, reject) =>
+        proxy.close((error) => (error ? reject(error) : resolve())),
+      );
     }
   });
 });
