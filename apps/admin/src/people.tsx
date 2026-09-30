@@ -14,6 +14,7 @@ import { type Who, signOut } from './api/auth';
 import type { ListedUser } from './api/users';
 import AllowanceCell from './allowanceCell';
 import EditAllowance from './editAllowance';
+import Pool from './pool';
 
 const styles = stylex.create({
   page: {
@@ -113,6 +114,7 @@ export default function People({
 }) {
   const [readings, setReadings] = useState(read);
   const [editing, setEditing] = useState<ListedUser | null>(null);
+  const isPoolPage = new URLSearchParams(window.location.search).get('page') === 'pool';
 
   const open = editing === null ? undefined : readings[editing.id];
 
@@ -139,11 +141,12 @@ export default function People({
             />
           }
         >
-          <SideNavItem label="People" isSelected />
+          <SideNavItem label="People" href="/admin/" isSelected={!isPoolPage} />
+          <SideNavItem label="Pool" href="/admin/?page=pool" isSelected={isPoolPage} />
         </SideNav>
       }
     >
-      <div {...stylex.props(styles.page)}>
+      {isPoolPage ? <Pool users={users} readings={readings} /> : <div {...stylex.props(styles.page)}>
         <header {...stylex.props(styles.pageHeader)}>
           <Heading level={1}>People</Heading>
           <Text color="secondary">
@@ -165,7 +168,7 @@ export default function People({
             }
           />
         </div>
-      </div>
+      </div>}
       {editing === null || open === undefined || !open.ok ? null : (
         <EditAllowance
           person={editing}

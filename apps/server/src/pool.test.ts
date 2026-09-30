@@ -39,6 +39,39 @@ function chat(key: string, body: Record<string, unknown> = {}): RequestInit {
 }
 
 describe('a chat through Kira', () => {
+  test('readiness requires the database and a healthy pool with at least one model', async () => {
+    const pool = await startFakePool();
+    const { app } = await boot({}, { url: pool.url, key: 'pool-key' });
+
+    const response = await send(app, '/ready');
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ status: 'ready' });
+    expect(pool.requests.map((request) => request.path)).toEqual(['/healthz', '/v1/models']);
+    await pool.stop();
+  });
+
+  test('readiness is false when the pool process cannot be reached', async () => {
+    const { app } = await boot({}, { url: 'http://127.0.0.1:9', key: 'pool-key' });
+
+    const response = await send(app, '/ready');
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ status: 'not_ready' });
+    expect((await send(app, '/health')).status).toBe(200);
+  });
+
+  test('readiness is false when the live proxy has no available models', async () => {
+    const pool = await startFakePool({ catalog: [] });
+    const { app } = await boot({}, { url: pool.url, key: 'pool-key' });
+
+    const response = await send(app, '/ready');
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ status: 'not_ready' });
+    await pool.stop();
+  });
+
   test('a chat with a Kira key reaches the pool and streams back', async () => {
     const pool = await startFakeUpstream();
     const { app, auth } = await boot({}, { url: pool.url, key: 'pool-key' });
@@ -103,6 +136,10 @@ describe('a chat through Kira', () => {
 
     expect(response.status).toBe(502);
     expect((await response.json()).error.code).toBe('POOL_UNREACHABLE');
+
+    const subsequent = await send(app, '/v1/chat/completions', chat(key.key));
+    expect(subsequent.status).toBe(503);
+    expect(subsequent.headers.get('retry-after')).toBe('10');
   });
 });
 

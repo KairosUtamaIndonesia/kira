@@ -3,7 +3,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import type { GlossaryEntry, Ticket, TicketQueue } from '../../../preload/bridge.ts';
+import type { GlossaryEntry, Ticket, TicketQueue, TicketStatus } from '../../../preload/bridge.ts';
 import { ThreadStore } from '../../db/threads.ts';
 import { createThread } from '../storage.ts';
 import {
@@ -15,7 +15,7 @@ import {
   trackerTools,
 } from './trackerTool.ts';
 
-const ticket = (gate: Ticket['gate']): Ticket => ({
+const ticket = (status: TicketStatus): Ticket => ({
   id: 'ticket-1',
   projectId: 'project-1',
   name: 'FND-1',
@@ -24,22 +24,23 @@ const ticket = (gate: Ticket['gate']): Ticket => ({
   title: 'A ticket',
   body: 'A draft',
   criteria: ['It is testable'],
-  gate,
-  band: gate === 'draft' ? 'draft' : 'ready',
+  status,
+  blocked: false,
   rank: 0,
-  branch: 'fnd-1-a-ticket',
+  priority: 'none',
+  assignee: null,
+  tags: [],
   author: null,
   gates: [],
   children: [],
+  parent: null,
+  subIssues: [],
+  relationships: [],
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
-  closedAt: null,
-  closure: null,
-  claim: null,
-  runs: [],
 });
 
-test('tracker tools expose reads and draft-only writes without publication controls', async () => {
+test('tracker tools expose ticket operations and person-owned publication controls', async () => {
   const path = join(mkdtempSync(join(tmpdir(), 'kira-tracker-tool-store-')), 'threads.db');
   const store = new ThreadStore(path);
   const workspace = store.rememberWorkspace(
@@ -48,7 +49,10 @@ test('tracker tools expose reads and draft-only writes without publication contr
   const current = ticket('draft');
   // Use a real thread record so workspace resolution is exercised at the same
   // boundary as an actual session.
-  const threadRecord = createThread(store, workspace.folder, { workspaceId: workspace.id });
+  const threadRecord = createThread(store, workspace.folder, {
+    workspaceId: workspace.id,
+    workTicketIds: [current.id],
+  });
   const glossary: GlossaryEntry = {
     id: 'term-1',
     projectId: workspace.id,
@@ -78,6 +82,7 @@ test('tracker tools expose reads and draft-only writes without publication contr
       calls.push(`update:${workspaceId}:${edit.term}:${edit.chatId}`);
       return { ...glossary, term: edit.term, version: 2 };
     },
+    currentUserId: async () => 'ada',
     write: async () => current,
     change: async (_id: string, change: { body?: string }) => ({
       ...current,
@@ -93,10 +98,12 @@ test('tracker tools expose reads and draft-only writes without publication contr
     'tracker_read_glossary',
     'tracker_read_decisions',
     'tracker_update_glossary',
-    'tracker_write_draft',
-    'tracker_edit_draft',
+    'tracker_create_ticket',
+    'tracker_update_ticket',
+    'tracker_add_blocker',
+    'tracker_remove_blocker',
   ]);
-  assert.ok(!names.some((name) => /publish|ready|approve/i.test(name)));
+  assert.ok(!names.some((name) => /delete|publish|approve/i.test(name)));
 
   const result = await tools[0]!.execute('call-1', {}, undefined, undefined, {} as never);
   assert.deepEqual(result.content, [
@@ -131,7 +138,7 @@ test('tracker tools expose reads and draft-only writes without publication contr
   store.close();
 });
 
-test('Kira cannot create a ticket through the draft-writing tool', async () => {
+test('creating a ticket links it to this chat and exposes no delete tool', async () => {
   const store = new ThreadStore(
     join(mkdtempSync(join(tmpdir(), 'kira-tracker-tool-store-')), 'threads.db'),
   );
@@ -140,27 +147,40 @@ test('Kira cannot create a ticket through the draft-writing tool', async () => {
   );
   const thread = createThread(store, workspace.folder, { workspaceId: workspace.id });
   let writes = 0;
+  const made = { ...ticket('draft'), id: 'created-ticket' };
+  let written: unknown;
   const tools = trackerTools(store, thread.threadId, {
     queue: async () => ({}) as TicketQueue,
     readTicket: async () => ticket('draft'),
-    write: async () => {
+    currentUserId: async () => 'ada',
+    write: async (_workspaceId: string, draft: unknown) => {
       writes += 1;
-      return ticket('draft');
+      written = draft;
+      return made;
     },
     change: async () => ticket('draft'),
   } as never);
 
-  await assert.rejects(
-    tools[5]!.execute(
-      'call-create',
-      { kind: 'spec', title: 'A spec', body: 'Build it', criteria: ['It works'] },
-      undefined,
-      undefined,
-      {} as never,
-    ),
-    { message: 'Kira cannot create tracker tickets; a person must create them.' },
+  const answer = await tools[5]!.execute(
+    'call-create',
+    { kind: 'spec', title: 'A spec', body: 'Build it', criteria: ['It works'] },
+    undefined,
+    undefined,
+    {} as never,
   );
-  assert.equal(writes, 0);
+  const first = answer.content[0];
+  assert.ok(first?.type === 'text');
+  assert.deepEqual(JSON.parse(first.text), made);
+  assert.equal(writes, 1);
+  assert.deepEqual(written, {
+    kind: 'spec',
+    title: 'A spec',
+    body: 'Build it',
+    criteria: ['It works'],
+    status: 'draft',
+  });
+  assert.deepEqual(store.getThread(thread.threadId).workTicketIds, [made.id]);
+  assert.ok(!tools.some((tool) => tool.name.includes('delete')));
   store.close();
 });
 
@@ -322,7 +342,7 @@ test('breakdown proposals reject invalid kinds and dependencies before a card is
   }
 });
 
-test('editing a non-draft ticket is refused before the change seam is called', async () => {
+test('ticket updates and blocker edits require a chat link', async () => {
   const store = new ThreadStore(
     join(mkdtempSync(join(tmpdir(), 'kira-tracker-tool-store-')), 'threads.db'),
   );
@@ -331,16 +351,26 @@ test('editing a non-draft ticket is refused before the change seam is called', a
   );
   const thread = createThread(store, workspace.folder, { workspaceId: workspace.id });
   const calls: string[] = [];
-  const current = ticket('ready-for-agent');
+  const current = ticket('ready');
+  let writes = 0;
   const tools = trackerTools(store, thread.threadId, {
     queue: async () => ({}) as TicketQueue,
     readTicket: async () => {
       calls.push('read');
       return current;
     },
+    currentUserId: async () => 'ada',
     write: async () => current,
     change: async () => {
-      calls.push('change');
+      writes += 1;
+      return current;
+    },
+    gate: async () => {
+      writes += 1;
+      return current;
+    },
+    ungate: async () => {
+      writes += 1;
       return current;
     },
   } as never);
@@ -353,8 +383,72 @@ test('editing a non-draft ticket is refused before the change seam is called', a
       undefined,
       {} as never,
     ),
-    { message: 'Kira can only edit draft tickets.' },
+    { message: 'This chat can only change tickets linked to it.' },
   );
-  assert.deepEqual(calls, ['read']);
+  for (const [index, params] of [
+    [7, { ref: current.name, blockedBy: 'FND-2' }],
+    [8, { ref: current.name, blockedBy: 'FND-2' }],
+  ] as const) {
+    await assert.rejects(
+      tools[index]!.execute('call-blocker', params, undefined, undefined, {} as never),
+      { message: 'This chat can only change tickets linked to it.' },
+    );
+  }
+  assert.deepEqual(calls, ['read', 'read', 'read']);
+  assert.equal(writes, 0);
   store.close();
+});
+
+test('linked-ticket status updates allow only Running and Needs review', async () => {
+  const cases = [
+    { status: 'running', allowed: true, change: { status: 'running', assigneeId: 'ada' } },
+    { status: 'needs-review', allowed: true, change: { status: 'needs-review' } },
+    { status: 'draft', allowed: false },
+    { status: 'ready', allowed: false },
+    { status: 'done', allowed: false },
+    { status: 'wont-do', allowed: false },
+    { status: 'blocked', allowed: false },
+  ] as const;
+
+  for (const item of cases) {
+    const store = new ThreadStore(
+      join(mkdtempSync(join(tmpdir(), 'kira-tracker-tool-store-')), 'threads.db'),
+    );
+    const workspace = store.rememberWorkspace(
+      mkdtempSync(join(tmpdir(), 'kira-tracker-tool-space-')),
+    );
+    const current = ticket('ready');
+    const thread = createThread(store, workspace.folder, {
+      workspaceId: workspace.id,
+      workTicketIds: [current.id],
+    });
+    const changes: unknown[] = [];
+    const tools = trackerTools(store, thread.threadId, {
+      queue: async () => ({}) as TicketQueue,
+      readTicket: async () => current,
+      currentUserId: async () => 'ada',
+      change: async (_id: string, change: unknown) => {
+        changes.push(change);
+        return current;
+      },
+    } as never);
+
+    const call = () =>
+      tools[6]!.execute(
+        'call-status',
+        { ref: current.name, status: item.status },
+        undefined,
+        undefined,
+        {} as never,
+      );
+
+    if (item.allowed) {
+      await call();
+      assert.deepEqual(changes, [item.change], item.status);
+    } else {
+      await assert.rejects(call, { message: 'The agent can set only Running or Needs review.' });
+      assert.deepEqual(changes, [], item.status);
+    }
+    store.close();
+  }
 });

@@ -253,7 +253,6 @@ export async function startConversation(
     id?: string;
     workspaceId?: string;
     modelId?: string;
-    ticketId?: string;
     workTicketIds?: string[];
     mode?: ChatMode;
   } = {},
@@ -698,7 +697,6 @@ export function listChats(store: ThreadStore): ChatSummary[] {
     createdAt: thread.createdAt,
     updatedAt: thread.updatedAt,
     workspaceId: thread.workspaceId,
-    ticketId: thread.ticketId,
     workTicketIds: thread.workTicketIds,
   }));
 }

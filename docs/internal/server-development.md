@@ -242,10 +242,12 @@ it report a cache read, which is how to watch that number survive the proxy. Del
 
 ## What this is not
 
-The dev config binds loopback and leaves the management API off, because the management key
-can read and rewrite every credential in `auth-dir`. Production is the same proxy with real
-paths, a real service account, and its own decisions to make — the research note records what
-those are.
+The dev config binds loopback. `scripts/dev-cliproxyapi.ts` passes the fixed development
+management key through `MANAGEMENT_PASSWORD`; the server uses the same default, so the admin
+console can inspect and manage local Credentials without writing this secret into the proxy
+config. The management API can read and rewrite every credential in `auth-dir`, so do not
+change the proxy bind address or expose its port. Production uses a separate secret and private
+network; see the deployment research and ADR 0025.
 
 ## See also
 

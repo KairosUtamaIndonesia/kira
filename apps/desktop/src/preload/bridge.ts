@@ -324,14 +324,7 @@ export interface ChatConclusion {
 export interface ChatSummary {
   id: string;
   title: string;
-  /**
-   * The ticket this chat is a run of, or null when it is an ordinary chat.
-   *
-   * A run is drawn as a chat, because that is what it is — one row, steerable while it
-   * goes and still there to read afterwards (GH #68).
-   */
-  ticketId: string | null;
-  /** Tickets explicitly attached as context to this chat; not ticket runs. */
+  /** Tickets linked to this chat; the agent may update only these tickets. */
   workTicketIds: string[];
   /** When the chat was created. */
   createdAt: string;
@@ -595,6 +588,7 @@ export const CHAT_CHANNELS = {
   archive: 'chat:archive',
   restore: 'chat:restore',
   delete: 'chat:delete',
+  file: 'chat:file',
   branch: 'chat:branch',
   edit: 'chat:edit',
   fork: 'chat:fork',
@@ -622,55 +616,9 @@ export const WORKSPACE_CHANNELS = {
  * The tracker channels: the work a project holds, as the Work surface reads and
  * writes it.
  *
- * A ticket's band is the server's to derive and never the window's, so the queue
- * arrives banded and the surface groups what it was handed. Writes are one act
- * each — write a ticket down, change what a ticket says, name a gate, take a gate
- * off — because each is a different thing to be refused, and a refusal is the
- * server's own words rather than something the window invents.
+ * The queue carries the stored ticket statuses; blockers add a separate marker.
+ * Each write is checked at this seam before it is sent to the server.
  */
-/**
- * A run of a ticket, as the server records one (docs/adr/0011).
- *
- * The contract is the acceptance criteria *as they were when the run started*, copied
- * rather than read through the ticket: what a run was asked to do cannot be rewritten
- * under its own evidence by editing the ticket afterwards.
- */
-export interface TicketRun {
-  id: string;
-  ticketId: string;
-  /** The desktop that ran it, or null when somebody ran it by hand. */
-  workerId: string | null;
-  startedAt: string;
-  endedAt: string | null;
-  /** The branch the run actually made, which is what the ticket then answers with. */
-  branch: string | null;
-  /** Why a run stopped needing a person, when it did rather than proposing. */
-  stoppedBecause: string | null;
-  changed: string | null;
-  checks: string[] | null;
-  made: string | null;
-  verdict: 'accepted' | 'sent-back' | null;
-}
-
-/** Who a line in a run's transcript came from. */
-export const SAID_BY = ['person', 'agent', 'note'] as const;
-
-/** The person steering it, the agent doing the work, or a note Kira itself adds. */
-export type SaidBy = (typeof SAID_BY)[number];
-
-/**
- * One thing said while a run went on.
- *
- * Written once and never changed: the transcript is the record of what happened, and a
- * record somebody can edit afterwards is not one (GH #74).
- */
-export interface TicketSaid {
-  id: string;
-  saidBy: SaidBy;
-  words: string;
-  at: string;
-}
-
 export const TRACKER_CHANNELS = {
   queue: 'tracker:queue',
   questionChat: 'tracker:question-chat',
@@ -679,76 +627,7 @@ export const TRACKER_CHANNELS = {
   gate: 'tracker:gate',
   ungate: 'tracker:ungate',
   undoGlossary: 'tracker:glossary:undo',
-  executionWorkspaces: 'tracker:execution-workspaces',
-  createExecutionWorkspace: 'tracker:execution-workspace:create',
-  removeExecutionWorkspace: 'tracker:execution-workspace:remove',
-  readExecutionReview: 'tracker:execution-review:read',
-  addReviewComment: 'tracker:execution-review:comment:add',
-  updateReviewComment: 'tracker:execution-review:comment:update',
-  sendReviewFeedback: 'tracker:execution-review:feedback:send',
 } as const;
-
-/**
- * The channel the window reads this desktop's own offering through.
- *
- * One channel, because there is one thing to ask: what this desktop is as a worker.
- * It is not a tracker channel: the tracker is about a project's work, and this is
- * about the machine the window is running on.
- */
-export const WORKER_CHANNELS = {
-  standing: 'worker:standing',
-} as const;
-
-export const DELIVERY_CHANNELS = {
-  deliver: 'delivery:execution-workspace',
-} as const;
-
-export const EXECUTION_CHANNELS = {
-  command: 'execution:command',
-  devServerStart: 'execution:dev-server:start',
-  devServerRead: 'execution:dev-server:read',
-  devServerStop: 'execution:dev-server:stop',
-  process: 'execution:process',
-  terminalStart: 'execution:terminal:start',
-  terminalRead: 'execution:terminal:read',
-  terminalWrite: 'execution:terminal:write',
-  terminalResize: 'execution:terminal:resize',
-  terminalStop: 'execution:terminal:stop',
-  terminalEvent: 'execution:terminal:event',
-} as const;
-
-/**
- * The channels pressing Run goes through.
- *
- * One channel, because there is one act: starting a run. What becomes of it afterwards
- * — a proposal, or a stop with a reason — happens in the main process, where the chat
- * that did the work is, and the window reads the result off the queue like any other
- * change (GH #74).
- */
-export const RUN_CHANNELS = {
-  start: 'run:start',
-  resolve: 'run:resolve',
-  transcript: 'run:transcript',
-  judge: 'run:judge',
-  takeover: 'run:takeover',
-  release: 'run:release',
-  diff: 'run:diff',
-} as const;
-
-/**
- * This desktop, as the worker it offers itself as (docs/adr/0012).
- *
- * `here` is whether the server has heard from it recently, and `trouble` is what
- * went wrong the last time it tried — which is kept rather than thrown away, because
- * a desktop whose heartbeat is failing is the one thing a person watching a queue
- * needs to know and the one thing a silent failure would hide.
- */
-export interface WorkerStanding {
-  /** What this desktop calls itself: the machine it is running on. */
-  name: string;
-  here: boolean;
-  trouble: string | null;
-}
 
 /**
  * A project, as the server holds one: a name and the prefix its tickets are named
@@ -831,53 +710,35 @@ export const TICKET_KINDS = [
   'spec',
   'map',
 ] as const;
-export const TICKET_GATES = ['draft', 'ready-for-agent', 'ready-for-human'] as const;
-export const TICKET_CLOSURES = ['done', 'wontfix'] as const;
-/**
- * The bands a ticket can be in, all six of them, derived by the server.
- *
- * `running` and `needs-you` are here because a claim and a run made them possible: a band
- * the window does not know is a band it refuses, and the wire narrows against this list —
- * so a build without them answers 'a ticket this build does not understand' to a ticket
- * somebody is working right now.
- */
-export const TICKET_BANDS = ['draft', 'ready', 'blocked', 'running', 'needs-you', 'done'] as const;
+export const TICKET_STATUSES = [
+  'draft',
+  'ready',
+  'running',
+  'needs-review',
+  'done',
+  'wont-do',
+] as const;
+export const TICKET_PRIORITIES = ['urgent', 'high', 'medium', 'low', 'none'] as const;
 
 /** What a ticket delivers, fixed when it is written. */
 export type TicketKind = (typeof TICKET_KINDS)[number];
 
-/** Where a ticket stands with whoever might resolve it. */
-export type Gate = (typeof TICKET_GATES)[number];
+/** One stored ticket status. Blocked is a separate marker derived from its blockers. */
+export type TicketStatus = (typeof TICKET_STATUSES)[number];
+export type TicketPriority = (typeof TICKET_PRIORITIES)[number];
 
-/** Why a ticket was closed. */
-export type Closure = (typeof TICKET_CLOSURES)[number];
-
-/**
- * The band a ticket is in, derived by the server from its closure, its gate and
- * whether its children are closed. Nobody sets one, and no window derives one.
- * `Running` and `Needs you` are deliberately absent: nothing can be in them until
- * a claim and a run record exist to put something there.
- */
-export type Band = (typeof TICKET_BANDS)[number];
-
-/** A ticket at one end of a gate: enough to draw it, and whether it is closed. */
+/** A ticket at one end of a blocker or parent link. */
 export interface NamedTicket {
   id: string;
   name: string;
-  closed: boolean;
-  closure: Closure | null;
+  status: TicketStatus;
 }
 
 /**
  * One ticket, as the window reads it.
  *
- * `gates` are the tickets that name this one — what it holds up — and `children`
- * are the tickets this one names, which is what holds it out of the frontier.
- * One relation, read from either end; there is no parent field (ADR 0017).
- *
- * `branch` is derived from the ticket's name and title, so it is what a branch
- * for this ticket *would* be called: nothing here claims one exists, and a retitle
- * changes it.
+ * `children` are the blockers this ticket names; `gates` are tickets that name it.
+ * Parent and sub-issue links are separate planning relationships.
  */
 export interface Ticket {
   id: string;
@@ -888,121 +749,28 @@ export interface Ticket {
   title: string;
   body: string;
   criteria: string[];
-  gate: Gate;
-  band: Band;
+  status: TicketStatus;
+  blocked: boolean;
   rank: number;
-  branch: string;
+  priority: TicketPriority;
+  assignee: { id: string; name: string } | null;
+  tags: string[];
   author: { id: string; name: string } | null;
   gates: NamedTicket[];
   children: NamedTicket[];
+  parent: NamedTicket | null;
+  subIssues: NamedTicket[];
+  relationships: { type: string; ticket: NamedTicket }[];
   createdAt: string;
   updatedAt: string;
-  closedAt: string | null;
-  closure: Closure | null;
   /** The ordinary shaping chat that proposed this spec, when it has one. */
   sourceChatId?: string | null;
   /** The approved answer and sources, when this question or research is closed. */
   outcome?: Outcome | null;
   /** Closed child Outcomes accumulated by a map, in child order. */
   decisionsSoFar?: Outcome[];
-  /** Whoever is working it, or null when nobody is. */
-  claim: TicketClaim | null;
-  /** What runs of it have done, newest first. */
-  runs: TicketRun[];
-  workspaces?: ExecutionWorkspace[];
 }
 
-export interface ExecutionWorkspace {
-  id: string;
-  ticketId: string;
-  repository: string;
-  baseBranch: string;
-  branch: string;
-  /** 'default' follows Kira's preferred model; otherwise this is a served model id. */
-  agentConfig: string;
-  createdAt: string;
-}
-
-export interface ReviewComment {
-  id: string;
-  workspaceId: string;
-  runId: string | null;
-  path: string;
-  line: number;
-  side: string;
-  body: string;
-  status: 'open' | 'addressed';
-  author: { id: string; name: string } | null;
-  createdAt: string;
-  addressedAt: string | null;
-}
-
-export interface ReviewFeedback {
-  id: string;
-  workspaceId: string;
-  runId: string | null;
-  body: string;
-  author: { id: string; name: string } | null;
-  createdAt: string;
-}
-
-export interface ExecutionReview {
-  comments: ReviewComment[];
-  feedback: ReviewFeedback[];
-}
-
-export type DeliveryPath = 'pull-request' | 'merge-pull-request' | 'local-merge';
-export type DeliveryOutcome = 'delivered' | 'refused';
-
-export interface DeliveryAudit {
-  workspaceId: string;
-  path: DeliveryPath;
-  outcome: DeliveryOutcome;
-  reference: string | null;
-  url?: string;
-  details?: string;
-}
-
-export interface ExecutionCommandResult {
-  command: string;
-  output: string;
-  exitCode: number;
-}
-
-export interface ExecutionProcessSnapshot {
-  running: boolean;
-  output: string;
-  previewUrl: string | null;
-  exitCode: number | null;
-}
-
-export interface ExecutionProcessEvent extends ExecutionProcessSnapshot {
-  workspaceId: string;
-}
-
-export interface ExecutionTerminalSnapshot {
-  running: boolean;
-  output: string;
-  exitCode: number | null;
-  sequence: number;
-}
-
-export interface ExecutionTerminalEvent {
-  workspaceId: string;
-  data: string;
-  running: boolean;
-  exitCode: number | null;
-  sequence: number;
-}
-
-/**
- * Who is working a ticket, and whether they still are.
- *
- * A claim's whole story for somebody reading a queue: who has it, how long they have had
- * it, and whether the machine holding it has stopped answering. `stale` is the server's
- * word rather than the window's arithmetic — a claim made by hand has no lease and never
- * goes stale, and no clock in a window can tell a quiet desktop from a busy one.
- */
 export interface Outcome {
   id: string;
   ticketId: string;
@@ -1014,21 +782,11 @@ export interface Outcome {
   createdAt: string;
 }
 
-export interface TicketClaim {
-  holder: { id: string; name: string };
-  workerId: string | null;
-  startedAt: string;
-  heardAt: string | null;
-  leaseUntil: string | null;
-  stale: boolean;
-  quietMs: number | null;
-}
-
-/** One project's queue: every ticket, drafts included, and the count per band. */
+/** One project's queue: every ticket, including Draft and Won’t do. */
 export interface TicketQueue {
   project: ProjectSummary;
   tickets: Ticket[];
-  counts: Record<Band, number>;
+  counts: Record<TicketStatus, number>;
 }
 
 /** What writing a ticket down asks for. */
@@ -1037,6 +795,9 @@ export interface TicketDraft {
   title: string;
   body: string;
   criteria: string[];
+  status?: TicketStatus;
+  priority?: TicketPriority;
+  tags?: string[];
   /** The ordinary chat that shaped this ticket, never supplied by Kira's tools. */
   sourceChatId?: string;
 }
@@ -1046,9 +807,11 @@ export interface TicketChange {
   title?: string;
   body?: string;
   criteria?: string[];
-  gate?: Gate;
+  status?: TicketStatus;
+  priority?: TicketPriority;
+  assigneeId?: string | null;
+  tags?: string[];
   rank?: number;
-  closure?: Closure;
 }
 
 /**
@@ -1438,6 +1201,12 @@ export interface KiraBridge {
    * and so is any chat forked from it.
    */
   deleteChat(id: string): Promise<Result<null>>;
+  /**
+   * File a chat under a workspace, so it works in that workspace's folder from then on.
+   * Its words come with it. A chat Kira is writing in is refused, and a refusal leaves
+   * the chat exactly as it was.
+   */
+  fileChat(id: string, workspaceId: string): Promise<Result<null>>;
   /** Show the branch ending at `messageId`, and carry on from there. */
   switchBranch(messageId: string): Promise<Result<null>>;
   /**
@@ -1476,8 +1245,8 @@ export interface KiraBridge {
    */
   joinWorkspace(workspaceId: string, request: JoinRequest): Promise<Result<WorkspaceSummary>>;
   /**
-   * The queue of the project this workspace works: every ticket with the band the
-   * server derived for it, drafts included. Refused when the server cannot be
+   * The queue of the project this workspace works: every ticket with its stored
+   * status, including Draft and Won’t do. Refused when the server cannot be
    * reached, which is not the same as a project with no work in it.
    */
   loadQueue(workspaceId: string): Promise<Result<TicketQueue>>;
@@ -1490,86 +1259,9 @@ export interface KiraBridge {
     version: number,
     chatId: string,
   ): Promise<Result<GlossaryEntry>>;
-  listExecutionWorkspaces(ticketId: string): Promise<Result<ExecutionWorkspace[]>>;
-  createExecutionWorkspace(
-    ticketId: string,
-    draft: Omit<ExecutionWorkspace, 'id' | 'ticketId' | 'createdAt'>,
-  ): Promise<Result<ExecutionWorkspace>>;
-  removeExecutionWorkspace(ticketId: string, workspaceId: string): Promise<Result<null>>;
-  readExecutionReview(ticketId: string, workspaceId: string): Promise<Result<ExecutionReview>>;
-  addReviewComment(
-    ticketId: string,
-    workspaceId: string,
-    comment: { runId?: string | null; path: string; line: number; side: string; body: string },
-  ): Promise<Result<ReviewComment>>;
-  updateReviewComment(
-    ticketId: string,
-    workspaceId: string,
-    commentId: string,
-    status: ReviewComment['status'],
-  ): Promise<Result<ReviewComment>>;
-  sendReviewFeedback(
-    ticketId: string,
-    workspaceId: string,
-    feedback: { runId?: string | null; body: string },
-  ): Promise<Result<ReviewFeedback>>;
-  /** Merge an approved workspace locally or create its pull request. */
-  deliverExecutionWorkspace(
-    ticketId: string,
-    workspaceId: string,
-    path: DeliveryPath,
-  ): Promise<Result<DeliveryAudit>>;
-  /** Run a finite shell command in the selected execution workspace checkout. */
-  runExecutionCommand(
-    ticketId: string,
-    workspaceId: string,
-    command: string,
-  ): Promise<Result<ExecutionCommandResult>>;
-  startExecutionDevServer(
-    ticketId: string,
-    workspaceId: string,
-    command: string,
-  ): Promise<Result<ExecutionProcessSnapshot>>;
-  readExecutionDevServer(
-    ticketId: string,
-    workspaceId: string,
-  ): Promise<Result<ExecutionProcessSnapshot>>;
-  stopExecutionDevServer(
-    ticketId: string,
-    workspaceId: string,
-  ): Promise<Result<ExecutionProcessSnapshot>>;
-  onExecutionProcess(listener: (event: ExecutionProcessEvent) => void): () => void;
-  startExecutionTerminal(
-    ticketId: string,
-    workspaceId: string,
-  ): Promise<Result<ExecutionTerminalSnapshot>>;
-  readExecutionTerminal(
-    ticketId: string,
-    workspaceId: string,
-  ): Promise<Result<ExecutionTerminalSnapshot>>;
-  writeExecutionTerminal(
-    ticketId: string,
-    workspaceId: string,
-    data: string,
-  ): Promise<Result<null>>;
-  resizeExecutionTerminal(
-    ticketId: string,
-    workspaceId: string,
-    cols: number,
-    rows: number,
-  ): Promise<Result<null>>;
-  stopExecutionTerminal(
-    ticketId: string,
-    workspaceId: string,
-  ): Promise<Result<ExecutionTerminalSnapshot>>;
-  onExecutionTerminal(listener: (event: ExecutionTerminalEvent) => void): () => void;
-  /** Write a ticket down in the workspace's project, as a draft. */
+  /** Create a ticket in the workspace's project. */
   writeTicket(workspaceId: string, draft: TicketDraft): Promise<Result<Ticket>>;
-  /**
-   * Write what changed about a ticket: what it says, its gate, its rank, or that
-   * it is closed. A ticket an agent runs cannot be left without acceptance
-   * criteria, and the refusal says so in the server's own words.
-   */
+  /** Update a ticket's fields and stored status. */
   changeTicket(ticketId: string, change: TicketChange): Promise<Result<Ticket>>;
   /**
    * Name a ticket that gates this one. A circle, a self-gate and a ticket in
@@ -1578,52 +1270,6 @@ export interface KiraBridge {
   gateTicket(ticketId: string, gatedBy: string): Promise<Result<Ticket>>;
   /** Take a gate off a ticket. */
   ungateTicket(ticketId: string, gatedBy: string): Promise<Result<Ticket>>;
-  /**
-   * What this desktop is as a worker: whether the server is hearing from it, and
-   * what went wrong if not. Read rather than pushed, because the window asks when
-   * it draws and there is nothing here worth interrupting a person for.
-   */
-  worker(): Promise<Result<WorkerStanding>>;
-  /**
-   * Press Run: take the claim, start the run, and make the checkout it works in.
-   *
-   * A ticket that is not ready is refused in the server's own words, which is the only
-   * refusal a person needs to read — the window does not decide for itself whether a
-   * ticket can be picked up.
-   */
-  startRun(
-    workspaceId: string,
-    ticketId: string,
-    executionWorkspaceId?: string,
-    followUp?: string,
-  ): Promise<Result<TicketRun>>;
-  /** Start a same-ticket run to resolve a spec-branch merge conflict. */
-  resolveRun(workspaceId: string, ticketId: string, reason: string): Promise<Result<TicketRun>>;
-  /**
-   * What was said while a run went on, oldest first.
-   *
-   * Read on its own rather than carried on the ticket, because a queue read carries every
-   * ticket and would then carry every run's whole conversation.
-   */
-  readTranscript(ticketId: string, runId: string): Promise<Result<TicketSaid[]>>;
-  readExecutionDiff(ticketId: string, executionWorkspaceId: string): Promise<Result<string>>;
-  /**
-   * Take over a claim whose lease has run out, by hand.
-   *
-   * By hand, with no worker and no lease, because the machine that had it is not
-   * answering: this is a person saying they are working the ticket now, and a claim made
-   * this way never goes stale on its own.
-   */
-  takeOverClaim(ticketId: string): Promise<Result<Ticket>>;
-  /** Let a claim go — a run's or a hand-held one — so the ticket is free again. */
-  releaseClaim(ticketId: string): Promise<Result<unknown>>;
-  /** Accept a run's proposal, or send it back. */
-  judgeRun(
-    ticketId: string,
-    runId: string,
-    verdict: 'accepted' | 'sent-back',
-    workspaceId?: string,
-  ): Promise<Result<TicketRun>>;
   /**
    * What one folder of the chat's workspace holds, or null when that chat has
    * no workspace — a chat nothing has been said in yet has no folder to show,

@@ -108,7 +108,7 @@ Add changelog entries for user-facing, release-relevant changes under `## [Unrel
 
 ## Code conventions
 
-The desktop backend organises `apps/desktop/src/main/` by kind of code — `ipc/`, `db/`, `pi/` — with imports pointing one way, and the window splits what the chat _does_ (assistant-ui) from what it _looks like_ (Astryx). `docs/internal/desktop-conventions.md` is the rule. Read it before adding a file or folder there.
+The desktop backend organises `apps/desktop/src/main/` by kind of code — `ipc/`, `db/`, `pi/` — with imports pointing one way, and the window splits what the chat _does_ (assistant-ui) from what it _looks like_ (Astryx). `docs/internal/desktop-conventions.md` is the rule. Read it before adding a file or folder there, and before styling renderer UI — it says where a style goes (Astryx prop, StyleX beside the component, or `styles.css`).
 
 ## Frontend debugging
 
@@ -128,7 +128,7 @@ router when the right skill is not obvious: it maps a situation onto the flow
 | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Building a spec or ticket                        | `.agents/skills/implement/SKILL.md` — `/tdd` at the seams, then `/code-review`, then commit                                                         |
 | Writing or reviewing tests                       | Load `.agents/skills/writing-good-tests/SKILL.md` before writing or changing tests — table-driven cases, real dependencies, condition-based waiting |
-| Using GitButler for version control              | `.agents/skills/gitbutler/SKILL.md` — status, diffs, branches, commits, and other version-control operations                                       |
+| Using GitButler for version control              | `.agents/skills/gitbutler/SKILL.md` — status, diffs, branches, commits, and other version-control operations                                        |
 | Building a feature test-first                    | `.agents/skills/tdd/SKILL.md`                                                                                                                       |
 | Reviewing a branch or diff                       | `.agents/skills/code-review/SKILL.md`                                                                                                               |
 | Sharpening an idea before building it            | `.agents/skills/grill-with-docs/SKILL.md`                                                                                                           |

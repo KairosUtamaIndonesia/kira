@@ -11,7 +11,7 @@ Read the approved spec with `tracker_read_ticket`, the project's words with `tra
 
 ## 2. Slice
 
-Each slice cuts a narrow, complete path through the behavior, is verifiable on its own, and is small enough for one fresh run. Sequence wide mechanical changes as expand, migrate and contract, keeping every step green.
+Each slice cuts a narrow, complete path through the behavior, is verifiable on its own, and is small enough for one fresh chat. Sequence wide mechanical changes as expand, migrate and contract, keeping every step green.
 
 For each slice give:
 
@@ -28,6 +28,6 @@ Done when every spec story is covered by a slice, every slice has criteria, and 
 
 Call `shape_breakdown_proposal` with all the slices. The approval card appears on its own. End your turn and wait for the person. When they ask for changes, revise and propose again; the new proposal replaces the old one.
 
-If approval published the drafts but Kira refused readiness, do not propose the breakdown again. Read the drafts with `tracker_read_ticket`, correct each draft with `tracker_edit_draft`, then ask the person to use the renderer's Mark ready action to retry readiness on those already-published drafts.
+If readiness was refused, the approved tickets remain Draft. Tell the person which tickets need clearer completion criteria so they can edit them in Work and retry readiness from the breakdown card. Do not propose or publish the breakdown again.
 
-After approval the person starts work with Run what's ready. Each run is its own chat with its own brief.
+After approval, the person links the ticket or tickets they want worked in a chat's composer. Kira works those linked tickets in that chat with the skill named by each ticket's kind; there is no separate start action.

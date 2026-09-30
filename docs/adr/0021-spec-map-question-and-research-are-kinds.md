@@ -4,6 +4,8 @@ Date: 2026-09-23
 
 Amends ADR 0011 and ADR 0017.
 
+Amended by ADR 0024: a kind still says what a ticket owes, but "run" becomes a chat working the ticket.
+
 ## Context
 
 ADR 0017 keeps one object: a spec and a map are shapes of a ticket's body, and a child blocks

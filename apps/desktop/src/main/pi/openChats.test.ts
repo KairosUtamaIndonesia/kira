@@ -362,6 +362,119 @@ test('forgetting a workspace unfiles its chats, which keep working where they we
   fixture.store.close();
 });
 
+/**
+ * Filing a chat under a workspace repoints it: the folder it works in is the workspace's
+ * folder from then on, and its words come with it. A refusal leaves it exactly as it was.
+ * Kira writing in the chat refuses too, but that is read out of a live turn (see the top of
+ * this file).
+ */
+interface FileCase {
+  name: string;
+  /** Which chat to file, by its place in the fixture, and where to. */
+  chat: number;
+  workspace: 'remembered' | 'unknown';
+  /** Which chat is on screen first. */
+  showing: number;
+  /** How many times the chat is filed. */
+  times?: number;
+  wantError: string | null;
+  /** Whether the chat now works in the workspace's folder, filed under it. */
+  wantFiled: boolean;
+  /** The chat on screen afterwards, by its place in the fixture. */
+  wantShowing: number;
+}
+
+const FILE_CASES: FileCase[] = [
+  {
+    name: 'a chat on screen is filed under the workspace and stays on screen',
+    chat: 0,
+    workspace: 'remembered',
+    showing: 0,
+    wantError: null,
+    wantFiled: true,
+    wantShowing: 0,
+  },
+  {
+    name: 'a chat off screen is filed the same way, and the screen is left alone',
+    chat: 0,
+    workspace: 'remembered',
+    showing: 1,
+    wantError: null,
+    wantFiled: true,
+    wantShowing: 1,
+  },
+  {
+    name: 'filing a chat where it already is changes nothing',
+    chat: 0,
+    workspace: 'remembered',
+    showing: 0,
+    times: 2,
+    wantError: null,
+    wantFiled: true,
+    wantShowing: 0,
+  },
+  {
+    name: 'a workspace nobody remembers is refused, and the chat is left as it was',
+    chat: 0,
+    workspace: 'unknown',
+    showing: 0,
+    wantError: 'That folder is not a workspace.',
+    wantFiled: false,
+    wantShowing: 0,
+  },
+];
+
+for (const testCase of FILE_CASES) {
+  test(`filing a chat: ${testCase.name}`, async () => {
+    const fixture = storedChats();
+    const workspaces = newWorkspaces();
+    const chats = openChats(fixture.store, () => {}, workspaces.make, MODELS);
+    const workspace = fixture.store.rememberWorkspace(tempDir('kira-open-workspace-'));
+    const chat = fixture.ids[testCase.chat] ?? '';
+    const before = fixture.store.getThread(chat);
+
+    await show(chats, fixture, testCase.showing);
+    const said = fixture.store.loadEntries(chat).length;
+
+    let error: string | null = null;
+    for (let time = 0; time < (testCase.times ?? 1); time += 1) {
+      try {
+        await chats.fileChat(chat, testCase.workspace === 'remembered' ? workspace.id : 'nowhere');
+      } catch (thrown) {
+        error = thrown instanceof Error ? thrown.message : String(thrown);
+      }
+    }
+
+    const after = fixture.store.getThread(chat);
+    assert.equal(error, testCase.wantError);
+    assert.equal(after.cwd, testCase.wantFiled ? workspace.folder : before.cwd);
+    assert.equal(after.workspaceId, testCase.wantFiled ? workspace.id : before.workspaceId);
+    assert.equal(chats.state().currentId, fixture.ids[testCase.wantShowing]);
+    // Its words come with it: nothing said in the chat is lost by moving it.
+    assert.equal(fixture.store.loadEntries(chat).length, said);
+    assert.equal(
+      chats.state().chats.find((each) => each.id === chat)?.workspaceId,
+      testCase.wantFiled ? workspace.id : before.workspaceId,
+    );
+
+    chats.closeAll();
+    fixture.store.close();
+  });
+}
+
+test('filing a chat that is gone is refused', async () => {
+  const fixture = storedChats();
+  const chats = openChats(fixture.store, () => {}, newWorkspaces().make, MODELS);
+  const workspace = fixture.store.rememberWorkspace(tempDir('kira-open-workspace-'));
+
+  await assert.rejects(chats.fileChat('a-chat-that-never-was', workspace.id), {
+    message: 'That chat no longer exists.',
+  });
+
+  chats.closeAll();
+  fixture.store.close();
+});
+
 test('asking for a new chat again returns to the one already being composed', async () => {
   const fixture = storedChats();
   const workspaces = newWorkspaces();
@@ -430,23 +543,23 @@ test('with nothing open there is nothing to show or send', async () => {
   fixture.store.close();
 });
 
-test('a ticket run remains an ordinary flat chat row beside its shaping chat', async () => {
+test('a chat explicitly links tickets and remains beside its shaping chat', async () => {
   const store = new ThreadStore(join(tempDir('kira-open-store-'), 'threads.db'));
   const workspace = store.rememberWorkspace(tempDir('kira-open-workspace-'));
   const shaping = createThread(store, workspace.folder, { workspaceId: workspace.id });
-  const run = createThread(store, workspace.folder, {
+  const linked = createThread(store, workspace.folder, {
     workspaceId: workspace.id,
-    ticketId: 'child-1',
+    workTicketIds: ['child-1'],
   });
-  ask(run, 'I checked the slice.');
+  ask(linked, 'I checked the slice.');
   const chats = openChats(store, () => {}, newWorkspaces().make, MODELS);
 
   await chats.open(shaping.threadId);
 
   const rows = chats.state().chats;
   assert.equal(rows.length, 2);
-  assert.equal(rows.find(({ id }) => id === run.threadId)?.ticketId, 'child-1');
-  assert.equal(rows.find(({ id }) => id === shaping.threadId)?.ticketId, null);
+  assert.deepEqual(rows.find(({ id }) => id === linked.threadId)?.workTicketIds, ['child-1']);
+  assert.deepEqual(rows.find(({ id }) => id === shaping.threadId)?.workTicketIds, []);
   assert.ok(rows.every(({ workspaceId }) => workspaceId === workspace.id));
 
   chats.closeAll();

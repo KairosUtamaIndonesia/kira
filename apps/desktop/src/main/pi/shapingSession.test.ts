@@ -376,7 +376,7 @@ test('a person approves or rejects each kind of proposal through one pair of act
       name: 'spec',
       turns: [[SPEC]],
       steps: [['approve', 'spec', 0]],
-      wantCalls: ['write spec The queue hides agreed work', 'change spec-ticket ready-for-agent'],
+      wantCalls: ['write spec The queue hides agreed work', 'change spec-ticket ready'],
       want: [{ kind: 'spec', status: 'approved', ticketId: 'spec-ticket' }],
     },
     {
@@ -419,7 +419,7 @@ test('a person approves or rejects each kind of proposal through one pair of act
       ],
       wantCalls: [
         'write spec The queue hides agreed work',
-        'change spec-ticket ready-for-agent',
+        'change spec-ticket ready',
         'publish spec-ticket 1',
         'ready spec-ticket',
       ],
@@ -438,7 +438,7 @@ test('a person approves or rejects each kind of proposal through one pair of act
       refuseReadiness: true,
       wantCalls: [
         'write spec The queue hides agreed work',
-        'change spec-ticket ready-for-agent',
+        'change spec-ticket ready',
         'publish spec-ticket 1',
         'ready spec-ticket',
       ],
@@ -498,8 +498,8 @@ test('a person approves or rejects each kind of proposal through one pair of act
         calls.push(`write ${draft.kind} ${draft.title}`);
         return { id: 'spec-ticket' };
       },
-      change: async (ticketId: string, change: { gate?: string }) => {
-        calls.push(`change ${ticketId} ${change.gate}`);
+      change: async (ticketId: string, change: { status?: string }) => {
+        calls.push(`change ${ticketId} ${change.status}`);
         return { id: ticketId };
       },
       approveDestinationSpec: async (_workspaceId: string, mapTicketId: string) => {

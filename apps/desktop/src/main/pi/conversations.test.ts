@@ -1010,7 +1010,7 @@ const LIST_CASES = [
   },
   {
     name: 'a message written in paragraphs names the chat by its first line',
-    threads: [[ask('KIRA-3 — a ticket\n\nRun this ticket. Work in a checkout.')]],
+    threads: [[ask('KIRA-3 — a ticket\n\nWork on this ticket in the current chat.')]],
     want: [{ title: 'KIRA-3 — a ticket', thread: 0 }],
   },
   {

@@ -106,6 +106,7 @@ function kira(calls: string[], quirks: Quirks = {}): Kira {
       calls.push('create a project');
       return { kind: 'unavailable' };
     },
+    currentUser: async () => ({ kind: 'unavailable' }),
     queue: async () => {
       calls.push('queue');
       return { kind: 'unavailable' };
@@ -126,59 +127,8 @@ function kira(calls: string[], quirks: Quirks = {}): Kira {
       calls.push('ungate a ticket');
       return { kind: 'unavailable' };
     },
-    // The worker is not sign-in's business either, and for the same reason: it is the
-    // main process's own offering, kept in `main/worker.ts`. A call reaching here would
-    // be a flow doing something it does not do.
-    registerWorker: async () => {
-      calls.push('offer this desktop');
-      return { kind: 'unavailable' };
-    },
-    heartbeatWorker: async () => {
-      calls.push('say this desktop is here');
-      return { kind: 'unavailable' };
-    },
-    workerGone: async () => {
-      calls.push('say this desktop is gone');
-      return { kind: 'unavailable' };
-    },
-    claimTicket: async () => {
-      calls.push('claim a ticket');
-      return { kind: 'unavailable' };
-    },
     readTicket: async () => {
       calls.push('read a ticket');
-      return { kind: 'unavailable' };
-    },
-    takeOverTicket: async () => {
-      calls.push('take over a claim');
-      return { kind: 'unavailable' };
-    },
-    judgeRun: async () => {
-      calls.push('judge a run');
-      return { kind: 'unavailable' };
-    },
-    readTranscript: async () => {
-      calls.push('read a transcript');
-      return { kind: 'unavailable' };
-    },
-    sayInRun: async () => {
-      calls.push('say something in a run');
-      return { kind: 'unavailable' };
-    },
-    releaseTicket: async () => {
-      calls.push('let a claim go');
-      return { kind: 'unavailable' };
-    },
-    startRun: async () => {
-      calls.push('start a run');
-      return { kind: 'unavailable' };
-    },
-    recordRun: async () => {
-      calls.push('record a run');
-      return { kind: 'unavailable' };
-    },
-    endRun: async () => {
-      calls.push('end a run');
       return { kind: 'unavailable' };
     },
   };

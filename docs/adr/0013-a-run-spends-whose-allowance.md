@@ -2,6 +2,8 @@
 
 Date: 2026-09-21
 
+Superseded by ADR 0024: working a ticket is a chat, and a chat spends its person’s allowance under ADR 0005.
+
 ## Context
 
 ADR 0012 makes the desktop a worker, so a run is a request Kira sends — one a person starts

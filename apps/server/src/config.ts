@@ -10,6 +10,7 @@ export interface Config {
   pool: {
     url: string;
     key: string;
+    managementKey: string | null;
   };
   allowance: {
     defaultTokens: number;
@@ -69,6 +70,7 @@ export const DEFAULT_DATABASE_URL = 'postgres://kira:kira@127.0.0.1:5439/kira';
  */
 const DEFAULT_POOL_URL = 'http://127.0.0.1:8317';
 const DEV_POOL_KEY = 'kira-dev-pool-key';
+const DEV_MANAGEMENT_KEY = 'kira-dev-management-key';
 
 /** Where to listen when the base URL names no port, which means a proxy is in front. */
 const DEFAULT_PORT = 3000;
@@ -150,6 +152,7 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
         .refine(isAbsoluteUrl, 'must be an absolute URL')
         .default(DEFAULT_POOL_URL),
       KIRA_POOL_KEY: z.string().trim().min(1, REQUIRED).default(DEV_POOL_KEY),
+      MANAGEMENT_PASSWORD: z.string().trim().min(1, REQUIRED).optional(),
       KIRA_DEFAULT_ALLOWANCE_TOKENS: z.coerce
         .number()
         .int()
@@ -175,6 +178,15 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     },
   });
 
+  if (env.NODE_ENV === 'production') {
+    const missing: string[] = [];
+    if (!env.KIRA_POOL_URL?.trim()) missing.push('KIRA_POOL_URL');
+    if (!env.KIRA_POOL_KEY?.trim() || env.KIRA_POOL_KEY.trim() === DEV_POOL_KEY) {
+      missing.push('KIRA_POOL_KEY (must be set and must not be the development key)');
+    }
+    if (missing.length > 0) throw new Error(`Kira cannot start:\n  ${missing.join('\n  ')}`);
+  }
+
   return {
     baseUrl: parsed.KIRA_BASE_URL,
     port: listenPort(parsed.KIRA_BASE_URL),
@@ -183,6 +195,8 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     pool: {
       url: parsed.KIRA_POOL_URL,
       key: parsed.KIRA_POOL_KEY,
+      managementKey:
+        parsed.MANAGEMENT_PASSWORD ?? (env.NODE_ENV === 'production' ? null : DEV_MANAGEMENT_KEY),
     },
     allowance: {
       defaultTokens: parsed.KIRA_DEFAULT_ALLOWANCE_TOKENS,

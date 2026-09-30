@@ -102,6 +102,11 @@ export async function startFakePool(options: FakePoolOptions = {}): Promise<Fake
       authorization: request.headers.authorization ?? null,
     });
 
+    if (url.pathname === '/healthz') {
+      response.writeHead(200, { 'content-type': 'application/json' }).end('{"status":"ok"}');
+      return;
+    }
+
     if (url.pathname.endsWith('/chat/completions')) {
       response.writeHead(200, { 'content-type': 'application/json' }).end(
         JSON.stringify({

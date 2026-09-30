@@ -84,7 +84,7 @@ export function latestProposals(
   );
 }
 
-/** The spec ticket a person approved last in this chat, which tickets and runs hang from. */
+/** The spec ticket a person approved last in this chat, whose breakdown is linked to it. */
 export function approvedSpecTicket(state: ShapingState): string | null {
   const approved = state.proposals.filter(
     (proposal) => proposal.kind === 'spec' && proposal.status === 'approved',

@@ -18,19 +18,42 @@ we want repeated.
 - **What the chat looks like** is `@astryxdesign/core`: every pixel. Primitives are
   unstyled, and Astryx components go inside them (`asChild`), never the other way round.
 
-Astryx is styled with StyleX, which compiles before it ships: `astryx.css` is its
-finished output, so using Astryx means importing that CSS rather than running its
-compiler, and the `@stylexjs/stylex` the app depends on is the runtime those compiled
-components call into. `renderer/src/styles.css` therefore has two jobs — it is where
-Astryx's entry points are imported, and it holds the panes' layout, which is structure
-rather than looks: which pane is which, what scrolls, what stays put. The frame above
-those panes is not ours to lay out: `AppShell` owns the nav column, its width, the main
-region, the landmarks and the skip link, so anything about the shell is said with the
-shell's props rather than in this file. Where no prop exists, one rule names Astryx's own
-theming target for the nav panel instead — its horizontal overflow has no prop to say it
-with — and that is the only reason this file should reach the shell at all. Put lengths
-there in Astryx's own tokens (`var(--spacing-3)`) so the file says one step of the rhythm
-rather than a number; a length that is genuinely ours is written plainly.
+### Where a style goes
+
+Astryx is written in StyleX, and the renderer compiles StyleX too
+(`@stylexjs/rollup-plugin` in `electron.vite.config.ts`). A style lands in the first
+place that can say it:
+
+1. **An Astryx prop.** `variant`, `size`, `gap`, `padding`, and the shell's own props
+   come before any style. `AppShell` owns the nav column, its width, the main region, the
+   landmarks and the skip link, so anything about the shell is said with its props.
+2. **StyleX beside the component.** A component's own look and layout live in a
+   `stylex.create` in its file, with values from Astryx's tokens
+   (`colorVars`, `spacingVars`, `radiusVars` from
+   `@astryxdesign/core/theme/tokens.stylex`) so they follow the theme. A value that is
+   genuinely ours is written plainly. `work.tsx` is the pattern to copy.
+3. **`renderer/src/styles.css`** holds only what belongs to no one component: the pane
+   layout (which pane is which, what scrolls, what stays put), window-wide browser
+   surfaces, and rules for placements no prop can express, which name Astryx's own
+   theming target and nothing else. Lengths there use Astryx's CSS variables
+   (`var(--spacing-3)`).
+
+A ghost button at the edge of a layout Kira draws itself lines up by its glyph, not its
+box. Its padding is transparent until hover, so without help its icon sits 8–12px in from
+the text beside it. Astryx's own containers (Toolbar, Banner) pull an edge ghost button out
+by its padding with `edgeCompSlot` from `@astryxdesign/core/Layout`; a header of ours asks
+for the same thing on a wrapper around the button — `edgeCompSlot.inset(spacingVars['--spacing-3'])`
+for a text button, which Astryx marks as compensable. `IconButton` carries no mark, so an
+icon button at an edge takes a negative margin of half the space around its 16px icon.
+`work.tsx` does both (`EDGE_TEXT_BUTTON`, `styles.edgeEndIcon`). A ghost button between
+other controls keeps its box; only the edges are compensated.
+
+Colors, type, and radii are the theme's, and the theme is `packages/theme`: change them
+in `kiraTheme.ts` so every surface moves together. That package stays plain CSS so a
+surface that imports it needs no StyleX compiler.
+
+Two rules in `styles.css` reach Astryx's targets today. The first names the nav panel's
+theming target, because its horizontal overflow has no prop to say it with.
 
 The nav is not the only place a prop is missing. Astryx anchors a `Selector`'s list below
 its trigger and then nudges the list up by whatever it would overflow — which, at the
@@ -175,6 +198,64 @@ projects already do, and a workspace Kira made for the chat says so in words, be
 name is a UUID. An empty folder gets a sentence rather than a blank panel, and anything that
 fails is shown in the pane that failed, so a refusal never reads as an empty folder.
 
+## The Work surface
+
+`renderer/src/work.tsx` draws the board, list, drawer, and full ticket view; the design
+direction is in `apps/desktop/DESIGN.md` (Work), and this is where its pieces live.
+
+- **`work.tsx`** owns the queue, the view, drag and drop, the drawer and full view, and the
+  confirmation bar. It stays one file because these share state; pieces that stand alone
+  (they take props and own their own styles) move out beside it.
+- **`workFilters.tsx`** is the search, Filter, and Display toolbar and the chip row. It
+  drives `WorkDisplay` (`workDisplay.ts`) and knows nothing else; the kind icons come in as
+  a prop so it does not import `work.tsx`.
+- **`workBlockers.tsx`** is a ticket's Blocked by and Blocking ledgers. It gets `onGate` and
+  `onUngate` and reports a refusal by the parent's `wrote` returning null.
+- **`workNewTicket.tsx`** is the New ticket dialog; **`markdownEditor.tsx`** is the rich
+  editor it uses for About (Tiptap with `@tiptap/markdown`). The editor's document elements
+  are styled by `.rich-editor` in `styles.css`, the one place StyleX cannot reach; it offers
+  only what markdown can say, so nothing typed is lost on save.
+- **`workCopy.ts`** is the single home for everything a person reads on Work (labels, notes,
+  toasts, empty states, aria-labels, tooltips); its header holds the vocabulary and voice
+  rules. New Work wording goes there, never inline. Server refusals that reach the desktop
+  are worded in `apps/server/src/messages.ts` by the same rule.
+- **`moveToProject.tsx`** is the dialog that files a chat under a project's folder, and
+  **`moveToProject.ts`** holds when a chat needs one (`needsProject`) and which folders it could
+  go to (`placesOf`). `App.tsx` opens it when an Approve would otherwise be refused for want of
+  a project, and from a chat row's "Move to project…". Filing goes through
+  `window.kira.fileChat` (`CHAT_CHANNELS.file`, `openChats.fileChat`): it repoints the chat's
+  stored folder and reopens the chat on screen, so the chat and its words are the same.
+- **`workRows.ts`** and **`workDisplay.ts`** hold the pure words and rules (age, what a row
+  says, filtering and order) with tests beside them. New wording for a status goes there, not
+  inline in a component.
+
+Working rules for changes here:
+
+- **Tables and ledgers are one grid.** Make the list a `display: grid` and each row
+  `grid-template-columns: subgrid`; do not size columns per row. A subgrid row cannot pad
+  itself, so the outer grid's first and last tracks are the side padding.
+- **Ghost buttons at an edge are compensated** (see Where a style goes), including the filter
+  bar and the header's right end. Check with a text range's `getBoundingClientRect().left`.
+- **On screen: Ticket, Blocker, Chat.** The tracker still calls blocker edges `gate` internally.
+  When a component's copy changes, grep for the old word: the same action must not have two names.
+- **A prototype is a switch, not a fork.** Variants of a design live behind a development-only
+  switcher (`import.meta.env.DEV`) in the real app, on their own branch, so they can be judged
+  with real data. When one wins, rewrite it as real code, remove the losers, the switcher and
+  the file's "PROTOTYPE" header in the same change, and update DESIGN.md.
+- **Dialogs use `FlushDialogHeader`** (`dialogHeader.tsx`), not Astryx's `DialogHeader`, so the
+  title lines up with the body and foot instead of sitting one padding step further in.
+- **Use tokens that exist.** A `var(--…)` that no theme defines resolves to nothing and fails
+  silently (`--radius-md` and `--font-family-mono` did). Radii are `--radius-inner`, `-element`,
+  `-container`, `-page`, `-full`; code is `--font-family-code`. To check a name, ask
+  `getComputedStyle(document.body).getPropertyValue(name)` in the running app.
+- **Never run the formatter over a folder** you did not change; name the files. It rewrites
+  other people's uncommitted work.
+- **Delete what a change makes dead**: styles, imports, and helpers, checked with
+  `oxlint` and a scan of `styles.<key>` uses. Leave already-dead code alone and mention it.
+- **Test in the running app** as `docs/internal/frontend-debugging.md` describes. Drag by
+  pointer and by keyboard (Space, arrows, Space), and cancel the confirmation bar rather than
+  confirming against sample tickets you do not own.
+
 ## Folders are kinds of code, not features
 
 One folder per kind of code. Every file in a folder is that kind, whichever feature it
@@ -187,12 +268,12 @@ serves.
 | `ipc/`       | the renderer seam: the channels' handlers                                                                            |
 | `db/`        | persistence: owns the SQLite file, the only place SQL is written                                                     |
 | `pi/`        | the agent harness: pi's SDK, and the live sessions it must dispose                                                   |
-| `mcp/`       | app-level MCP server connections, child processes, status and tool calls; it never imports pi                       |
+| `mcp/`       | app-level MCP server connections, child processes, status and tool calls; it never imports pi                        |
 | `workspace/` | a workspace on disk: git's exclusions, one folder at a time, reading one file                                        |
 
 Root files are single-instance modules that more than one folder needs: `memory.ts`
-(what a project has worked out), `tracker.ts` (the project's queue, and the workspace's
-link to it), `usage.ts` (what runs have spent).
+(what a project has worked out), `tracker.ts` (the project's tickets and a workspace's
+link to it), `usage.ts` (what requests have spent).
 
 A folder appears with its first real file. `ipc/` exists when the first channel does,
 not before.

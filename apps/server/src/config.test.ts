@@ -23,6 +23,34 @@ describe('loadConfig', () => {
     expect(config.databaseUrl).toBe('postgres://kira:kira@127.0.0.1:5439/kira');
   });
 
+  test('reads an optional CLIProxyAPI management key without requiring it', () => {
+    expect(loadConfig(complete).pool.managementKey).toBe('kira-dev-management-key');
+    expect(
+      loadConfig({ ...complete, MANAGEMENT_PASSWORD: 'private-management-key' }).pool.managementKey,
+    ).toBe('private-management-key');
+    expect(
+      loadConfig({
+        ...complete,
+        NODE_ENV: 'production',
+        KIRA_POOL_URL: 'http://cliproxyapi:8317',
+        KIRA_POOL_KEY: 'production-pool-key',
+      }).pool.managementKey,
+    ).toBeNull();
+  });
+
+  test('requires explicit non-development pool credentials in production', () => {
+    expect(() => loadConfig({ ...complete, NODE_ENV: 'production' })).toThrow(/KIRA_POOL_URL/);
+    expect(() => loadConfig({ ...complete, NODE_ENV: 'production' })).toThrow(/KIRA_POOL_KEY/);
+    expect(() =>
+      loadConfig({
+        ...complete,
+        NODE_ENV: 'production',
+        KIRA_POOL_URL: 'http://cliproxyapi:8317',
+        KIRA_POOL_KEY: 'kira-dev-pool-key',
+      }),
+    ).toThrow(/KIRA_POOL_KEY/);
+  });
+
   test('honours an explicit database', () => {
     const config = loadConfig({
       ...complete,

@@ -11,9 +11,9 @@ import {
   type OpenDialogOptions,
 } from 'electron';
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { hostname } from 'node:os';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import type { AuthState, ChatEvent } from '../preload/bridge.ts';
 import { kiraFor } from './auth/kira.ts';
 import { keyStore, type SecretKeeper } from './auth/keys.ts';
@@ -24,31 +24,15 @@ import { FILE_CHANNELS, fileHandlers } from './ipc/files.ts';
 import { MCP_CHANNELS, mcpHandlers } from './ipc/mcp.ts';
 import { MEMORY_CHANNELS, memoryHandlers } from './ipc/memory.ts';
 import { MODELS_CHANNELS, modelHandlers } from './ipc/models.ts';
-import { RUN_CHANNELS, runHandlers } from './ipc/run.ts';
 import { USAGE_CHANNELS, usageHandlers } from './ipc/usage.ts';
 import { CHAT_CHANNELS, chatHandlers } from './ipc/chat.ts';
 import { TRACKER_CHANNELS, trackerHandlers } from './ipc/tracker.ts';
-import { DELIVERY_CHANNELS, deliveryHandlers } from './ipc/delivery.ts';
-import { EXECUTION_CHANNELS, executionHandlers } from './ipc/execution.ts';
-import { WORKER_CHANNELS, workerHandlers } from './ipc/worker.ts';
 import { WORKSPACE_CHANNELS, workspaceHandlers } from './ipc/workspaces.ts';
 import { workspaceSummaryOf } from './pi/conversations.ts';
 import { kiraModels, type Models } from './pi/models.ts';
 import { memoryFor, type MemoryKeeper } from './memory.ts';
 import { trackerFor, type Tracker } from './tracker.ts';
 import { usageFor, type UsageKeeper } from './usage.ts';
-import { runsFor, type Runs } from './runs.ts';
-import { startRunChat } from './pi/runChat.ts';
-import { runWorktrees } from './workspace/worktrees.ts';
-import {
-  deliveriesFor,
-  ghPullRequests,
-  latestRunForBranchIsAccepted,
-} from './delivery/delivery.ts';
-import { runExecutionCommand } from './execution/commands.ts';
-import { ExecutionDevServers } from './execution/devServer.ts';
-import { ExecutionTerminals } from './execution/terminal.ts';
-import { workerFor, type Worker } from './worker.ts';
 import { type OpenChats, openChats } from './pi/openChats.ts';
 import { listFolder } from './workspace/listing.ts';
 import {
@@ -92,24 +76,9 @@ let memory: MemoryKeeper;
 let mcp: McpManager;
 let questionnaires: Questionnaires;
 let tracker: Tracker;
-let worker: Worker;
-let runs: Runs;
 let auth: SignIn | undefined;
 let mainWindow: BrowserWindow | undefined;
 let kiraShell: KiraShell | undefined;
-const executionDevServers = new ExecutionDevServers(
-  (event) => {
-    mainWindow?.webContents.send(EXECUTION_CHANNELS.process, event);
-  },
-  join(app.getPath('userData'), 'execution-process-logs'),
-);
-const executionTerminals = new ExecutionTerminals(
-  (event) => {
-    mainWindow?.webContents.send(EXECUTION_CHANNELS.terminalEvent, event);
-  },
-  join(app.getPath('userData'), 'execution-terminal-logs'),
-);
-
 function shellSettings(): KiraShell {
   kiraShell ??= kiraShellSettings((path) => chats?.setShellPath(path) ?? Promise.resolve());
   return kiraShell;
@@ -145,6 +114,7 @@ function registerChatChannels(): void {
     archiveChat: (id) => chats.archiveChat(id),
     restoreChat: (id) => chats.restoreChat(id),
     deleteChat: (id) => chats.deleteChat(id),
+    fileChat: (id, workspaceId) => chats.fileChat(id, workspaceId),
   });
 
   ipcMain.handle(CHAT_CHANNELS.load, () => handlers.load());
@@ -219,6 +189,9 @@ function registerChatChannels(): void {
   ipcMain.handle(CHAT_CHANNELS.archive, (_event, id: unknown) => handlers.archive(id));
   ipcMain.handle(CHAT_CHANNELS.restore, (_event, id: unknown) => handlers.restore(id));
   ipcMain.handle(CHAT_CHANNELS.delete, (_event, id: unknown) => handlers.delete(id));
+  ipcMain.handle(CHAT_CHANNELS.file, (_event, id: unknown, workspaceId: unknown) =>
+    handlers.file(id, workspaceId),
+  );
 }
 
 /** What the window hears about a turn: words as they are written, then the record. */
@@ -273,19 +246,6 @@ function registerWorkspaceChannels(): void {
 }
 
 /**
- * The channel the window reads this desktop's own offering through.
- *
- * Read from the keeper rather than asked of the server: what the window needs is
- * whether the last heartbeat landed, and asking again while drawing a surface would
- * make a slow server into a slow window.
- */
-function registerWorkerChannel(): void {
-  const handlers = workerHandlers({ standing: () => worker.standing() });
-
-  ipcMain.handle(WORKER_CHANNELS.standing, () => handlers.standing());
-}
-
-/**
  * The tracker channels, over the store and the server.
  *
  * Which project a workspace works is read from the desktop's own database and
@@ -293,62 +253,8 @@ function registerWorkerChannel(): void {
  * than being handed an empty queue. Everything else is one call to the server, in
  * the server's own words when it refuses.
  */
-/**
- * The channel pressing Run goes through.
- *
- * One act, and no reading of it: what a run is doing is on the ticket, which the surface
- * already reads, and what a run is doing *here* is the chat that is doing it.
- */
-function registerRunChannel(): void {
-  const handlers = runHandlers({
-    start: (workspaceId, ticketId, executionWorkspaceId, followUp) =>
-      runs.start(workspaceId, ticketId, executionWorkspaceId, followUp),
-    resolve: (workspaceId, ticketId, reason) => runs.resolve(workspaceId, ticketId, reason),
-    transcript: (ticketId, runId) => runs.saidIn(ticketId, runId),
-    takeOver: (ticketId) => runs.takeOverClaim(ticketId),
-    release: (ticketId) => runs.letClaimGo(ticketId),
-    judge: (ticketId, runId, verdict, workspaceId) =>
-      runs.judge(ticketId, runId, verdict, workspaceId),
-    diff: (ticketId, executionWorkspaceId) => runs.diff(ticketId, executionWorkspaceId),
-  });
-
-  ipcMain.handle(
-    RUN_CHANNELS.start,
-    (
-      _event,
-      workspaceId: unknown,
-      ticketId: unknown,
-      executionWorkspaceId: unknown,
-      followUp: unknown,
-    ) => handlers.start(workspaceId, ticketId, executionWorkspaceId, followUp),
-  );
-  ipcMain.handle(
-    RUN_CHANNELS.resolve,
-    (_event, workspaceId: unknown, ticketId: unknown, reason: unknown) =>
-      handlers.resolve(workspaceId, ticketId, reason),
-  );
-  ipcMain.handle(RUN_CHANNELS.transcript, (_event, ticketId: unknown, runId: unknown) =>
-    handlers.transcript(ticketId, runId),
-  );
-  ipcMain.handle(RUN_CHANNELS.diff, (_event, ticketId: unknown, executionWorkspaceId: unknown) =>
-    handlers.diff(ticketId, executionWorkspaceId),
-  );
-  ipcMain.handle(RUN_CHANNELS.takeover, (_event, ticketId: unknown) => handlers.takeOver(ticketId));
-  ipcMain.handle(RUN_CHANNELS.release, (_event, ticketId: unknown) => handlers.release(ticketId));
-  ipcMain.handle(
-    RUN_CHANNELS.judge,
-    (_event, ticketId: unknown, runId: unknown, verdict: unknown, workspaceId: unknown) =>
-      handlers.judge(ticketId, runId, verdict, workspaceId),
-  );
-}
-
 function registerTrackerChannels(): void {
   const handlers = trackerHandlers({
-    executionWorkspaces: (ticketId) => tracker.executionWorkspaces(ticketId),
-    createExecutionWorkspace: (ticketId, draft) =>
-      tracker.createExecutionWorkspace(ticketId, draft),
-    removeExecutionWorkspace: (ticketId, workspaceId) =>
-      tracker.removeExecutionWorkspace(ticketId, workspaceId),
     queue: (workspaceId) => tracker.queue(workspaceId),
     openQuestion: async (workspaceId, ticketId) => {
       await chats.startQuestion(workspaceId, ticketId);
@@ -384,155 +290,6 @@ function registerTrackerChannels(): void {
     TRACKER_CHANNELS.undoGlossary,
     (_event, workspaceId: unknown, entryId: unknown, version: unknown, chatId: unknown) =>
       handlers.undoGlossary(workspaceId, entryId, version, chatId),
-  );
-  ipcMain.handle(TRACKER_CHANNELS.executionWorkspaces, (_event, ticketId: unknown) =>
-    handlers.executionWorkspaces(ticketId),
-  );
-  ipcMain.handle(
-    TRACKER_CHANNELS.createExecutionWorkspace,
-    (_event, ticketId: unknown, draft: unknown) =>
-      handlers.createExecutionWorkspace(ticketId, draft),
-  );
-  ipcMain.handle(
-    TRACKER_CHANNELS.removeExecutionWorkspace,
-    (_event, ticketId: unknown, workspaceId: unknown) =>
-      handlers.removeExecutionWorkspace(ticketId, workspaceId),
-  );
-}
-
-function registerDeliveryChannel(): void {
-  const handlers = deliveryHandlers({
-    deliver: async (ticketId, workspaceId, path) => {
-      const workspace = (await tracker.executionWorkspaces(ticketId)).find(
-        (candidate) => candidate.id === workspaceId,
-      );
-      if (workspace === undefined || workspace.ticketId !== ticketId) {
-        throw new Error('That execution workspace is no longer available for this issue.');
-      }
-      const ticket = await tracker.readTicket(ticketId);
-      if (!latestRunForBranchIsAccepted(ticket.runs, workspace.branch)) {
-        throw new Error('The latest run for this workspace must be accepted before delivery.');
-      }
-      if (!isAbsolute(workspace.repository)) {
-        throw new Error('The execution workspace repository must be an absolute folder path.');
-      }
-
-      return await deliveriesFor({
-        worktrees: runWorktrees(),
-        pullRequests: ghPullRequests(),
-        recorder: { record: (audit) => tracker.recordDelivery(ticketId, audit) },
-      }).deliver(
-        {
-          ...workspace,
-          checkout: join(app.getPath('userData'), 'execution-workspaces', workspace.id),
-        },
-        { path, title: ticket.title, body: ticket.body },
-      );
-    },
-  });
-  ipcMain.handle(
-    DELIVERY_CHANNELS.deliver,
-    (_event, ticketId: unknown, workspaceId: unknown, path: unknown) =>
-      handlers.deliver(ticketId, workspaceId, path),
-  );
-}
-
-function registerExecutionChannel(): void {
-  async function checkoutFor(ticketId: string, workspaceId: string): Promise<string> {
-    const workspace = (await tracker.executionWorkspaces(ticketId)).find(
-      (candidate) => candidate.id === workspaceId,
-    );
-    if (workspace === undefined || workspace.ticketId !== ticketId) {
-      throw new Error('That execution workspace is no longer available for this issue.');
-    }
-    if (!isAbsolute(workspace.repository)) {
-      throw new Error('The execution workspace repository must be an absolute folder path.');
-    }
-    const checkout = join(app.getPath('userData'), 'execution-workspaces', workspace.id);
-    if (!existsSync(checkout))
-      throw new Error('The execution workspace checkout has not been created yet.');
-    return checkout;
-  }
-
-  const handlers = executionHandlers({
-    command: async (ticketId, workspaceId, command) => {
-      return await runExecutionCommand(await checkoutFor(ticketId, workspaceId), command);
-    },
-    startDevServer: async (ticketId, workspaceId, command) =>
-      executionDevServers.start(workspaceId, await checkoutFor(ticketId, workspaceId), command),
-    readDevServer: async (ticketId, workspaceId) => {
-      await checkoutFor(ticketId, workspaceId);
-      return executionDevServers.read(workspaceId);
-    },
-    stopDevServer: async (ticketId, workspaceId) => {
-      await checkoutFor(ticketId, workspaceId);
-      return executionDevServers.stop(workspaceId);
-    },
-    startTerminal: async (ticketId, workspaceId) =>
-      executionTerminals.start(workspaceId, await checkoutFor(ticketId, workspaceId)),
-    readTerminal: async (ticketId, workspaceId) => {
-      await checkoutFor(ticketId, workspaceId);
-      return executionTerminals.read(workspaceId);
-    },
-    writeTerminal: async (ticketId, workspaceId, data) => {
-      await checkoutFor(ticketId, workspaceId);
-      executionTerminals.write(workspaceId, data);
-      return null;
-    },
-    resizeTerminal: async (ticketId, workspaceId, cols, rows) => {
-      await checkoutFor(ticketId, workspaceId);
-      executionTerminals.resize(workspaceId, cols, rows);
-      return null;
-    },
-    stopTerminal: async (ticketId, workspaceId) => {
-      await checkoutFor(ticketId, workspaceId);
-      return executionTerminals.stop(workspaceId);
-    },
-  });
-  ipcMain.handle(
-    EXECUTION_CHANNELS.command,
-    (_event, ticketId: unknown, workspaceId: unknown, command: unknown) =>
-      handlers.command(ticketId, workspaceId, command),
-  );
-  ipcMain.handle(
-    EXECUTION_CHANNELS.devServerStart,
-    (_event, ticketId: unknown, workspaceId: unknown, command: unknown) =>
-      handlers.startDevServer(ticketId, workspaceId, command),
-  );
-  ipcMain.handle(
-    EXECUTION_CHANNELS.devServerRead,
-    (_event, ticketId: unknown, workspaceId: unknown) =>
-      handlers.readDevServer(ticketId, workspaceId),
-  );
-  ipcMain.handle(
-    EXECUTION_CHANNELS.devServerStop,
-    (_event, ticketId: unknown, workspaceId: unknown) =>
-      handlers.stopDevServer(ticketId, workspaceId),
-  );
-  ipcMain.handle(
-    EXECUTION_CHANNELS.terminalStart,
-    (_event, ticketId: unknown, workspaceId: unknown) =>
-      handlers.startTerminal(ticketId, workspaceId),
-  );
-  ipcMain.handle(
-    EXECUTION_CHANNELS.terminalRead,
-    (_event, ticketId: unknown, workspaceId: unknown) =>
-      handlers.readTerminal(ticketId, workspaceId),
-  );
-  ipcMain.handle(
-    EXECUTION_CHANNELS.terminalWrite,
-    (_event, ticketId: unknown, workspaceId: unknown, data: unknown) =>
-      handlers.writeTerminal(ticketId, workspaceId, data),
-  );
-  ipcMain.handle(
-    EXECUTION_CHANNELS.terminalResize,
-    (_event, ticketId: unknown, workspaceId: unknown, cols: unknown, rows: unknown) =>
-      handlers.resizeTerminal(ticketId, workspaceId, cols, rows),
-  );
-  ipcMain.handle(
-    EXECUTION_CHANNELS.terminalStop,
-    (_event, ticketId: unknown, workspaceId: unknown) =>
-      handlers.stopTerminal(ticketId, workspaceId),
   );
 }
 
@@ -736,10 +493,6 @@ async function showAChat(): Promise<void> {
  */
 async function signedInAs(state: AuthState): Promise<void> {
   if (!state.signedIn) {
-    // Offering work is something a signed-in machine does, so signing out stops it —
-    // and says goodbye, because a desktop that stopped being heard from looks the same
-    // as one that is thinking.
-    await worker?.stop();
     // Asked for on the way out too: signing out leaves no key to ask with, and
     // that is what makes the reading nothing rather than the last person's.
     await usage.refresh();
@@ -756,8 +509,6 @@ async function signedInAs(state: AuthState): Promise<void> {
   // is this one's answer too before any chat runs.
   await memory.refresh();
   await showAChat();
-  // And this desktop offers itself, now that there is a key to offer it with.
-  worker?.start();
   pushAuth(state);
 }
 
@@ -1100,22 +851,6 @@ if (claimTheScheme()) {
         wire,
       });
 
-      // The worker: what this desktop offers while it is running and somebody is
-      // signed in. Its name for the server is derived from the person and the machine
-      // rather than written down, so the same laptop is the same worker after a
-      // restart — and two people on one machine are two workers, neither holding the
-      // other's claims. It takes nothing on its own: it says it is here, and a person
-      // starts what runs (docs/adr/0012).
-      worker = workerFor({
-        token: async () => await keys.read(),
-        device: hostname(),
-        workspaces: () => store.listWorkspaces().map((each) => each.folder),
-        // Asked on the way out rather than watched: a machine with a run in flight keeps
-        // its claim, and goes quiet instead of saying goodbye (GH #74).
-        driving: () => runs.driving(),
-        wire,
-      });
-
       const prepareMcpWorkspace = (workspaceId: string): Promise<void> =>
         mcp.connectWorkspace(workspaceId);
       questionnaires = new Questionnaires(pushEvent);
@@ -1131,47 +866,6 @@ if (claimTheScheme()) {
         questionnaires,
       );
 
-      // Agent checkouts live under app data so the user's project folder stays untouched.
-      // Execution workspaces keep their checkout between runs; legacy runs still drop it.
-      runs = runsFor({
-        token: async () => (await keys.read())?.key ?? null,
-        workerOf: () => worker.id(),
-        folderOf: (workspaceId) => store.findWorkspace(workspaceId)?.folder,
-        executionWorkspaceOf: async (ticketId, executionWorkspaceId) =>
-          (await tracker.executionWorkspaces(ticketId)).find(
-            (each) => each.id === executionWorkspaceId,
-          ) ?? null,
-        thereFor: (workspaceId) =>
-          join(app.getPath('userData'), 'execution-workspaces', workspaceId),
-        // Asked when Run is pressed rather than watched while the run goes: work that
-        // cannot be paid for should not begin (docs/adr/0013).
-        affordable: () => {
-          const now = usage.current();
-
-          return now === null || now.used < now.allowance;
-        },
-        worktrees: runWorktrees(),
-        chatFor: (ticket, folder, id, workspaceId, resolutionReason, followUp, agentModelId) =>
-          startRunChat({
-            store,
-            models,
-            memory: () => memory.current(),
-            ticket,
-            followUp,
-            agentModelId,
-            workspaceId,
-            folder,
-            id,
-            // The window is given the conversation the run is going in, so that opening
-            // the row steers the run rather than resuming a second session onto it.
-            adopt: (conversation) => chats.adopt(conversation),
-            tracker,
-            mcp,
-            questionnaires,
-            prepareWorkspace: prepareMcpWorkspace,
-          }),
-        wire,
-      });
       auth = signIn({
         keys,
         kira: wire,
@@ -1187,10 +881,6 @@ if (claimTheScheme()) {
       registerModelChannels();
       registerWorkspaceChannels();
       registerTrackerChannels();
-      registerDeliveryChannel();
-      registerExecutionChannel();
-      registerWorkerChannel();
-      registerRunChannel();
       registerFileChannels();
       registerAuthChannels(auth);
       registerUpdateChannels();
@@ -1248,26 +938,6 @@ app.on('window-all-closed', () => {
   }
 });
 
-/**
- * Saying goodbye on the way out.
- *
- * A worker that has stopped being heard from keeps its claims, which is right for a
- * machine that crashed and wrong for one that is closing: those tickets are not being
- * worked any more, and the thing that makes them claimable again is this goodbye. So
- * the quit is held for it — once, and briefly, because a server that cannot be reached
- * must not make the window unclosable.
- */
-let saidGoodbye = false;
-
-app.on('before-quit', (event) => {
-  if (saidGoodbye) return;
-
-  saidGoodbye = true;
-  executionDevServers.stopAll();
-  executionTerminals.stopAll();
-  event.preventDefault();
-  void Promise.all([
-    worker === undefined ? undefined : worker.stop(),
-    mcp === undefined ? undefined : mcp.close(),
-  ]).finally(() => app.quit());
+app.on('before-quit', () => {
+  void mcp?.close();
 });

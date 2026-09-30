@@ -124,7 +124,7 @@ async function createEditor(
       },
       '.cm-scroller': {
         overflow: 'auto',
-        fontFamily: 'var(--font-family-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
+        fontFamily: 'var(--font-family-code)',
       },
       '.cm-gutters': {
         color: 'var(--color-text-secondary)',

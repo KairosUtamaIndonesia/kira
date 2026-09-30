@@ -101,3 +101,23 @@ export function insideFolder(paths: readonly string[], prefix: string): string[]
 export function splitListing(output: string): string[] {
   return output.split('\0').filter((path) => path !== '');
 }
+
+/**
+ * The local branches of the checkout at `folder`, and the one it has out, or a thrown
+ * error saying why git could not answer — the setup dialog shows that to the person
+ * rather than offering a list it made up.
+ */
+export async function branchesOf(
+  folder: string,
+): Promise<{ branches: string[]; current: string | null }> {
+  let summary;
+  try {
+    summary = await simpleGit(folder).branchLocal();
+  } catch {
+    throw new Error('That folder is not a git checkout, or git could not read it.');
+  }
+  return {
+    branches: summary.all,
+    current: summary.detached || summary.current === '' ? null : summary.current,
+  };
+}

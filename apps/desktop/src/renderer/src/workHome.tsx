@@ -12,6 +12,7 @@ import { Folder, Ticket } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { ProjectSummary, WorkspaceSummary } from '../../preload/bridge.ts';
 import { destinationForProject, projectWorkspaces } from './workNavigation.ts';
+import { copy } from './workCopy.ts';
 
 const styles = stylex.create({
   root: {
@@ -38,15 +39,51 @@ const styles = stylex.create({
     overflowY: 'auto',
   },
   content: {
-    maxWidth: 880,
-    padding: spacingVars['--spacing-5'],
+    width: '100%',
+    maxWidth: 1040,
+    marginInline: 'auto',
+    padding: spacingVars['--spacing-6'],
+  },
+  intro: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: spacingVars['--spacing-2'],
+    maxWidth: 680,
+    paddingBlockEnd: spacingVars['--spacing-6'],
+  },
+  projectHeading: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: spacingVars['--spacing-1'],
+    paddingBlockEnd: spacingVars['--spacing-2'],
+  },
+  projectRow: {
+    marginBlockEnd: spacingVars['--spacing-2'],
+    borderWidth: borderVars['--border-width'],
+    borderStyle: 'solid',
+    borderColor: colorVars['--color-border'],
+    borderRadius: 10,
+    backgroundColor: colorVars['--color-background-card'],
+  },
+  projectStart: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: spacingVars['--spacing-2'],
   },
   workspaceList: {
-    paddingInlineStart: spacingVars['--spacing-5'],
-    borderInlineStartWidth: borderVars['--border-width'],
-    borderInlineStartStyle: 'solid',
-    borderInlineStartColor: colorVars['--color-background-muted'],
-    marginInlineStart: spacingVars['--spacing-5'],
+    marginBlockStart: spacingVars['--spacing-3'],
+    padding: spacingVars['--spacing-4'],
+    borderWidth: borderVars['--border-width'],
+    borderStyle: 'solid',
+    borderColor: colorVars['--color-background-muted'],
+    borderRadius: 10,
+    backgroundColor: colorVars['--color-background-muted'],
+  },
+  workspaceHeading: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: spacingVars['--spacing-1'],
+    paddingBlockEnd: spacingVars['--spacing-2'],
   },
   message: {
     padding: spacingVars['--spacing-4'],
@@ -117,10 +154,10 @@ export function WorkHome({
     <div {...stylex.props(styles.root)}>
       <header {...stylex.props(styles.top)}>
         <Text type="large" weight="medium">
-          Work
+          {copy.home.title}
         </Text>
         <Text type="supporting" color="secondary">
-          Projects and the workspaces where you run their tickets.
+          {copy.home.subtitle}
         </Text>
       </header>
 
@@ -130,11 +167,11 @@ export function WorkHome({
             <div {...stylex.props(styles.message)}>
               <Banner
                 status="error"
-                title="Work could not continue"
+                title={copy.home.loadFailed}
                 description={trouble}
                 endContent={
                   <Button
-                    label="Try again"
+                    label={copy.home.tryAgain}
                     size="sm"
                     variant="secondary"
                     isDisabled={isLoading || isLinking}
@@ -146,7 +183,7 @@ export function WorkHome({
           )}
 
           {projects === null && trouble === null && (
-            <div {...stylex.props(styles.message)} aria-busy="true" aria-label="Reading projects">
+            <div {...stylex.props(styles.message)} aria-busy="true" aria-label={copy.home.loading}>
               <Skeleton width="35%" height={16} />
               <Skeleton width="75%" height={16} index={1} />
               <Skeleton width="65%" height={16} index={2} />
@@ -155,8 +192,8 @@ export function WorkHome({
 
           {projects !== null && projects.length === 0 && (
             <EmptyState
-              title="No projects yet"
-              description="Projects shared with your account appear here. Link a workspace to open its ticket queue."
+              title={copy.home.emptyTitle}
+              description={copy.home.emptyNote}
               icon={<Icon icon={Ticket} size="lg" />}
               headingLevel={2}
             />
@@ -164,45 +201,86 @@ export function WorkHome({
 
           {projects !== null && projects.length > 0 && (
             <>
-              <Text type="label" weight="medium">
-                Projects
-              </Text>
-              <List density="compact" hasDividers>
+              <section {...stylex.props(styles.intro)}>
+                <Text type="large" weight="medium">
+                  {copy.home.choose}
+                </Text>
+                <Text type="supporting" color="secondary">
+                  {copy.home.chooseNote}
+                </Text>
+              </section>
+              <div {...stylex.props(styles.projectHeading)}>
+                <Text type="label" weight="medium">
+                  {copy.home.projects}
+                </Text>
+                <Text type="supporting" color="secondary">
+                  {copy.home.sharedCount(projects.length)}
+                </Text>
+              </div>
+              <div>
                 {projects.map((project) => {
                   const linked = projectWorkspaces(project, workspaces);
                   const selected = selectedProjectId === project.id;
+                  const destination = destinationForProject(project, workspaces);
+                  const actionLabel =
+                    destination.kind === 'open'
+                      ? copy.home.openTickets
+                      : destination.kind === 'choose'
+                        ? selected
+                          ? copy.home.hideFolders
+                          : copy.home.chooseFolder
+                        : copy.home.linkFolder;
+                  const description =
+                    linked.length === 0
+                      ? copy.home.noFolder
+                      : linked.length === 1
+                        ? copy.home.oneFolder(linked[0]!.name)
+                        : copy.home.manyFolders(linked.length);
+
                   return (
-                    <Item
-                      key={project.id}
-                      label={project.name}
-                      description={`${project.prefix} · ${
-                        linked.length === 0
-                          ? 'No workspace linked'
-                          : `${linked.length} linked ${linked.length === 1 ? 'workspace' : 'workspaces'}`
-                      }`}
-                      startContent={<Icon icon={Ticket} size="sm" />}
-                      endContent={
-                        <Text type="supporting" color="secondary">
-                          {linked.length > 1
-                            ? selected
-                              ? 'Hide workspaces'
-                              : 'Choose workspace'
-                            : linked.length === 0
-                              ? 'Link workspace'
-                              : 'Open'}
-                        </Text>
-                      }
-                      isDisabled={isLinking}
-                      onClick={() => void openProject(project)}
-                    />
+                    <div key={project.id} {...stylex.props(styles.projectRow)}>
+                      <Item
+                        label={project.name}
+                        description={
+                          <span {...stylex.props(styles.projectStart)}>
+                            <Text type="supporting" color="secondary">
+                              {project.prefix}
+                            </Text>
+                            <Text type="supporting" color="secondary">
+                              {description}
+                            </Text>
+                          </span>
+                        }
+                        startContent={<Icon icon={Ticket} size="sm" />}
+                        endContent={
+                          <Button
+                            label={actionLabel}
+                            size="sm"
+                            variant={destination.kind === 'open' ? 'primary' : 'secondary'}
+                            isDisabled={isLinking}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void openProject(project);
+                            }}
+                          />
+                        }
+                        isDisabled={isLinking}
+                        onClick={() => void openProject(project)}
+                      />
+                    </div>
                   );
                 })}
-              </List>
+              </div>
               {selectedProject !== null && selectedWorkspaces.length > 1 && (
                 <section {...stylex.props(styles.workspaceList)}>
-                  <Text type="label" weight="medium">
-                    Choose a workspace for {selectedProject.name}
-                  </Text>
+                  <div {...stylex.props(styles.workspaceHeading)}>
+                    <Text type="label" weight="medium">
+                      {copy.home.folderHeading(selectedProject.name)}
+                    </Text>
+                    <Text type="supporting" color="secondary">
+                      {copy.home.folderNote}
+                    </Text>
+                  </div>
                   <List density="compact">
                     {selectedWorkspaces.map((workspace) => (
                       <Item

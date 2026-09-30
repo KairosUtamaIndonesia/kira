@@ -1,14 +1,12 @@
 /**
- * The Work surface: one project's issues, on a board or in a list.
+ * The Work surface: one project's tickets, on a board or in a list.
  *
- * Board and List are two readings of the same issues. Opening an issue puts the
- * same detail panel over either view, so its execution workspace stays close to
- * the plan without replacing the board or list.
+ * Board and List are two readings of the same tickets. Opening a ticket puts the
+ * same detail panel over either view, so its details stay close to the plan
+ * without replacing the board or list. All of its wording lives in `workCopy.ts`.
  *
- * Nothing here derives a band. The server decides what band a ticket is in and
- * the surface groups what it was handed, because a window that derived one could
- * draw a state the server would not — and the frontier a run is dispatched from
- * is the same derivation (GH #57). What the surface does decide is what to say
+ * Status is stored by the server. The surface derives only the Blocked marker from
+ * open blockers, and groups tickets by that displayed status. What the surface does decide is what to say
  * when there is no queue to draw: a server that cannot be reached, a machine
  * nobody is signed in on, and a folder that works no project are three different
  * things, and an empty project is a fourth.
@@ -20,33 +18,42 @@
  * Ticket details lead with the purpose and finish line; operational context stays
  * close by, but behind a disclosure.
  */
-import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
-import { ClickableCard } from '@astryxdesign/core/ClickableCard';
 import { Divider } from '@astryxdesign/core/Divider';
 import { EmptyState } from '@astryxdesign/core/EmptyState';
 import { Icon } from '@astryxdesign/core/Icon';
 import { IconButton } from '@astryxdesign/core/IconButton';
 import { Item } from '@astryxdesign/core/Item';
+import { edgeCompSlot } from '@astryxdesign/core/Layout';
 import { List } from '@astryxdesign/core/List';
+import { Markdown } from '@astryxdesign/core/Markdown';
+import { MoreMenu } from '@astryxdesign/core/MoreMenu';
+import { Selector } from '@astryxdesign/core/Selector';
 import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl';
 import { Skeleton } from '@astryxdesign/core/Skeleton';
 import { Text } from '@astryxdesign/core/Text';
-import { TextArea } from '@astryxdesign/core/TextArea';
+import { useToast } from '@astryxdesign/core/Toast';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import {
   borderVars,
   colorVars,
   focusVars,
+  radiusVars,
+  shadowVars,
+  sizeVars,
   spacingVars,
+  textSizeVars,
+  typographyVars,
 } from '@astryxdesign/core/theme/tokens.stylex';
 import * as stylex from '@stylexjs/stylex';
 import {
   closestCenter,
   DndContext,
+  DragOverlay,
   KeyboardSensor,
   PointerSensor,
+  useDroppable,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -57,135 +64,95 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type PointerEventHandler, type ReactNode } from 'react';
 import {
   ArrowLeft,
   ArrowUp,
-  CircleAlert,
+  Bug,
+  ChevronDown,
   CircleCheck,
   CircleDashed,
-  Copy,
+  CircleHelp,
   FileText,
+  FlaskConical,
   FolderOpen,
+  GitBranch,
   GripVertical,
-  Play,
+  Map as MapIcon,
+  Maximize2,
+  MessageSquare,
+  Paperclip,
   Plus,
   Rows3,
-  SlidersHorizontal,
+  Search,
+  Sparkles,
   SquareKanban,
-  X,
   Ticket as TicketIcon,
+  Wrench,
+  X,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import {
-  bandIcon,
-  branchNote,
-  holding,
-  inBand,
-  runChoiceLabel,
-  runTelling,
-  saidByLabel,
-  suggestPrefix,
-  when,
-} from './workRows.ts';
+import { age, holding, inStatus, statusOf, suggestPrefix, when } from './workRows.ts';
 import {
   canReorderReady,
   DEFAULT_WORK_DISPLAY,
   displayWork,
   groupedWork,
+  planTicketDrop,
   readWorkDisplay,
+  statusLabel,
   type WorkDisplay,
   type WorkGroup,
+  type WorkStatus,
+  type TicketDropPlan,
   reorderReady,
 } from './workDisplay.ts';
 import type {
   AuthState,
-  Band,
   ChatSummary,
   JoinRequest,
-  NamedTicket,
   ProjectSummary,
   Ticket,
   TicketChange,
-  TicketDraft,
   TicketKind,
   TicketQueue,
-  TicketRun,
-  TicketSaid,
-  ExecutionWorkspace,
-  DeliveryAudit,
-  DeliveryPath,
-  Result,
+  TicketStatus,
   WorkspaceSummary,
 } from '../../preload/bridge.ts';
-import { ExecutionWorkspacePanel } from './executionWorkspace.tsx';
+import { Blockers } from './workBlockers.tsx';
+import { NewTicketDialog, TicketFields } from './workNewTicket.tsx';
+import { FilterBar, FilterToolbar } from './workFilters.tsx';
+import { copy } from './workCopy.ts';
 
 /** Two readings of the same issues. */
 type View = 'board' | 'list';
 
+interface DropIntent {
+  ticketId: string;
+  target: WorkStatus;
+  plan: TicketDropPlan;
+}
+
 const VIEWS: { id: View; label: string; icon: LucideIcon; note: string }[] = [
-  {
-    id: 'board',
-    label: 'Board',
-    icon: SquareKanban,
-    note: 'issues grouped by status',
-  },
-  {
-    id: 'list',
-    label: 'List',
-    icon: Rows3,
-    note: 'all issues in a list',
-  },
+  { id: 'board', icon: SquareKanban, ...copy.views.board },
+  { id: 'list', icon: Rows3, ...copy.views.list },
 ];
 
-/**
- * The bands, in the order the queue draws them, each with what it means.
- *
- * `Drafts` is last and apart: a draft is not in the frontier, so it is not a band
- * a run is dispatched from and it does not belong among them. `Running` and
- * `Needs you` are absent because nothing can be in them until a claim and a run
- * record exist — a band drawn empty would be a claim about a machine that is not
- * here yet.
- */
-const BANDS: { id: Band; label: string; note: string }[] = [
-  { id: 'running', label: 'Running', note: 'a worker is on it now' },
-  {
-    id: 'needs-you',
-    label: 'Needs review',
-    note: 'a run left a result for you to review',
-  },
-  {
-    id: 'ready',
-    label: 'Ready',
-    note: 'ready to start when you are',
-  },
-  { id: 'blocked', label: 'Blocked', note: 'waiting on another issue' },
-  { id: 'done', label: 'Done', note: 'closed with a recorded outcome' },
-  { id: 'draft', label: 'Drafts', note: 'captured, but not ready to run' },
-];
+/** Stored statuses plus Blocked, which is derived from open blockers. */
+const STATUSES: { id: WorkStatus; label: string; note: string }[] = (
+  ['needs-review', 'ready', 'running', 'blocked', 'draft', 'done', 'wont-do'] as const
+).map((id) => ({ id, ...copy.statuses[id] }));
 
-/**
- * How often the queue is read again while the Work surface is open.
- *
- * A run makes the queue move on its own — it claims, it proposes, it ends — so a surface
- * that only read when a person acted would show a band that has moved as though it had
- * not. It is not gated on this window's own copy of what is running, which reads well and
- * is wrong: the read after pressing Run can land before the server has recorded the claim,
- * and a surface whose copy says nothing is running never reads again — so the ticket sits
- * in Ready, with Run still offered, while the server has it Running. A copy cannot be what
- * starts looking for what it does not have (GH #75).
- */
-const READ_AGAIN_MS = 5_000;
-
-const KIND_VARIANT: Record<TicketKind, 'neutral' | 'info' | 'warning' | 'success' | 'purple'> = {
-  prototype: 'neutral',
-  bug: 'warning',
-  feature: 'info',
-  refactor: 'purple',
-  question: 'neutral',
-  research: 'info',
-  spec: 'success',
-  map: 'purple',
+/** Each kind's shape, drawn before its name on the board so kinds read apart at a glance. */
+const KIND_ICON: Record<TicketKind, LucideIcon> = {
+  prototype: FlaskConical,
+  bug: Bug,
+  feature: Sparkles,
+  refactor: Wrench,
+  question: CircleHelp,
+  research: Search,
+  spec: FileText,
+  map: MapIcon,
 };
 
 const KINDS: TicketKind[] = [
@@ -221,6 +188,10 @@ const styles = stylex.create({
     borderBlockEndWidth: borderVars['--border-width'],
     borderBlockEndStyle: 'solid',
     borderBlockEndColor: colorVars['--color-background-muted'],
+    '@media (max-width: 760px)': {
+      flexDirection: 'column',
+      alignItems: 'stretch',
+    },
   },
   topTitles: {
     display: 'flex',
@@ -234,69 +205,27 @@ const styles = stylex.create({
     flexShrink: 0,
     flexWrap: 'wrap',
     justifyContent: 'flex-end',
-  },
-  filterBar: {
-    display: 'flex',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: spacingVars['--spacing-1'],
-    paddingBlock: spacingVars['--spacing-2'],
-    paddingInline: spacingVars['--spacing-4'],
-    borderBlockEndWidth: borderVars['--border-width'],
-    borderBlockEndStyle: 'solid',
-    borderBlockEndColor: colorVars['--color-background-muted'],
+    '@media (max-width: 760px)': {
+      flexShrink: 1,
+      minWidth: 0,
+      justifyContent: 'flex-start',
+    },
   },
   scroll: {
     flex: 1,
     minHeight: 0,
     overflowY: 'auto',
   },
-  listView: { position: 'relative' },
   waiting: {
     display: 'flex',
     flexDirection: 'column',
     gap: spacingVars['--spacing-3'],
     padding: spacingVars['--spacing-4'],
   },
-  bandHead: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: spacingVars['--spacing-0-5'],
-    paddingBlockStart: spacingVars['--spacing-3'],
-    paddingBlockEnd: spacingVars['--spacing-1'],
-    paddingInline: spacingVars['--spacing-4'],
-    backgroundColor: colorVars['--color-background-muted'],
-  },
-  count: {
-    color: colorVars['--color-text-secondary'],
-    fontVariantNumeric: 'tabular-nums',
-  },
-  tag: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: spacingVars['--spacing-1'],
-    color: colorVars['--color-text-secondary'],
-  },
-  abandoned: {
-    color: colorVars['--color-text-orange'],
-  },
-  glyph: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    color: colorVars['--color-text-secondary'],
-  },
-  glyphReady: { color: colorVars['--color-icon-accent'] },
-  glyphAbandoned: { color: colorVars['--color-text-orange'] },
-  meta: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: spacingVars['--spacing-2'],
-    flexWrap: 'wrap',
-    minWidth: 0,
-  },
 
   /* The board, and the ticket over it. */
   board: {
+    position: 'relative',
     display: 'flex',
     flexDirection: 'row',
     flex: 1,
@@ -308,96 +237,510 @@ const styles = stylex.create({
     display: 'flex',
     flexDirection: 'row',
     alignItems: 'stretch',
-    gap: spacingVars['--spacing-3'],
     flex: 1,
     minWidth: 0,
     minHeight: 0,
-    padding: spacingVars['--spacing-3'],
     overflowX: 'auto',
     overflowY: 'hidden',
+    scrollSnapType: 'x proximity',
+    scrollbarGutter: 'stable',
+    scrollbarColor: `${colorVars['--color-accent-muted']} transparent`,
+    '::-webkit-scrollbar-thumb': {
+      backgroundColor: colorVars['--color-accent-muted'],
+    },
+    '::-webkit-scrollbar-thumb:hover': {
+      backgroundColor: colorVars['--color-accent'],
+    },
   },
+  /* A lane is a ruled column: no box of its own, a hairline between it and the next. */
   column: {
     display: 'flex',
     flexDirection: 'column',
-    flexShrink: 0,
-    flexBasis: 236,
-    minWidth: 236,
-    minHeight: 0,
-    padding: spacingVars['--spacing-2'],
-    borderWidth: borderVars['--border-width'],
-    borderStyle: 'solid',
-    borderColor: colorVars['--color-background-muted'],
-    borderRadius: 8,
-    backgroundColor: colorVars['--color-background-muted'],
-  },
-  columnHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingInline: spacingVars['--spacing-1'],
-    paddingBlock: spacingVars['--spacing-1'],
-    backgroundColor: 'transparent',
-  },
-  cards: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: spacingVars['--spacing-2'],
-    overflowY: 'auto',
-    minHeight: 0,
-  },
-  cardBody: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: spacingVars['--spacing-2'],
+    flex: '0 0 296px',
     minWidth: 0,
+    minHeight: 0,
+    borderInlineEndWidth: borderVars['--border-width'],
+    borderInlineEndStyle: 'solid',
+    borderInlineEndColor: colorVars['--color-border'],
+    scrollSnapAlign: 'start',
+    transitionProperty: 'background-color',
+    transitionDuration: '160ms',
   },
-  cardFoot: {
+  columnOver: { backgroundColor: colorVars['--color-overlay-hover'] },
+  laneHead: {
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'baseline',
     justifyContent: 'space-between',
     gap: spacingVars['--spacing-2'],
+    flexShrink: 0,
+    paddingBlock: spacingVars['--spacing-3'],
+    paddingInline: spacingVars['--spacing-4'],
+    borderBlockEndWidth: 2,
+    borderBlockEndStyle: 'solid',
   },
-  dragHandle: {
+  laneNeedsYou: { borderBlockEndColor: colorVars['--color-warning'] },
+  laneReady: { borderBlockEndColor: colorVars['--color-accent'] },
+  laneRunning: { borderBlockEndColor: colorVars['--color-icon-blue'] },
+  laneBlocked: { borderBlockEndColor: colorVars['--color-icon-orange'] },
+  laneDraft: { borderBlockEndColor: colorVars['--color-border-emphasized'] },
+  laneDone: { borderBlockEndColor: colorVars['--color-success'] },
+  laneLabel: {
+    fontSize: '0.8125rem',
+    fontWeight: 600,
+    color: colorVars['--color-text-primary'],
+  },
+  laneCount: {
+    fontFamily: typographyVars['--font-family-code'],
+    fontSize: textSizeVars['--font-size-sm'],
+    color: colorVars['--color-text-secondary'],
+    fontVariantNumeric: 'tabular-nums',
+  },
+  rows: {
+    flex: '0 1 auto',
+    minHeight: 0,
+    margin: 0,
+    padding: 0,
+    listStyle: 'none',
+    overflowY: 'auto',
+    overscrollBehaviorY: 'contain',
+  },
+  laneEmpty: {
+    margin: 0,
+    paddingBlock: spacingVars['--spacing-3'],
+    paddingInline: spacingVars['--spacing-4'],
+    fontSize: '0.8125rem',
+    color: colorVars['--color-text-secondary'],
+  },
+
+  /* The List view's table: one grid, every group and row a subgrid of it. */
+  tableScroll: { flex: 1, minWidth: 0, minHeight: 0, overflow: 'auto' },
+  table: {
+    display: 'grid',
+    gridTemplateColumns:
+      '4px 16px max-content minmax(160px, 1fr) minmax(120px, 200px) 88px 64px minmax(80px, 140px) 56px 4px',
+    columnGap: spacingVars['--spacing-3'],
+    // Wide enough for every column at its narrowest; past that the table scrolls sideways.
+    minWidth: 850,
+  },
+  tableHead: {
+    display: 'grid',
+    gridTemplateColumns: 'subgrid',
+    gridColumn: '1 / -1',
+    alignItems: 'center',
+    height: 32,
+    position: 'sticky',
+    insetBlockStart: 0,
+    zIndex: 2,
+    borderBlockEndWidth: borderVars['--border-width'],
+    borderBlockEndStyle: 'solid',
+    borderBlockEndColor: colorVars['--color-border'],
+    backgroundColor: colorVars['--color-background-surface'],
+  },
+  tableHeadCell: {
+    fontSize: textSizeVars['--font-size-sm'],
+    fontWeight: 500,
+    color: colorVars['--color-text-secondary'],
+    whiteSpace: 'nowrap',
+  },
+  tableHeadTicket: { gridColumn: '2 / 5' },
+  tableHeadEnd: { textAlign: 'end' },
+  tableSection: {
+    display: 'grid',
+    gridTemplateColumns: 'subgrid',
+    gridColumn: '1 / -1',
+    transitionProperty: 'background-color',
+    transitionDuration: '160ms',
+  },
+  tableGroup: {
+    gridColumn: '1 / -1',
+    position: 'sticky',
+    insetBlockStart: 32,
+    zIndex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    gap: spacingVars['--spacing-2'],
+    height: 40,
+    paddingInline: spacingVars['--spacing-4'],
+    borderWidth: 0,
+    borderBlockEndWidth: borderVars['--border-width'],
+    borderBlockEndStyle: 'solid',
+    borderBlockEndColor: colorVars['--color-border'],
+    backgroundColor: colorVars['--color-background-body'],
+    color: colorVars['--color-text-primary'],
+    textAlign: 'start',
+    cursor: 'pointer',
+    outlineStyle: { default: 'none', ':focus-visible': focusVars['--focus-outline-style'] },
+    outlineWidth: focusVars['--focus-outline-width'],
+    outlineColor: focusVars['--focus-outline-color'],
+    outlineOffset: '-2px',
+  },
+  tableChevron: {
+    display: 'inline-flex',
+    color: colorVars['--color-icon-secondary'],
+    transitionProperty: 'transform',
+    transitionDuration: '120ms',
+  },
+  tableChevronFolded: { transform: 'rotate(-90deg)' },
+  tableGroupDot: { width: 8, height: 8, flexShrink: 0, borderRadius: radiusVars['--radius-full'] },
+  tableGroupLabel: { fontSize: textSizeVars['--font-size-base'], fontWeight: 500 },
+  tableGroupNote: {
+    minWidth: 0,
+    marginInlineStart: spacingVars['--spacing-2'],
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: textSizeVars['--font-size-sm'],
+    color: colorVars['--color-text-secondary'],
+  },
+  laneFillNeedsYou: { backgroundColor: colorVars['--color-warning'] },
+  laneFillReady: { backgroundColor: colorVars['--color-accent'] },
+  laneFillRunning: { backgroundColor: colorVars['--color-icon-blue'] },
+  laneFillBlocked: { backgroundColor: colorVars['--color-icon-orange'] },
+  laneFillDraft: { backgroundColor: colorVars['--color-border-emphasized'] },
+  laneFillDone: { backgroundColor: colorVars['--color-success'] },
+  // A board row's look, laid into the table's columns: the subgrid's own gaps, no padding.
+  tableRow: {
+    display: 'grid',
+    gridTemplateColumns: 'subgrid',
+    gridColumn: '1 / -1',
+    alignItems: 'center',
+    height: 40,
+    padding: 0,
+    columnGap: spacingVars['--spacing-3'],
+    rowGap: 0,
+  },
+  tableTitle: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: textSizeVars['--font-size-base'],
+    fontWeight: 500,
+    color: colorVars['--color-text-primary'],
+  },
+  tableKind: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: spacingVars['--spacing-1-5'],
+    fontSize: textSizeVars['--font-size-sm'],
+    color: colorVars['--color-text-secondary'],
+  },
+  tableNumber: {
+    fontFamily: typographyVars['--font-family-code'],
+    fontSize: textSizeVars['--font-size-sm'],
+    color: colorVars['--color-text-secondary'],
+    fontVariantNumeric: 'tabular-nums',
+  },
+  tableOwner: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: textSizeVars['--font-size-sm'],
+    color: colorVars['--color-text-secondary'],
+  },
+  tableAge: {
+    textAlign: 'end',
+    whiteSpace: 'nowrap',
+    fontSize: textSizeVars['--font-size-sm'],
+    color: colorVars['--color-text-secondary'],
+    fontVariantNumeric: 'tabular-nums',
+  },
+  tableHandle: {
+    position: 'absolute',
+    insetBlock: 0,
+    insetInlineStart: 0,
+    zIndex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 16,
+    padding: 0,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    color: colorVars['--color-icon-secondary'],
+    cursor: { default: 'grab', ':active': 'grabbing' },
+    touchAction: 'none',
+    opacity: 'var(--row-reveal, 0)',
+    outlineStyle: { default: 'none', ':focus-visible': focusVars['--focus-outline-style'] },
+    outlineWidth: focusVars['--focus-outline-width'],
+    outlineColor: focusVars['--focus-outline-color'],
+    outlineOffset: '-2px',
+  },
+  tableOverlay: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: spacingVars['--spacing-3'],
+    width: 520,
+    height: 40,
+    paddingInline: spacingVars['--spacing-4'],
+    borderRadius: 6,
+    backgroundColor: colorVars['--color-background-popover'],
+    boxShadow: shadowVars['--shadow-med'],
+    cursor: 'grabbing',
+  },
+
+  /* A ticket on the board: one ruled row, its actions raised over it on hover or focus. */
+  row: {
+    '--row-reveal': { default: '0', ':hover': '1', ':focus-within': '1' },
+    position: 'relative',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: spacingVars['--spacing-1'],
+    paddingBlock: 10,
+    paddingInline: spacingVars['--spacing-4'],
+    borderBlockEndWidth: borderVars['--border-width'],
+    borderBlockEndStyle: 'solid',
+    borderBlockEndColor: colorVars['--color-border'],
+    backgroundColor: {
+      default: 'transparent',
+      ':hover': colorVars['--color-overlay-hover'],
+    },
+    touchAction: 'manipulation',
+  },
+  rowSelected: {
+    backgroundColor: {
+      default: colorVars['--color-accent-muted'],
+      ':hover': colorVars['--color-accent-muted'],
+    },
+  },
+  rowDragging: { opacity: 0.4 },
+  rowOverlay: {
+    width: 295,
+    borderBlockEndWidth: 0,
+    borderRadius: 6,
+    backgroundColor: colorVars['--color-background-popover'],
+    boxShadow: shadowVars['--shadow-med'],
+    cursor: 'grabbing',
+  },
+  rowOpen: {
+    position: 'absolute',
+    inset: 0,
+    zIndex: 0,
+    padding: 0,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    cursor: 'pointer',
+    outlineStyle: { default: 'none', ':focus-visible': focusVars['--focus-outline-style'] },
+    outlineWidth: focusVars['--focus-outline-width'],
+    outlineColor: focusVars['--focus-outline-color'],
+    outlineOffset: '-2px',
+  },
+  rowTop: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: spacingVars['--spacing-2'],
+    minHeight: 22,
+  },
+  rowKind: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    flexShrink: 0,
+    color: colorVars['--color-icon-secondary'],
+  },
+  rowName: {
+    fontFamily: typographyVars['--font-family-code'],
+    fontSize: textSizeVars['--font-size-sm'],
+    letterSpacing: '0.01em',
+    color: colorVars['--color-text-secondary'],
+    fontVariantNumeric: 'tabular-nums',
+    whiteSpace: 'nowrap',
+  },
+  rowAge: {
+    flex: 1,
+    fontSize: textSizeVars['--font-size-sm'],
+    color: colorVars['--color-text-secondary'],
+    whiteSpace: 'nowrap',
+  },
+  rowPerson: {
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    width: 24,
-    height: 24,
-    padding: 0,
-    borderWidth: 0,
-    backgroundColor: 'transparent',
+    flexShrink: 0,
+    width: 20,
+    height: 20,
+    borderRadius: 999,
+    fontSize: textSizeVars['--font-size-xs'],
+    fontWeight: 600,
+    color: colorVars['--color-text-primary'],
+    backgroundColor: colorVars['--color-neutral'],
+    opacity: 'calc(1 - var(--row-reveal, 0))',
+    transitionProperty: 'opacity',
+    transitionDuration: '120ms',
+  },
+  rowTitle: {
+    fontSize: textSizeVars['--font-size-base'],
+    fontWeight: 500,
+    lineHeight: 1.4,
+    color: colorVars['--color-text-primary'],
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical',
+    overflow: 'hidden',
+    overflowWrap: 'anywhere',
+  },
+  rowState: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: spacingVars['--spacing-1-5'],
+    minWidth: 0,
+    fontSize: textSizeVars['--font-size-sm'],
     color: colorVars['--color-text-secondary'],
-    cursor: 'grab',
-    ':active': { cursor: 'grabbing' },
-    ':focus-visible': {
-      outlineWidth: focusVars['--focus-outline-width'],
-      outlineStyle: focusVars['--focus-outline-style'],
-      outlineColor: focusVars['--focus-outline-color'],
-      outlineOffset: focusVars['--focus-outline-offset'],
+  },
+  rowStateIcon: { display: 'inline-flex', alignItems: 'center', flexShrink: 0 },
+  rowStateWords: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  toneNeedsYou: { color: colorVars['--color-text-yellow'] },
+  toneReady: { color: colorVars['--color-text-accent'] },
+  toneRunning: { color: colorVars['--color-text-blue'] },
+  toneBlocked: { color: colorVars['--color-text-orange'] },
+  toneDraft: { color: colorVars['--color-text-secondary'] },
+  toneDone: { color: colorVars['--color-text-green'] },
+  rowTags: { display: 'flex', flexWrap: 'wrap', gap: spacingVars['--spacing-1'] },
+  rowTag: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 4,
+    height: 20,
+    paddingInline: 6,
+    borderWidth: borderVars['--border-width'],
+    borderStyle: 'solid',
+    borderColor: colorVars['--color-border'],
+    borderRadius: 999,
+    backgroundColor: 'transparent',
+    fontSize: '0.6875rem',
+    color: colorVars['--color-text-secondary'],
+    fontVariantNumeric: 'tabular-nums',
+    whiteSpace: 'nowrap',
+  },
+  rowTagAttached: {
+    borderColor: colorVars['--color-accent-muted'],
+    color: colorVars['--color-text-accent'],
+  },
+  rowTagButton: {
+    position: 'relative',
+    zIndex: 1,
+    cursor: 'pointer',
+    borderColor: {
+      default: colorVars['--color-border'],
+      ':hover': colorVars['--color-border-emphasized'],
     },
+    color: {
+      default: colorVars['--color-text-secondary'],
+      ':hover': colorVars['--color-text-primary'],
+    },
+    outlineStyle: { default: 'none', ':focus-visible': focusVars['--focus-outline-style'] },
+    outlineWidth: focusVars['--focus-outline-width'],
+    outlineColor: focusVars['--focus-outline-color'],
+    outlineOffset: 1,
   },
-  cardDragging: {
-    opacity: 0.55,
-  },
-  scrim: {
+  kindDot: { width: 6, height: 6, borderRadius: 999, flexShrink: 0 },
+  kindCyan: { backgroundColor: colorVars['--color-icon-cyan'] },
+  kindOrange: { backgroundColor: colorVars['--color-icon-orange'] },
+  kindPurple: { backgroundColor: colorVars['--color-icon-purple'] },
+  kindTeal: { backgroundColor: colorVars['--color-icon-teal'] },
+  kindPink: { backgroundColor: colorVars['--color-icon-pink'] },
+  kindGray: { backgroundColor: colorVars['--color-icon-secondary'] },
+  strip: {
     position: 'absolute',
-    inset: 0,
+    insetBlockStart: 6,
+    insetInlineEnd: 12,
+    zIndex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 2,
+    padding: 2,
+    borderWidth: borderVars['--border-width'],
+    borderStyle: 'solid',
+    borderColor: colorVars['--color-border'],
+    borderRadius: 6,
+    backgroundColor: colorVars['--color-background-popover'],
+    boxShadow: shadowVars['--shadow-low'],
+    opacity: 'var(--row-reveal, 0)',
+    transform: 'translateY(calc((1 - var(--row-reveal, 0)) * 3px))',
+    transitionProperty: 'opacity, transform',
+    transitionDuration: '140ms',
+    transitionTimingFunction: 'cubic-bezier(0.22, 1, 0.36, 1)',
+  },
+  stripStart: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 4,
+    height: 22,
+    paddingInline: 7,
+    borderWidth: 0,
+    borderRadius: 4,
+    backgroundColor: colorVars['--color-accent'],
+    color: colorVars['--color-on-accent'],
+    fontSize: textSizeVars['--font-size-sm'],
+    fontWeight: 600,
+    cursor: 'pointer',
+    outlineStyle: { default: 'none', ':focus-visible': focusVars['--focus-outline-style'] },
+    outlineWidth: focusVars['--focus-outline-width'],
+    outlineColor: focusVars['--focus-outline-color'],
+    outlineOffset: 1,
+  },
+  stripButton: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 22,
+    height: 22,
     padding: 0,
     borderWidth: 0,
-    backgroundColor: colorVars['--color-overlay'],
-    cursor: 'default',
+    borderRadius: 4,
+    backgroundColor: {
+      default: 'transparent',
+      ':hover': colorVars['--color-overlay-hover'],
+    },
+    color: {
+      default: colorVars['--color-icon-secondary'],
+      ':hover': colorVars['--color-text-primary'],
+    },
+    cursor: 'pointer',
+    outlineStyle: { default: 'none', ':focus-visible': focusVars['--focus-outline-style'] },
+    outlineWidth: focusVars['--focus-outline-width'],
+    outlineColor: focusVars['--focus-outline-color'],
+    outlineOffset: 1,
   },
-  drawer: {
-    position: 'absolute',
-    insetBlock: 0,
-    insetInlineEnd: 0,
+  stripOn: { color: colorVars['--color-text-accent'] },
+  stripHandle: {
+    cursor: { default: 'grab', ':active': 'grabbing' },
+    touchAction: 'none',
+  },
+  dropAction: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacingVars['--spacing-3'],
+    flexWrap: 'wrap',
+    paddingBlock: spacingVars['--spacing-2'],
+    paddingInline: spacingVars['--spacing-4'],
+    borderBlockEndWidth: borderVars['--border-width'],
+    borderBlockEndStyle: 'solid',
+    borderBlockEndColor: colorVars['--color-background-muted'],
+    backgroundColor: colorVars['--color-background-surface'],
+  },
+  dropActionCopy: {
     display: 'flex',
     flexDirection: 'column',
-    width: 'min(460px, 100%)',
-    backgroundColor: colorVars['--color-background-surface'],
-    borderInlineStartWidth: borderVars['--border-width'],
-    borderInlineStartStyle: 'solid',
-    borderInlineStartColor: colorVars['--color-background-muted'],
+    gap: spacingVars['--spacing-0-5'],
+    minWidth: 200,
+    flex: '1 1 240px',
+  },
+  dropActionTools: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: spacingVars['--spacing-2'],
+    flexWrap: 'wrap',
+  },
+  dropSelector: {
+    minWidth: 220,
+    maxWidth: 320,
   },
   boardDrawer: {
     display: 'flex',
@@ -409,6 +752,18 @@ const styles = stylex.create({
     borderInlineStartWidth: borderVars['--border-width'],
     borderInlineStartStyle: 'solid',
     borderInlineStartColor: colorVars['--color-background-muted'],
+    '@media (max-width: 920px)': {
+      position: 'absolute',
+      insetBlock: 0,
+      insetInlineEnd: 0,
+      width: 'min(460px, 94%)',
+      flex: 'none',
+      minWidth: 0,
+      zIndex: 1,
+    },
+    '@media (max-width: 540px)': {
+      width: '100%',
+    },
   },
 
   /* The panel a ticket is read in. */
@@ -430,6 +785,178 @@ const styles = stylex.create({
     borderBlockEndStyle: 'solid',
     borderBlockEndColor: colorVars['--color-background-muted'],
   },
+  /*
+   * An icon button at the end of a header: its icon lines up with the header's padding and
+   * its transparent box hangs into the gutter. IconButton carries no edge-compensation
+   * marker, so this is Astryx's rule said by hand: half the box the 16px icon sits in.
+   */
+  edgeEndIcon: {
+    display: 'inline-flex',
+    marginInlineEnd: `calc((${sizeVars['--size-element-md']} - 16px) / -2)`,
+  },
+  footTail: { display: 'inline-flex', alignItems: 'center', gap: spacingVars['--spacing-1'] },
+  edgeEndIconSm: {
+    display: 'inline-flex',
+    marginInlineEnd: `calc((${sizeVars['--size-element-sm']} - 16px) / -2)`,
+  },
+  panelHeadBar: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacingVars['--spacing-2'],
+  },
+  fullBar: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacingVars['--spacing-3'],
+    flexShrink: 0,
+    height: 44,
+    paddingInline: spacingVars['--spacing-4'],
+    borderBlockEndWidth: borderVars['--border-width'],
+    borderBlockEndStyle: 'solid',
+    borderBlockEndColor: colorVars['--color-border'],
+    backgroundColor: colorVars['--color-background-surface'],
+  },
+  fullBarStart: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: spacingVars['--spacing-2'],
+    minWidth: 0,
+  },
+  fullScroll: { flex: 1, minHeight: 0, overflowY: 'auto' },
+  fullGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) 300px',
+    alignItems: 'start',
+    gap: spacingVars['--spacing-8'],
+    maxWidth: 1180,
+    marginInline: 'auto',
+    padding: spacingVars['--spacing-6'],
+    '@media (max-width: 860px)': { gridTemplateColumns: 'minmax(0, 1fr)' },
+  },
+  fullDoc: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: spacingVars['--spacing-6'],
+    minWidth: 0,
+  },
+  /* The box's edge is the shadow's own inset ring; it takes no border (DESIGN.md). */
+  fullBox: {
+    position: 'sticky',
+    insetBlockStart: spacingVars['--spacing-6'],
+    display: 'flex',
+    flexDirection: 'column',
+    gap: spacingVars['--spacing-5'],
+    maxHeight: `calc(100vh - 200px)`,
+    overflowY: 'auto',
+    padding: spacingVars['--spacing-4'],
+    borderRadius: 10,
+    backgroundColor: colorVars['--color-background-popover'],
+    boxShadow: shadowVars['--shadow-low'],
+    '@media (max-width: 860px)': { position: 'static', maxHeight: 'none' },
+  },
+  fullActions: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: spacingVars['--spacing-2'],
+  },
+  fullFacts: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: spacingVars['--spacing-2'],
+    margin: 0,
+  },
+  fullFact: {
+    display: 'grid',
+    gridTemplateColumns: '96px minmax(0, 1fr)',
+    alignItems: 'baseline',
+    gap: spacingVars['--spacing-2'],
+  },
+  fullFactLabel: {
+    fontSize: textSizeVars['--font-size-sm'],
+    color: colorVars['--color-text-secondary'],
+  },
+  fullFactValue: { margin: 0, fontSize: textSizeVars['--font-size-sm'], overflowWrap: 'anywhere' },
+  fullGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: spacingVars['--spacing-2'],
+    minWidth: 0,
+    paddingBlockStart: spacingVars['--spacing-4'],
+    borderBlockStartWidth: borderVars['--border-width'],
+    borderBlockStartStyle: 'solid',
+    borderBlockStartColor: colorVars['--color-border'],
+  },
+  chatButton: {
+    width: '100%',
+    minWidth: 0,
+    justifyContent: 'flex-start',
+  },
+  chatButtonLabel: {
+    display: 'block',
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  workspaceAnchor: { scrollMarginBlockStart: spacingVars['--spacing-6'] },
+  branchLine: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: spacingVars['--spacing-1'],
+    minWidth: 0,
+  },
+  branchPill: {
+    height: 22,
+    paddingInline: 7,
+    borderRadius: radiusVars['--radius-element'],
+    fontFamily: typographyVars['--font-family-code'],
+    fontSize: textSizeVars['--font-size-sm'],
+    lineHeight: '22px',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+  },
+  branchBase: {
+    flexShrink: 0,
+    color: colorVars['--color-text-secondary'],
+    backgroundColor: colorVars['--color-background-muted'],
+  },
+  branchWork: {
+    minWidth: 0,
+    color: colorVars['--color-text-primary'],
+    backgroundColor: colorVars['--color-neutral'],
+  },
+  branchPlanned: {
+    borderWidth: borderVars['--border-width'],
+    borderStyle: 'dashed',
+    borderColor: colorVars['--color-border-emphasized'],
+    backgroundColor: 'transparent',
+    lineHeight: '20px',
+  },
+  branchArrow: {
+    display: 'inline-flex',
+    flexShrink: 0,
+    color: colorVars['--color-icon-secondary'],
+  },
+  branchFacts: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: spacingVars['--spacing-1'],
+    margin: 0,
+    padding: 0,
+    listStyle: 'none',
+    minWidth: 0,
+  },
+  srOnly: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    overflow: 'hidden',
+    clipPath: 'inset(50%)',
+    whiteSpace: 'nowrap',
+  },
   panelBody: {
     display: 'flex',
     flexDirection: 'column',
@@ -449,7 +976,8 @@ const styles = stylex.create({
     justifyContent: 'flex-end',
     gap: spacingVars['--spacing-2'],
     flexShrink: 0,
-    padding: spacingVars['--spacing-3'],
+    paddingBlock: spacingVars['--spacing-3'],
+    paddingInline: spacingVars['--spacing-4'],
     borderBlockStartWidth: borderVars['--border-width'],
     borderBlockStartStyle: 'solid',
     borderBlockStartColor: colorVars['--color-background-muted'],
@@ -472,14 +1000,6 @@ const styles = stylex.create({
     flexWrap: 'wrap',
     gap: spacingVars['--spacing-2'],
   },
-  ticketStatus: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    paddingBlock: spacingVars['--spacing-0-5'],
-    paddingInline: spacingVars['--spacing-2'],
-    borderRadius: 999,
-    backgroundColor: colorVars['--color-background-muted'],
-  },
   ticketTitle: {
     marginBlock: 0,
     color: colorVars['--color-text-primary'],
@@ -489,11 +1009,6 @@ const styles = stylex.create({
     letterSpacing: '-0.025em',
     lineHeight: 1.25,
     overflowWrap: 'anywhere',
-  },
-  ticketBodyText: {
-    whiteSpace: 'pre-wrap',
-    wordBreak: 'break-word',
-    lineHeight: 1.6,
   },
   ticketSectionHeading: {
     display: 'flex',
@@ -534,6 +1049,12 @@ const styles = stylex.create({
     borderBlockStartColor: colorVars['--color-background-muted'],
   },
   ticketDetailsSummary: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    // The browser's own marker sits off the text column; the chevron at the end replaces it.
+    listStyle: 'none',
+    '::-webkit-details-marker': { display: 'none' },
     paddingBlock: spacingVars['--spacing-3'],
     color: colorVars['--color-text-primary'],
     cursor: 'pointer',
@@ -548,29 +1069,19 @@ const styles = stylex.create({
     display: 'inline-flex',
     flexDirection: 'column',
     gap: spacingVars['--spacing-0-5'],
-    marginInlineStart: spacingVars['--spacing-2'],
-    verticalAlign: 'middle',
   },
+  ticketDetailsChevron: {
+    display: 'inline-flex',
+    color: colorVars['--color-icon-secondary'],
+    transitionProperty: 'transform',
+    transitionDuration: '120ms',
+  },
+  ticketDetailsChevronOpen: { transform: 'rotate(180deg)' },
   ticketDetailsContent: {
     display: 'flex',
     flexDirection: 'column',
     gap: spacingVars['--spacing-4'],
     paddingBlockEnd: spacingVars['--spacing-4'],
-  },
-  ticketFacts: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: spacingVars['--spacing-2'],
-  },
-  ticketFact: {
-    display: 'grid',
-    gridTemplateColumns: 'minmax(88px, 0.7fr) minmax(0, 1.3fr)',
-    alignItems: 'baseline',
-    gap: spacingVars['--spacing-3'],
-  },
-  ticketFactValue: {
-    minWidth: 0,
-    overflowWrap: 'anywhere',
   },
   refusal: {
     flexShrink: 0,
@@ -588,65 +1099,6 @@ const styles = stylex.create({
     display: 'flex',
     alignItems: 'center',
     gap: spacingVars['--spacing-2'],
-  },
-  lineText: {
-    display: 'flex',
-    flex: 1,
-    minWidth: 0,
-  },
-  gateName: {
-    display: 'flex',
-    flex: 1,
-    minWidth: 0,
-    padding: 0,
-    borderWidth: 0,
-    backgroundColor: 'transparent',
-    textAlign: 'start',
-    cursor: 'pointer',
-    color: colorVars['--color-text-primary'],
-    ':focus-visible': {
-      outlineWidth: focusVars['--focus-outline-width'],
-      outlineStyle: focusVars['--focus-outline-style'],
-      outlineColor: focusVars['--focus-outline-color'],
-      outlineOffset: focusVars['--focus-outline-offset'],
-    },
-  },
-  branch: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: spacingVars['--spacing-2'],
-  },
-
-  /* What a run left on a ticket: its evidence, and the words it went with. */
-  evidence: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: spacingVars['--spacing-1'],
-    minWidth: 0,
-  },
-  said: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: spacingVars['--spacing-3'],
-    margin: 0,
-    padding: 0,
-    listStyle: 'none',
-    // A run can talk for longer than the ticket is long. The transcript is bounded so the
-    // facts a person came for stay where they were, and it scrolls rather than growing.
-    maxHeight: 420,
-    overflowY: 'auto',
-  },
-  saidLine: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: spacingVars['--spacing-1'],
-    minWidth: 0,
-  },
-  saidWords: {
-    // The words are written in paragraphs, and a command is written as one line: both are
-    // kept as they were written rather than reflowed into each other.
-    whiteSpace: 'pre-wrap',
-    wordBreak: 'break-word',
   },
   field: {
     display: 'flex',
@@ -678,11 +1130,6 @@ const styles = stylex.create({
     maxWidth: 640,
     padding: spacingVars['--spacing-6'],
   },
-  joinList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: spacingVars['--spacing-1'],
-  },
   joinFields: {
     display: 'flex',
     alignItems: 'flex-start',
@@ -695,6 +1142,14 @@ const styles = stylex.create({
     flexWrap: 'wrap',
   },
 });
+
+/**
+ * A ghost text button at the start of a header lines its icon up with the text under it:
+ * Astryx's own edge compensation, which pulls a marked button out by its 12px padding so
+ * the padding hangs into the gutter instead of indenting the button at rest. Astryx's
+ * containers apply it themselves; these headers are ours, so they ask for it.
+ */
+const EDGE_TEXT_BUTTON = edgeCompSlot.inset(spacingVars['--spacing-3']);
 
 /* ── The surface ────────────────────────────────────────────────────────── */
 
@@ -715,7 +1170,6 @@ function useMountEffect(effect: () => void | (() => void)): void {
 export function WorkSurface({
   workspace,
   auth,
-  chatIds,
   chatSummaries,
   initialTicketId,
   onBack,
@@ -727,14 +1181,12 @@ export function WorkSurface({
   workspace: WorkspaceSummary | null;
   /** Who is signed in, as the window last heard — null until the first answer. */
   auth: AuthState | null;
-  /** The chats the window is holding, by id: a run's chat is one of them. */
-  chatIds: string[];
   chatSummaries: ChatSummary[];
   /** A ticket to select when Work was opened from the shaping Workbench. */
   initialTicketId?: string | null;
   /** Return to the project navigator, when this surface was entered from there. */
   onBack?: () => void;
-  /** Show a chat: what a run is, and where its words are read. */
+  /** Show a linked chat. */
   onOpenChat: (chatId: string) => void;
   /** Start an ordinary chat with selected tickets attached as working context. */
   onStartChat: (ticketIds: string[]) => void;
@@ -751,12 +1203,12 @@ export function WorkSurface({
   );
   const [isWriting, setIsWriting] = useState(false);
   /** What the server last refused, in its own words. */
+  const toast = useToast();
   const [refusal, setRefusal] = useState<string | null>(null);
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [attachedIds, setAttachedIds] = useState<string[]>([]);
-  const [executionWorkspaces, setExecutionWorkspaces] = useState<
-    Record<string, ExecutionWorkspace[]>
-  >({});
+  const [isFull, setIsFull] = useState(false);
+  const [dropIntent, setDropIntent] = useState<DropIntent | null>(null);
+  const [dropBusy, setDropBusy] = useState(false);
 
   function updateDisplay(change: WorkDisplay | ((current: WorkDisplay) => WorkDisplay)): void {
     setDisplay((current: WorkDisplay) => {
@@ -764,9 +1216,9 @@ export function WorkSurface({
       const params = new URLSearchParams(window.location.search);
       const values: [string, string | null][] = [
         ['search', next.search.trim() || null],
-        ['band', next.band === 'all' ? null : next.band],
+        ['status', next.status === 'all' ? null : next.status],
         ['kind', next.kind === 'all' ? null : next.kind],
-        ['claim', next.claim === 'all' ? null : next.claim],
+        ['owner', next.owner === 'all' ? null : next.owner],
         ['order', next.order === 'rank' ? null : next.order],
         ['group', next.group === 'status' ? null : next.group],
         ['done', next.showDone ? '1' : null],
@@ -787,8 +1239,7 @@ export function WorkSurface({
 
   const projectId = workspace?.projectId ?? null;
 
-  // A chat's own read: one workspace's queue, asked for again by whoever needs it — the
-  // mount, the window coming back, a write, and the beat while a run is going.
+  // Read the project's ticket store on mount, focus, and after a write.
   const read = useCallback(async (): Promise<void> => {
     if (workspace === null || projectId === null) return;
 
@@ -804,13 +1255,7 @@ export function WorkSurface({
 
     setTrouble(null);
     setQueue(answer.value);
-    if (openId !== null) {
-      const workspaces = await window.kira.listExecutionWorkspaces(openId);
-      if (workspaces.ok) {
-        setExecutionWorkspaces((current) => ({ ...current, [openId]: workspaces.value }));
-      }
-    }
-  }, [workspace, projectId, openId]);
+  }, [workspace, projectId]);
 
   useMountEffect(() => {
     void read();
@@ -824,28 +1269,32 @@ export function WorkSurface({
     return () => window.removeEventListener('focus', again);
   });
 
-  // The queue is read on a beat while the surface is open, so a run that moves a ticket on
-  // its own is drawn where it has moved to.
-  useEffect(() => {
-    const beat = setInterval(() => void read(), READ_AGAIN_MS);
-
-    return () => clearInterval(beat);
-  }, [read]);
-
   /**
    * One write, and what the server made of it.
    *
-   * Every write is followed by a read rather than patched into the list by hand:
-   * a band is derived, so one write can move a ticket nobody touched — closing a
-   * slice releases the parent that named it — and a surface that guessed at the
-   * result would show a queue the server does not have.
+   * Every write is followed by a read so the view reflects stored server state.
    */
+  /**
+   * Where a refusal is said. What is done inside the ticket's panel is refused in the
+   * panel, next to what was being done. A move made from the board or list has no panel to
+   * say it in, and the confirmation bar is too small to read a sentence in, so it is a toast.
+   */
+  function refuse(message: string, shownIn: 'panel' | 'toast'): void {
+    if (shownIn === 'panel') {
+      setRefusal(message);
+      return;
+    }
+    setRefusal(null);
+    toast({ type: 'error', body: message });
+  }
+
   async function wrote(
     act: () => Promise<{ ok: true; value: Ticket } | { ok: false; error: string }>,
+    shownIn: 'panel' | 'toast' = 'panel',
   ): Promise<Ticket | null> {
     const answer = await act();
     if (!answer.ok) {
-      setRefusal(answer.error);
+      refuse(answer.error, shownIn);
       return null;
     }
 
@@ -854,38 +1303,11 @@ export function WorkSurface({
     return answer.value;
   }
 
-  /**
-   * One act that answers a run, and what the server made of it.
-   *
-   * The same shape as `wrote`, which is the same shape of act: the server is asked, its
-   * own words are shown when it refuses, and the queue is read again when it does not —
-   * because a run that started moves a ticket nobody touched.
-   */
-  async function acted<T>(
-    act: () => Promise<{ ok: true; value: T } | { ok: false; error: string }>,
-  ): Promise<boolean> {
-    const answer = await act();
-
-    if (!answer.ok) {
-      setRefusal(answer.error);
-      return false;
-    }
-
-    setRefusal(null);
-    await read();
-    return true;
-  }
-
-  /**
-   * Move a ticket to the front of the band it is already in.
-   *
-   * One rank, written once: a rank orders a ticket inside its band and never
-   * moves it between bands, so this is the whole of what a drag can mean. The
-   * band is not sent, because a band is derived — the ticket is in Ready or it
-   * is not, and nothing here decides that.
-   */
+  /** Move a Ready ticket to the front of its existing status group. */
   async function promote(id: string): Promise<void> {
-    const ready = tickets.filter((each) => each.band === 'ready' && each.id !== id);
+    const ready = tickets.filter(
+      (each) => !each.blocked && each.status === 'ready' && each.id !== id,
+    );
     const top = ready.reduce(
       (lowest, each) => Math.min(lowest, each.rank),
       Number.MAX_SAFE_INTEGER,
@@ -905,7 +1327,7 @@ export function WorkSurface({
     for (const [rank, ticket] of ordered.entries()) {
       const answer = await window.kira.changeTicket(ticket.id, { rank });
       if (!answer.ok) {
-        setRefusal(answer.error);
+        refuse(answer.error, 'toast');
         await read();
         return;
       }
@@ -915,13 +1337,48 @@ export function WorkSurface({
     await read();
   }
 
+  function beginTicketDrop(ticketId: string, target: WorkStatus): void {
+    const ticket = queue?.tickets.find((each) => each.id === ticketId);
+    if (ticket === undefined) return;
+
+    const plan = planTicketDrop(ticket, target);
+    if (plan === null) return;
+
+    setDropIntent({ ticketId, target, plan });
+    setDropBusy(false);
+    setRefusal(null);
+  }
+
+  function cancelTicketDrop(): void {
+    setDropIntent(null);
+  }
+
+  async function applyDropWrite(
+    action: () => Promise<{ ok: true; value: Ticket } | { ok: false; error: string }>,
+  ): Promise<void> {
+    setDropBusy(true);
+    const changed = await wrote(action, 'toast');
+    setDropBusy(false);
+    if (changed !== null) setDropIntent(null);
+  }
+
+  async function removeDropBlocker(blockerId: string): Promise<void> {
+    const ticket = tickets.find((each) => each.id === dropIntent?.ticketId);
+    if (ticket === undefined) return;
+
+    setDropBusy(true);
+    const removed = await wrote(() => window.kira.ungateTicket(ticket.id, blockerId), 'toast');
+    setDropBusy(false);
+    if (removed !== null) setDropIntent(null);
+  }
+
   if (workspace === null) {
     return (
       <div {...stylex.props(styles.root)}>
         <div {...stylex.props(styles.scroll)}>
           <EmptyState
-            title="No workspace selected"
-            description="Open a folder from the sidebar. A folder is a workspace, and a workspace is where a project's work runs."
+            title={copy.states.noFolder.title}
+            description={copy.states.noFolder.description}
             icon={<Icon icon={FolderOpen} size="lg" />}
             headingLevel={2}
           />
@@ -936,98 +1393,63 @@ export function WorkSurface({
 
   const tickets = queue?.tickets ?? [];
   const visibleTickets = displayWork(tickets, display);
-  const visibleBands = display.showDone ? BANDS : BANDS.filter((each) => each.id !== 'done');
+  const doneCount = tickets.filter((ticket) => ticket.status === 'done').length;
+  const wontDoCount = tickets.filter((ticket) => ticket.status === 'wont-do').length;
+  const visibleStatuses = STATUSES;
   const readyCanReorder = canReorderReady(display);
   const open = tickets.find((each) => each.id === openId) ?? null;
-  const placement = view === 'board' ? 'beside' : 'over';
+  const placement = 'beside';
   const closePanel = (): void => {
+    setIsFull(false);
     setIsWriting(false);
     setOpenId(null);
     setRefusal(null);
   };
   const openTicket = (id: string): void => {
+    cancelTicketDrop();
     setIsWriting(false);
     setOpenId(id);
   };
-  const panel = isWriting ? (
-    <TicketForm
-      placement={placement}
-      refusal={refusal}
-      trouble={trouble}
-      onRetry={() => void read()}
-      onLeave={closePanel}
-      onWrite={async (draft) => {
-        const written = await wrote(() => window.kira.writeTicket(workspace.id, draft));
-        if (written !== null) {
-          setIsWriting(false);
-          setOpenId(written.id);
-        }
-      }}
-    />
-  ) : open === null ? null : (
-    <TicketReading
-      ticket={open}
-      repository={workspace.folder}
-      executionWorkspaces={executionWorkspaces[open.id] ?? []}
-      placement={placement}
-      refusal={refusal}
-      chatIds={chatIds}
-      onLeave={closePanel}
-      onOpen={openTicket}
-      onOpenChat={onOpenChat}
-      onChanged={read}
-      onRefuse={setRefusal}
-      onWrite={(change) => wrote(() => window.kira.changeTicket(open.id, change))}
-      onGate={(gatedBy) => wrote(() => window.kira.gateTicket(open.id, gatedBy))}
-      onUngate={(gatedBy) => wrote(() => window.kira.ungateTicket(open.id, gatedBy))}
-      onRun={(executionWorkspaceId, followUp) =>
-        acted(() => window.kira.startRun(workspace.id, open.id, executionWorkspaceId, followUp))
-      }
-      onDeliver={(workspaceId, path) =>
-        window.kira.deliverExecutionWorkspace(open.id, workspaceId, path)
-      }
-      onQuestion={() => acted(() => window.kira.openQuestion(workspace.id, open.id))}
-      onTakeOver={() => acted(() => window.kira.takeOverClaim(open.id))}
-      onLetGo={() => acted(() => window.kira.releaseClaim(open.id))}
-      onResolve={() =>
-        acted(() =>
-          window.kira.resolveRun(
-            workspace.id,
-            open.id,
-            refusal?.replace(/^Merge conflict:\s*/, '') ?? 'The spec branch has conflicts.',
-          ),
-        )
-      }
-      onJudge={(verdict) => {
-        // The newest run is the one with something to answer: a ticket waits on a person
-        // because of what its last run did.
-        const last = open.runs[0];
-
-        return last === undefined
-          ? Promise.resolve(false)
-          : acted(() => window.kira.judgeRun(open.id, last.id, verdict, workspace.id));
-      }}
-    />
-  );
+  const panel =
+    open === null ? null : (
+      <TicketReading
+        ticket={open}
+        placement={isFull ? 'full' : placement}
+        onExpand={() => setIsFull(true)}
+        onCollapse={() => setIsFull(false)}
+        linkedChats={chatSummaries.filter((chat) => chat.workTicketIds.includes(open.id))}
+        tickets={tickets}
+        refusal={refusal}
+        onLeave={closePanel}
+        onOpen={openTicket}
+        onOpenChat={onOpenChat}
+        onRefuse={setRefusal}
+        onWrite={(change) => wrote(() => window.kira.changeTicket(open.id, change))}
+        onGate={(gatedBy) => wrote(() => window.kira.gateTicket(open.id, gatedBy))}
+        onUngate={(gatedBy) => wrote(() => window.kira.ungateTicket(open.id, gatedBy))}
+      />
+    );
 
   return (
     <div role="presentation" {...stylex.props(styles.root)}>
       <div {...stylex.props(styles.top)}>
         <div {...stylex.props(styles.topTitles)}>
           {onBack !== undefined && (
-            <Button
-              label="Back to projects"
-              icon={<Icon icon={ArrowLeft} size="sm" />}
-              variant="ghost"
-              size="sm"
-              onClick={onBack}
-            />
+            <span {...stylex.props(EDGE_TEXT_BUTTON)}>
+              <Button
+                label={copy.header.backToProjects}
+                icon={<Icon icon={ArrowLeft} size="sm" />}
+                variant="ghost"
+                size="sm"
+                onClick={onBack}
+              />
+            </span>
           )}
           <Text type="label" weight="medium" maxLines={1}>
             {queue?.project.name ?? workspace.name}
           </Text>
           <Text type="supporting" color="secondary" maxLines={1}>
-            {queue?.project.prefix ?? '—'} · {VIEWS.find((each) => each.id === view)?.note}
+            {queue?.project.prefix ?? copy.none} · {VIEWS.find((each) => each.id === view)?.note}
           </Text>
         </div>
         <div {...stylex.props(styles.topActions)}>
@@ -1035,6 +1457,7 @@ export function WorkSurface({
             value={view}
             onChange={(next) => {
               if (!isView(next)) return;
+              cancelTicketDrop();
               setView(next);
               setRefusal(null);
               const params = new URLSearchParams(window.location.search);
@@ -1046,7 +1469,7 @@ export function WorkSurface({
                 query ? `${window.location.pathname}?${query}` : window.location.pathname,
               );
             }}
-            label="Issue view"
+            label={copy.views.label}
             size="sm"
           >
             {VIEWS.map((each) => (
@@ -1058,38 +1481,29 @@ export function WorkSurface({
               />
             ))}
           </SegmentedControl>
-          <TextInput
-            label="Search issues"
-            isLabelHidden
-            size="sm"
-            width={190}
-            value={display.search}
-            placeholder="Search issues"
+          <FilterToolbar
+            display={display}
+            onChange={updateDisplay}
+            tickets={tickets}
+            lanes={STATUSES}
+            kindIcons={KIND_ICON}
             isDisabled={queue === null}
-            disabledMessage={trouble === null ? 'Work is loading.' : undefined}
-            onChange={(next) => updateDisplay((current) => ({ ...current, search: next }))}
           />
           <Button
-            label={filtersOpen ? 'Hide filters' : 'Filters'}
-            icon={<Icon icon={SlidersHorizontal} size="sm" />}
-            size="sm"
-            variant={filtersOpen ? 'secondary' : 'ghost'}
-            onClick={() => setFiltersOpen((open) => !open)}
-          />
-          <Button
-            label="New issue"
+            label={copy.header.newTicket}
             icon={<Icon icon={Plus} size="sm" />}
-            variant="secondary"
+            variant="primary"
             size="sm"
             onClick={() => {
               setOpenId(null);
+              setIsFull(false);
               setIsWriting(true);
               setRefusal(null);
             }}
           />
           {view === 'board' && attachedIds.length > 0 && (
             <Button
-              label={`Start chat with ${attachedIds.length} ${attachedIds.length === 1 ? 'issue' : 'issues'}`}
+              label={copy.header.startChat(attachedIds.length)}
               icon={<Icon icon={TicketIcon} size="sm" />}
               variant="primary"
               size="sm"
@@ -1099,93 +1513,49 @@ export function WorkSurface({
         </div>
       </div>
 
-      {filtersOpen && (
-        <div {...stylex.props(styles.filterBar)} aria-label="Issue filters">
-          <Button
-            label={`Status: ${display.band === 'all' ? 'all' : BANDS.find((each) => each.id === display.band)?.label}`}
-            size="sm"
-            variant="ghost"
-            onClick={() =>
-              updateDisplay((current) => {
-                const index =
-                  current.band === 'all' ? -1 : BANDS.findIndex((each) => each.id === current.band);
-                const next = index >= BANDS.length - 1 ? 'all' : (BANDS[index + 1]?.id ?? 'all');
-                return { ...current, band: next };
-              })
+      <FilterBar
+        display={display}
+        onChange={updateDisplay}
+        lanes={STATUSES}
+        shown={visibleTickets.length}
+        total={
+          tickets.filter(
+            (each) => display.showDone || (each.status !== 'done' && each.status !== 'wont-do'),
+          ).length
+        }
+      />
+
+      {isWriting && (
+        <NewTicketDialog
+          kinds={KINDS}
+          kindIcons={KIND_ICON}
+          refusal={refusal}
+          onCancel={closePanel}
+          onWrite={async (draft) => {
+            const written = await wrote(() => window.kira.writeTicket(workspace.id, draft));
+            if (written !== null) {
+              setIsWriting(false);
+              setOpenId(written.id);
             }
-          />
-          <Button
-            label={`Kind: ${display.kind === 'all' ? 'all' : display.kind}`}
-            size="sm"
-            variant="ghost"
-            onClick={() =>
-              updateDisplay((current) => {
-                const index = current.kind === 'all' ? -1 : KINDS.indexOf(current.kind);
-                return {
-                  ...current,
-                  kind: index >= KINDS.length - 1 ? 'all' : (KINDS[index + 1] ?? 'all'),
-                };
-              })
-            }
-          />
-          <Button
-            label={`Claim: ${display.claim}`}
-            size="sm"
-            variant="ghost"
-            onClick={() =>
-              updateDisplay((current) => ({
-                ...current,
-                claim:
-                  current.claim === 'all'
-                    ? 'claimed'
-                    : current.claim === 'claimed'
-                      ? 'unclaimed'
-                      : 'all',
-              }))
-            }
-          />
-          <Button
-            label={display.group === 'status' ? 'Group: status' : 'Group: kind'}
-            size="sm"
-            variant="ghost"
-            onClick={() =>
-              updateDisplay((current) => ({
-                ...current,
-                group: current.group === 'status' ? 'kind' : 'status',
-              }))
-            }
-          />
-          <Button
-            label={display.order === 'rank' ? 'Order: priority' : `Order: ${display.order}`}
-            size="sm"
-            variant="ghost"
-            onClick={() =>
-              updateDisplay((current) => ({
-                ...current,
-                order:
-                  current.order === 'rank'
-                    ? 'updated'
-                    : current.order === 'updated'
-                      ? 'created'
-                      : 'rank',
-              }))
-            }
-          />
-          <Button
-            label={display.showDone ? 'Hide done' : 'Show done'}
-            size="sm"
-            variant="ghost"
-            onClick={() =>
-              updateDisplay((current) => ({ ...current, showDone: !current.showDone }))
-            }
-          />
-          <Button
-            label="Clear filters"
-            size="sm"
-            variant="ghost"
-            onClick={() => updateDisplay(DEFAULT_WORK_DISPLAY)}
-          />
-        </div>
+          }}
+        />
+      )}
+
+      {dropIntent !== null && (
+        <DropActionBar
+          intent={dropIntent}
+          ticket={tickets.find((each) => each.id === dropIntent.ticketId) ?? null}
+          tickets={tickets}
+          isBusy={dropBusy}
+          onCancel={cancelTicketDrop}
+          onChangeTicket={(ticketId, change) =>
+            applyDropWrite(() => window.kira.changeTicket(ticketId, change))
+          }
+          onAddBlocker={(ticketId, blockerId) =>
+            applyDropWrite(() => window.kira.gateTicket(ticketId, blockerId))
+          }
+          onRemoveBlocker={removeDropBlocker}
+        />
       )}
 
       {trouble !== null && !isWriting ? (
@@ -1195,7 +1565,7 @@ export function WorkSurface({
       ) : queue === null && !isWriting ? (
         // The shape of what is coming, rather than a spinner in the middle of
         // nothing: a queue is rows, and three of them say so while it is read.
-        <div {...stylex.props(styles.waiting)} aria-busy="true" aria-label="Reading the queue">
+        <div {...stylex.props(styles.waiting)} aria-busy="true" aria-label={copy.states.loading}>
           <Skeleton width="30%" height={14} />
           <Skeleton width="75%" height={14} index={1} />
           <Skeleton width="65%" height={14} index={2} />
@@ -1204,13 +1574,13 @@ export function WorkSurface({
       ) : tickets.length === 0 && !isWriting ? (
         <div {...stylex.props(styles.scroll)}>
           <EmptyState
-            title="No issues yet"
-            description="Create an issue to plan work, start an agent workspace, and review the result."
+            title={copy.states.noTickets.title}
+            description={copy.states.noTickets.description}
             icon={<Icon icon={FileText} size="lg" />}
             headingLevel={2}
             actions={
               <Button
-                label="New issue"
+                label={copy.header.newTicket}
                 icon={<Icon icon={Plus} size="sm" />}
                 variant="primary"
                 onClick={() => setIsWriting(true)}
@@ -1221,28 +1591,34 @@ export function WorkSurface({
       ) : visibleTickets.length === 0 && !isWriting ? (
         <div {...stylex.props(styles.scroll)}>
           <EmptyState
-            title="No matching issues"
-            description="Try a different search or clear the current filters."
+            title={copy.states.noMatches.title}
+            description={copy.states.noMatches.description}
             icon={<Icon icon={FileText} size="lg" />}
             headingLevel={2}
             actions={
               <Button
-                label="Clear filters"
+                label={copy.filter.clear}
                 variant="primary"
                 onClick={() => updateDisplay(DEFAULT_WORK_DISPLAY)}
               />
             }
           />
         </div>
+      ) : isFull && open !== null && !isWriting ? (
+        panel
       ) : view === 'board' ? (
         <BoardView
           tickets={visibleTickets}
-          bands={visibleBands}
+          statuses={visibleStatuses}
+          showDone={display.showDone}
+          doneCount={doneCount}
+          wontDoCount={wontDoCount}
           selected={openId}
           onOpen={openTicket}
           onPromote={(id) => void promote(id)}
           canReorder={readyCanReorder}
           onReorder={(activeId, overId) => void reorder(activeId, overId)}
+          onDrop={beginTicketDrop}
           panel={panel}
           attachedIds={attachedIds}
           chatSummaries={chatSummaries}
@@ -1254,14 +1630,16 @@ export function WorkSurface({
           }
         />
       ) : (
-        <QueueView
+        <TicketTable
           tickets={visibleTickets}
-          bands={visibleBands}
+          statuses={visibleStatuses}
           group={display.group}
           selected={openId}
           onOpen={openTicket}
           panel={panel}
-          onLeave={closePanel}
+          canReorder={readyCanReorder}
+          onReorder={(activeId, overId) => void reorder(activeId, overId)}
+          onDrop={beginTicketDrop}
         />
       )}
     </div>
@@ -1273,9 +1651,11 @@ function QueueReadFailure({ trouble, onRetry }: { trouble: string; onRetry: () =
     <div {...stylex.props(styles.refusal)}>
       <Banner
         status="error"
-        title="Could not load work"
+        title={copy.states.loadFailed}
         description={trouble}
-        endContent={<Button label="Try again" size="sm" variant="secondary" onClick={onRetry} />}
+        endContent={
+          <Button label={copy.states.tryAgain} size="sm" variant="secondary" onClick={onRetry} />
+        }
       />
     </div>
   );
@@ -1344,7 +1724,7 @@ function Join({
             {workspace.name}
           </Text>
           <Text type="supporting" color="secondary" maxLines={1}>
-            this folder is not working a project yet
+            {copy.join.topNote}
           </Text>
         </div>
       </div>
@@ -1352,22 +1732,20 @@ function Join({
       <div {...stylex.props(styles.scroll)}>
         <div {...stylex.props(styles.join)}>
           <Text type="large" weight="medium">
-            Which project does this folder work?
+            {copy.join.title}
           </Text>
           <Text type="supporting" color="secondary">
-            A project is where the work is kept, and it outlives any one checkout. Join one the
-            server already holds, or start a new one here. Nothing is written into the folder, and
-            its chats stay where they are.
+            {copy.join.intro}
           </Text>
 
           {trouble !== null && (
             <Banner
               status="error"
-              title="Kira could not answer"
+              title={copy.refused.joinTitle}
               description={trouble}
               endContent={
                 <Button
-                  label="Try again"
+                  label={copy.states.tryAgain}
                   size="sm"
                   variant="secondary"
                   onClick={() => void read()}
@@ -1377,11 +1755,7 @@ function Join({
           )}
 
           {projects === null && trouble === null && (
-            <div
-              {...stylex.props(styles.waiting)}
-              aria-busy="true"
-              aria-label="Reading the projects"
-            >
+            <div {...stylex.props(styles.waiting)} aria-busy="true" aria-label={copy.join.loading}>
               <Skeleton width="40%" height={14} />
               <Skeleton width="70%" height={14} index={1} />
             </div>
@@ -1391,11 +1765,11 @@ function Join({
             <>
               <Divider />
               <Text type="label" weight="medium">
-                Already on the server
+                {copy.join.existing}
               </Text>
               {projects.length === 0 ? (
                 <Text type="supporting" color="secondary">
-                  The server holds no projects yet. This folder can be the first.
+                  {copy.join.noneYet}
                 </Text>
               ) : (
                 <List density="compact" hasDividers>
@@ -1403,10 +1777,10 @@ function Join({
                     <Item
                       key={each.id}
                       label={each.name}
-                      description={`${each.prefix} · issues are named ${each.prefix}-1, ${each.prefix}-2`}
+                      description={copy.join.prefixNote(each.prefix)}
                       endContent={
                         <Button
-                          label="Join"
+                          label={copy.join.join}
                           variant="secondary"
                           size="sm"
                           isDisabled={isJoining}
@@ -1420,40 +1794,38 @@ function Join({
 
               <Divider />
               <Text type="label" weight="medium">
-                Or start a new project
+                {copy.join.startHeading}
               </Text>
               <div {...stylex.props(styles.joinFields)}>
                 <div {...stylex.props(styles.fieldGrow)}>
                   <TextInput
-                    label="Name"
+                    label={copy.join.name}
                     value={name}
                     onChange={setName}
-                    description="What the project is called on the server."
+                    description={copy.join.nameNote}
                     size="sm"
                   />
                 </div>
                 <div {...stylex.props(styles.fieldGrow)}>
                   <TextInput
-                    label="Prefix"
+                    label={copy.join.prefix}
                     value={prefix}
                     onChange={(next) => setPrefix(next.toUpperCase())}
-                    description="Two to six letters and digits. Issue names use this prefix, which cannot change later."
+                    description={copy.join.prefixHelp}
                     size="sm"
                   />
                 </div>
               </div>
               <div {...stylex.props(styles.joinActions)}>
                 <Button
-                  label="Start it, and work here"
+                  label={copy.join.start}
                   variant="primary"
                   size="sm"
                   isDisabled={isJoining || name.trim() === '' || prefix.trim() === ''}
                   onClick={() => void join({ kind: 'new', name, prefix })}
                 />
                 <Text type="supporting" color="secondary">
-                  {auth?.signedIn === false
-                    ? 'Nobody is signed in — a project lives on the server.'
-                    : 'The folder keeps working for chat either way.'}
+                  {auth?.signedIn === false ? copy.join.signedOut : copy.join.chatStillWorks}
                 </Text>
               </div>
             </>
@@ -1473,163 +1845,689 @@ interface ViewProps {
   panel: ReactNode;
 }
 
-function QueueView({
+/**
+ * The List view: every ticket in one table, grouped by status (or by kind), with the
+ * ticket's drawer beside it the way the board has it. Rows drag between status groups and
+ * within Ready exactly as board rows drag between lanes — a drop asks for an action and
+ * the server's answer moves the row. Grouped by kind, nothing a drop could mean, so rows
+ * stay put.
+ *
+ * The table is one CSS grid and every group and row is a subgrid of it, so each column
+ * lines up down the whole list, headings included. The first and last tracks are the
+ * rows' side padding: a subgrid row cannot pad itself without squeezing its columns.
+ */
+function TicketTable({
   tickets,
-  bands,
+  statuses,
   group,
+  selected,
   onOpen,
   panel,
-  onLeave,
-}: ViewProps & { bands: typeof BANDS; group: WorkGroup; onLeave: () => void }) {
-  const content =
-    group === 'kind' ? (
-      <>
-        {groupedWork(tickets, 'kind').map((section) => (
-          <div key={section.key}>
-            <div {...stylex.props(styles.bandHead)}>
-              <Text type="label" weight="medium">
-                {section.label}{' '}
-                <span {...stylex.props(styles.count)}>{section.tickets.length}</span>
-              </Text>
-            </div>
-            <List density="compact" hasDividers>
-              {section.tickets.map((ticket) => (
-                <Item
-                  key={ticket.id}
-                  as="li"
-                  startContent={<StateGlyph ticket={ticket} />}
-                  label={ticket.title || 'Untitled'}
-                  labelLines={1}
-                  description={
-                    <span {...stylex.props(styles.meta)}>
-                      <Text type="supporting" color="secondary">
-                        {ticket.name}
-                      </Text>
-                      <Holding ticket={ticket} />
-                    </span>
-                  }
-                  onClick={() => onOpen(ticket.id)}
-                />
-              ))}
-            </List>
-          </div>
-        ))}
-      </>
-    ) : (
-      <>
-        {bands.map((band) => (
-          <Band key={band.id} band={band} tickets={inBand(tickets, band.id)} onOpen={onOpen} />
-        ))}
-      </>
-    );
+  canReorder,
+  onReorder,
+  onDrop,
+}: ViewProps & {
+  statuses: typeof STATUSES;
+  group: WorkGroup;
+  canReorder: boolean;
+  onReorder: (activeId: string, overId: string) => void;
+  onDrop: (ticketId: string, target: WorkStatus) => void;
+}) {
+  const [folded, setFolded] = useState<string[]>([]);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const dragging = tickets.find((each) => each.id === draggingId) ?? null;
+  const canDrag = group === 'status';
+  const groups: TableGroup[] =
+    group === 'kind'
+      ? groupedWork(tickets, 'kind').map((each) => ({
+          key: each.key,
+          label: each.label,
+          tickets: each.tickets,
+          kind: each.key as TicketKind,
+        }))
+      : statuses
+          .map((status) => ({
+            key: status.id,
+            label: status.label,
+            note: status.note,
+            status: status.id,
+            tickets: inStatus(tickets, status.id),
+          }))
+          .filter((each) => each.tickets.length > 0);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  const handleDragEnd = ({ active, over }: DragEndEvent): void => {
+    setDraggingId(null);
+    if (over === null || active.id === over.id) return;
+    const moved = tickets.find((each) => each.id === active.id);
+    if (moved === undefined) return;
+
+    const overId = String(over.id);
+    const target = overId.startsWith('lane:')
+      ? statuses.find((status) => status.id === overId.slice('lane:'.length))?.id
+      : (() => {
+          const ticket = tickets.find((each) => each.id === overId);
+          return ticket === undefined ? undefined : statusOf(ticket);
+        })();
+    if (target === undefined) return;
+
+    if (statusOf(moved) === target) {
+      if (canReorder && target === 'ready') onReorder(moved.id, overId);
+      return;
+    }
+
+    onDrop(moved.id, target);
+  };
 
   return (
-    <div {...stylex.props(styles.scroll, styles.listView)}>
-      {content}
-      {panel !== null && <IssueDrawer panel={panel} onLeave={onLeave} />}
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={({ active }) => setDraggingId(String(active.id))}
+      onDragCancel={() => setDraggingId(null)}
+      onDragEnd={handleDragEnd}
+    >
+      <div {...stylex.props(styles.board)}>
+        <div {...stylex.props(styles.tableScroll)}>
+          <div {...stylex.props(styles.table)}>
+            <div {...stylex.props(styles.tableHead)}>
+              <span />
+              <span {...stylex.props(styles.tableHeadCell, styles.tableHeadTicket)}>
+                {copy.table.ticket}
+              </span>
+              <span {...stylex.props(styles.tableHeadCell)}>{copy.table.status}</span>
+              <span {...stylex.props(styles.tableHeadCell)}>{copy.table.kind}</span>
+              <span {...stylex.props(styles.tableHeadCell)}>{copy.table.blockers}</span>
+              <span {...stylex.props(styles.tableHeadCell)}>{copy.table.owner}</span>
+              <span {...stylex.props(styles.tableHeadCell, styles.tableHeadEnd)}>
+                {copy.table.updated}
+              </span>
+            </div>
+            {groups.map((each) => (
+              <TableSection
+                key={each.key}
+                group={each}
+                canDrag={canDrag}
+                isFolded={folded.includes(each.key)}
+                onToggle={() =>
+                  setFolded((current) =>
+                    current.includes(each.key)
+                      ? current.filter((key) => key !== each.key)
+                      : [...current, each.key],
+                  )
+                }
+                selected={selected}
+                onOpen={onOpen}
+              />
+            ))}
+          </div>
+        </div>
+        {panel !== null && <div {...stylex.props(styles.boardDrawer)}>{panel}</div>}
+      </div>
+      <DragOverlay dropAnimation={null}>
+        {dragging !== null && (
+          <div {...stylex.props(styles.tableOverlay)}>
+            <span {...stylex.props(styles.rowKind)}>
+              <Icon icon={KIND_ICON[dragging.kind]} size="xsm" />
+            </span>
+            <span {...stylex.props(styles.rowName)}>{dragging.name}</span>
+            <span {...stylex.props(styles.tableTitle)}>{dragging.title || copy.untitled}</span>
+          </div>
+        )}
+      </DragOverlay>
+    </DndContext>
+  );
+}
+
+interface TableGroup {
+  key: string;
+  label: string;
+  note?: string;
+  status?: WorkStatus;
+  kind?: TicketKind;
+  tickets: Ticket[];
+}
+
+/** One group: a heading that folds it, and its rows. A status group takes drops. */
+function TableSection({
+  group,
+  canDrag,
+  isFolded,
+  onToggle,
+  selected,
+  onOpen,
+}: {
+  group: TableGroup;
+  canDrag: boolean;
+  isFolded: boolean;
+  onToggle: () => void;
+  selected: string | null;
+  onOpen: (id: string) => void;
+}) {
+  const { isOver, setNodeRef } = useDroppable({
+    id: `lane:${group.key}`,
+    disabled: !canDrag || group.status === undefined,
+  });
+
+  return (
+    <div ref={setNodeRef} {...stylex.props(styles.tableSection, isOver && styles.columnOver)}>
+      <button
+        type="button"
+        aria-expanded={!isFolded}
+        title={group.note}
+        {...stylex.props(styles.tableGroup)}
+        onClick={onToggle}
+      >
+        <span {...stylex.props(styles.tableChevron, isFolded && styles.tableChevronFolded)}>
+          <Icon icon={ChevronDown} size="xsm" />
+        </span>
+        <span
+          aria-hidden
+          {...stylex.props(
+            styles.tableGroupDot,
+            group.status !== undefined
+              ? LANE_FILL[group.status]
+              : group.kind !== undefined && KIND_HUE[group.kind],
+          )}
+        />
+        <span {...stylex.props(styles.tableGroupLabel)}>{group.label}</span>
+        <span {...stylex.props(styles.laneCount)}>{group.tickets.length}</span>
+        {group.note !== undefined && (
+          <span {...stylex.props(styles.tableGroupNote)}>{group.note}</span>
+        )}
+      </button>
+      {!isFolded && (
+        <SortableContext
+          items={group.tickets.map((each) => each.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          {group.tickets.map((ticket) => (
+            <TableRow
+              key={ticket.id}
+              ticket={ticket}
+              canDrag={canDrag}
+              isSelected={ticket.id === selected}
+              onOpen={onOpen}
+            />
+          ))}
+        </SortableContext>
+      )}
     </div>
   );
 }
 
-function IssueDrawer({ panel, onLeave }: { panel: ReactNode; onLeave: () => void }) {
+/**
+ * One ticket as a table row. The whole row opens it and drags by pointer; the handle in
+ * its left gutter, shown on hover or focus, is the keyboard's way to move it.
+ */
+function TableRow({
+  ticket,
+  canDrag,
+  isSelected,
+  onOpen,
+}: {
+  ticket: Ticket;
+  canDrag: boolean;
+  isSelected: boolean;
+  onOpen: (id: string) => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: ticket.id, disabled: !canDrag });
+  const said = holding(ticket);
+  const openBlockers = ticket.children.filter(
+    (child) => child.status !== 'done' && child.status !== 'wont-do',
+  ).length;
+  const owner = ticket.assignee?.name ?? ticket.author?.name ?? null;
+
   return (
-    <>
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: transform === null ? undefined : `translate3d(0, ${transform.y}px, 0)`,
+        transition,
+      }}
+      onPointerDown={listeners?.onPointerDown as PointerEventHandler<HTMLDivElement> | undefined}
+      {...stylex.props(
+        styles.row,
+        styles.tableRow,
+        isSelected && styles.rowSelected,
+        isDragging && styles.rowDragging,
+      )}
+    >
       <button
         type="button"
-        aria-label="Close the issue"
-        {...stylex.props(styles.scrim)}
-        onClick={onLeave}
+        aria-label={copy.row.open(ticket.name, ticket.title)}
+        aria-current={isSelected || undefined}
+        {...stylex.props(styles.rowOpen)}
+        onClick={() => onOpen(ticket.id)}
       />
-      <div {...stylex.props(styles.drawer)}>{panel}</div>
-    </>
+      <span />
+      <span {...stylex.props(styles.rowKind)} title={ticket.kind}>
+        <Icon icon={KIND_ICON[ticket.kind]} size="xsm" />
+      </span>
+      <span {...stylex.props(styles.rowName)}>{ticket.name}</span>
+      <span {...stylex.props(styles.tableTitle)}>{ticket.title || copy.untitled}</span>
+      <span {...stylex.props(styles.rowState)}>
+        <span {...stylex.props(styles.rowStateIcon, STATUS_TONE[statusOf(ticket)])}>
+          <Icon icon={said.icon} size="xsm" />
+        </span>
+        <span {...stylex.props(styles.rowStateWords)}>{said.words}</span>
+      </span>
+      <span {...stylex.props(styles.tableKind)}>
+        <span {...stylex.props(styles.kindDot, KIND_HUE[ticket.kind])} />
+        {ticket.kind}
+      </span>
+      <span {...stylex.props(styles.tableNumber)}>
+        {ticket.children.length === 0
+          ? copy.none
+          : `${ticket.children.length - openBlockers}/${ticket.children.length}`}
+      </span>
+      <span {...stylex.props(styles.tableOwner)} title={owner ?? undefined}>
+        {owner ?? copy.none}
+      </span>
+      <span {...stylex.props(styles.tableAge)} title={copy.row.updated(when(ticket.updatedAt))}>
+        {age(ticket.updatedAt)}
+      </span>
+      {canDrag && (
+        <button
+          ref={setActivatorNodeRef}
+          type="button"
+          {...attributes}
+          {...listeners}
+          aria-label={copy.table.move(ticket.name)}
+          title={copy.table.dragTitle}
+          {...stylex.props(styles.tableHandle)}
+        >
+          <Icon icon={GripVertical} size="xsm" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function DropActionBar({
+  intent,
+  ticket,
+  tickets,
+  isBusy,
+  onCancel,
+  onChangeTicket,
+  onAddBlocker,
+  onRemoveBlocker,
+}: {
+  intent: DropIntent;
+  ticket: Ticket | null;
+  tickets: Ticket[];
+  isBusy: boolean;
+  onCancel: () => void;
+  onChangeTicket: (ticketId: string, change: TicketChange) => Promise<void>;
+  onAddBlocker: (ticketId: string, blockerId: string) => Promise<void>;
+  onRemoveBlocker: (blockerId: string) => Promise<void>;
+}) {
+  const [selectedBlockerId, setSelectedBlockerId] = useState('');
+  if (ticket === null) return null;
+
+  const isClosed = (status: TicketStatus): boolean => status === 'done' || status === 'wont-do';
+  const blockerIds = new Set(ticket.children.map((child) => child.id));
+  const addableBlockers = tickets.filter(
+    (candidate) =>
+      candidate.id !== ticket.id && !isClosed(candidate.status) && !blockerIds.has(candidate.id),
+  );
+  const openBlockers = ticket.children.filter((child) => !isClosed(child.status));
+  const chosenBlocker = addableBlockers.find((each) => each.id === selectedBlockerId);
+  const chosenOpenBlocker = openBlockers.find((each) => each.id === selectedBlockerId);
+  const destination = statusLabel(intent.target);
+  const message =
+    intent.plan.kind === 'change-status'
+      ? copy.drop.move(ticket.name, statusLabel(statusOf(ticket)), destination)
+      : intent.plan.kind === 'add-blocker'
+        ? copy.drop.addBlocker(ticket.name)
+        : copy.drop.removeBlocker(ticket.name);
+
+  return (
+    <section {...stylex.props(styles.dropAction)} aria-label={copy.drop.aria} aria-live="polite">
+      <div {...stylex.props(styles.dropActionCopy)}>
+        <Text type="label" weight="medium">
+          {copy.drop.heading(ticket.name, destination)}
+        </Text>
+        <Text type="supporting" color="secondary">
+          {message}
+        </Text>
+      </div>
+      <div {...stylex.props(styles.dropActionTools)}>
+        {intent.plan.kind === 'change-status' && (
+          <Button
+            label={copy.drop.confirmStatus(destination)}
+            size="sm"
+            variant="primary"
+            isDisabled={isBusy}
+            onClick={() => {
+              if (intent.plan.kind === 'change-status') {
+                void onChangeTicket(ticket.id, { status: intent.plan.status });
+              }
+            }}
+          />
+        )}
+        {intent.plan.kind === 'add-blocker' && (
+          <>
+            {addableBlockers.length > 0 ? (
+              <>
+                <div {...stylex.props(styles.dropSelector)}>
+                  <Selector
+                    label={copy.drop.blocker}
+                    options={addableBlockers.map((each) => ({
+                      value: each.id,
+                      label: `${each.name} · ${each.title || copy.untitled}`,
+                    }))}
+                    value={chosenBlocker?.id}
+                    onChange={setSelectedBlockerId}
+                    isDisabled={isBusy}
+                  />
+                </div>
+                <Button
+                  label={copy.drop.addBlockerButton}
+                  size="sm"
+                  variant="primary"
+                  isDisabled={isBusy || chosenBlocker === undefined}
+                  onClick={() => {
+                    if (chosenBlocker !== undefined) void onAddBlocker(ticket.id, chosenBlocker.id);
+                  }}
+                />
+              </>
+            ) : (
+              <Text type="supporting" color="secondary">
+                {copy.drop.noBlockerCandidates}
+              </Text>
+            )}
+          </>
+        )}
+        {intent.plan.kind === 'resolve-blockers' && (
+          <>
+            {openBlockers.length > 0 ? (
+              <>
+                <div {...stylex.props(styles.dropSelector)}>
+                  <Selector
+                    label={copy.drop.openBlocker}
+                    options={openBlockers.map((each) => ({ value: each.id, label: each.name }))}
+                    value={chosenOpenBlocker?.id}
+                    onChange={setSelectedBlockerId}
+                    isDisabled={isBusy}
+                  />
+                </div>
+                <Button
+                  label={copy.drop.removeBlockerButton}
+                  size="sm"
+                  variant="primary"
+                  isDisabled={isBusy || chosenOpenBlocker === undefined}
+                  onClick={() => {
+                    if (chosenOpenBlocker !== undefined) void onRemoveBlocker(chosenOpenBlocker.id);
+                  }}
+                />
+              </>
+            ) : (
+              <Text type="supporting" color="secondary">
+                {copy.drop.noOpenBlockers}
+              </Text>
+            )}
+          </>
+        )}
+        <Button
+          label={copy.actions.cancel}
+          size="sm"
+          variant="ghost"
+          isDisabled={isBusy}
+          onClick={onCancel}
+        />
+      </div>
+    </section>
   );
 }
 
 function BoardView({
   tickets,
-  bands,
+  statuses,
+  showDone,
+  doneCount,
+  wontDoCount,
   selected,
   onOpen,
   onPromote,
   canReorder,
   onReorder,
+  onDrop,
   panel,
   attachedIds,
   chatSummaries,
   onOpenChat,
   onToggleAttached,
 }: ViewProps & {
-  bands: typeof BANDS;
+  statuses: typeof STATUSES;
+  showDone: boolean;
+  doneCount: number;
+  wontDoCount: number;
   onPromote: (id: string) => void;
   canReorder: boolean;
   onReorder: (activeId: string, overId: string) => void;
+  onDrop: (ticketId: string, target: WorkStatus) => void;
   attachedIds: string[];
   chatSummaries: ChatSummary[];
   onOpenChat: (chatId: string) => void;
   onToggleAttached: (id: string) => void;
 }) {
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const dragging = tickets.find((ticket) => ticket.id === draggingId) ?? null;
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
   const handleDragEnd = ({ active, over }: DragEndEvent): void => {
-    if (!canReorder || over === null || active.id === over.id) return;
+    setDraggingId(null);
+    if (over === null || active.id === over.id) return;
     const activeTicket = tickets.find((ticket) => ticket.id === active.id);
-    const overTicket = tickets.find((ticket) => ticket.id === over.id);
-    if (activeTicket?.band !== 'ready' || overTicket?.band !== 'ready') return;
-    onReorder(String(active.id), String(over.id));
+    if (activeTicket === undefined) return;
+
+    const overId = String(over.id);
+    const targetStatus = overId.startsWith('lane:')
+      ? statuses.find((status) => status.id === overId.slice('lane:'.length))?.id
+      : (() => {
+          const ticket = tickets.find((each) => each.id === overId);
+          return ticket === undefined ? undefined : statusOf(ticket);
+        })();
+    if (targetStatus === undefined) return;
+
+    if (statusOf(activeTicket) === targetStatus) {
+      if (canReorder && targetStatus === 'ready') onReorder(String(active.id), overId);
+      return;
+    }
+
+    onDrop(activeTicket.id, targetStatus);
   };
+  const chatsFor = (ticket: Ticket): ChatSummary[] =>
+    chatSummaries.filter((chat) => chat.workTicketIds.includes(ticket.id));
 
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={({ active }) => setDraggingId(String(active.id))}
+      onDragCancel={() => setDraggingId(null)}
+      onDragEnd={handleDragEnd}
+    >
       <div {...stylex.props(styles.board)}>
-        <div {...stylex.props(styles.boardColumns)}>
-          {bands.map((band) => {
-            const held = inBand(tickets, band.id);
+        <section aria-label={copy.board.lanes} {...stylex.props(styles.boardColumns)}>
+          {statuses.map((status) => {
+            const held = inStatus(tickets, status.id);
             return (
-              <div key={band.id} {...stylex.props(styles.column)}>
-                <div {...stylex.props(styles.bandHead, styles.columnHead)}>
-                  <BandHead band={band} count={held.length} showNote={false} />
-                </div>
-                <div {...stylex.props(styles.cards)}>
-                  <SortableContext
-                    items={held.map((ticket) => ticket.id)}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    {held.map((ticket) => (
-                      <SortableTicketCard
-                        key={ticket.id}
-                        ticket={ticket}
-                        selected={ticket.id === selected}
-                        canReorder={canReorder && band.id === 'ready'}
-                        onOpen={onOpen}
-                        onPromote={onPromote}
-                        attached={attachedIds.includes(ticket.id)}
-                        onToggleAttached={onToggleAttached}
-                        linkedChats={chatSummaries.filter((chat) =>
-                          chat.workTicketIds.includes(ticket.id),
-                        )}
-                        onOpenChat={onOpenChat}
-                      />
-                    ))}
-                  </SortableContext>
-                  {held.length === 0 && (
-                    <Text type="supporting" color="secondary">
-                      No issues in this state.
-                    </Text>
-                  )}
-                </div>
-              </div>
+              <BoardLane
+                key={status.id}
+                status={status}
+                tickets={held}
+                showDone={showDone}
+                count={
+                  !showDone && status.id === 'done'
+                    ? doneCount
+                    : !showDone && status.id === 'wont-do'
+                      ? wontDoCount
+                      : held.length
+                }
+                selected={selected}
+                canReorder={canReorder && status.id === 'ready'}
+                onOpen={onOpen}
+                onPromote={onPromote}
+                attachedIds={attachedIds}
+                onToggleAttached={onToggleAttached}
+                chatsFor={chatsFor}
+                onOpenChat={onOpenChat}
+              />
             );
           })}
-        </div>
+        </section>
         {panel !== null && <div {...stylex.props(styles.boardDrawer)}>{panel}</div>}
       </div>
+      {/* The row being dragged is drawn above every lane, so it can leave the one it
+          scrolls in; the row it came from stays behind, faded, until the drop. */}
+      <DragOverlay dropAnimation={null}>
+        {dragging !== null && (
+          <div {...stylex.props(styles.row, styles.rowOverlay)}>
+            <TicketRowBody
+              ticket={dragging}
+              attached={attachedIds.includes(dragging.id)}
+              linkedChats={chatsFor(dragging)}
+            />
+          </div>
+        )}
+      </DragOverlay>
     </DndContext>
   );
 }
 
-function SortableTicketCard({
+const LANE_RULE = {
+  'needs-review': styles.laneNeedsYou,
+  ready: styles.laneReady,
+  running: styles.laneRunning,
+  blocked: styles.laneBlocked,
+  draft: styles.laneDraft,
+  done: styles.laneDone,
+  'wont-do': styles.laneDone,
+} satisfies Record<WorkStatus, stylex.StyleXStyles>;
+
+const LANE_FILL = {
+  'needs-review': styles.laneFillNeedsYou,
+  ready: styles.laneFillReady,
+  running: styles.laneFillRunning,
+  blocked: styles.laneFillBlocked,
+  draft: styles.laneFillDraft,
+  done: styles.laneFillDone,
+  'wont-do': styles.laneFillDone,
+} satisfies Record<WorkStatus, stylex.StyleXStyles>;
+
+const STATUS_TONE = {
+  'needs-review': styles.toneNeedsYou,
+  ready: styles.toneReady,
+  running: styles.toneRunning,
+  blocked: styles.toneBlocked,
+  draft: styles.toneDraft,
+  done: styles.toneDone,
+  'wont-do': styles.toneDone,
+} satisfies Record<WorkStatus, stylex.StyleXStyles>;
+
+/**
+ * A kind's hue on its tag. Hues no lane uses for status, except bug's orange; kinds that
+ * share a hue are told apart by the shape before their name.
+ */
+const KIND_HUE = {
+  feature: styles.kindCyan,
+  bug: styles.kindOrange,
+  refactor: styles.kindPurple,
+  prototype: styles.kindTeal,
+  question: styles.kindGray,
+  research: styles.kindGray,
+  spec: styles.kindPink,
+  map: styles.kindPink,
+} satisfies Record<TicketKind, stylex.StyleXStyles>;
+
+function BoardLane({
+  status,
+  tickets,
+  showDone,
+  count,
+  selected,
+  canReorder,
+  onOpen,
+  onPromote,
+  attachedIds,
+  onToggleAttached,
+  chatsFor,
+  onOpenChat,
+}: {
+  status: (typeof STATUSES)[number];
+  tickets: Ticket[];
+  showDone: boolean;
+  count: number;
+  selected: string | null;
+  canReorder: boolean;
+  onOpen: (id: string) => void;
+  onPromote: (id: string) => void;
+  attachedIds: string[];
+  onToggleAttached: (id: string) => void;
+  chatsFor: (ticket: Ticket) => ChatSummary[];
+  onOpenChat: (chatId: string) => void;
+}) {
+  const { isOver, setNodeRef } = useDroppable({ id: `lane:${status.id}` });
+
+  return (
+    <div ref={setNodeRef} {...stylex.props(styles.column, isOver && styles.columnOver)}>
+      <header title={status.note} {...stylex.props(styles.laneHead, LANE_RULE[status.id])}>
+        <span {...stylex.props(styles.laneLabel)}>{status.label}</span>
+        <span {...stylex.props(styles.laneCount)}>{String(count).padStart(2, '0')}</span>
+      </header>
+      <ol aria-label={status.label} {...stylex.props(styles.rows)}>
+        <SortableContext
+          items={tickets.map((ticket) => ticket.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          {tickets.map((ticket) => (
+            <SortableTicketRow
+              key={ticket.id}
+              ticket={ticket}
+              selected={ticket.id === selected}
+              canReorder={canReorder}
+              onOpen={onOpen}
+              onPromote={onPromote}
+              attached={attachedIds.includes(ticket.id)}
+              onToggleAttached={onToggleAttached}
+              linkedChats={chatsFor(ticket)}
+              onOpenChat={onOpenChat}
+            />
+          ))}
+        </SortableContext>
+      </ol>
+      {tickets.length === 0 && (
+        <p {...stylex.props(styles.laneEmpty)}>
+          {(status.id === 'done' || status.id === 'wont-do') && !showDone
+            ? copy.board.doneHidden
+            : copy.board.empty}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * One ticket on the board. The whole row opens it and can be dragged by pointer; the
+ * handle in its action strip is the keyboard's way to move it, because Enter and Space on
+ * the row belong to opening it.
+ */
+function SortableTicketRow({
   ticket,
   selected,
   canReorder,
@@ -1650,199 +2548,200 @@ function SortableTicketCard({
   linkedChats: ChatSummary[];
   onOpenChat: (chatId: string) => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: ticket.id,
-    disabled: !canReorder,
-  });
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: ticket.id });
   const transformStyle =
-    transform === null
-      ? undefined
-      : `translate3d(${transform.x}px, ${transform.y}px, 0) scaleX(${transform.scaleX}) scaleY(${transform.scaleY})`;
+    transform === null ? undefined : `translate3d(${transform.x}px, ${transform.y}px, 0)`;
 
   return (
-    <div
+    <li
       ref={setNodeRef}
       style={{ transform: transformStyle, transition }}
-      {...stylex.props(isDragging && styles.cardDragging)}
-    >
-      <ClickableCard
-        label={`Open issue ${ticket.name}`}
-        padding={2}
-        variant={selected ? 'muted' : 'default'}
-        onClick={() => onOpen(ticket.id)}
-      >
-        <span {...stylex.props(styles.cardBody)}>
-          <Text type="label" weight="medium" maxLines={2}>
-            {ticket.title || 'Untitled'}
-          </Text>
-          <span {...stylex.props(styles.meta)}>
-            <Text type="supporting" color="secondary">
-              {ticket.name}
-            </Text>
-            <KindTag kind={ticket.kind} />
-          </span>
-          <span {...stylex.props(styles.cardFoot)}>
-            <Holding ticket={ticket} />
-            <span {...stylex.props(styles.meta)}>
-              <IconButton
-                label={`${attached ? 'Remove' : 'Attach'} ${ticket.name} ${attached ? 'from' : 'to'} chat context`}
-                icon={<Icon icon={attached ? CircleCheck : Plus} size="sm" />}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onToggleAttached(ticket.id);
-                }}
-              />
-              {canReorder && (
-                <button
-                  type="button"
-                  aria-label={`Reorder issue ${ticket.name}`}
-                  {...stylex.props(styles.dragHandle)}
-                  {...attributes}
-                  {...listeners}
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  <Icon icon={GripVertical} size="sm" />
-                </button>
-              )}
-              {ticket.band === 'ready' && (
-                <IconButton
-                  label={`Move issue ${ticket.name} to the front of Ready`}
-                  icon={<Icon icon={ArrowUp} size="sm" />}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onPromote(ticket.id);
-                  }}
-                />
-              )}
-            </span>
-          </span>
-          {linkedChats.length > 0 && (
-            <span {...stylex.props(styles.meta)}>
-              {linkedChats.map((chat) => (
-                <Button
-                  key={chat.id}
-                  label={`Open chat: ${chat.title}`}
-                  size="sm"
-                  variant="ghost"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onOpenChat(chat.id);
-                  }}
-                />
-              ))}
-            </span>
-          )}
-        </span>
-      </ClickableCard>
-    </div>
-  );
-}
-
-/* ── Leaves the views share: what a thing is, not where it goes ─────────── */
-
-function KindTag({ kind }: { kind: TicketKind }) {
-  return <Badge variant={KIND_VARIANT[kind]} label={kind} />;
-}
-
-/**
- * What a ticket is waiting on, in one line, wherever it is drawn small.
- *
- * The icon and the words come from one place (`workRows.ts`), so a row cannot end
- * up with a clock beside "ready to run".
- */
-function Holding({ ticket }: { ticket: Ticket }) {
-  const said = holding(ticket);
-
-  return (
-    <span {...stylex.props(styles.tag, ticket.closure === 'wontfix' && styles.abandoned)}>
-      <Icon icon={said.icon} size="sm" />
-      {said.words}
-    </span>
-  );
-}
-
-function StateGlyph({ ticket }: { ticket: Ticket }) {
-  return (
-    <span
+      onPointerDown={listeners?.onPointerDown as PointerEventHandler<HTMLLIElement> | undefined}
       {...stylex.props(
-        styles.glyph,
-        ticket.band === 'ready' && styles.glyphReady,
-        ticket.closure === 'wontfix' && styles.glyphAbandoned,
+        styles.row,
+        selected && styles.rowSelected,
+        isDragging && styles.rowDragging,
       )}
     >
-      <Icon icon={bandIcon(ticket)} size="sm" />
-    </span>
+      <button
+        type="button"
+        aria-label={copy.row.open(ticket.name, ticket.title)}
+        aria-current={selected || undefined}
+        {...stylex.props(styles.rowOpen)}
+        onClick={() => onOpen(ticket.id)}
+      />
+      <TicketRowBody
+        ticket={ticket}
+        attached={attached}
+        linkedChats={linkedChats}
+        onOpenChat={onOpenChat}
+      />
+      <span {...stylex.props(styles.strip)}>
+        {statusOf(ticket) === 'ready' && (
+          <StripButton
+            label={copy.row.toTop(ticket.name)}
+            icon={ArrowUp}
+            onClick={() => onPromote(ticket.id)}
+          />
+        )}
+        <StripButton
+          label={attached ? copy.row.removeFromChat(ticket.name) : copy.row.addToChat(ticket.name)}
+          icon={attached ? CircleCheck : Paperclip}
+          isOn={attached}
+          onClick={() => onToggleAttached(ticket.id)}
+        />
+        <button
+          ref={setActivatorNodeRef}
+          type="button"
+          {...attributes}
+          {...listeners}
+          aria-label={copy.row.moveStatus(ticket.name)}
+          title={canReorder ? copy.row.handleReorder : copy.row.handleMove}
+          {...stylex.props(styles.stripButton, styles.stripHandle)}
+        >
+          <Icon icon={GripVertical} size="sm" />
+        </button>
+      </span>
+    </li>
   );
 }
 
-function BandHead({
-  band,
-  count,
-  showNote = true,
+function StripButton({
+  label,
+  icon,
+  isOn = false,
+  onClick,
 }: {
-  band: { label: string; note: string };
-  count: number;
-  showNote?: boolean;
+  label: string;
+  icon: LucideIcon;
+  isOn?: boolean;
+  onClick: () => void;
 }) {
   return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-pressed={isOn || undefined}
+      title={label}
+      {...stylex.props(styles.stripButton, isOn && styles.stripOn)}
+      onClick={onClick}
+    >
+      <Icon icon={icon} size="sm" />
+    </button>
+  );
+}
+
+/** What a board row says, shared by the row in its lane and the copy that follows a drag. */
+function TicketRowBody({
+  ticket,
+  attached,
+  linkedChats,
+  onOpenChat,
+}: {
+  ticket: Ticket;
+  attached: boolean;
+  linkedChats: ChatSummary[];
+  onOpenChat?: (chatId: string) => void;
+}) {
+  const said = holding(ticket);
+  const person = ticket.assignee?.name ?? ticket.author?.name ?? null;
+  const openChildren = ticket.children.filter(
+    (child) => child.status !== 'done' && child.status !== 'wont-do',
+  ).length;
+  const firstChat = linkedChats[0];
+
+  return (
     <>
-      <Text type="label" weight="medium">
-        {band.label} <span {...stylex.props(styles.count)}>{count}</span>
-      </Text>
-      {showNote && (
-        <Text type="supporting" color="secondary">
-          {band.note}
-        </Text>
-      )}
+      <span {...stylex.props(styles.rowTop)}>
+        <span {...stylex.props(styles.rowKind)} title={ticket.kind}>
+          <Icon icon={KIND_ICON[ticket.kind]} size="xsm" />
+        </span>
+        <span {...stylex.props(styles.rowName)}>{ticket.name}</span>
+        <span {...stylex.props(styles.rowAge)} title={copy.row.updated(when(ticket.updatedAt))}>
+          {age(ticket.updatedAt)}
+        </span>
+        {person !== null && (
+          <span {...stylex.props(styles.rowPerson)} title={person}>
+            {initials(person)}
+          </span>
+        )}
+      </span>
+      <span {...stylex.props(styles.rowTitle)}>{ticket.title || copy.untitled}</span>
+      <span {...stylex.props(styles.rowState)}>
+        <span {...stylex.props(styles.rowStateIcon, STATUS_TONE[statusOf(ticket)])}>
+          <Icon icon={said.icon} size="xsm" />
+        </span>
+        <span {...stylex.props(styles.rowStateWords)}>{said.words}</span>
+      </span>
+      <span {...stylex.props(styles.rowTags)}>
+        <span {...stylex.props(styles.rowTag)}>
+          <span {...stylex.props(styles.kindDot, KIND_HUE[ticket.kind])} />
+          {ticket.kind}
+        </span>
+        {ticket.children.length > 0 && (
+          <span {...stylex.props(styles.rowTag)} title={copy.row.blockersClosed}>
+            <Icon icon={GitBranch} size="xsm" />
+            {ticket.children.length - openChildren}/{ticket.children.length}
+          </span>
+        )}
+        {firstChat !== undefined && (
+          <button
+            type="button"
+            aria-label={copy.row.openChat(firstChat.title, linkedChats.length - 1)}
+            title={copy.row.openChatTitle(firstChat.title)}
+            {...stylex.props(styles.rowTag, styles.rowTagButton)}
+            onClick={() => onOpenChat?.(firstChat.id)}
+          >
+            <Icon icon={MessageSquare} size="xsm" />
+            {linkedChats.length}
+          </button>
+        )}
+        {attached && (
+          <span {...stylex.props(styles.rowTag, styles.rowTagAttached)}>
+            <Icon icon={CircleCheck} size="xsm" />
+            {copy.row.inNewChat}
+          </span>
+        )}
+      </span>
     </>
   );
 }
 
-function Band({
-  band,
-  tickets,
-  onOpen,
-}: {
-  band: { id: Band | 'draft'; label: string; note: string };
-  tickets: Ticket[];
-  onOpen: (id: string) => void;
-}) {
-  if (tickets.length === 0) return null;
+/**
+ * Where a ticket stands, said the way its board row says it: small, with the icon in its
+ * lane's color. Beside the name and kind it is one more fact, not a badge of its own.
+ */
+function TicketState({ ticket }: { ticket: Ticket }) {
+  const said = holding(ticket);
 
   return (
-    <div>
-      <div {...stylex.props(styles.bandHead)}>
-        <BandHead band={band} count={tickets.length} />
-      </div>
-      <List density="compact" hasDividers>
-        {tickets.map((ticket) => (
-          <Item
-            key={ticket.id}
-            as="li"
-            startContent={<StateGlyph ticket={ticket} />}
-            label={ticket.title || 'Untitled'}
-            labelLines={1}
-            description={
-              <span {...stylex.props(styles.meta)}>
-                <Text type="supporting" color="secondary">
-                  {ticket.name}
-                </Text>
-                {band.id !== 'draft' && <KindTag kind={ticket.kind} />}
-                <Holding ticket={ticket} />
-              </span>
-            }
-            endContent={
-              <Text type="supporting" color="secondary">
-                {ticket.author?.name ?? 'nobody'}
-              </Text>
-            }
-            onClick={() => onOpen(ticket.id)}
-          />
-        ))}
-      </List>
-    </div>
+    <span {...stylex.props(styles.rowState)}>
+      <span {...stylex.props(styles.rowStateIcon, STATUS_TONE[statusOf(ticket)])}>
+        <Icon icon={said.icon} size="xsm" />
+      </span>
+      <span {...stylex.props(styles.rowStateWords)}>{said.words}</span>
+    </span>
   );
 }
+
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .map((part) => part[0] ?? '')
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+}
+
+/* ── Leaves the views share: what a thing is, not where it goes ─────────── */
 
 /* ── The ticket — one panel, drawn in one of three places ───────────────── */
 
@@ -1850,42 +2749,115 @@ function Band({
  * The frame a ticket is read or written in. The views disagree about where it
  * sits and what is on screen with it, not about what it says: `inline` takes the
  * queue's place, `over` covers the board behind a scrim, `beside` holds a column
- * of its own. Only `placement` differs here, and all it decides is how you leave.
+ * of its own, and `full` takes the whole surface. `full` is the drawer grown into a
+ * page: the ticket reads as a document, and its actions and facts float in a box
+ * beside it that holds its place while the document scrolls.
  */
+type Placement = 'inline' | 'over' | 'beside' | 'full';
+
 function TicketPanel({
   placement,
   onLeave,
+  onExpand,
+  onCollapse,
+  crumb,
   refusal,
   head,
   foot,
+  aside,
   children,
 }: {
-  placement: 'inline' | 'over' | 'beside';
+  placement: Placement;
   onLeave: () => void;
+  onExpand?: () => void;
+  onCollapse?: () => void;
+  crumb?: string;
   refusal: string | null;
   head: ReactNode;
   foot?: ReactNode;
+  aside?: ReactNode;
   children: ReactNode;
 }) {
+  const banner = refusal !== null && (
+    <div {...stylex.props(styles.refusal)}>
+      <Banner status="error" title={copy.refused.panelTitle} description={refusal} />
+    </div>
+  );
+
+  if (placement === 'full') {
+    return (
+      <div {...stylex.props(styles.panel)}>
+        <div {...stylex.props(styles.fullBar)}>
+          <span {...stylex.props(styles.fullBarStart)}>
+            {onCollapse !== undefined && (
+              // Back to the Work surface, board or list, with this ticket in its drawer —
+              // said the way the header's "Back to projects" is, and not as Expand's mirror.
+              <span {...stylex.props(EDGE_TEXT_BUTTON)}>
+                <Button
+                  label={copy.actions.backToWork}
+                  icon={<Icon icon={ArrowLeft} size="sm" />}
+                  variant="ghost"
+                  size="sm"
+                  onClick={onCollapse}
+                />
+              </span>
+            )}
+            <Text type="supporting" color="secondary" maxLines={1}>
+              {crumb}
+            </Text>
+          </span>
+          <span {...stylex.props(styles.edgeEndIcon)}>
+            <IconButton
+              label={copy.actions.close}
+              icon={<Icon icon={X} size="sm" />}
+              onClick={onLeave}
+            />
+          </span>
+        </div>
+        {banner}
+        <div {...stylex.props(styles.fullScroll)}>
+          <div {...stylex.props(styles.fullGrid)}>
+            <article {...stylex.props(styles.fullDoc)}>
+              {head}
+              {children}
+            </article>
+            <aside aria-label={copy.ticket.asideLabel} {...stylex.props(styles.fullBox)}>
+              {foot !== undefined && <div {...stylex.props(styles.fullActions)}>{foot}</div>}
+              {aside}
+            </aside>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div {...stylex.props(styles.panel)}>
       <div {...stylex.props(styles.panelHead)}>
-        <div>
-          <Button
-            label={placement === 'inline' ? 'Back to the queue' : 'Close issue'}
-            icon={<Icon icon={placement === 'inline' ? ArrowLeft : X} size="sm" />}
-            variant="ghost"
-            size="sm"
-            onClick={onLeave}
-          />
+        <div {...stylex.props(styles.panelHeadBar)}>
+          <span {...stylex.props(EDGE_TEXT_BUTTON)}>
+            <Button
+              label={placement === 'inline' ? copy.actions.backToWork : copy.actions.close}
+              icon={<Icon icon={placement === 'inline' ? ArrowLeft : X} size="sm" />}
+              variant="ghost"
+              size="sm"
+              onClick={onLeave}
+            />
+          </span>
+          {onExpand !== undefined && (
+            <span {...stylex.props(styles.edgeEndIcon)}>
+              <IconButton
+                label={copy.actions.openFullView}
+                tooltip={copy.actions.openFullView}
+                icon={<Icon icon={Maximize2} size="sm" />}
+                onClick={onExpand}
+              />
+            </span>
+          )}
         </div>
         {head}
       </div>
-      {refusal !== null && (
-        <div {...stylex.props(styles.refusal)}>
-          <Banner status="error" title="Action could not be completed" description={refusal} />
-        </div>
-      )}
+      {banner}
       <div {...stylex.props(styles.panelBody)}>{children}</div>
       {foot !== undefined && <div {...stylex.props(styles.panelFoot)}>{foot}</div>}
     </div>
@@ -1895,53 +2867,37 @@ function TicketPanel({
 /** One ticket in full, with everything that can be done to it. */
 function TicketReading({
   ticket,
-  repository,
-  executionWorkspaces,
   placement,
   refusal,
-  chatIds,
   onLeave,
   onOpen,
   onOpenChat,
-  onChanged,
   onRefuse,
   onWrite,
   onGate,
   onUngate,
-  onRun,
-  onDeliver,
-  onQuestion,
-  onTakeOver,
-  onLetGo,
-  onJudge,
-  onResolve,
+  onExpand,
+  onCollapse,
+  linkedChats = [],
+  tickets = [],
 }: {
   ticket: Ticket;
-  repository: string;
-  executionWorkspaces: ExecutionWorkspace[];
-  placement: 'inline' | 'over' | 'beside';
+  placement: Placement;
   refusal: string | null;
-  chatIds: string[];
   onLeave: () => void;
   onOpen: (id: string) => void;
   onOpenChat: (chatId: string) => void;
-  onChanged: () => Promise<void>;
   onRefuse: (message: string | null) => void;
   onWrite: (change: TicketChange) => Promise<Ticket | null>;
-  onGate: (gatedBy: string) => Promise<Ticket | null>;
-  onUngate: (gatedBy: string) => Promise<Ticket | null>;
-  onRun: (executionWorkspaceId: string, followUp?: string) => Promise<boolean>;
-  onDeliver: (workspaceId: string, path: DeliveryPath) => Promise<Result<DeliveryAudit>>;
-  onQuestion: () => Promise<boolean>;
-  onTakeOver: () => Promise<boolean>;
-  onLetGo: () => Promise<boolean>;
-  onJudge: (verdict: 'accepted' | 'sent-back') => Promise<boolean>;
-  onResolve: () => Promise<boolean>;
+  onGate: (blockedBy: string) => Promise<Ticket | null>;
+  onUngate: (blockedBy: string) => Promise<Ticket | null>;
+  onExpand?: () => void;
+  onCollapse?: () => void;
+  linkedChats?: ChatSummary[];
+  tickets?: Ticket[];
 }) {
-  const [isClosing, setIsClosing] = useState(false);
-  const [isGating, setIsGating] = useState(false);
-  const [named, setNamed] = useState('');
   const [isEditing, setIsEditing] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
   const hasDescription = ticket.body.trim().length > 0;
 
@@ -1951,180 +2907,123 @@ function TicketReading({
     setIsBusy(false);
   }
 
+  const facts: { label: string; value: string }[] = [
+    { label: copy.facts.status, value: copy.statusWord[statusOf(ticket)] },
+    { label: copy.facts.kind, value: ticket.kind },
+    { label: copy.facts.assignee, value: ticket.assignee?.name ?? copy.facts.nobody },
+    { label: copy.facts.createdBy, value: ticket.author?.name ?? copy.none },
+    { label: copy.facts.priority, value: ticket.priority },
+    { label: copy.facts.created, value: when(ticket.createdAt) },
+    { label: copy.facts.updated, value: when(ticket.updatedAt) },
+  ];
+  const aside =
+    placement === 'full' ? (
+      <>
+        <dl {...stylex.props(styles.fullFacts)}>
+          {facts.map((fact) => (
+            <div key={fact.label} {...stylex.props(styles.fullFact)}>
+              <dt {...stylex.props(styles.fullFactLabel)}>{fact.label}</dt>
+              <dd {...stylex.props(styles.fullFactValue)}>{fact.value}</dd>
+            </div>
+          ))}
+        </dl>
+        <section {...stylex.props(styles.fullGroup)}>
+          <Text type="label" weight="medium">
+            {copy.ticket.linkedChats}
+          </Text>
+          {linkedChats.length === 0 ? (
+            <Text type="supporting" color="secondary">
+              {copy.ticket.noLinkedChats}
+            </Text>
+          ) : (
+            linkedChats.map((chat) => (
+              <Button
+                key={chat.id}
+                label={copy.ticket.openChat(chat.title)}
+                icon={<Icon icon={MessageSquare} size="sm" />}
+                size="sm"
+                variant="ghost"
+                width="100%"
+                xstyle={styles.chatButton}
+                onClick={() => onOpenChat(chat.id)}
+              >
+                <span {...stylex.props(styles.chatButtonLabel)}>{chat.title}</span>
+              </Button>
+            ))
+          )}
+        </section>
+      </>
+    ) : undefined;
+
+  const statusActions = [
+    ...(['draft', 'ready', 'running', 'needs-review', 'done', 'wont-do'] as const)
+      .filter((status) => status !== ticket.status)
+      .map((status) => ({
+        label: copy.statuses[status].label,
+        onClick: () => void run(() => onWrite({ status })),
+      })),
+  ];
+
   return (
     <TicketPanel
       placement={placement}
       onLeave={onLeave}
+      onExpand={onExpand}
+      onCollapse={onCollapse}
+      crumb={copy.ticket.crumb(statusLabel(statusOf(ticket)), ticket.name)}
+      aside={aside}
       refusal={refusal}
       head={
         <div {...stylex.props(styles.ticketHeader)}>
           <div {...stylex.props(styles.ticketIdentity)}>
             <Text type="code">{ticket.name}</Text>
-            <KindTag kind={ticket.kind} />
-            <span {...stylex.props(styles.ticketStatus)}>
-              <Holding ticket={ticket} />
+            <span {...stylex.props(styles.rowTag)}>
+              <span {...stylex.props(styles.kindDot, KIND_HUE[ticket.kind])} />
+              {ticket.kind}
             </span>
+            <TicketState ticket={ticket} />
           </div>
-          <h2 {...stylex.props(styles.ticketTitle)}>{ticket.title || 'Untitled'}</h2>
+          {!isEditing && (
+            <h2 {...stylex.props(styles.ticketTitle)}>{ticket.title || copy.untitled}</h2>
+          )}
         </div>
       }
       foot={
-        ticket.closedAt !== null || isEditing ? undefined : isClosing ? (
+        isEditing ? undefined : (
           <>
-            <Button
-              label="Done"
-              size="sm"
-              variant="primary"
-              isDisabled={isBusy}
-              onClick={() =>
-                void run(async () => {
-                  await onWrite({ closure: 'done' });
-                  setIsClosing(false);
-                })
-              }
-            />
-            <Button
-              label="Close as not doing"
-              size="sm"
-              variant="secondary"
-              isDisabled={isBusy}
-              onClick={() =>
-                void run(async () => {
-                  await onWrite({ closure: 'wontfix' });
-                  setIsClosing(false);
-                })
-              }
-            />
-            <Button label="Cancel" size="sm" variant="ghost" onClick={() => setIsClosing(false)} />
-          </>
-        ) : (
-          <>
-            {/* Run is offered on a ready ticket and nowhere else, because whether a ticket
-                can be picked up is the server's answer and its own words are what is shown
-                when it says no. */}
-            {ticket.kind === 'question' &&
-              (ticket.band === 'ready' || ticket.band === 'needs-you') && (
-                <Button
-                  label={ticket.band === 'needs-you' ? 'Resume question' : 'Start question'}
-                  size="sm"
-                  variant="primary"
-                  isDisabled={isBusy}
-                  onClick={() => void run(onQuestion)}
-                />
-              )}
-            {/* A claim whose machine stopped answering, which only a person can take on. */}
-            {ticket.claim?.stale === true && (
+            <span {...stylex.props(styles.footTail, placement === 'full' && EDGE_TEXT_BUTTON)}>
               <Button
-                label="Take it over"
-                size="sm"
-                variant="primary"
-                isDisabled={isBusy}
-                onClick={() => void run(onTakeOver)}
-              />
-            )}
-            {/* A run left a proposal: the person it is for says what they make of it. */}
-            {ticket.band === 'needs-you' && (
-              <>
-                {refusal?.startsWith('Merge conflict:') === true && (
-                  <Button
-                    label="Resolve with Kira"
-                    size="sm"
-                    variant="primary"
-                    isDisabled={isBusy}
-                    onClick={() => void run(onResolve)}
-                  />
-                )}
-                <Button
-                  label="Accept result"
-                  size="sm"
-                  variant="primary"
-                  isDisabled={isBusy}
-                  onClick={() => void run(() => onJudge('accepted'))}
-                />
-                <Button
-                  label="Send back"
-                  size="sm"
-                  variant="secondary"
-                  isDisabled={isBusy}
-                  onClick={() => void run(() => onJudge('sent-back'))}
-                />
-              </>
-            )}
-            {/* A claim held by hand is held by a person: only they can let it go, and
-                without this a ticket taken over would sit in Running for good. */}
-            {ticket.claim !== null && ticket.claim.workerId === null && (
-              <Button
-                label="Release claim"
+                label={copy.actions.edit}
                 size="sm"
                 variant="ghost"
                 isDisabled={isBusy}
-                onClick={() => void run(onLetGo)}
+                onClick={() => {
+                  setIsEditing(true);
+                  onRefuse(null);
+                }}
               />
-            )}
-            {ticket.gate === 'draft' ? (
-              <>
-                <Button
-                  label="Mark ready for an agent"
+              <span {...stylex.props(styles.edgeEndIconSm)}>
+                <MoreMenu
+                  label={copy.actions.more}
                   size="sm"
-                  variant="primary"
+                  alignment="end"
+                  placement={placement === 'full' ? 'below' : 'above'}
                   isDisabled={isBusy}
-                  onClick={() => void run(() => onWrite({ gate: 'ready-for-agent' }))}
+                  items={statusActions}
                 />
-                <Button
-                  label="Mark ready for a person"
-                  size="sm"
-                  variant="secondary"
-                  isDisabled={isBusy}
-                  onClick={() => void run(() => onWrite({ gate: 'ready-for-human' }))}
-                />
-              </>
-            ) : (
-              <Button
-                label="Return to draft"
-                size="sm"
-                variant="secondary"
-                isDisabled={isBusy}
-                onClick={() => void run(() => onWrite({ gate: 'draft' }))}
-              />
-            )}
-            <Button
-              label="Edit"
-              size="sm"
-              variant="ghost"
-              isDisabled={isBusy}
-              onClick={() => {
-                setIsEditing(true);
-                onRefuse(null);
-              }}
-            />
-            <Button
-              label="Close it"
-              size="sm"
-              variant="ghost"
-              isDisabled={isBusy}
-              onClick={() => {
-                setIsClosing(true);
-                onRefuse(null);
-              }}
-            />
+              </span>
+            </span>
           </>
         )
       }
     >
       {isEditing ? (
-        // Correcting a ticket takes the panel's whole body rather than sitting
-        // inside one of its sections: what is being edited is the contract, and
-        // leaving the reading below the form would say it twice, once stale.
         <TicketEdit
           ticket={ticket}
           isBusy={isBusy}
           onCancel={() => setIsEditing(false)}
           onSave={(change) =>
             void run(async () => {
-              // The editor stays open when the server refuses: the words typed into
-              // it are the person's, and a refused write is not a reason to take them
-              // away — removing the last criterion from a ticket an agent runs is
-              // exactly the write that gets refused (GH #63).
               const saved = await onWrite(change);
               if (saved !== null) setIsEditing(false);
             })
@@ -2134,33 +3033,37 @@ function TicketReading({
         <>
           <section {...stylex.props(styles.section)}>
             <Text type="label" weight="medium">
-              About
+              {copy.ticket.about}
             </Text>
             {hasDescription ? (
-              <Text type="body" {...stylex.props(styles.ticketBodyText)}>
+              <Markdown
+                density="compact"
+                headingLevelStart={4}
+                contentWidth="100%"
+                onLinkClick={openLink}
+              >
                 {ticket.body}
-              </Text>
+              </Markdown>
             ) : (
               <Text type="supporting" color="secondary">
-                No description has been added yet.
+                {copy.ticket.noDescription}
               </Text>
             )}
           </section>
-
           <section {...stylex.props(styles.section)}>
             <div {...stylex.props(styles.ticketSectionHeading)}>
               <Text type="label" weight="medium">
-                Done when
+                {copy.ticket.doneWhen}
               </Text>
               {ticket.criteria.length > 0 && (
                 <Text type="supporting" color="secondary">
-                  {ticket.criteria.length} {ticket.criteria.length === 1 ? 'check' : 'checks'}
+                  {copy.ticket.checks(ticket.criteria.length)}
                 </Text>
               )}
             </div>
             {ticket.criteria.length === 0 ? (
               <Text type="supporting" color="secondary">
-                No finish line has been written yet. Add one before marking this ready for an agent.
+                {copy.ticket.noChecks}
               </Text>
             ) : (
               <ul {...stylex.props(styles.ticketCriteria)}>
@@ -2171,19 +3074,24 @@ function TicketReading({
                       size="sm"
                       {...stylex.props(styles.ticketCriterionIcon)}
                     />
-                    <Text type="supporting" {...stylex.props(styles.ticketCriterionText)}>
-                      {line === '' ? '(an empty line)' : line}
+                    <Text type="body" {...stylex.props(styles.ticketCriterionText)}>
+                      {line === '' ? (
+                        copy.ticket.emptyCheck
+                      ) : (
+                        <Markdown display="inline" onLinkClick={openLink}>
+                          {line}
+                        </Markdown>
+                      )}
                     </Text>
                   </li>
                 ))}
               </ul>
             )}
           </section>
-
           {ticket.kind === 'map' && (ticket.decisionsSoFar?.length ?? 0) > 0 && (
             <section {...stylex.props(styles.section)}>
               <Text type="label" weight="medium">
-                Decisions so far
+                {copy.ticket.outcomesSoFar}
               </Text>
               <ul {...stylex.props(styles.lines)}>
                 {ticket.decisionsSoFar?.map((outcome) => (
@@ -2195,554 +3103,72 @@ function TicketReading({
               </ul>
             </section>
           )}
-
-          <details {...stylex.props(styles.ticketDetails)}>
-            <summary {...stylex.props(styles.ticketDetailsSummary)}>
-              <span {...stylex.props(styles.ticketDetailsSummaryText)}>
-                <Text type="label" weight="medium">
-                  More ticket details
-                </Text>
-                <Text type="supporting" color="secondary">
-                  Runs, dependencies, and branch
-                </Text>
-              </span>
-            </summary>
-            <div {...stylex.props(styles.ticketDetailsContent)}>
-              <div {...stylex.props(styles.ticketFacts)}>
-                <div {...stylex.props(styles.ticketFact)}>
+          {placement === 'full' ? (
+            <Blockers
+              ticket={ticket}
+              tickets={tickets}
+              onOpen={onOpen}
+              onGate={onGate}
+              onUngate={onUngate}
+            />
+          ) : (
+            <details
+              {...stylex.props(styles.ticketDetails)}
+              onToggle={(event) => setDetailsOpen(event.currentTarget.open)}
+            >
+              <summary {...stylex.props(styles.ticketDetailsSummary)}>
+                <span {...stylex.props(styles.ticketDetailsSummaryText)}>
+                  <Text type="label" weight="medium">
+                    {copy.ticket.moreDetails}
+                  </Text>
                   <Text type="supporting" color="secondary">
-                    Rank
+                    {copy.ticket.moreDetailsNote}
                   </Text>
-                  <Text type="supporting" {...stylex.props(styles.ticketFactValue)}>
-                    {ticket.rank}
-                  </Text>
-                </div>
-                {ticket.author !== null && (
-                  <div {...stylex.props(styles.ticketFact)}>
-                    <Text type="supporting" color="secondary">
-                      Written by
-                    </Text>
-                    <Text type="supporting" {...stylex.props(styles.ticketFactValue)}>
-                      {ticket.author.name}
-                    </Text>
-                  </div>
-                )}
-              </div>
-
-              {/* What a run made of it, above the queue's own facts: on a ticket somebody or
-                  something has worked, this is what the ticket is waiting on. */}
-              <RunHistory ticket={ticket} chatIds={chatIds} onOpenChat={onOpenChat} />
-
-              <ExecutionWorkspacePanel
-                ticket={ticket}
-                workspaces={executionWorkspaces}
-                repository={repository}
-                onStart={onRun}
-                onDeliver={onDeliver}
-                onChanged={onChanged}
-              />
-
-              <section {...stylex.props(styles.section)}>
-                <Text type="label" weight="medium">
-                  What gates it
-                </Text>
-                {ticket.children.length === 0 ? (
-                  <Text type="supporting" color="secondary">
-                    Nothing gates this. A ticket names the tickets that hold it up, and a parent
-                    names its slices.
-                  </Text>
-                ) : (
-                  <>
-                    <Text type="supporting" color="secondary">
-                      {ticket.children.filter((each) => each.closed).length} of{' '}
-                      {ticket.children.length} closed
-                    </Text>
-                    <ul {...stylex.props(styles.lines)}>
-                      {ticket.children.map((each) => (
-                        <li key={each.id} {...stylex.props(styles.line)}>
-                          <NamedGlyph ticket={each} />
-                          <button
-                            type="button"
-                            {...stylex.props(styles.gateName)}
-                            onClick={() => onOpen(each.id)}
-                          >
-                            <Text type="supporting">
-                              {each.name}
-                              {each.closure === 'wontfix' ? ' — closed without being done' : ''}
-                            </Text>
-                          </button>
-                          <IconButton
-                            label={`Take ${each.name} off what gates this`}
-                            icon={<Icon icon={X} size="sm" />}
-                            isDisabled={isBusy}
-                            onClick={() => void run(() => onUngate(each.id))}
-                          />
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                )}
-
-                {isGating ? (
-                  <>
-                    <div {...stylex.props(styles.field)}>
-                      <div {...stylex.props(styles.fieldGrow)}>
-                        <TextInput
-                          label="Which issue blocks this one"
-                          value={named}
-                          onChange={setNamed}
-                          description="By its name — FND-12 — or by anything else the server knows it as."
-                          size="sm"
-                        />
-                      </div>
-                    </div>
-                    <div {...stylex.props(styles.actions)}>
-                      <Button
-                        label="Add the gate"
-                        size="sm"
-                        variant="secondary"
-                        isDisabled={isBusy || named.trim() === ''}
-                        onClick={() =>
-                          void run(async () => {
-                            const held = await onGate(named.trim());
-                            if (held !== null) {
-                              setNamed('');
-                              setIsGating(false);
-                            }
-                          })
-                        }
-                      />
-                      <Button
-                        label="Cancel"
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          setIsGating(false);
-                          onRefuse(null);
-                        }}
-                      />
-                    </div>
-                  </>
-                ) : (
-                  <div>
-                    <Button
-                      label="Add a gate"
-                      icon={<Icon icon={Plus} size="sm" />}
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => {
-                        setIsGating(true);
-                        onRefuse(null);
-                      }}
-                    />
-                  </div>
-                )}
-              </section>
-
-              {ticket.gates.length > 0 && (
+                </span>
+                <span
+                  {...stylex.props(
+                    styles.ticketDetailsChevron,
+                    detailsOpen && styles.ticketDetailsChevronOpen,
+                  )}
+                >
+                  <Icon icon={ChevronDown} size="sm" />
+                </span>
+              </summary>
+              <div {...stylex.props(styles.ticketDetailsContent)}>
+                <Blockers
+                  ticket={ticket}
+                  tickets={tickets}
+                  onOpen={onOpen}
+                  onGate={onGate}
+                  onUngate={onUngate}
+                />
                 <section {...stylex.props(styles.section)}>
                   <Text type="label" weight="medium">
-                    What it gates
+                    {copy.ticket.datesHeading}
                   </Text>
-                  <ul {...stylex.props(styles.lines)}>
-                    {ticket.gates.map((each) => (
-                      <li key={each.id} {...stylex.props(styles.line)}>
-                        <Icon icon={ArrowUp} size="sm" />
-                        <button
-                          type="button"
-                          {...stylex.props(styles.gateName)}
-                          onClick={() => onOpen(each.id)}
-                        >
-                          <Text type="supporting">
-                            {each.name}
-                            {each.closed ? ' — closed' : ' — still open'}
-                          </Text>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
+                  <Text type="supporting" color="secondary">
+                    {copy.ticket.dates(when(ticket.createdAt), when(ticket.updatedAt))}
+                  </Text>
                 </section>
-              )}
-
-              <section {...stylex.props(styles.section)}>
-                <Text type="label" weight="medium">
-                  The branch
-                </Text>
-                <div {...stylex.props(styles.branch)}>
-                  <Text type="code">{ticket.branch}</Text>
-                  <IconButton
-                    label={`Copy ${ticket.branch}`}
-                    icon={<Icon icon={Copy} size="sm" />}
-                    onClick={() => copyText(ticket.branch)}
+                {linkedChats.map((chat) => (
+                  <Button
+                    key={chat.id}
+                    label={copy.ticket.openChat(chat.title)}
+                    icon={<Icon icon={MessageSquare} size="sm" />}
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => onOpenChat(chat.id)}
                   />
-                </div>
-                <Text type="supporting" color="secondary">
-                  {branchNote(ticket)}
-                </Text>
-              </section>
-
-              <section {...stylex.props(styles.section)}>
-                <Text type="label" weight="medium">
-                  Written and changed
-                </Text>
-                <Text type="supporting" color="secondary">
-                  written {when(ticket.createdAt)} · last changed {when(ticket.updatedAt)}
-                  {ticket.closedAt === null
-                    ? ''
-                    : ` · closed ${when(ticket.closedAt)} as ${ticket.closure === 'wontfix' ? 'something that will not be done' : 'done'}`}
-                </Text>
-              </section>
-            </div>
-          </details>
+                ))}
+              </div>
+            </details>
+          )}
         </>
       )}
     </TicketPanel>
   );
 }
 
-/**
- * A ticket's runs, newest first, with one of them drawn.
- *
- * The newest is drawn unless somebody picked another. A ticket that has been run several
- * times keeps all of them, because what the ticket is waiting on is the newest run's
- * proposal, and what it did before that is how a person judges whether to trust it
- * (GH #68).
- *
- * An older run has no chat in this window — the row for a run is cleared when its ticket is
- * run again — so its words are read from the transcript the project keeps.
- */
-function RunHistory({
-  ticket,
-  chatIds,
-  onOpenChat,
-}: {
-  ticket: Ticket;
-  chatIds: string[];
-  onOpenChat: (chatId: string) => void;
-}) {
-  const [picked, setPicked] = useState<string | null>(null);
-
-  // A run picked on another ticket is not one of this ticket's, so an id that is not here
-  // falls back to the newest: the panel never has to be told which ticket it is showing.
-  const shown = ticket.runs.find((each) => each.id === picked) ?? ticket.runs[0];
-  const others = ticket.runs.filter((each) => each.id !== shown?.id);
-
-  if (shown === undefined) return null;
-
-  return (
-    <>
-      <RunReading
-        key={`${ticket.id}:${shown.id}`}
-        ticketId={ticket.id}
-        run={shown}
-        // A run's chat is a chat, and this window is holding it: the ticket opens it
-        // rather than saying the same things again in a worse place. A run from somewhere
-        // else has no chat here, and then its words are all the panel can show — which is
-        // the point of keeping them on the ticket.
-        chatId={chatIds.includes(shown.id) ? shown.id : null}
-        onOpenChat={onOpenChat}
-      />
-
-      {others.length > 0 && (
-        <section {...stylex.props(styles.section)}>
-          <Text type="label" weight="medium">
-            Other runs
-          </Text>
-          <ul {...stylex.props(styles.lines)}>
-            {others.map((each) => (
-              <li key={each.id}>
-                <Button
-                  label={runChoiceLabel(each)}
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setPicked(each.id)}
-                />
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-    </>
-  );
-}
-
-/**
- * One run on a ticket: what it made, and where its words are.
- *
- * A run is a chat, so the words are read in the chat rather than drawn again here — this
- * window is holding that chat already, and a chat is a better place to read a conversation
- * than a panel beside a ticket is. What the panel keeps is the evidence: what the run
- * changed, what it ran, and where it stands, which is what a person decides on without
- * reading a whole conversation (GH #68).
- *
- * A run that happened somewhere else has no chat in this window, and then its words are
- * read from the server and drawn here — the transcript is project-owned, so a colleague's
- * run is still readable on the ticket. Those words are read when the ticket is opened and
- * again on the beat the queue is read on while the run is going, because a run that is
- * talking should be readable as it talks (GH #74).
- */
-function RunReading({
-  ticketId,
-  run,
-  chatId,
-  onOpenChat,
-}: {
-  ticketId: string;
-  run: TicketRun;
-  /** The chat this run's words are in, when this window is holding it. */
-  chatId: string | null;
-  onOpenChat: (chatId: string) => void;
-}) {
-  const [said, setSaid] = useState<TicketSaid[] | null>(null);
-  const [trouble, setTrouble] = useState<string | null>(null);
-
-  const read = useCallback(async () => {
-    const answer = await window.kira.readTranscript(ticketId, run.id);
-
-    if (!answer.ok) {
-      setTrouble(answer.error);
-      return;
-    }
-
-    setTrouble(null);
-    setSaid(answer.value);
-  }, [ticketId, run.id]);
-
-  useMountEffect(() => {
-    void read();
-  });
-
-  // While the run is still going, its words are read again on the same beat as the queue:
-  // a run says things as it works, and the ticket should not be a page somebody has to
-  // reload to see them.
-  const going = run.endedAt === null;
-
-  useEffect(() => {
-    if (!going) return;
-
-    const beat = setInterval(() => void read(), READ_AGAIN_MS);
-
-    return () => clearInterval(beat);
-  }, [going, read]);
-
-  return (
-    <section {...stylex.props(styles.section)}>
-      <Text type="label" weight="medium">
-        The run
-      </Text>
-      <Text type="supporting" color="secondary">
-        {runTelling(run)}
-      </Text>
-
-      {run.changed !== null && (
-        <div {...stylex.props(styles.evidence)}>
-          <Text type="supporting" color="secondary">
-            What it changed
-          </Text>
-          <Text type="code">{run.changed}</Text>
-        </div>
-      )}
-
-      {run.checks !== null && run.checks.length > 0 && (
-        <div {...stylex.props(styles.evidence)}>
-          <Text type="supporting" color="secondary">
-            What it ran
-          </Text>
-          <ul {...stylex.props(styles.lines)}>
-            {run.checks.map((each, at) => (
-              <li key={`${at}-${each}`} {...stylex.props(styles.saidLine)}>
-                <Text type="code">{each}</Text>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      <div {...stylex.props(styles.evidence)}>
-        <Text type="supporting" color="secondary">
-          What it said
-        </Text>
-
-        {chatId !== null ? (
-          <div>
-            <Button
-              label="Read the run"
-              icon={<Icon icon={TicketIcon} size="sm" />}
-              size="sm"
-              variant="secondary"
-              onClick={() => onOpenChat(chatId)}
-            />
-          </div>
-        ) : trouble !== null ? (
-          <Text type="supporting" color="secondary">
-            {trouble}
-          </Text>
-        ) : said === null ? (
-          <Skeleton width="100%" height={16} />
-        ) : said.length === 0 && run.made !== null ? (
-          // Nothing was recorded while it went, which is what a run that only ever said one
-          // thing looks like: its closing words are still what it had to say.
-          <Text type="body" {...stylex.props(styles.saidWords)}>
-            {run.made}
-          </Text>
-        ) : said.length === 0 ? (
-          // An empty list would read as a run that had nothing to say. Words reach the
-          // ticket as they settle, so a run that is still on its first turn has none here
-          // yet — and that is a different thing from a run that said nothing at all.
-          <Text type="supporting" color="secondary">
-            {going ? 'Nothing yet — it is still working.' : 'It said nothing.'}
-          </Text>
-        ) : (
-          <ul {...stylex.props(styles.said)}>
-            {said.map((each, at) => (
-              <li key={each.id} {...stylex.props(styles.saidLine)}>
-                <Text type="supporting" color="secondary">
-                  {saidByLabel(each.saidBy, at === 0)} · {when(each.at)}
-                </Text>
-                <Text type="body" {...stylex.props(styles.saidWords)}>
-                  {each.words}
-                </Text>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function NamedGlyph({ ticket }: { ticket: NamedTicket }) {
-  const icon: LucideIcon = !ticket.closed
-    ? Play
-    : ticket.closure === 'wontfix'
-      ? CircleAlert
-      : CircleCheck;
-
-  return (
-    <span {...stylex.props(styles.glyph, ticket.closure === 'wontfix' && styles.glyphAbandoned)}>
-      <Icon icon={icon} size="sm" />
-    </span>
-  );
-}
-
-/* ── Writing one down, and correcting it ────────────────────────────────── */
-
-/**
- * The form, in the place a ticket is read.
- *
- * Four things and no more: what kind of work it is, what it is called, what to
- * build, and how it is known to be done. A ticket is written as a draft, so
- * nothing here insists on the criteria — a draft is what a ticket is before
- * anybody has said what it owes, and the refusal that matters comes when it is
- * marked ready for an agent, in the server's own words.
- */
-function TicketForm({
-  placement,
-  refusal,
-  trouble,
-  onRetry,
-  onLeave,
-  onWrite,
-}: {
-  placement: 'inline' | 'over' | 'beside';
-  refusal: string | null;
-  trouble: string | null;
-  onRetry: () => void;
-  onLeave: () => void;
-  onWrite: (draft: TicketDraft) => Promise<void>;
-}) {
-  const [kind, setKind] = useState<TicketKind>('feature');
-  const [title, setTitle] = useState('');
-  const [body, setBody] = useState('');
-  const [criteria, setCriteria] = useState<string[]>(['']);
-  const [isBusy, setIsBusy] = useState(false);
-
-  return (
-    <TicketPanel
-      placement={placement}
-      onLeave={onLeave}
-      refusal={refusal}
-      head={
-        <>
-          <Text type="label" weight="medium">
-            New ticket
-          </Text>
-          <Text type="supporting" color="secondary">
-            New tickets start as drafts. Mark one ready when it is clear enough to run.
-          </Text>
-        </>
-      }
-      foot={
-        <>
-          <Button
-            label={isBusy ? 'Creating issue' : 'Create issue'}
-            size="sm"
-            variant="primary"
-            isDisabled={isBusy}
-            onClick={() => {
-              setIsBusy(true);
-              void onWrite({ kind, title, body, criteria }).finally(() => setIsBusy(false));
-            }}
-          />
-          <Button label="Cancel" size="sm" variant="ghost" onClick={onLeave} />
-        </>
-      }
-    >
-      {trouble !== null && <QueueReadFailure trouble={trouble} onRetry={onRetry} />}
-      <section {...stylex.props(styles.section)}>
-        <Text type="label" weight="medium">
-          What kind of work
-        </Text>
-        <div>
-          <SegmentedControl
-            value={kind}
-            onChange={(next) => {
-              if (KINDS.some((each) => each === next)) setKind(next as TicketKind);
-            }}
-            label="What kind of work this is"
-            size="sm"
-          >
-            {KINDS.map((each) => (
-              <SegmentedControlItem key={each} value={each} label={each} />
-            ))}
-          </SegmentedControl>
-        </div>
-        <Text type="supporting" color="secondary">
-          The kind decides what a run of this ticket owes, and it is fixed once the ticket is
-          written.
-        </Text>
-      </section>
-
-      <div {...stylex.props(styles.formFields)}>
-        <TextInput
-          label="Title"
-          value={title}
-          onChange={setTitle}
-          description="What the issue is called. Its suggested branch name comes from the title."
-        />
-        <TextArea
-          label="Description"
-          value={body}
-          onChange={setBody}
-          description="Enough that whoever runs it needs nothing else to hand."
-          rows={6}
-        />
-      </div>
-
-      <section {...stylex.props(styles.section)}>
-        <Text type="label" weight="medium">
-          Acceptance criteria
-        </Text>
-        <Text type="supporting" color="secondary">
-          One line each. An agent's ticket needs at least one that says something.
-        </Text>
-        <CriteriaFields criteria={criteria} onChange={setCriteria} />
-      </section>
-    </TicketPanel>
-  );
-}
-
-/** Correcting what a ticket says, in the place it is read. */
 function TicketEdit({
   ticket,
   isBusy,
@@ -2759,70 +3185,41 @@ function TicketEdit({
   const [criteria, setCriteria] = useState<string[]>(
     ticket.criteria.length === 0 ? [''] : ticket.criteria,
   );
+  const save = (): void => {
+    if (!isBusy) onSave({ title, body, criteria: criteria.filter((each) => each.trim() !== '') });
+  };
 
   return (
-    <div {...stylex.props(styles.formFields)}>
-      <TextInput label="Title" value={title} onChange={setTitle} size="sm" />
-      <TextArea label="Description" value={body} onChange={setBody} rows={6} />
-      <Text type="label" weight="medium">
-        Acceptance criteria
-      </Text>
-      <CriteriaFields criteria={criteria} onChange={setCriteria} />
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
+    <div
+      {...stylex.props(styles.formFields)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+          event.preventDefault();
+          save();
+        }
+      }}
+    >
+      <TicketFields
+        title={title}
+        setTitle={setTitle}
+        initialBody={ticket.body}
+        setBody={setBody}
+        criteria={criteria}
+        setCriteria={setCriteria}
+        focusTitle
+      />
       <div {...stylex.props(styles.actions)}>
         <Button
-          label="Save"
+          label={copy.actions.save}
           size="sm"
           variant="primary"
           isDisabled={isBusy}
-          onClick={() => onSave({ title, body, criteria })}
+          onClick={save}
         />
-        <Button label="Cancel" size="sm" variant="ghost" onClick={onCancel} />
+        <Button label={copy.actions.cancel} size="sm" variant="ghost" onClick={onCancel} />
       </div>
     </div>
-  );
-}
-
-/** The criteria as they are edited: one line each, added and taken away. */
-function CriteriaFields({
-  criteria,
-  onChange,
-}: {
-  criteria: string[];
-  onChange: (next: string[]) => void;
-}) {
-  return (
-    <>
-      {criteria.map((line, at) => (
-        <div key={at} {...stylex.props(styles.field)}>
-          <div {...stylex.props(styles.fieldGrow)}>
-            <TextInput
-              label={`Criterion ${at + 1}`}
-              isLabelHidden
-              value={line}
-              onChange={(next) =>
-                onChange(criteria.map((each, index) => (index === at ? next : each)))
-              }
-              size="sm"
-            />
-          </div>
-          <IconButton
-            label={`Take criterion ${at + 1} away`}
-            icon={<Icon icon={X} size="sm" />}
-            isDisabled={criteria.length === 1}
-            onClick={() => onChange(criteria.filter((_each, index) => index !== at))}
-          />
-        </div>
-      ))}
-      <div>
-        <Button
-          label="Another criterion"
-          icon={<Icon icon={Plus} size="sm" />}
-          size="sm"
-          variant="ghost"
-          onClick={() => onChange([...criteria, ''])}
-        />
-      </div>
-    </>
   );
 }
 
@@ -2840,19 +3237,10 @@ function readView(): View {
 }
 
 /**
- * Copy the branch name, so a person can paste it into their own git client.
- *
- * The clipboard API is the way in, and it is not always there: a packaged window
- * is served from `file://`, which is not a secure context, so the older selection
- * route is kept as the way that always works.
+ * A link in a ticket's words opens in the system browser, as every link in the window does:
+ * `window.open` reaches the main process's open handler, and the window itself stays put.
  */
-function copyText(text: string): void {
-  void navigator.clipboard?.writeText(text).catch(() => {
-    const held = document.createElement('textarea');
-    held.value = text;
-    document.body.append(held);
-    held.select();
-    document.execCommand('copy');
-    held.remove();
-  });
+function openLink(href: string): false {
+  window.open(href, '_blank', 'noopener');
+  return false;
 }

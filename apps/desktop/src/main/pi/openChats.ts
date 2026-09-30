@@ -156,6 +156,14 @@ export interface OpenChats {
    * keeps its own words and only forgets where it came from.
    */
   deleteChat(id: string): Promise<void>;
+  /**
+   * File a chat under a workspace, so it works in that workspace's folder from then on.
+   *
+   * A chat that Kira is writing in is refused, and so is a workspace nobody remembers;
+   * either leaves the chat exactly as it was. The chat on screen stays on screen, reopened
+   * in its new folder, and a chat that is not open simply works there when it is opened.
+   */
+  fileChat(id: string, workspaceId: string): Promise<void>;
   /** Show the stored chat `threadId`, opening it if it is not already open. */
   open(threadId: string): Promise<void>;
   /**
@@ -262,7 +270,7 @@ export function openChats(
     return proposal;
   }
 
-  /** The spec a person approved last in this chat, which its breakdown and runs hang from. */
+  /** The spec a person approved last in this chat, whose breakdown belongs to it. */
   function approvedSpecTicket(state: ShapingState): string | null {
     const spec = state.proposals.findLast(
       (each) => each.kind === 'spec' && each.status === 'approved',
@@ -459,7 +467,13 @@ export function openChats(
 
     draft = draft
       ? { ...draft, workspaceId, workTicketIds: [...new Set(workTicketIds)] }
-      : { id: randomUUID(), workspaceId, workTicketIds: [...new Set(workTicketIds)], modelId, mode: 'build' };
+      : {
+          id: randomUUID(),
+          workspaceId,
+          workTicketIds: [...new Set(workTicketIds)],
+          modelId,
+          mode: 'build',
+        };
     shown = null;
 
     if (left) {
@@ -636,8 +650,10 @@ export function openChats(
           // same server transaction, so changing them again would break atomicity.
           const blocked =
             destination === undefined
-              ? await tracker.change(ticket.id, { gate: 'ready-for-agent' })
+              ? await tracker.change(ticket.id, { status: 'ready' })
               : ticket;
+          const linked = store.getThread(threadId).workTicketIds;
+          store.setThreadWorkTicketIds(threadId, [...new Set([...linked, blocked.id])]);
           settle(threadId, proposal.id, { ...proposal, status: 'approved', ticketId: blocked.id });
           await conversation.send(
             'The person approved the spec proposal. Kira recorded it. Immediately propose its ticket breakdown with shape_breakdown_proposal. Do not publish the tickets; wait for the person to approve the breakdown.',
@@ -660,9 +676,7 @@ export function openChats(
             status: 'approved',
             decisionId: proposal.id,
           });
-          await conversation.send(
-            'The person approved the Decision proposal. Kira recorded it.',
-          );
+          await conversation.send('The person approved the Decision proposal. Kira recorded it.');
           return;
         }
         case 'outcome': {
@@ -777,7 +791,7 @@ export function openChats(
             store,
             workspace.folder,
             models,
-            { id: chatId, workspaceId, ticketId },
+            { id: chatId, workspaceId, workTicketIds: [ticketId] },
             memorySettings,
             tracker,
             mcp,
@@ -870,6 +884,36 @@ export function openChats(
       }
 
       await leaveIfShown(id);
+    },
+
+    fileChat: async (id, workspaceId) => {
+      const workspace = store.findWorkspace(workspaceId);
+      if (workspace === undefined) {
+        throw new Error('That folder is not a workspace.');
+      }
+
+      const chat = store.findThread(id);
+      if (chat === undefined) {
+        throw new Error('That chat no longer exists.');
+      }
+
+      whileIdle(id);
+      if (chat.workspaceId === workspace.id && chat.cwd === workspace.folder) {
+        return;
+      }
+
+      store.fileThread(id, workspace);
+
+      // An open session keeps the folder it started in, so it is let go and read back from
+      // the store: the same chat, the same words, working in the new folder. One that is not
+      // on screen is left closed, and opens there the next time it is asked for.
+      const conversation = open.get(id);
+      if (conversation) {
+        close(conversation);
+        if (shown === id) {
+          await showStored(id);
+        }
+      }
     },
 
     open: (threadId) => showStored(threadId),

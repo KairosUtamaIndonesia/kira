@@ -41,25 +41,26 @@ const ticket: Ticket = {
   title: 'Add acceptance criteria',
   body: 'A ticket says how it is known to be done.',
   criteria: ['A criterion is one line'],
-  gate: 'draft',
-  band: 'draft',
+  status: 'draft',
+  blocked: false,
   rank: 1,
-  branch: 'fnd-1-add-acceptance-criteria',
+  priority: 'none',
+  assignee: { id: 'ada', name: 'Ada Lovelace' },
+  tags: [],
   author: { id: 'ada', name: 'Ada Lovelace' },
   gates: [],
   children: [],
+  parent: null,
+  subIssues: [],
+  relationships: [],
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
-  closedAt: null,
-  closure: null,
-  claim: null,
-  runs: [],
 };
 
 const queue: TicketQueue = {
   project: { id: 'kira-project', name: 'Kira', prefix: 'FND' },
   tickets: [ticket],
-  counts: { draft: 1, ready: 0, blocked: 0, running: 0, 'needs-you': 0, done: 0 },
+  counts: { draft: 1, ready: 0, running: 0, 'needs-review': 0, done: 0, 'wont-do': 0 },
 };
 
 const draft: TicketDraft = {
@@ -171,43 +172,46 @@ const CASES: Case[] = [
     makeDeps: (calls) =>
       deps(calls, {
         write: async () => {
-          throw new Error('A ticket an agent runs has to say how it is known to be done.');
+          throw new Error('Say how we’ll know this ticket is done before an agent starts on it.');
         },
       }),
     call: 'write',
     args: ['api', draft],
-    want: { ok: false, error: 'A ticket an agent runs has to say how it is known to be done.' },
+    want: {
+      ok: false,
+      error: 'Say how we’ll know this ticket is done before an agent starts on it.',
+    },
     wantCalls: [],
   },
   {
     name: 'change writes what was asked about a ticket',
     makeDeps: (calls) => deps(calls),
     call: 'change',
-    args: ['ticket-1', { title: 'A better name', gate: 'ready-for-agent', rank: 0 }],
+    args: ['ticket-1', { title: 'A better name', status: 'ready', rank: 0 }],
     want: { ok: true, value: ticket },
-    wantCalls: ['change ticket-1 {"title":"A better name","gate":"ready-for-agent","rank":0}'],
+    wantCalls: ['change ticket-1 {"title":"A better name","status":"ready","rank":0}'],
   },
   {
-    name: 'change takes a closure on its own, which is how a ticket is finished',
+    name: 'change takes a stored status',
     makeDeps: (calls) => deps(calls),
     call: 'change',
-    args: ['ticket-1', { closure: 'wontfix' }],
+    args: ['ticket-1', { status: 'wont-do' }],
     want: { ok: true, value: ticket },
-    wantCalls: ['change ticket-1 {"closure":"wontfix"}'],
+    wantCalls: ['change ticket-1 {"status":"wont-do"}'],
   },
   {
-    name: 'change refuses a gate that is not one of the three',
+    name: 'change refuses a status the tracker does not know',
     makeDeps: (calls) => deps(calls, { change: async () => assert.fail('a ticket was changed') }),
     call: 'change',
-    args: ['ticket-1', { gate: 'ready' }],
+    args: ['ticket-1', { status: 'waiting' }],
     want: { ok: false, error: 'That is not a change to a ticket.' },
     wantCalls: [],
   },
   {
-    name: 'change refuses a closure that is not one of the two reasons',
+    name: 'change refuses a priority the tracker does not know',
     makeDeps: (calls) => deps(calls, { change: async () => assert.fail('a ticket was changed') }),
     call: 'change',
-    args: ['ticket-1', { closure: 'abandoned' }],
+    args: ['ticket-1', { priority: 'critical' }],
     want: { ok: false, error: 'That is not a change to a ticket.' },
     wantCalls: [],
   },
@@ -264,12 +268,18 @@ const CASES: Case[] = [
     makeDeps: (calls) =>
       deps(calls, {
         gate: async () => {
-          throw new Error('That gate would close a circle of tickets.');
+          throw new Error(
+            'Those two tickets would wait on each other. Choose a ticket that isn’t already blocked by this one.',
+          );
         },
       }),
     call: 'gate',
     args: ['ticket-1', 'FND-2'],
-    want: { ok: false, error: 'That gate would close a circle of tickets.' },
+    want: {
+      ok: false,
+      error:
+        'Those two tickets would wait on each other. Choose a ticket that isn’t already blocked by this one.',
+    },
     wantCalls: [],
   },
   {
@@ -339,12 +349,12 @@ for (const testCase of CASES) {
       gate: () => handlers.gate(first, second),
       ungate: () => handlers.ungate(first, second),
       undoGlossary: () => handlers.undoGlossary(first, second, undefined, undefined),
-      executionWorkspaces: () => handlers.executionWorkspaces(first),
-      createExecutionWorkspace: () => handlers.createExecutionWorkspace(first, second),
-      removeExecutionWorkspace: () => handlers.removeExecutionWorkspace(first, second),
     } as const;
 
-    assert.deepEqual(await (run as Record<string, (() => Promise<unknown>) | undefined>)[testCase.call]!(), testCase.want);
+    assert.deepEqual(
+      await (run as Record<string, (() => Promise<unknown>) | undefined>)[testCase.call]!(),
+      testCase.want,
+    );
     assert.deepEqual(calls, testCase.wantCalls);
   });
 }

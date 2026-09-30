@@ -9,7 +9,6 @@ import type {
   Ticket,
   TicketDraft,
   TicketQueue,
-  TicketRun,
   WorkspaceSummary,
 } from '../preload/bridge.ts';
 import {
@@ -47,39 +46,26 @@ const ticket: Ticket = {
   title: 'A ticket',
   body: '',
   criteria: [],
-  gate: 'draft',
-  band: 'draft',
+  status: 'draft',
+  blocked: false,
   rank: 1,
-  branch: 'fnd-1-a-ticket',
+  priority: 'none',
+  assignee: null,
+  tags: [],
   author: null,
   gates: [],
   children: [],
+  parent: null,
+  subIssues: [],
+  relationships: [],
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
-  closedAt: null,
-  closure: null,
-  claim: null,
-  runs: [],
 };
 
 const queue: TicketQueue = {
   project,
   tickets: [ticket],
-  counts: { draft: 1, ready: 0, blocked: 0, running: 0, 'needs-you': 0, done: 0 },
-};
-
-const run: TicketRun = {
-  id: 'run-1',
-  ticketId: ticket.id,
-  workerId: 'desk-1',
-  startedAt: '2026-01-01T00:00:00.000Z',
-  endedAt: null,
-  branch: 'fnd-1-a-ticket',
-  stoppedBecause: null,
-  changed: null,
-  checks: null,
-  made: null,
-  verdict: null,
+  counts: { draft: 1, ready: 0, running: 0, 'needs-review': 0, done: 0, 'wont-do': 0 },
 };
 
 const draft: TicketDraft = { kind: 'feature', title: 'A ticket', body: '', criteria: [] };
@@ -87,6 +73,10 @@ const draft: TicketDraft = { kind: 'feature', title: 'A ticket', body: '', crite
 /** A wire that answers whatever one case needs, and records what it was asked. */
 function wire(calls: string[], answers: Partial<TrackerWire> = {}): TrackerWire {
   return {
+    currentUser: async (key) => {
+      calls.push(`currentUser ${key}`);
+      return { kind: 'ok', body: { id: 'ada' } };
+    },
     projects: async (key) => {
       calls.push(`projects ${key}`);
       return { kind: 'ok', body: [project] };
@@ -115,47 +105,9 @@ function wire(calls: string[], answers: Partial<TrackerWire> = {}): TrackerWire 
       calls.push(`ungateTicket ${key} ${ticketId} ${gatedBy}`);
       return { kind: 'ok', body: ticket };
     },
-    // The runs. Nothing in the tracker's own stories starts one — that is the runs
-    // keeper's, in `runs.test.ts` — so these are here only because a wire is a wire.
     readTicket: async (key, ref) => {
       calls.push(`readTicket ${key} ${ref}`);
       return { kind: 'ok', body: ticket };
-    },
-    readTranscript: async (key, ticketId, runId) => {
-      calls.push(`readTranscript ${key} ${ticketId} ${runId}`);
-      return { kind: 'ok', body: [] };
-    },
-    takeOverTicket: async (key, ticketId) => {
-      calls.push(`takeOverTicket ${key} ${ticketId}`);
-      return { kind: 'ok', body: ticket };
-    },
-    judgeRun: async (key, ticketId, runId, verdict) => {
-      calls.push(`judgeRun ${key} ${ticketId} ${runId} ${verdict}`);
-      return { kind: 'ok', body: run };
-    },
-    sayInRun: async (key, ticketId, runId, said) => {
-      calls.push(`sayInRun ${key} ${ticketId} ${runId} ${said.saidBy} ${said.words}`);
-      return { kind: 'ok', body: { id: 'said-1', at: '2026-01-01T00:00:00.000Z', ...said } };
-    },
-    claimTicket: async (key, ticketId, workerId) => {
-      calls.push(`claimTicket ${key} ${ticketId} ${workerId}`);
-      return { kind: 'ok', body: ticket };
-    },
-    releaseTicket: async (key, ticketId) => {
-      calls.push(`releaseTicket ${key} ${ticketId}`);
-      return { kind: 'ok', body: {} };
-    },
-    startRun: async (key, ticketId, workerId) => {
-      calls.push(`startRun ${key} ${ticketId} ${workerId}`);
-      return { kind: 'ok', body: run };
-    },
-    recordRun: async (key, ticketId, runId, recorded) => {
-      calls.push(`recordRun ${key} ${ticketId} ${runId} ${JSON.stringify(recorded)}`);
-      return { kind: 'ok', body: run };
-    },
-    endRun: async (key, ticketId, runId, ending) => {
-      calls.push(`endRun ${key} ${ticketId} ${runId} ${JSON.stringify(ending)}`);
-      return { kind: 'ok', body: run };
     },
     ...answers,
   };
@@ -207,101 +159,6 @@ test('a ticket is read through the same key-bearing tracker seam', async () => {
   assert.deepEqual(calls, ['readTicket key FND-1']);
 });
 
-test('run context comes from the current queue, glossary and Decisions cited by the spec', async () => {
-  const calls: string[] = [];
-  const child = { ...ticket, id: 'child-1', name: 'FND-2', title: 'Build the slice' };
-  const sibling = {
-    ...ticket,
-    id: 'sibling-1',
-    name: 'FND-3',
-    title: 'Test the slice',
-    band: 'blocked' as const,
-  };
-  const spec: Ticket = {
-    ...ticket,
-    id: 'spec-1',
-    name: 'FND-1',
-    kind: 'spec',
-    title: 'Ship the queue',
-    body: 'The approved project plan.',
-    sourceChatId: 'shape-chat',
-    children: [
-      { id: child.id, name: child.name, closed: false, closure: null },
-      { id: sibling.id, name: sibling.name, closed: false, closure: null },
-    ],
-  };
-  const projectQueue = { ...queue, tickets: [spec, child, sibling] };
-  const glossary: GlossaryEntry[] = [
-    {
-      id: 'term-1',
-      projectId: project.id,
-      term: 'slice',
-      meaning: 'a vertical piece of work',
-      wordsToAvoid: ['task'],
-      version: 1,
-      author: null,
-      chatId: 'shape-chat',
-      createdAt: '2026-01-01T00:00:00.000Z',
-      updatedAt: '2026-01-01T00:00:00.000Z',
-      history: [],
-    },
-  ];
-  const cited: ProjectDecision = {
-    id: 'decision-1',
-    projectId: project.id,
-    context: 'The queue needs durable history.',
-    choice: 'Keep it in the tracker.',
-    rejectedOptions: [],
-    consequences: 'Runs can read it.',
-    author: null,
-    sourceChatId: 'shape-chat',
-    supersededById: null,
-    createdAt: '2026-01-01T00:00:00.000Z',
-  };
-  const unrelated = { ...cited, id: 'decision-2', sourceChatId: 'other-chat' };
-  const held = tracker(calls, {
-    queue: async (key, projectId) => {
-      calls.push(`queue ${key} ${projectId}`);
-      return { kind: 'ok', body: projectQueue };
-    },
-    glossary: async (key, projectId) => {
-      calls.push(`glossary ${key} ${projectId}`);
-      return { kind: 'ok', body: glossary };
-    },
-    decisions: async (key, projectId) => {
-      calls.push(`decisions ${key} ${projectId}`);
-      return { kind: 'ok', body: [cited, unrelated] };
-    },
-  });
-
-  assert.deepEqual(await held.held.runContext(workspace.id, child.id), {
-    spec: {
-      id: spec.id,
-      name: spec.name,
-      title: spec.title,
-      body: spec.body,
-      sourceChatId: spec.sourceChatId,
-    },
-    siblings: [
-      {
-        id: sibling.id,
-        name: sibling.name,
-        title: sibling.title,
-        kind: sibling.kind,
-        band: sibling.band,
-        criteria: sibling.criteria,
-      },
-    ],
-    glossary,
-    decisions: [cited],
-  });
-  assert.deepEqual(calls, [
-    'queue key kira-project',
-    'glossary key kira-project',
-    'decisions key kira-project',
-  ]);
-});
-
 test('Decision reads and person approvals use the key-bearing tracker seam', async () => {
   const calls: string[] = [];
   const decision: ProjectDecision = {
@@ -341,7 +198,7 @@ test('Decision reads and person approvals use the key-bearing tracker seam', asy
 
 test('map creation and destination approval use the person-owned tracker seam', async () => {
   const calls: string[] = [];
-  const destination = { ...ticket, kind: 'spec', gate: 'ready-for-agent' } as Ticket;
+  const destination = { ...ticket, kind: 'spec', status: 'ready' } as Ticket;
   const proposal: Omit<MapProposal, 'id' | 'chatId' | 'status' | 'ticketId'> = {
     title: 'Scale',
     body: 'Break it down.',
@@ -539,13 +396,13 @@ test('a refusal is passed on in the server’s own words', async () => {
   const held = tracker(calls, {
     changeTicket: async () => ({
       kind: 'refused',
-      message: 'A ticket an agent runs has to say how it is known to be done.',
+      message: 'Say how we’ll know this ticket is done before an agent starts on it.',
     }),
   });
 
   assert.equal(
-    await tried(() => held.held.change(ticket.id, { gate: 'ready-for-agent' })),
-    'refused A ticket an agent runs has to say how it is known to be done.',
+    await tried(() => held.held.change(ticket.id, { status: 'running' })),
+    'refused Say how we’ll know this ticket is done before an agent starts on it.',
   );
 });
 
@@ -633,7 +490,7 @@ test('question chats and Outcomes use the key-bearing person boundary', async ()
       calls.push(`openQuestion ${key} ${ticketId} ${chatId}`);
       return {
         kind: 'ok',
-        body: { ...ticket, kind: 'question', sourceChatId: chatId, band: 'needs-you' },
+        body: { ...ticket, kind: 'question', sourceChatId: chatId, status: 'needs-review' },
       };
     },
     approveOutcome: async (key, ticketId, value) => {

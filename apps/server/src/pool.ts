@@ -86,7 +86,22 @@ export function createPool({
           );
         }
 
+        if ((unavailableUntil.get(config) ?? 0) > Date.now()) {
+          return new Response(
+            JSON.stringify(refusal('POOL_UNREACHABLE', 'The pool is temporarily unavailable.')),
+            {
+              status: 503,
+              headers: {
+                'content-type': 'application/json',
+                'retry-after': String(POOL_RETRY_AFTER_SECONDS),
+              },
+            },
+          );
+        }
+
         let upstream: Response;
+        const controller = new AbortController();
+        const connectTimer = setTimeout(() => controller.abort(), COMPLETION_CONNECT_TIMEOUT_MS);
         try {
           upstream = await fetch(`${config.pool.url}/v1/chat/completions`, {
             method: 'POST',
@@ -95,8 +110,10 @@ export function createPool({
               authorization: `Bearer ${config.pool.key}`,
             },
             body,
+            signal: controller.signal,
           });
         } catch (cause) {
+          unavailableUntil.set(config, Date.now() + POOL_RETRY_AFTER_SECONDS * 1000);
           // The pool being down is the failure Kira can actually expect, and
           // it has to arrive as something a client can report rather than as a
           // bare 500.
@@ -104,7 +121,11 @@ export function createPool({
             502,
             refusal('POOL_UNREACHABLE', `The pool did not answer: ${String(cause)}`),
           );
+        } finally {
+          clearTimeout(connectTimer);
         }
+
+        unavailableUntil.delete(config);
 
         // Only the status and the shape of the body cross back: the pool's own
         // headers belong to the pool, and a client is reading a provider's reply.
@@ -120,7 +141,9 @@ export function createPool({
         // record of a refusal lives in memory for a minute and nowhere else. The
         // body is read to learn why and then handed on exactly as it arrived.
         if (!upstream.ok) {
-          const said = await upstream.text();
+          const said = upstream.body
+            ? await new Response(idleTimeout(upstream.body, controller)).text()
+            : '';
 
           await recordRefusal(database, {
             userId: held.user.id,
@@ -137,7 +160,7 @@ export function createPool({
           return new Response(null, { status: upstream.status, headers });
         }
 
-        const [toCaller, toCount] = upstream.body.tee();
+        const [toCaller, toCount] = idleTimeout(upstream.body, controller).tee();
 
         // Counted beside the reply rather than in front of it: a caller's last byte
         // should not wait on the ledger, and a caller who hangs up should not cost
@@ -147,9 +170,7 @@ export function createPool({
           userId: held.user.id,
           asked,
           streaming: contentType.includes('text/event-stream'),
-        }).catch((cause) =>
-          console.error('[kira] what a chat used was not written down:', cause),
-        );
+        }).catch((cause) => console.error('[kira] what a chat used was not written down:', cause));
 
         return new Response(toCaller, { status: upstream.status, headers });
       },
@@ -181,6 +202,38 @@ export function createPool({
       },
       { detail: { hide: true } },
     );
+}
+
+/** Bound upstream silence without imposing a total duration on long model streams. */
+function idleTimeout(body: ReadableStream<Uint8Array>, controller: AbortController) {
+  const reader = body.getReader();
+  return new ReadableStream<Uint8Array>({
+    async pull(target) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const next = await Promise.race([
+          reader.read(),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(
+              () => reject(new Error('Pool response was idle too long.')),
+              UPSTREAM_IDLE_TIMEOUT_MS,
+            );
+          }),
+        ]);
+        if (next.done) target.close();
+        else target.enqueue(next.value);
+      } catch (cause) {
+        controller.abort();
+        target.error(cause);
+      } finally {
+        if (timer !== undefined) clearTimeout(timer);
+      }
+    },
+    async cancel(reason) {
+      controller.abort();
+      await reader.cancel(reason);
+    },
+  });
 }
 
 /** The part of a ledger row that a completion stream can say for itself. */
@@ -264,6 +317,15 @@ export type PoolCatalog =
   | { kind: 'unreachable'; cause: unknown }
   | { kind: 'refused'; status: number };
 
+const CATALOG_TTL_MS = 30_000;
+const STALE_CATALOG_MAX_AGE_MS = 5 * 60_000;
+const CATALOG_TIMEOUT_MS = 3_000;
+const COMPLETION_CONNECT_TIMEOUT_MS = 15_000;
+const UPSTREAM_IDLE_TIMEOUT_MS = 60_000;
+const POOL_RETRY_AFTER_SECONDS = 10;
+const catalogs = new WeakMap<Config, { expiresAt: number; value: PoolCatalog }>();
+const unavailableUntil = new WeakMap<Config, number>();
+
 /**
  * Ask the pool which models it can serve, and read the answer.
  *
@@ -271,14 +333,26 @@ export type PoolCatalog =
  * pool could not be asked at all, and that it answered with something that is not
  * a catalog. Only the first is a list of models.
  */
-export async function poolCatalog(config: Config): Promise<PoolCatalog> {
+export async function poolCatalog(
+  config: Config,
+  { fresh = false }: { fresh?: boolean } = {},
+): Promise<PoolCatalog> {
+  const cached = catalogs.get(config);
+  if (!fresh && cached && cached.expiresAt > Date.now()) return cached.value;
+
   let upstream: Response;
   try {
     upstream = await fetch(`${config.pool.url}/v1/models?client_version=pi`, {
       headers: { authorization: `Bearer ${config.pool.key}` },
+      signal: AbortSignal.timeout(CATALOG_TIMEOUT_MS),
     });
   } catch (cause) {
-    return { kind: 'unreachable', cause };
+    unavailableUntil.set(config, Date.now() + POOL_RETRY_AFTER_SECONDS * 1000);
+    const failed: PoolCatalog = { kind: 'unreachable', cause };
+    if (cached && !fresh && cached.expiresAt + STALE_CATALOG_MAX_AGE_MS > Date.now()) {
+      return cached.value;
+    }
+    return failed;
   }
 
   // Read whatever the status, so the connection is finished with either way; only
@@ -286,7 +360,12 @@ export async function poolCatalog(config: Config): Promise<PoolCatalog> {
   const said = await upstream.json().catch(() => null);
   const models = upstream.ok ? catalogIn(said) : null;
 
-  return models === null ? { kind: 'refused', status: upstream.status } : { kind: 'ok', models };
+  const result: PoolCatalog =
+    models === null ? { kind: 'refused', status: upstream.status } : { kind: 'ok', models };
+  unavailableUntil.delete(config);
+  if (result.kind === 'ok')
+    catalogs.set(config, { expiresAt: Date.now() + CATALOG_TTL_MS, value: result });
+  return result;
 }
 
 /**

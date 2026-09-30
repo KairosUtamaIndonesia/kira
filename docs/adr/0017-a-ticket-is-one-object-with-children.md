@@ -4,6 +4,10 @@ Date: 2026-09-21
 
 Amended by ADR 0021: spec and map are kinds rather than shapes of a body.
 
+Amended 2026-09-29: Kanban drops may invoke real ticket actions across bands; a band is still never set directly.
+
+Amended by ADR 0024: a ticket has one stored status that people and agents set, and blocked is shown from open blockers; there is no derived band, claim or verdict.
+
 ## Context
 
 The skills already publish three things to a tracker, and they are nearly the same thing.
@@ -26,10 +30,10 @@ an answer rather than a change to review. That difference is real, and it has a 
 — not a difference in what a ticket _is_. Three objects would mean three sets of blockers,
 three claims, three frontier queries, for one thing.
 
-**The queue's state is not a person's to set.** Every band worth drawing is already derivable:
+**A band is derived, never directly set.** Every band worth drawing is already derivable:
 blockers closed means ready, a claim means running, a question or a verdict means waiting on
-someone, accepted means done. A board whose columns are dragged is a board asserting state the
-machine already knows.
+someone, accepted means done. A cross-lane Kanban drop is therefore an intent to perform a real
+ticket action, not a write of the destination band.
 
 ## Decision
 
@@ -59,15 +63,17 @@ heartbeat; a person holds one with neither, so theirs is shown when it has gone 
 taken over by hand rather than released by a clock. Either way the ticket is out of the
 frontier until the claim ends.
 
-**Rank is the only ordering.** A ticket has a rank that orders it within a band of the queue
-and does nothing else. Dragging a card across bands would be a person asserting state the
-machine knows, so a drag reorders the frontier and moves nothing between bands.
+**Rank is the only ordering.** A ticket has a rank that orders it within a band and does
+nothing else. Dragging within Ready changes rank. Dragging across lanes invokes only a supported
+ticket action — changing a gate, adding or removing a blocker, starting or answering a run, or
+closing a ticket — and the board rereads the server's answer. Claims, child tickets, and run
+results remain server-derived; a drop cannot put a ticket into those bands by assertion.
 
 ## Consequences
 
-**The machine owns state; the person owns priority.** That is the whole shape of the queue:
-bands come from blockers, claims, and verdicts, and the one thing set by hand is what someone
-wants next.
+**The machine owns derived state; the person owns intent.** Bands come from blockers, claims,
+and verdicts. A person can reorder Ready or use a lane drop to request a supported action, but
+the queue always shows the band's server-derived result.
 
 **The five canonical labels become the tracker's own two.** `docs/agents/triage-labels.md` and
 `docs/agents/issue-tracker.md` describe GitHub, and they stay as they are until there is a

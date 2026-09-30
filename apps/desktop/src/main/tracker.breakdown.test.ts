@@ -15,7 +15,7 @@ test('breakdown actions preserve the tracker key seam and server refusal words',
     markBreakdownReady: async () =>
       ({
         kind: 'refused',
-        message: 'A ticket an agent runs has to say how it is known to be done.',
+        message: 'Say how we’ll know this ticket is done before an agent starts on it.',
       }) as const,
   } as unknown as TrackerWire;
   const tracker = trackerFor({
@@ -28,7 +28,7 @@ test('breakdown actions preserve the tracker key seam and server refusal words',
   assert.equal(await tracker.publishBreakdown('spec-1', []), result);
   await assert.rejects(
     tracker.markBreakdownReady('spec-1'),
-    /A ticket an agent runs has to say how it is known to be done\./,
+    /Say how we’ll know this ticket is done before an agent starts on it\./,
   );
   assert.deepEqual(calls, ['publish device-key spec-1']);
 });

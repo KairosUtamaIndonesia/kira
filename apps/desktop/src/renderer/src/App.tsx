@@ -85,6 +85,7 @@ import type {
   ChatTranscript,
   ChatUsage,
   ModelOption,
+  Proposal,
   ShapingState,
   Ticket as WorkTicket,
   TicketQueue,
@@ -104,6 +105,9 @@ import { WorkSurface } from './work';
 import { WorkHome } from './workHome';
 import SettingsPage, { type Setting } from './settings';
 import type { ProposalVerdict } from './proposalCard';
+import { MoveToProject } from './moveToProject.tsx';
+import { needsProject } from './moveToProject.ts';
+import { copy } from './workCopy.ts';
 import { approvedSpecTicket } from './specPane';
 
 /**
@@ -277,6 +281,16 @@ export default function App() {
   const [error, setError] = useState<Trouble | null>(null);
   /** The chat a delete is being confirmed for, or null when none is. */
   const [deleting, setDeleting] = useState<ChatSummary | null>(null);
+  /**
+   * The chat being asked where it should live: the chat, what is waiting on the answer (a
+   * proposal being approved, or nothing when it is only being moved), and how to say it was
+   * moved or left alone.
+   */
+  const [filing, setFiling] = useState<{
+    chatId: string;
+    what: Proposal['kind'] | null;
+    settle: (moved: boolean) => void;
+  } | null>(null);
   const toast = useToast();
 
   /*
@@ -728,7 +742,40 @@ export default function App() {
     return null;
   }
 
-  function decideProposal(proposalId: string, verdict: ProposalVerdict): Promise<string | null> {
+  /**
+   * Ask where a chat should live, and say whether it was moved. Leaving the dialog any way
+   * but moving says no, and nothing has changed.
+   */
+  function askWhereToFile(chatId: string, what: Proposal['kind'] | null): Promise<boolean> {
+    return new Promise((resolve) => {
+      setFiling({
+        chatId,
+        what,
+        settle: (moved) => {
+          setFiling(null);
+          resolve(moved);
+        },
+      });
+    });
+  }
+
+  async function decideProposal(
+    proposalId: string,
+    verdict: ProposalVerdict,
+  ): Promise<string | null> {
+    // Approving writes to a project, and a chat in no project has nowhere to write it. It is
+    // asked where to go rather than refused, and leaving the question leaves the proposal
+    // waiting exactly as it was.
+    const proposal = shaping.proposals.find((each) => each.id === proposalId);
+    if (
+      verdict === 'approve' &&
+      proposal !== undefined &&
+      needsProject(currentChat?.workspaceId ?? null, workspaces)
+    ) {
+      const moved = await askWhereToFile(currentId, proposal.kind);
+      if (!moved) return null;
+    }
+
     return answer(() =>
       verdict === 'approve'
         ? window.kira.approveProposal(proposalId)
@@ -1004,8 +1051,14 @@ export default function App() {
       onOpen={() => void switchChat(() => window.kira.openChat(chat.id))}
       onArchive={() => void archiveChat(chat.id)}
       onDelete={() => setDeleting(chat)}
+      onMove={needsProject(chat.workspaceId, workspaces) ? () => void moveChat(chat.id) : undefined}
     />
   );
+
+  /** Move a chat into a project on its own, with nothing waiting on the answer. */
+  async function moveChat(chatId: string): Promise<void> {
+    if (await askWhereToFile(chatId, null)) await refresh();
+  }
 
   function chooseChatSort(sort: ChatSort): void {
     setChatSort(sort);
@@ -1347,9 +1400,6 @@ export default function App() {
             auth={auth}
             initialTicketId={workTicketId}
             onBack={() => showSurface('work-home')}
-            // A run's chat is a chat, so the ticket hands the window to it rather than
-            // drawing the run's words a second time in the panel (GH #68).
-            chatIds={chats.map((each) => each.id)}
             chatSummaries={chats}
             onOpenChat={(chatId) => void switchChat(() => window.kira.openChat(chatId))}
             onStartChat={(ticketIds) => void startChat(worked?.id ?? null, ticketIds)}
@@ -1435,6 +1485,16 @@ export default function App() {
           </div>
         )}
       </AppShell>
+
+      {filing !== null && (
+        <MoveToProject
+          what={filing.what}
+          chatId={filing.chatId}
+          workspaces={workspaces}
+          onCancel={() => filing.settle(false)}
+          onMoved={() => filing.settle(true)}
+        />
+      )}
 
       {/*
        * Throwing a chat away cannot be taken back, so it is asked about first —
@@ -1732,6 +1792,7 @@ function ChatRow({
   onOpen,
   onArchive,
   onDelete,
+  onMove,
 }: {
   chat: ChatSummary;
   isCurrent: boolean;
@@ -1739,6 +1800,8 @@ function ChatRow({
   onOpen: () => void;
   onArchive: () => void;
   onDelete: () => void;
+  /** Only given to a chat that is in no project, which is the one that can be moved. */
+  onMove?: (() => void) | undefined;
 }) {
   // A chat Kira is writing in is neither put away nor thrown away, so both rows
   // say why rather than being missing from the menu.
@@ -1752,8 +1815,18 @@ function ChatRow({
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   // Shared with the row's visible menu below: right-click is a shortcut to the
-  // same two things, not a second set of them.
+  // same items, not a second set of them.
   const items = [
+    ...(onMove === undefined
+      ? []
+      : [
+          {
+            label: copy.filing.menu,
+            description: writing ?? copy.filing.menuNote,
+            isDisabled: isRunning,
+            onClick: onMove,
+          },
+        ]),
     {
       label: 'Archive',
       // What putting a chat away leaves behind is out of sight, so the menu
@@ -1780,10 +1853,7 @@ function ChatRow({
       <div className={`chat-row${isMenuOpen ? ' chat-row-menu-open' : ''}`}>
         <SideNavItem
           label={chat.title}
-          // A run is a chat in every other way, so the one thing that tells them apart is
-          // drawn rather than written: a ticket beside a row means this chat is a run of it
-          // rather than a conversation somebody had (GH #68).
-          icon={chat.ticketId === null ? undefined : Ticket}
+          icon={chat.workTicketIds.length > 0 ? Ticket : undefined}
           isSelected={isCurrent}
           // A chat Kira is writing in is marked, because that keeps going whether or
           // not this window is showing it. Otherwise, when a chat's title is not

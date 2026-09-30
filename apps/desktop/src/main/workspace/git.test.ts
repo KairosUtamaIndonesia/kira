@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { devNull } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { changedByGit, insideFolder, listedByGit, splitListing } from './git.ts';
+import { branchesOf, changedByGit, insideFolder, listedByGit, splitListing } from './git.ts';
 import { tempDir } from '../test-support/temp.ts';
 import { listFolder } from './listing.ts';
 
@@ -255,4 +255,28 @@ test('a folder that is not a checkout is null, which is git saying nothing', asy
 
   assert.equal(await listedByGit(folder), null);
   assert.equal(await changedByGit(folder), null);
+});
+
+test(
+  'branchesOf names a local branches of a checkout and the one it has out',
+  { skip: !gitRuns() },
+  async () => {
+    isolatedGit();
+    const root = tempDir('kira-branches-');
+    const git = (...args: string[]): void => {
+      execFileSync('git', ['-C', root, ...args], { stdio: 'ignore' });
+    };
+    git('init', '-b', 'main');
+    git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '--allow-empty', '-m', 'first');
+    git('branch', 'develop');
+
+    const answer = await branchesOf(root);
+    assert.deepEqual([...answer.branches].sort(), ['develop', 'main']);
+    assert.equal(answer.current, 'main');
+  },
+);
+
+test('branchesOf refuses a folder that is not a checkout', { skip: !gitRuns() }, async () => {
+  isolatedGit();
+  await assert.rejects(branchesOf(tempDir('kira-not-a-checkout-')));
 });

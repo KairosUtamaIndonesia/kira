@@ -14,13 +14,15 @@ function registered(
   mcpTools: string[] = [],
   getShellPath?: () => string | undefined,
 ): {
-  before: (event: { systemPrompt: string }) => { systemPrompt: string };
+  before: (event: { systemPrompt: string }) => Promise<{ systemPrompt: string }>;
   toolCall: (event: { toolName: string; input: Record<string, unknown> }) => unknown;
   tools: string[];
   activeTools: () => string[];
   close: () => void;
 } {
-  let beforeHandler: ((event: { systemPrompt: string }) => { systemPrompt: string }) | undefined;
+  let beforeHandler:
+    | ((event: { systemPrompt: string }) => Promise<{ systemPrompt: string }>)
+    | undefined;
   let toolCallHandler:
     | ((event: { toolName: string; input: Record<string, unknown> }) => unknown)
     | undefined;
@@ -53,7 +55,9 @@ function registered(
     on(name: string, handler: unknown) {
       if (name === 'before_agent_start' || name === 'tool_call') {
         if (name === 'before_agent_start') {
-          beforeHandler = handler as (event: { systemPrompt: string }) => { systemPrompt: string };
+          beforeHandler = handler as (event: {
+            systemPrompt: string;
+          }) => Promise<{ systemPrompt: string }>;
         } else {
           toolCallHandler = handler as (event: {
             toolName: string;
@@ -89,12 +93,15 @@ function registered(
   };
 }
 
-test('the workflow router is appended to every system prompt', () => {
+test('the workflow router is appended to every system prompt', async () => {
   const { before, close } = registered();
   try {
-    assert.equal(before({ systemPrompt: 'base' }).systemPrompt, `base\n\n${WORKFLOW_ROUTER}`);
     assert.equal(
-      before({ systemPrompt: 'next turn' }).systemPrompt,
+      (await before({ systemPrompt: 'base' })).systemPrompt,
+      `base\n\n${WORKFLOW_ROUTER}`,
+    );
+    assert.equal(
+      (await before({ systemPrompt: 'next turn' })).systemPrompt,
       `next turn\n\n${WORKFLOW_ROUTER}`,
     );
     for (const skill of [
@@ -126,10 +133,10 @@ test('the workflow router is appended to every system prompt', () => {
   }
 });
 
-test('Spec mode exposes planning tools and blocks workspace changes', () => {
+test('Spec mode exposes planning tools and blocks workspace changes', async () => {
   const { before, toolCall, activeTools, close } = registered(false, 'spec');
   try {
-    const prompt = before({ systemPrompt: 'base' }).systemPrompt;
+    const prompt = (await before({ systemPrompt: 'base' })).systemPrompt;
     assert.match(prompt, /planning-only/);
     assert.ok(activeTools().includes('read'));
     assert.ok(activeTools().includes('shape_spec_proposal'));
@@ -209,8 +216,10 @@ test('tracker tools are registered alongside the ordinary extension tools', () =
       'tracker_read_glossary',
       'tracker_read_decisions',
       'tracker_update_glossary',
-      'tracker_write_draft',
-      'tracker_edit_draft',
+      'tracker_create_ticket',
+      'tracker_update_ticket',
+      'tracker_add_blocker',
+      'tracker_remove_blocker',
     ]);
     assert.ok(!tools.some((name) => /publish|ready|approve/i.test(name)));
   } finally {

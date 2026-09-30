@@ -12,7 +12,6 @@ import type { AuthState, AuthUser, MemoryChoice } from '../../preload/bridge.ts'
 import type { CatalogAnswer } from '../pi/models.ts';
 import type { MemoryAnswer } from '../memory.ts';
 import type { TrackerWire } from '../tracker.ts';
-import type { WorkerWire } from '../worker.ts';
 import type { UsageAnswer } from '../usage.ts';
 import type { KeyStore } from './keys.ts';
 
@@ -58,7 +57,7 @@ export function handoffToken(link: string, scheme: string): string | null {
 }
 
 /** The Kira server, as the desktop uses it. */
-export interface Kira extends TrackerWire, WorkerWire {
+export interface Kira extends TrackerWire {
   /** Open the system browser at the server's sign-in entry point. */
   openSignIn(): Promise<void>;
   /** Trade a deep link's token for a session, answering who signed in. */

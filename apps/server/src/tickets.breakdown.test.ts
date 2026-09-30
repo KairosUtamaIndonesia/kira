@@ -16,8 +16,8 @@ type Ticket = {
   id: string;
   kind: string;
   title: string;
-  gate: string;
-  band: string;
+  status: string;
+  blocked: boolean;
   children: { id: string }[];
   gates: { id: string }[];
 };
@@ -83,7 +83,8 @@ describe('spec breakdown publication', () => {
     expect(response.status).toBe(400);
     expect((await response.json()).error).toEqual({
       code: 'GATE_CIRCLE',
-      message: 'That gate would close a circle of tickets.',
+      message:
+        'Those two tickets would wait on each other. Choose a ticket that isn’t already blocked by this one.',
     });
 
     const queue = await send(made.app, `/api/projects/${made.projectId}`, {
@@ -104,7 +105,7 @@ describe('spec breakdown publication', () => {
     expect(published.status).toBe(200);
     const result = (await published.json()) as { spec: Ticket; children: Ticket[] };
     expect(result.children).toHaveLength(2);
-    expect(result.children.every((child) => child.gate === 'draft')).toBe(true);
+    expect(result.children.every((child) => child.status === 'draft')).toBe(true);
     expect(result.spec.children).toHaveLength(2);
     const api = result.children.find((child) => child.title === 'API slice')!;
     const surface = result.children.find((child) => child.title === 'Surface slice')!;
@@ -132,7 +133,7 @@ describe('spec breakdown publication', () => {
     expect(refused.status).toBe(400);
     expect((await refused.json()).error).toEqual({
       code: 'CRITERIA_REQUIRED',
-      message: 'A ticket an agent runs has to say how it is known to be done.',
+      message: 'Say how we’ll know this ticket is done before making it Ready.',
     });
 
     const queue = await send(made.app, `/api/projects/${made.projectId}`, {
@@ -141,7 +142,7 @@ describe('spec breakdown publication', () => {
     const current = ((await queue.json()).tickets as Ticket[]).filter((ticket) =>
       result.children.some((child) => child.id === ticket.id),
     );
-    expect(current.map((ticket) => ticket.gate)).toEqual(['draft', 'draft']);
+    expect(current.map((ticket) => ticket.status)).toEqual(['draft', 'draft']);
 
     const missing = result.children.find((child) => child.title === 'Surface slice')!;
     const repaired = await send(
@@ -156,9 +157,9 @@ describe('spec breakdown publication', () => {
       body('POST', bearer(made.key), {}),
     );
     expect(ready.status).toBe(200);
-    expect(((await ready.json()).children as Ticket[]).map((ticket) => ticket.gate)).toEqual([
-      'ready-for-agent',
-      'ready-for-agent',
+    expect(((await ready.json()).children as Ticket[]).map((ticket) => ticket.status)).toEqual([
+      'ready',
+      'ready',
     ]);
   });
 });

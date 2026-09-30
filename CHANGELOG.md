@@ -4,7 +4,23 @@
 
 ### Added
 
-- Work is organized around issues with Board and List views, search, and collapsible filters. Each issue can have an execution workspace with its own repository, base branch, and working branch; agents start in that persistent checkout, where tracked changes can be reviewed as a diff and work can continue between runs.
+- Kira admins can inspect live shared provider Credential health, add Codex and Claude logins through a remote-safe OAuth flow, and manage Credentials from the console. Per-user Allowances remain separate from provider health; management changes are audited without storing credentials or OAuth callback URLs.
+
+- Approving a spec or its tickets in a chat that isn't in a project now asks where it should live, instead of refusing: choose a folder that is already in a project, or start a new project in a folder you pick. The chat moves to that folder and keeps its history. A chat can also be moved from its row's menu ("Move to project…"), and leaving the dialog changes nothing.
+
+- Work's wording is clearer and consistent: tickets, blockers, chats, and project folders are named the same way everywhere, and refusals such as two tickets blocking each other say what to do next.
+
+- Work opens with a project chooser and a ruled board grouped by the six stored ticket statuses, with Blocked shown when a blocker is open. Moving a ticket changes its stored status; moving it to or from Blocked edits blocker links.
+
+- Work's search has a magnifier, a clear button, and `/` to jump into it. Filter is a menu of Status, Kind (with icons), and Assignee; active filters show as removable chips, and Display sets grouping, order, and whether Done and Won’t do tickets show.
+
+- New ticket opens as a dialog with a rich markdown editor for its description.
+
+- The List view is a table with a pinned column heading, foldable status or kind groups, and the same drag-and-drop as the board; a ticket's drawer opens beside it.
+
+- A ticket's drawer can expand into a full view: the ticket reads as a document, with its status actions, facts, blockers, and linked chats in a box that stays beside it while the document scrolls.
+
+- Work is a ticket store. A ticket linked in a chat is worked there with the skill for its kind. Agent-created tickets start as Draft; the agent can update only tickets linked to that chat, and its status changes are limited to Running and Needs review. It cannot delete or close tickets. Pull-request review and merge happen on GitHub, and a person marks a ticket Done afterward.
 
 - Kira's desktop now runs on Electron, with its own Bun-powered platform API and administration console.
 - Packaged desktop builds check for updates automatically, download them in the background, and offer a restart to install from Settings. macOS, Windows, and Linux AppImage are supported.
@@ -17,7 +33,6 @@
 
 - After approving a spec, Kira routes natural requests to make tickets through the bundled breakdown workflow. Kira validates proposals before showing the approval card; published drafts whose readiness was refused can be corrected and readied again without publishing a second breakdown.
 - Chats can switch between Build, the default mode with workspace tools, and Spec, a planning mode with read-only tools. In Spec mode, approving a spec immediately prompts Kira to propose its ticket breakdown; the person approves that separately, then opens individual tickets in Work.
-- When Kira completes a ready implementation ticket from a regular Build chat, she links the chat and completion evidence to the ticket and marks it done.
 - The workbench now has a persistent embedded browser with safe HTTP(S) navigation, browser tabs, and agent tools for reading, clicking, filling, navigating, and capturing the active page.
 - Workbench views now use an icon rail with tooltips and keyboard navigation, leaving more room for the selected view.
 - Workspace keeps its file explorer beside the editor, and opens files as editor tabs.
@@ -30,48 +45,11 @@
 - Tickets now support exactly eight kinds — prototype, bug, feature, refactor, question, research, spec and map. Existing decision tickets are read as questions, and an empty spec stays blocked until it has child tickets.
 
 - Global local-command MCP servers can be added, viewed and removed from Settings. Kira starts one shared copy of each configured server, shows its connection and discovered tools, and gives those tools to every chat.
-- A ticket can be claimed and run. Pressing Run on a ready ticket takes a lease on it, says so on
-  the desktop that took it, and works it in a checkout of its own on the ticket's branch — the
-  project's folder is left alone and the branch survives the checkout being thrown away. The ticket
-  reads Running while somebody holds it, and the run is a chat beside the others: it is named for its
-  ticket, marked with a ticket so it is not mistaken for a conversation somebody had, steered while
-  it goes, and still there to read when it is over. When it stops it leaves a proposal on the ticket
-  — what it changed, what it ran, and what it had to say — and the ticket asks for a person:
-  accepting says the work is right, sending it back says it is not, and neither closes the ticket.
-  The run's own words belong to the project rather than to the machine that ran it, so a ticket hands
-  over to its run's chat where there is one and reads them out where there is not. A ticket claimed
-  by a desktop that stopped answering reads as gone quiet rather than as held, and can be taken over
-  by hand. Closing the app mid-run leaves the run where it is instead of releasing it. A ticket
-  that has been run several times keeps every run, newest first, so what it did before is readable
-  beside what it is waiting on.
-
 - The Context tab shows what Kira concluded, not only what she was told. What she worked out is drawn
   above the things it was drawn from, each conclusion saying the turn it had read through, so how far
   back it reaches is visible: one drawn early reads differently from one drawn over the whole chat.
   Reading them is not a turn and costs nothing, as reading the rest of her memory is not, and turning
   memory off leaves the pane empty of both.
-
-- Tickets live in Kira rather than in a tracker beside it. A project is a shared body of work
-  with a short prefix of its own, so its tickets are named `FND-12` and a number is never reused; a
-  ticket carries what to build, how it is known to be done, and the tickets that gate it. A slice
-  blocking its parent is the only relation there is, so a parent is buildable once nothing under it
-  is open. Closing a slice as `wontfix` releases its parent all the same, and a parent resting on
-  work nobody did says so rather than hiding it. Every ticket shows the branch it would be worked
-  on, derived from its name and title, and copies it in one press.
-
-- The queue's bands are derived, never dragged: draft, ready, blocked and done are read off what is
-  written, what is closed and what is still open, so a board cannot show a state the machine does
-  not have. A ticket still in draft is answered and kept but stays off the frontier, so an idea can
-  be written down now and asked for later. Nothing takes a ticket yet: it is marked ready for an
-  agent or for a person, and the run that would take it is its own piece of work.
-
-- The Work surface reads and writes a project's queue: the whole queue as a list, the bands side by
-  side, or a worklist beside the ticket it has open. A ticket is opened by saying its name, written,
-  corrected, marked ready, put back to a draft, gated by naming another ticket, ungated, and closed
-  as done or as something that will not be done — and a ticket an agent is to run is refused until it
-  says how it is known to be done. A name this project does not have says so, rather than looking
-  like a ticket that is nowhere. Each workspace's row in the sidebar opens it, and a folder that
-  works no project yet is offered one to start or to join.
 
 - A new ticket keeps its typed words when the queue becomes unreachable while it is being written;
   the surface shows the failure and lets the person retry without starting the form over.
@@ -127,6 +105,7 @@
 
 ### Changed
 
+- Kira has a new color theme: warm, neutral ink and paper grays instead of rose-tinted ones, with Kira red as the single accent in both light and dark mode, plus matching code highlighting.
 - A folder is a workspace, and it works a project. What you add a folder as was called a project,
   which is now the name for the shared body of work its tickets belong to: a workspace is where the
   work happens, several workspaces can work one project, and a chat stays filed under the folder it

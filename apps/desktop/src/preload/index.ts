@@ -7,13 +7,9 @@ import {
   MEMORY_CHANNELS,
   MCP_CHANNELS,
   MODELS_CHANNELS,
-  RUN_CHANNELS,
   TRACKER_CHANNELS,
-  DELIVERY_CHANNELS,
-  EXECUTION_CHANNELS,
   UPDATE_CHANNELS,
   SHELL_CHANNELS,
-  WORKER_CHANNELS,
   WORKSPACE_CHANNELS,
   USAGE_CHANNELS,
   type AuthState,
@@ -31,24 +27,11 @@ import {
   type ProjectSummary,
   type Ticket,
   type TicketQueue,
-  type TicketRun,
-  type TicketSaid,
   type WorkspaceSummary,
   type WorkspaceAsset,
-  type WorkerStanding,
   type QueuedLine,
   type Usage,
   type DesktopUpdateSnapshot,
-  type ExecutionWorkspace,
-  type ExecutionReview,
-  type ReviewComment,
-  type ReviewFeedback,
-  type DeliveryAudit,
-  type ExecutionCommandResult,
-  type ExecutionProcessSnapshot,
-  type ExecutionProcessEvent,
-  type ExecutionTerminalSnapshot,
-  type ExecutionTerminalEvent,
   type ShellSettingsSnapshot,
   type ShellTestResult,
   type Result,
@@ -115,6 +98,7 @@ const bridge: KiraBridge = {
   restoreChat: (id) => ask<null>(CHAT_CHANNELS.restore, id),
 
   deleteChat: (id) => ask<null>(CHAT_CHANNELS.delete, id),
+  fileChat: (id, workspaceId) => ask<null>(CHAT_CHANNELS.file, id, workspaceId),
 
   switchBranch: (messageId) => ask<null>(CHAT_CHANNELS.branch, messageId),
 
@@ -146,103 +130,6 @@ const bridge: KiraBridge = {
 
   undoGlossary: (workspaceId, entryId, version, chatId) =>
     ask<GlossaryEntry>(TRACKER_CHANNELS.undoGlossary, workspaceId, entryId, version, chatId),
-
-  listExecutionWorkspaces: (ticketId) =>
-    ask<ExecutionWorkspace[]>(TRACKER_CHANNELS.executionWorkspaces, ticketId),
-
-  createExecutionWorkspace: (ticketId, draft) =>
-    ask<ExecutionWorkspace>(TRACKER_CHANNELS.createExecutionWorkspace, ticketId, draft),
-
-  removeExecutionWorkspace: (ticketId, workspaceId) =>
-    ask<null>(TRACKER_CHANNELS.removeExecutionWorkspace, ticketId, workspaceId),
-
-  readExecutionReview: (ticketId, workspaceId) =>
-    ask<ExecutionReview>(TRACKER_CHANNELS.readExecutionReview, ticketId, workspaceId),
-
-  addReviewComment: (ticketId, workspaceId, comment) =>
-    ask<ReviewComment>(TRACKER_CHANNELS.addReviewComment, ticketId, workspaceId, comment),
-
-  updateReviewComment: (ticketId, workspaceId, commentId, status) =>
-    ask<ReviewComment>(
-      TRACKER_CHANNELS.updateReviewComment,
-      ticketId,
-      workspaceId,
-      commentId,
-      status,
-    ),
-
-  sendReviewFeedback: (ticketId, workspaceId, feedback) =>
-    ask<ReviewFeedback>(TRACKER_CHANNELS.sendReviewFeedback, ticketId, workspaceId, feedback),
-
-  deliverExecutionWorkspace: (ticketId, workspaceId, path) =>
-    ask<DeliveryAudit>(DELIVERY_CHANNELS.deliver, ticketId, workspaceId, path),
-
-  runExecutionCommand: (ticketId, workspaceId, command) =>
-    ask<ExecutionCommandResult>(EXECUTION_CHANNELS.command, ticketId, workspaceId, command),
-
-  startExecutionDevServer: (ticketId, workspaceId, command) =>
-    ask<ExecutionProcessSnapshot>(
-      EXECUTION_CHANNELS.devServerStart,
-      ticketId,
-      workspaceId,
-      command,
-    ),
-
-  readExecutionDevServer: (ticketId, workspaceId) =>
-    ask<ExecutionProcessSnapshot>(EXECUTION_CHANNELS.devServerRead, ticketId, workspaceId),
-
-  stopExecutionDevServer: (ticketId, workspaceId) =>
-    ask<ExecutionProcessSnapshot>(EXECUTION_CHANNELS.devServerStop, ticketId, workspaceId),
-
-  onExecutionProcess: (listener) => {
-    const handler = (_event: IpcRendererEvent, payload: ExecutionProcessEvent): void => {
-      listener(payload);
-    };
-    ipcRenderer.on(EXECUTION_CHANNELS.process, handler);
-    return () => ipcRenderer.off(EXECUTION_CHANNELS.process, handler);
-  },
-
-  startExecutionTerminal: (ticketId, workspaceId) =>
-    ask<ExecutionTerminalSnapshot>(EXECUTION_CHANNELS.terminalStart, ticketId, workspaceId),
-
-  readExecutionTerminal: (ticketId, workspaceId) =>
-    ask<ExecutionTerminalSnapshot>(EXECUTION_CHANNELS.terminalRead, ticketId, workspaceId),
-
-  writeExecutionTerminal: (ticketId, workspaceId, data) =>
-    ask<null>(EXECUTION_CHANNELS.terminalWrite, ticketId, workspaceId, data),
-
-  resizeExecutionTerminal: (ticketId, workspaceId, cols, rows) =>
-    ask<null>(EXECUTION_CHANNELS.terminalResize, ticketId, workspaceId, cols, rows),
-
-  stopExecutionTerminal: (ticketId, workspaceId) =>
-    ask<ExecutionTerminalSnapshot>(EXECUTION_CHANNELS.terminalStop, ticketId, workspaceId),
-
-  onExecutionTerminal: (listener) => {
-    const handler = (_event: IpcRendererEvent, payload: ExecutionTerminalEvent): void => {
-      listener(payload);
-    };
-    ipcRenderer.on(EXECUTION_CHANNELS.terminalEvent, handler);
-    return () => ipcRenderer.off(EXECUTION_CHANNELS.terminalEvent, handler);
-  },
-
-  worker: () => ask<WorkerStanding>(WORKER_CHANNELS.standing),
-
-  startRun: (workspaceId, ticketId, executionWorkspaceId, followUp) =>
-    ask<TicketRun>(RUN_CHANNELS.start, workspaceId, ticketId, executionWorkspaceId, followUp),
-
-  resolveRun: (workspaceId, ticketId, reason) =>
-    ask<TicketRun>(RUN_CHANNELS.resolve, workspaceId, ticketId, reason),
-
-  readTranscript: (ticketId, runId) => ask<TicketSaid[]>(RUN_CHANNELS.transcript, ticketId, runId),
-  readExecutionDiff: (ticketId, executionWorkspaceId) =>
-    ask<string>(RUN_CHANNELS.diff, ticketId, executionWorkspaceId),
-
-  takeOverClaim: (ticketId) => ask<Ticket>(RUN_CHANNELS.takeover, ticketId),
-
-  releaseClaim: (ticketId) => ask<null>(RUN_CHANNELS.release, ticketId),
-
-  judgeRun: (ticketId, runId, verdict, workspaceId) =>
-    ask<TicketRun>(RUN_CHANNELS.judge, ticketId, runId, verdict, workspaceId),
 
   listWorkspaceFolder: (chatId, path) =>
     ask<FolderListing | null>(FILE_CHANNELS.list, chatId, path),

@@ -1,14 +1,15 @@
-import type { Band, Ticket, TicketKind } from '../../preload/bridge.ts';
+import type { Ticket, TicketKind, TicketStatus } from '../../preload/bridge.ts';
+import { copy } from './workCopy.ts';
 
 export type WorkOrder = 'rank' | 'updated' | 'created';
 export type WorkGroup = 'status' | 'kind';
-export type WorkClaimFilter = 'all' | 'claimed' | 'unclaimed';
+export type WorkStatus = TicketStatus | 'blocked';
 
 export interface WorkDisplay {
   search: string;
-  band: Band | 'all';
+  status: WorkStatus | 'all';
   kind: TicketKind | 'all';
-  claim: WorkClaimFilter;
+  owner: 'all' | 'assigned' | 'unassigned';
   order: WorkOrder;
   group: WorkGroup;
   showDone: boolean;
@@ -16,9 +17,9 @@ export interface WorkDisplay {
 
 export const DEFAULT_WORK_DISPLAY: WorkDisplay = {
   search: '',
-  band: 'all',
+  status: 'all',
   kind: 'all',
-  claim: 'all',
+  owner: 'all',
   order: 'rank',
   group: 'status',
   showDone: false,
@@ -26,18 +27,18 @@ export const DEFAULT_WORK_DISPLAY: WorkDisplay = {
 
 export function readWorkDisplay(search: string): WorkDisplay {
   const params = new URLSearchParams(search);
-  const band = params.get('band');
+  const status = params.get('status');
   const kind = params.get('kind');
-  const claim = params.get('claim');
+  const owner = params.get('owner');
   const order = params.get('order');
   const group = params.get('group');
 
   return {
     ...DEFAULT_WORK_DISPLAY,
     search: params.get('search') ?? '',
-    band: band !== null && isBand(band) ? band : DEFAULT_WORK_DISPLAY.band,
+    status: status !== null && isWorkStatus(status) ? status : DEFAULT_WORK_DISPLAY.status,
     kind: kind !== null && isKind(kind) ? kind : DEFAULT_WORK_DISPLAY.kind,
-    claim: claim === 'claimed' || claim === 'unclaimed' ? claim : DEFAULT_WORK_DISPLAY.claim,
+    owner: owner === 'assigned' || owner === 'unassigned' ? owner : DEFAULT_WORK_DISPLAY.owner,
     order: order === 'updated' || order === 'created' ? order : DEFAULT_WORK_DISPLAY.order,
     group: group === 'kind' ? 'kind' : DEFAULT_WORK_DISPLAY.group,
     showDone: params.get('done') === '1',
@@ -48,9 +49,9 @@ export function canReorderReady(display: WorkDisplay): boolean {
   return (
     display.order === 'rank' &&
     display.search.trim() === '' &&
-    display.band === 'all' &&
+    display.status === 'all' &&
     display.kind === 'all' &&
-    display.claim === 'all'
+    display.owner === 'all'
   );
 }
 
@@ -67,18 +68,26 @@ function isKind(value: string): value is TicketKind {
   ].includes(value);
 }
 
-function isBand(value: string): value is Band {
-  return ['draft', 'ready', 'blocked', 'running', 'needs-you', 'done'].includes(value);
+function isWorkStatus(value: string): value is WorkStatus {
+  return ['draft', 'ready', 'running', 'needs-review', 'blocked', 'done', 'wont-do'].includes(
+    value,
+  );
 }
 
-const BAND_LABELS: Record<Band, string> = {
-  draft: 'Drafts',
-  ready: 'Ready',
-  blocked: 'Blocked',
-  running: 'Running',
-  'needs-you': 'Needs review',
-  done: 'Done',
-};
+export type TicketDropPlan =
+  | { kind: 'change-status'; status: TicketStatus }
+  | { kind: 'add-blocker' }
+  | { kind: 'resolve-blockers' };
+
+/**
+ * Blocked is derived from open blockers; all other lanes write the stored status.
+ */
+export function planTicketDrop(ticket: Ticket, target: WorkStatus): TicketDropPlan | null {
+  if ((ticket.blocked ? 'blocked' : ticket.status) === target) return null;
+  if (target === 'blocked') return { kind: 'add-blocker' };
+  if (ticket.blocked) return { kind: 'resolve-blockers' };
+  return { kind: 'change-status', status: target };
+}
 
 export function displayWork(tickets: Ticket[], display: WorkDisplay): Ticket[] {
   return tickets
@@ -88,11 +97,12 @@ export function displayWork(tickets: Ticket[], display: WorkDisplay): Ticket[] {
 }
 
 export function matchesWork(ticket: Ticket, display: WorkDisplay): boolean {
-  if (!display.showDone && ticket.band === 'done') return false;
-  if (display.band !== 'all' && ticket.band !== display.band) return false;
+  if (!display.showDone && (ticket.status === 'done' || ticket.status === 'wont-do')) return false;
+  const status = ticket.blocked ? 'blocked' : ticket.status;
+  if (display.status !== 'all' && status !== display.status) return false;
   if (display.kind !== 'all' && ticket.kind !== display.kind) return false;
-  if (display.claim === 'claimed' && ticket.claim === null) return false;
-  if (display.claim === 'unclaimed' && ticket.claim !== null) return false;
+  if (display.owner === 'assigned' && ticket.assignee === null) return false;
+  if (display.owner === 'unassigned' && ticket.assignee !== null) return false;
 
   const search = display.search.trim().toLocaleLowerCase();
   if (search === '') return true;
@@ -118,7 +128,7 @@ export function groupedWork(
   const groups = new Map<string, Ticket[]>();
 
   for (const ticket of tickets) {
-    const key = group === 'status' ? ticket.band : ticket.kind;
+    const key = group === 'status' ? (ticket.blocked ? 'blocked' : ticket.status) : ticket.kind;
     const held = groups.get(key) ?? [];
     held.push(ticket);
     groups.set(key, held);
@@ -126,13 +136,13 @@ export function groupedWork(
 
   return [...groups].map(([key, held]) => ({
     key,
-    label: group === 'status' ? BAND_LABELS[key as Band] : key,
+    label: group === 'status' ? copy.statuses[key as WorkStatus].label : key,
     tickets: held,
   }));
 }
 
 export function reorderReady(tickets: Ticket[], activeId: string, overId: string): Ticket[] {
-  const current = tickets.filter((ticket) => ticket.band === 'ready');
+  const current = tickets.filter((ticket) => !ticket.blocked && ticket.status === 'ready');
   const activeIndex = current.findIndex((ticket) => ticket.id === activeId);
   const overIndex = current.findIndex((ticket) => ticket.id === overId);
   if (activeIndex < 0 || overIndex < 0 || activeIndex === overIndex) return current;
@@ -144,6 +154,6 @@ export function reorderReady(tickets: Ticket[], activeId: string, overId: string
   return moved.map((ticket, index) => ({ ...ticket, rank: index }));
 }
 
-export function bandLabel(band: Band): string {
-  return BAND_LABELS[band];
+export function statusLabel(status: WorkStatus): string {
+  return copy.statuses[status].label;
 }

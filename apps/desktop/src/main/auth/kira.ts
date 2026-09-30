@@ -14,26 +14,16 @@ import type { App } from '@kira/server/contract';
 import { createAuthClient } from 'better-auth/client';
 import { isAuthUser, type AuthUser } from '../../preload/bridge.ts';
 import {
-  SAID_BY,
   type GlossaryEntry,
   type Outcome,
   type OutcomeProposal,
   type ProjectDecision,
   type BreakdownResult,
-  TICKET_BANDS,
-  TICKET_CLOSURES,
-  TICKET_GATES,
   TICKET_KINDS,
+  TICKET_STATUSES,
   type ProjectSummary,
   type Ticket,
   type TicketQueue,
-  type TicketRun,
-  type TicketSaid,
-  type WorkerStanding,
-  type ExecutionWorkspace,
-  type ExecutionReview,
-  type ReviewComment,
-  type ReviewFeedback,
 } from '../../preload/bridge.ts';
 import type { TrackerAnswer } from '../tracker.ts';
 import { type Kira, RETURN_PATH } from './signIn.ts';
@@ -245,86 +235,17 @@ export function kiraFor({ server, scheme }: { server: string; scheme: string }):
         (data) => (data as { project: ProjectSummary }).project,
       ),
 
+    currentUser: async (key) =>
+      asked(
+        () => kira.api.me.get({ headers: bearerFor(key) }),
+        (data) => {
+          const id = (data as { id?: unknown } | null)?.id;
+          return typeof id === 'string' ? { id } : null;
+        },
+      ),
+
     queue: async (key, projectId) =>
       asked(() => kira.api.projects({ ref: projectId }).get({ headers: bearerFor(key) }), asQueue),
-
-    executionWorkspaces: async (key, ticketId) =>
-      asked(
-        () => kira.api.tickets({ ref: ticketId }).workspaces.get({ headers: bearerFor(key) }),
-        (data) => (data as { workspaces: ExecutionWorkspace[] }).workspaces,
-      ),
-
-    createExecutionWorkspace: async (key, ticketId, draft) =>
-      asked(
-        () =>
-          kira.api.tickets({ ref: ticketId }).workspaces.post(draft, { headers: bearerFor(key) }),
-        (data) => (data as { workspace: ExecutionWorkspace }).workspace,
-      ),
-
-    removeExecutionWorkspace: async (key, ticketId, workspaceId) =>
-      asked(
-        () =>
-          kira.api
-            .tickets({ ref: ticketId })
-            .workspaces({ workspaceId })
-            .delete(undefined, { headers: bearerFor(key) }),
-        (data) => data,
-      ),
-
-    readExecutionReview: async (key, ticketId, workspaceId) =>
-      asked(
-        () =>
-          kira.api
-            .tickets({ ref: ticketId })
-            .workspaces({ workspaceId })
-            .review.get({ headers: bearerFor(key) }),
-        (data) => data as ExecutionReview,
-      ),
-
-    addReviewComment: async (key, ticketId, workspaceId, comment) =>
-      asked(
-        () =>
-          kira.api
-            .tickets({ ref: ticketId })
-            .workspaces({ workspaceId })
-            .review.comments.post(comment, { headers: bearerFor(key) }),
-        (data) => (data as { comment: ReviewComment }).comment,
-      ),
-
-    updateReviewComment: async (key, ticketId, workspaceId, commentId, status) =>
-      asked(
-        () =>
-          kira.api
-            .tickets({ ref: ticketId })
-            .workspaces({ workspaceId })
-            .review.comments({ commentId })
-            .patch({ status }, { headers: bearerFor(key) }),
-        (data) => (data as { comment: ReviewComment }).comment,
-      ),
-
-    sendReviewFeedback: async (key, ticketId, workspaceId, feedback) =>
-      asked(
-        () =>
-          kira.api
-            .tickets({ ref: ticketId })
-            .workspaces({ workspaceId })
-            .review.feedback.post(feedback, { headers: bearerFor(key) }),
-        (data) => (data as { feedback: ReviewFeedback }).feedback,
-      ),
-
-    recordDelivery: async (key, ticketId, audit) => {
-      const { reference, ...fields } = audit;
-      return await asked(
-        () =>
-          kira.api
-            .tickets({ ref: ticketId })
-            .deliveries.post(
-              { ...fields, ...(reference === null ? {} : { reference }) },
-              { headers: bearerFor(key) },
-            ),
-        () => null,
-      );
-    },
 
     decisions: async (key, projectId) =>
       asked(
@@ -443,71 +364,6 @@ export function kiraFor({ server, scheme }: { server: string; scheme: string }):
         asBreakdown,
       ),
 
-    // The worker, which is the same four shapes and the same one request each: this
-    // desktop saying it is here, saying so again, and saying goodbye. What comes back
-    // is only whether the server took it, so the window's reading of itself is built
-    // here from the fact that an answer arrived at all.
-    registerWorker: async (key, made) =>
-      asked(() => kira.api.workers.post(made, { headers: bearerFor(key) }), asStanding),
-
-    heartbeatWorker: async (key, id, workspaces, driving) =>
-      asked(
-        () =>
-          kira.api
-            .workers({ id })
-            .heartbeat.post({ workspaces, driving }, { headers: bearerFor(key) }),
-        asStanding,
-      ),
-
-    workerGone: async (key, id) =>
-      asked(
-        () => kira.api.workers({ id }).delete(undefined, { headers: bearerFor(key) }),
-        (data) => data,
-      ),
-
-    // A run of a ticket. The claim is what makes a run legal, so it is one request of its
-    // own; the run is started, named, and ended on the ticket it belongs to.
-    claimTicket: async (key, ticketId, workerId) =>
-      asked(
-        () =>
-          kira.api.tickets({ ref: ticketId }).claim.post({ workerId }, { headers: bearerFor(key) }),
-        (data) => asTicket((data as { ticket: unknown }).ticket),
-      ),
-
-    releaseTicket: async (key, ticketId) =>
-      asked(
-        () =>
-          kira.api.tickets({ ref: ticketId }).claim.delete(undefined, { headers: bearerFor(key) }),
-        (data) => data,
-      ),
-
-    startRun: async (key, ticketId, workerId) =>
-      asked(
-        () =>
-          kira.api.tickets({ ref: ticketId }).runs.post({ workerId }, { headers: bearerFor(key) }),
-        asRun,
-      ),
-
-    recordRun: async (key, ticketId, runId, recorded) =>
-      asked(
-        () =>
-          kira.api
-            .tickets({ ref: ticketId })
-            .runs({ runId })
-            .patch(recorded, { headers: bearerFor(key) }),
-        asRun,
-      ),
-
-    endRun: async (key, ticketId, runId, ending) =>
-      asked(
-        () =>
-          kira.api
-            .tickets({ ref: ticketId })
-            .runs({ runId })
-            .end.post(ending, { headers: bearerFor(key) }),
-        asRun,
-      ),
-
     readTicket: async (key, ref) =>
       asked(
         () => kira.api.tickets({ ref }).get({ headers: bearerFor(key) }),
@@ -536,47 +392,6 @@ export function kiraFor({ server, scheme }: { server: string; scheme: string }):
             .tickets({ ref: ticketId })
             .outcome.approve.post(value, { headers: bearerFor(key) }),
         (data) => asOutcome((data as { outcome: unknown }).outcome),
-      ),
-
-    takeOverTicket: async (key, ticketId) =>
-      asked(
-        () =>
-          kira.api
-            .tickets({ ref: ticketId })
-            // By hand: no worker and no lease, so a claim taken over this way belongs to a
-            // person and never expires on its own (GH #75).
-            .claim.takeover.post({ workerId: null }, { headers: bearerFor(key) }),
-        (data) => asTicket((data as { ticket: unknown }).ticket),
-      ),
-
-    judgeRun: async (key, ticketId, runId, verdict) =>
-      asked(
-        () =>
-          kira.api
-            .tickets({ ref: ticketId })
-            .runs({ runId })
-            .verdict.post({ verdict }, { headers: bearerFor(key) }),
-        asRun,
-      ),
-
-    readTranscript: async (key, ticketId, runId) =>
-      asked(
-        () =>
-          kira.api
-            .tickets({ ref: ticketId })
-            .runs({ runId })
-            .transcript.get({ headers: bearerFor(key) }),
-        (data) => asSaidList((data as { transcript: unknown }).transcript),
-      ),
-
-    sayInRun: async (key, ticketId, runId, said) =>
-      asked(
-        () =>
-          kira.api
-            .tickets({ ref: ticketId })
-            .runs({ runId })
-            .transcript.post(said, { headers: bearerFor(key) }),
-        (data) => asSaid((data as { said: unknown }).said),
       ),
   };
 }
@@ -645,33 +460,23 @@ function refusedBy(status: number, said: unknown): TrackerAnswer<never> {
 }
 
 /**
- * What a ticket looks like coming off the wire, before it is believed.
- *
- * The server documents four of its fields as one of a known set and types them as
- * strings — its own response schemas cannot express the set without breaking the
- * types every client is generated from — so the set is checked here, once, at the
- * boundary where bytes cross. A window that took them on trust would draw a band it
- * has no section for and a kind it has no word for; nothing else is checked, because
- * everything else being the wrong shape is a visible fault rather than a quiet one.
+ * The server types kind and status as strings; check their supported values here,
+ * once, at the boundary where bytes cross.
  */
 interface WireTicket {
   kind: string;
-  gate: string;
-  band: string;
-  closure: string | null;
+  status: string;
   [field: string]: unknown;
 }
 
 function asTicket(body: unknown): Ticket | null {
   const held = body as WireTicket;
   const kind = oneOf(TICKET_KINDS, held?.kind);
-  const gate = oneOf(TICKET_GATES, held?.gate);
-  const band = oneOf(TICKET_BANDS, held?.band);
-  const closure = held?.closure === null ? null : oneOf(TICKET_CLOSURES, held?.closure);
+  const status = oneOf(TICKET_STATUSES, held?.status);
 
-  if (kind === null || gate === null || band === null || closure === undefined) return null;
+  if (kind === null || status === null) return null;
 
-  return { ...held, kind, gate, band, closure } as Ticket;
+  return { ...held, kind, status } as Ticket;
 }
 
 function asBreakdown(body: unknown): BreakdownResult | null {
@@ -807,70 +612,11 @@ function asGlossary(body: unknown): GlossaryEntry | null {
   return held as GlossaryEntry;
 }
 
-/**
- * A worker's answer, as this desktop reads itself.
- *
- * `here` is true because the server answered at all: a body arriving is the whole
- * content of "it has heard from me", and the trouble that is not there is the absence
- * of one.
- */
-function asStanding(body: unknown): WorkerStanding {
-  const held = (body as { worker?: { name?: unknown } }).worker;
-
-  return {
-    name: typeof held?.name === 'string' ? held.name : '',
-    here: true,
-    trouble: null,
-  };
-}
-
-/**
- * A run of a ticket, checked only for being one.
- *
- * The fields a window draws are read where they are drawn; what matters here is that a
- * run arrived at all, because every caller above has just asked for one.
- */
-function asRun(body: unknown): TicketRun | null {
-  const held = (body as { run?: { id?: unknown; ticketId?: unknown } }).run;
-  if (typeof held?.id !== 'string' || typeof held.ticketId !== 'string') return null;
-
-  return held as TicketRun;
-}
-
 /** One of a known set, or null when the server said something this build does not know. */
 function oneOf<T extends string>(allowed: readonly T[], value: unknown): T | null {
   return typeof value === 'string' && (allowed as readonly string[]).includes(value)
     ? (value as T)
     : null;
-}
-
-/**
- * One line of a run's transcript, checked for being one this build understands.
- *
- * `saidBy` is narrowed rather than trusted, because a window that drew an unknown
- * `saidBy` would be drawing a line from somebody it cannot name — and the alternative to
- * a line it cannot name is not a line at all.
- */
-function asSaid(body: unknown): TicketSaid | null {
-  const held = body as {
-    id?: unknown;
-    saidBy?: unknown;
-    words?: unknown;
-    at?: unknown;
-  };
-  const saidBy = oneOf(SAID_BY, held?.saidBy);
-  const at = whenIn(held?.at);
-
-  if (
-    saidBy === null ||
-    typeof held?.id !== 'string' ||
-    typeof held.words !== 'string' ||
-    at === null
-  ) {
-    return null;
-  }
-
-  return { id: held.id, saidBy, words: held.words, at };
 }
 
 /**
@@ -886,14 +632,6 @@ function whenIn(value: unknown): string | null {
   if (typeof value === 'string') return value;
 
   return value instanceof Date ? value.toISOString() : null;
-}
-
-function asSaidList(body: unknown): TicketSaid[] | null {
-  if (!Array.isArray(body)) return null;
-
-  const lines = body.map(asSaid);
-
-  return lines.some((each) => each === null) ? null : (lines as TicketSaid[]);
 }
 
 /** The person named in an answer from the server, if it named one. */

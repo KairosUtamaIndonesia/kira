@@ -29,19 +29,20 @@ const ticket = (id: string, kind: 'spec' | 'feature' = 'feature') => ({
   title: id,
   body: id,
   criteria: ['done'],
-  gate: 'ready-for-agent' as const,
-  band: 'blocked' as const,
+  status: 'ready' as const,
+  blocked: false,
   rank: 1,
-  branch: id,
+  priority: 'none' as const,
+  assignee: null,
+  tags: [],
   author: null,
   gates: [],
   children: [],
+  parent: null,
+  subIssues: [],
+  relationships: [],
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
-  closedAt: null,
-  closure: null,
-  claim: null,
-  runs: [],
 });
 
 test('spec markdown keeps the proposal out of the chat transcript shape', () => {
@@ -52,19 +53,26 @@ test('spec markdown keeps the proposal out of the chat transcript shape', () => 
 });
 
 test('ticketsFor starts with the exact approved ticket and then its child slices', () => {
-  const child = ticket('ticket-child');
+  const child = { ...ticket('ticket-child'), blocked: true };
   const spec = {
     ...ticket('ticket-spec', 'spec'),
-    children: [{ id: child.id, name: 'FND-2', closed: false, closure: null }],
+    children: [{ id: child.id, name: 'FND-2', status: 'ready' as const }],
   };
   const queue = {
     project: { id: 'project-1', name: 'Kira', prefix: 'FND' },
     tickets: [spec, child],
-    counts: { draft: 0, ready: 0, blocked: 2, running: 0, 'needs-you': 0, done: 0 },
+    counts: {
+      draft: 0,
+      ready: 2,
+      running: 0,
+      'needs-review': 0,
+      done: 0,
+      'wont-do': 0,
+    },
   } satisfies TicketQueue;
 
   assert.deepEqual(ticketsFor(queue, proposal.ticketId), [spec, child]);
-  assert.equal(ticketsFor(queue, proposal.ticketId)[1]?.band, 'blocked');
+  assert.equal(ticketsFor(queue, proposal.ticketId)[1]?.blocked, true);
   assert.deepEqual(ticketsFor(queue, 'not-the-approved-ticket'), []);
 });
 

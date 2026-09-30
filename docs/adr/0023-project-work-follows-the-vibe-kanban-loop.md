@@ -2,6 +2,8 @@
 
 Date: 2026-09-25
 
+Superseded by ADR 0024: the board stays; the execution workspace, review and delivery loop is removed.
+
 ## Context
 
 The earlier Project Work scope expanded toward Linear's full planning model: organizations, teams, initiatives, milestones, cycles, updates, documents, permissions, and integrations. That scope is larger than the product Kira needs now.
