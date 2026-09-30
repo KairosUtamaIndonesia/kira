@@ -36,9 +36,11 @@ production.
   matching value to Kira as a deployment secret. The keys are a flat list; they
   do not provide per-key model scopes or rate limits. Do not reuse development
   credentials.
-- Leave the management API disabled unless needed. If enabled, restrict it to a
-  separate protected admin path. Avoid publishing OAuth callback ports unless a
-  specific login flow requires them.
+- Kira's admin console can use the management API through the server. Set the
+  same high-entropy `MANAGEMENT_PASSWORD` secret in Kira and CLIProxyAPI. This
+  enables remote management in CLIProxyAPI v7.3.7, so keep it private to the
+  internal Docker network, disable the bundled control panel, and never publish
+  management or OAuth callback ports.
 
 ## State and operations
 
@@ -63,20 +65,26 @@ production.
 `deploy/compose.production.yaml` pins the multi-architecture v7.3.7 image by
 tag and manifest digest. That is the version Kira's interface research verified;
 do not update it to v7.3.20 or v8 without repeating the compatibility checks.
-The Compose file does not contain provider credentials or the pool key.
+The Compose file does not contain provider credentials, the pool caller key, or
+the optional management password.
 
 Before starting it:
 
 1. Create a protected deployment env file with `KIRA_SERVER_TAG`, `KIRA_BASE_URL`,
    the Entra settings, `KIRA_AUTH_SECRET`, `KIRA_DATABASE_USER`,
-   `KIRA_DATABASE_PASSWORD`, `KIRA_POOL_KEY`, and `CLIPROXY_CONFIG_DIR`. Use
+   `KIRA_DATABASE_PASSWORD`, `KIRA_POOL_KEY`, and `CLIPROXY_CONFIG_DIR`. Set
+   `MANAGEMENT_PASSWORD` to enable Kira's Pool console; omit it to leave that
+   feature unavailable while the rest of Kira continues to work. Use
    high-entropy secrets, restrict the file to the deploy account, and exclude it
    from backups that are not encrypted. The database password should use URL-safe
    characters because Compose interpolates it into `KIRA_DATABASE_URL`.
 2. Create `${CLIPROXY_CONFIG_DIR}/config.yaml` outside the repository. Set
    `host: ""`, `port: 8317`, and `auth-dir: /root/.cli-proxy-api`; put exactly
    the same long random caller key as `KIRA_POOL_KEY` under `api-keys`. Leave
-   remote management disabled and remove the development fake-upstream entry.
+    `remote-management.disable-control-panel: true` and remove the development
+    fake-upstream entry. `MANAGEMENT_PASSWORD` enables the management API without
+    writing the secret into this config. The auth directory must be writable for
+    OAuth login; the config file can remain read-only.
    This file contains a secret: restrict its permissions and do not commit it.
 3. Start with `docker compose --env-file <protected-env-file> -f
    deploy/compose.production.yaml up -d`. Check container health and then

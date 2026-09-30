@@ -4,6 +4,8 @@
 
 ### Added
 
+- Kira admins can inspect live shared provider Credential health, add Codex and Claude logins through a remote-safe OAuth flow, and manage Credentials from the console. Per-user Allowances remain separate from provider health; management changes are audited without storing credentials or OAuth callback URLs.
+
 - Approving a spec or its tickets in a chat that isn't in a project now asks where it should live, instead of refusing: choose a folder that is already in a project, or start a new project in a folder you pick. The chat moves to that folder and keeps its history. A chat can also be moved from its row's menu ("Move to project…"), and leaving the dialog changes nothing.
 
 - Work's wording is clearer and consistent: tickets, blockers, chats, and project folders are named the same way everywhere, and refusals such as two tickets blocking each other say what to do next.

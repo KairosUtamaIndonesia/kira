@@ -25,6 +25,8 @@ services:
       - ${CLIPROXY_CONFIG_DIR:?set CLIPROXY_CONFIG_DIR}:/run/cliproxy-config:ro
       - cliproxyapi-auth:/root/.cli-proxy-api
     command: ['./CLIProxyAPI', '-config', '/run/cliproxy-config/config.yaml']
+    environment:
+      MANAGEMENT_PASSWORD: ${MANAGEMENT_PASSWORD:-}
     networks: [backend, egress]
     healthcheck:
       # Upstream's Debian image has bash but no curl/wget. This checks process
@@ -52,6 +54,7 @@ services:
       KIRA_DATABASE_URL: postgres://${KIRA_DATABASE_USER:?set KIRA_DATABASE_USER}:${KIRA_DATABASE_PASSWORD:?set KIRA_DATABASE_PASSWORD}@postgres:5432/kira
       KIRA_POOL_URL: http://cliproxyapi:8317
       KIRA_POOL_KEY: ${KIRA_POOL_KEY:?set KIRA_POOL_KEY}
+      MANAGEMENT_PASSWORD: ${MANAGEMENT_PASSWORD:-}
     depends_on:
       postgres:
         condition: service_healthy

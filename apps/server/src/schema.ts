@@ -470,6 +470,23 @@ export const ticketRelationship = pgTable(
   ],
 );
 
+/** An append-only record of an administrator's changes to the shared Pool. */
+export const poolAudit = pgTable(
+  'pool_audit',
+  {
+    id: text('id').primaryKey(),
+    actorId: text('actorId').references(() => user.id, { onDelete: 'set null' }),
+    actorLabel: text('actorLabel').notNull(),
+    action: text('action').notNull(),
+    provider: text('provider'),
+    credentialLabel: text('credentialLabel'),
+    outcome: text('outcome').notNull(),
+    detail: text('detail'),
+    createdAt: timestamp('createdAt', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('pool_audit_by_created_at').on(table.createdAt)],
+);
+
 /**
  * Everything, under the names Better Auth asks for. Its adapter looks up a
  * model by these keys and a field by the key inside it, so the export names are
@@ -492,4 +509,5 @@ export const schema = {
   glossaryHistory,
   gate,
   ticketRelationship,
+  poolAudit,
 };

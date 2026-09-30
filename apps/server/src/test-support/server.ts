@@ -42,9 +42,12 @@ export async function boot(
  * HTTP itself, so a journey through it cannot be driven by handing requests to
  * the app object: there has to be a port to answer.
  */
-export async function listen(entra: Partial<Config['entra']> = {}) {
+export async function listen(
+  entra: Partial<Config['entra']> = {},
+  pool: Partial<Config['pool']> = {},
+) {
   const origin = `http://127.0.0.1:${await freePort()}`;
-  const config = configured({ ...ENV, KIRA_BASE_URL: origin }, entra);
+  const config = configured({ ...ENV, KIRA_BASE_URL: origin }, entra, pool);
   const database = await freshDatabase(config.databaseUrl);
   await migrate(database);
   const auth = await createAuth(config, database);
@@ -193,9 +196,9 @@ export async function waitFor(
  * The two halves a journey through the app needs: a real port that answers, and an
  * identity provider that signs the same person in every time.
  */
-export async function listening(account: EntraAccount) {
+export async function listening(account: EntraAccount, pool: Partial<Config['pool']> = {}) {
   const entra = await startFakeEntra(account);
-  const server = await listen({ authority: entra.authority });
+  const server = await listen({ authority: entra.authority }, pool);
 
   return {
     ...server,

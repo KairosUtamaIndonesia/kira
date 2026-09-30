@@ -13,6 +13,7 @@ import { createPool } from './pool';
 import { REFUSAL, refusal } from './refusals';
 import { createTickets } from './tickets';
 import { readiness } from './pool-health';
+import { createPoolManagement } from './pool-management';
 
 const SIGN_IN_PAGE = `<!doctype html>
 <html lang="en">
@@ -142,6 +143,7 @@ export function createApp({
       .use(createDecisions({ auth, database }))
       .use(createGlossary({ auth, database }))
       .use(createTickets({ auth, database }))
+      .use(createPoolManagement({ auth, config, database }))
   );
 }
 

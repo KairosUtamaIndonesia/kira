@@ -25,6 +25,7 @@ const CONFIG = join(homedir(), '.config/kira/cliproxyapi.yaml');
 
 /** The caller key Kira's server presents. A development value, nothing more. */
 const POOL_KEY = 'kira-dev-pool-key';
+const MANAGEMENT_KEY = process.env.MANAGEMENT_PASSWORD?.trim() || 'kira-dev-management-key';
 
 if (!existsSync(BINARY)) {
   console.error(`no CLIProxyAPI at ${BINARY}`);
@@ -48,6 +49,7 @@ console.log('');
 
 const child = Bun.spawn({
   cmd: [BINARY, '-config', CONFIG, ...process.argv.slice(2)],
+  env: { ...process.env, MANAGEMENT_PASSWORD: MANAGEMENT_KEY },
   stdio: ['inherit', 'inherit', 'inherit'],
 });
 process.exitCode = await child.exited;
@@ -59,9 +61,9 @@ process.exitCode = await child.exited;
  * Two departures from the shipped example matter. `host` is loopback rather
  * than the example's empty string, which binds every interface — the proxy
  * holds the company's logins and only Kira talks to it. And the management
- * API is left off, because its key can read and rewrite every credential in
- * the auth directory; switch it on deliberately when the usage cross-check is
- * wanted.
+ * API is enabled in development with the fixed local-only key supplied through
+ * MANAGEMENT_PASSWORD by the spawned process. Production uses a separate
+ * secret and never exposes the proxy port.
  */
 function config(authDir: string): string {
   return `# Kira's development CLIProxyAPI. Written by scripts/dev-cliproxyapi.ts
@@ -80,9 +82,8 @@ auth-dir: "${authDir}"
 api-keys:
   - "${POOL_KEY}"
 
-# The management API is off: its key can read and rewrite every login above.
-# remote-management:
-#   secret-key: "kira-dev-management-key"
+# The development management key is supplied through MANAGEMENT_PASSWORD,
+# never written into this file.
 
 # A stand-in for a provider, so the chain can be exercised without spending
 # subscription quota. Start it with \`bun run dev:upstream\`, and delete this
