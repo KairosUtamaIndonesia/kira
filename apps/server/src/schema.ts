@@ -592,6 +592,34 @@ export const ticketPullRequest = pgTable(
   ],
 );
 
+/**
+ * One check a host reported for a pull request.
+ *
+ * A pull request carries many checks, each rewritten as it runs, so they are rows
+ * rather than one column: the rollup a person reads is derived from them, and the
+ * failed ones can be named. `context` is the check's own name; a check row lives
+ * and dies with its pull request (docs/adr/0026).
+ */
+export const pullRequestCheck = pgTable(
+  'pull_request_check',
+  {
+    id: text('id').primaryKey(),
+    pullRequestId: text('pullRequestId')
+      .notNull()
+      .references(() => ticketPullRequest.id, { onDelete: 'cascade' }),
+    context: text('context').notNull(),
+    /** pending, passed, failed or neutral. */
+    state: text('state').notNull(),
+    updatedAt: timestamp('updatedAt', { withTimezone: true })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    uniqueIndex('pull_request_check_context_key').on(table.pullRequestId, table.context),
+    index('pull_request_check_by_pull_request').on(table.pullRequestId),
+  ],
+);
+
 /** An append-only record of an administrator's changes to the shared Pool. */
 export const poolAudit = pgTable(
   'pool_audit',
@@ -703,6 +731,7 @@ export const schema = {
   ticketComment,
   ticketActivity,
   ticketPullRequest,
+  pullRequestCheck,
   repository,
   outcome,
   glossaryEntry,

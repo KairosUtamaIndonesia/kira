@@ -42,16 +42,35 @@ function giteaDelivery(payload: unknown, secret: string, event = 'pull_request')
   };
 }
 
-function gitlabDelivery(payload: unknown, secret: string): RequestInit {
+function gitlabDelivery(
+  payload: unknown,
+  secret: string,
+  event = 'Merge Request Hook',
+): RequestInit {
   return {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-gitlab-event': 'Merge Request Hook',
+      'x-gitlab-event': event,
       'x-gitlab-token': secret,
     },
     body: JSON.stringify(payload),
   };
+}
+
+async function pullRequestsFor(
+  app: Awaited<ReturnType<typeof boot>>['app'],
+  key: string,
+  ticketId: string,
+) {
+  const response = await send(app, `/api/tickets/${ticketId}/pull-requests`, {
+    headers: bearer(key),
+  });
+
+  return (await response.json()).pullRequests as Array<{
+    checksState: string | null;
+    checks: { context: string; state: string }[];
+  }>;
 }
 
 async function makeProject(app: Awaited<ReturnType<typeof boot>>['app'], key: string) {
@@ -79,7 +98,7 @@ async function makeTicket(
   return (await response.json()).ticket as { id: string; name: string; status: string };
 }
 
-function delivery(payload: unknown, secret = SECRET): RequestInit {
+function delivery(payload: unknown, secret = SECRET, event = 'pull_request'): RequestInit {
   const body = JSON.stringify(payload);
   const signature = createHmac('sha256', secret).update(body).digest('hex');
 
@@ -87,7 +106,7 @@ function delivery(payload: unknown, secret = SECRET): RequestInit {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-github-event': 'pull_request',
+      'x-github-event': event,
       'x-hub-signature-256': `sha256=${signature}`,
     },
     body,
@@ -487,6 +506,174 @@ describe('the GitHub App', () => {
       provider: 'github',
       authKind: 'app',
       accountLogin: 'unknown',
+    });
+  });
+});
+
+describe('checks', () => {
+  async function withPullRequest() {
+    const { app, key } = await signedIn();
+    const project = await makeProject(app, key);
+    const made = await makeTicket(app, key, project.id, { title: 'Checked work' });
+    await send(
+      app,
+      `/api/projects/${project.id}/repositories`,
+      json('POST', key, { owner: 'acme', name: 'api' }),
+    );
+    await send(
+      app,
+      '/api/webhooks/github',
+      delivery(pullRequest({ number: 7, title: `${made.name}: checked` })),
+    );
+
+    return { app, key, made };
+  }
+
+  test('rolls a check up onto the pull request', async () => {
+    const { app, key, made } = await withPullRequest();
+
+    const running = await send(
+      app,
+      '/api/webhooks/github',
+      delivery(
+        {
+          check_run: {
+            name: 'build',
+            status: 'in_progress',
+            conclusion: null,
+            head_sha: 'abc123',
+            pull_requests: [{ number: 7 }],
+          },
+          repository: { name: 'api', owner: { login: 'acme' } },
+        },
+        SECRET,
+        'check_run',
+      ),
+    );
+    expect(running.status).toBe(200);
+
+    let prs = await pullRequestsFor(app, key, made.id);
+    expect(prs[0]).toMatchObject({
+      checksState: 'pending',
+      checks: [{ context: 'build', state: 'pending' }],
+    });
+
+    const failed = await send(
+      app,
+      '/api/webhooks/github',
+      delivery(
+        {
+          check_run: {
+            name: 'build',
+            status: 'completed',
+            conclusion: 'failure',
+            head_sha: 'abc123',
+            pull_requests: [{ number: 7 }],
+          },
+          repository: { name: 'api', owner: { login: 'acme' } },
+        },
+        SECRET,
+        'check_run',
+      ),
+    );
+    expect(failed.status).toBe(200);
+
+    prs = await pullRequestsFor(app, key, made.id);
+    expect(prs[0]!.checksState).toBe('failed');
+  });
+
+  test('resolves a commit status by its SHA', async () => {
+    const { app, key, made } = await withPullRequest();
+
+    const sent = await send(
+      app,
+      '/api/webhooks/github',
+      delivery(
+        {
+          state: 'success',
+          sha: 'abc123',
+          context: 'ci/test',
+          repository: { name: 'api', owner: { login: 'acme' } },
+        },
+        SECRET,
+        'status',
+      ),
+    );
+    expect(sent.status).toBe(200);
+
+    const prs = await pullRequestsFor(app, key, made.id);
+    expect(prs[0]).toMatchObject({
+      checksState: 'passed',
+      checks: [{ context: 'ci/test', state: 'passed' }],
+    });
+  });
+
+  test('records a GitLab pipeline on the merge request', async () => {
+    const { app, auth, key, person } = await signedIn();
+    await makeAdmin(auth, person.id);
+    const project = await makeProject(app, key);
+    const made = await makeTicket(app, key, project.id, { title: 'GitLab checks' });
+
+    const connected = await send(
+      app,
+      '/api/git/connections',
+      json('POST', key, {
+        provider: 'gitlab',
+        instanceUrl: 'https://git.example.com',
+        accessToken: 'a-token',
+      }),
+    );
+    const { connection, webhookSecret } = (await connected.json()) as {
+      connection: { id: string };
+      webhookSecret: string;
+    };
+    await send(
+      app,
+      `/api/projects/${project.id}/repositories`,
+      json('POST', key, { owner: 'acme', name: 'api', provider: 'gitlab' }),
+    );
+
+    await send(
+      app,
+      `/api/webhooks/git/${connection.id}`,
+      gitlabDelivery(
+        {
+          object_attributes: {
+            iid: 5,
+            url: 'https://git.example.com/acme/api/-/merge_requests/5',
+            title: `${made.name}: gitlab`,
+            state: 'opened',
+            action: 'open',
+            source_branch: 'fnd-5',
+            last_commit: { id: 'sha5' },
+            author: { username: 'ada' },
+            draft: false,
+          },
+          project: { path_with_namespace: 'acme/api', name: 'api' },
+        },
+        webhookSecret,
+      ),
+    );
+
+    const pipeline = await send(
+      app,
+      `/api/webhooks/git/${connection.id}`,
+      gitlabDelivery(
+        {
+          object_attributes: { sha: 'sha5', status: 'failed' },
+          merge_request: { iid: 5 },
+          project: { path_with_namespace: 'acme/api' },
+        },
+        webhookSecret,
+        'Pipeline Hook',
+      ),
+    );
+    expect(pipeline.status).toBe(200);
+
+    const prs = await pullRequestsFor(app, key, made.id);
+    expect(prs[0]).toMatchObject({
+      checksState: 'failed',
+      checks: [{ context: 'pipeline', state: 'failed' }],
     });
   });
 });

@@ -162,6 +162,13 @@
       "when": 1790870921794,
       "tag": "0022_pink_robbie_robertson",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1790873523753,
+      "tag": "0023_chief_frank_castle",
+      "breakpoints": true
     }
   ]
 }

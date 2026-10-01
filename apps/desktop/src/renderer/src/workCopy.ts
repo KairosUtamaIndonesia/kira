@@ -253,6 +253,11 @@ export const copy = {
     pullRequestsLoading: 'Loading pull requests',
     pullRequestsFailed: 'Couldn’t load the pull requests.',
     pullRequestBy: (who: string) => `by ${who}`,
+    checksPending: 'checks running',
+    checksPassed: 'checks passed',
+    checksFailed: 'checks failed',
+    checksNeutral: 'checks neutral',
+    checksFailedOn: (names: string) => `Failed: ${names}`,
   },
   /* ── What the server recorded happening to a ticket ───────────────────── */
   activity: {

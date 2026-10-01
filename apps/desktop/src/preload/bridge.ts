@@ -871,6 +871,9 @@ export interface TicketPullRequest {
   branch: string | null;
   authorLogin: string | null;
   mergedAt: string | null;
+  /** Each check the host reported, and what they add up to. */
+  checks: { context: string; state: string }[];
+  checksState: string | null;
   createdAt: string;
   updatedAt: string;
 }

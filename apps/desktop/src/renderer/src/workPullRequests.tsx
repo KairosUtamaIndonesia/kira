@@ -55,15 +55,40 @@ export function PullRequests({ ticketId }: { ticketId: string }) {
               {`#${request.number} ${request.title}`}
             </a>
             <Text type="supporting" color="secondary">
-              {request.authorLogin === null
-                ? request.state
-                : `${request.state} · ${copy.ticket.pullRequestBy(request.authorLogin)}`}
+              {metaFor(request)}
             </Text>
           </li>
         ))}
       </ul>
     </section>
   );
+}
+
+/** The words beside a pull request: its state, its checks, who opened it. */
+function metaFor(request: TicketPullRequest): string {
+  const parts = [request.state];
+  const checks = checksWord(request.checksState);
+  if (checks !== null) parts.push(checks);
+
+  if (request.checksState === 'failed') {
+    const failed = request.checks
+      .filter((check) => check.state === 'failed')
+      .map((check) => check.context);
+    if (failed.length > 0) parts.push(copy.ticket.checksFailedOn(failed.join(', ')));
+  }
+
+  if (request.authorLogin !== null) parts.push(copy.ticket.pullRequestBy(request.authorLogin));
+
+  return parts.join(' · ');
+}
+
+function checksWord(state: string | null): string | null {
+  if (state === 'pending') return copy.ticket.checksPending;
+  if (state === 'passed') return copy.ticket.checksPassed;
+  if (state === 'failed') return copy.ticket.checksFailed;
+  if (state === 'neutral') return copy.ticket.checksNeutral;
+
+  return null;
 }
 
 const ui = stylex.create({

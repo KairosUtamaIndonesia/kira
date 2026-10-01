@@ -13,7 +13,7 @@
  * themselves in `git_connection` as their adapters land.
  */
 import { createHmac, createSign, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { Elysia, t } from 'elysia';
 import type { Auth } from './auth';
 import type { Config } from './config';
@@ -23,7 +23,14 @@ import { keyHolder, type HeldUser } from './keys';
 import { refusal, REFUSAL } from './refusals';
 import { messages } from './messages';
 import { loadKey, open, seal } from './secretbox';
-import { gitConnection, project, repository, ticket, ticketPullRequest } from './schema';
+import {
+  gitConnection,
+  project,
+  pullRequestCheck,
+  repository,
+  ticket,
+  ticketPullRequest,
+} from './schema';
 
 /* ── The provider adapter ─────────────────────────────────────────────────── */
 
@@ -42,21 +49,40 @@ interface PullRequestEvent {
   mergedAt: string | null;
 }
 
+/** A check a host reported, normalized so the rollup is provider-independent. */
+interface CheckEvent {
+  owner: string;
+  name: string;
+  /** The pull request's number when the host names one; otherwise resolved by SHA. */
+  number: number | null;
+  headSha: string;
+  /** The check's own name, which is what a failed one is reported under. */
+  context: string;
+  state: 'pending' | 'passed' | 'failed' | 'neutral';
+}
+
 interface GitProvider {
   kind: string;
   /** What the host says the delivery is, from its own headers. */
-  eventKind(headers: Headers): 'pull_request' | 'other';
+  eventKind(headers: Headers): 'pull_request' | 'checks' | 'other';
   /** Whether the delivery is signed with `secret` over the raw body. */
   verifySignature(secret: string, headers: Headers, body: Uint8Array): boolean;
   /** The pull request a delivery carries, or null when it is not one. */
   parsePullRequest(body: unknown): PullRequestEvent | null;
+  /** The check a delivery carries, or null when it is not one. */
+  parseCheck(body: unknown): CheckEvent | null;
 }
 
 /** GitHub: HMAC-SHA256 over the raw body, `X-Hub-Signature-256`, `X-GitHub-Event`. */
 const github: GitProvider = {
   kind: 'github',
-  eventKind: (headers) =>
-    headers.get('x-github-event') === 'pull_request' ? 'pull_request' : 'other',
+  eventKind: (headers) => {
+    const event = headers.get('x-github-event');
+    if (event === 'pull_request') return 'pull_request';
+    if (event === 'check_run' || event === 'status') return 'checks';
+
+    return 'other';
+  },
   verifySignature(secret, headers, body) {
     const header = headers.get('x-hub-signature-256');
     if (header === null || !header.startsWith('sha256=')) return false;
@@ -106,7 +132,96 @@ const github: GitProvider = {
       mergedAt: typeof pull.merged_at === 'string' ? pull.merged_at : null,
     };
   },
+  parseCheck(body) {
+    const held = body as {
+      check_run?: {
+        name?: unknown;
+        status?: unknown;
+        conclusion?: unknown;
+        head_sha?: unknown;
+        pull_requests?: { number?: unknown }[];
+        check_suite?: { head_sha?: unknown };
+      };
+      state?: unknown;
+      sha?: unknown;
+      context?: unknown;
+      repository?: { name?: unknown; owner?: { login?: unknown } };
+    };
+    const repo = held?.repository;
+    if (typeof repo?.name !== 'string' || typeof repo.owner?.login !== 'string') return null;
+
+    const run = held.check_run;
+    if (run !== undefined) {
+      if (typeof run.name !== 'string') return null;
+
+      const headSha =
+        typeof run.head_sha === 'string'
+          ? run.head_sha
+          : typeof run.check_suite?.head_sha === 'string'
+            ? run.check_suite.head_sha
+            : '';
+      if (headSha === '') return null;
+
+      return {
+        owner: repo.owner.login,
+        name: repo.name,
+        number: firstNumber(run.pull_requests),
+        headSha,
+        context: run.name,
+        state: checkState(run.status, run.conclusion),
+      };
+    }
+
+    // A commit status names no pull request, so it is resolved by SHA.
+    if (typeof held.sha === 'string' && held.sha !== '' && typeof held.state === 'string') {
+      return {
+        owner: repo.owner.login,
+        name: repo.name,
+        number: null,
+        headSha: held.sha,
+        context: typeof held.context === 'string' && held.context !== '' ? held.context : 'status',
+        state: statusState(held.state),
+      };
+    }
+
+    return null;
+  },
 };
+
+function firstNumber(pulls: { number?: unknown }[] | undefined): number | null {
+  const found = Array.isArray(pulls)
+    ? pulls.find((each) => typeof each?.number === 'number')
+    : undefined;
+
+  return typeof found?.number === 'number' ? found.number : null;
+}
+
+/** A check's state from GitHub's status/conclusion pair. */
+function checkState(status: unknown, conclusion: unknown): CheckEvent['state'] {
+  if (status !== 'completed') return 'pending';
+  if (conclusion === 'success') return 'passed';
+  if (conclusion === 'neutral' || conclusion === 'skipped') return 'neutral';
+
+  return 'failed';
+}
+
+/** A commit-status state, which GitHub, Gitea and Forgejo spell the same way. */
+function statusState(state: unknown): CheckEvent['state'] {
+  if (state === 'success') return 'passed';
+  if (state === 'pending' || state === 'running') return 'pending';
+  if (state === 'error' || state === 'failure') return 'failed';
+
+  return 'neutral';
+}
+
+/** A GitLab pipeline's state. */
+function pipelineState(state: unknown): CheckEvent['state'] {
+  if (state === 'success') return 'passed';
+  if (state === 'failed' || state === 'canceled') return 'failed';
+  if (state === 'skipped' || state === 'manual') return 'neutral';
+
+  return 'pending';
+}
 
 function stateOf(pull: {
   state?: unknown;
@@ -128,8 +243,13 @@ function stateOf(pull: {
 function giteaFamily(kind: 'forgejo' | 'gitea'): GitProvider {
   return {
     kind,
-    eventKind: (headers) =>
-      headers.get('x-gitea-event') === 'pull_request' ? 'pull_request' : 'other',
+    eventKind: (headers) => {
+      const event = headers.get('x-gitea-event');
+      if (event === 'pull_request') return 'pull_request';
+      if (event === 'status') return 'checks';
+
+      return 'other';
+    },
     verifySignature(secret, headers, body) {
       const header = headers.get('x-gitea-signature');
       if (header === null) return false;
@@ -140,6 +260,39 @@ function giteaFamily(kind: 'forgejo' | 'gitea'): GitProvider {
       return sameBytes(delivered, sign(secret, body));
     },
     parsePullRequest: (body) => github.parsePullRequest(body),
+    parseCheck(body) {
+      const held = body as {
+        sha?: unknown;
+        state?: unknown;
+        context?: unknown;
+        name?: unknown;
+        repository?: { name?: unknown; owner?: { login?: unknown } };
+      };
+      const repo = held?.repository;
+      if (
+        typeof held?.sha !== 'string' ||
+        held.sha === '' ||
+        typeof held.state !== 'string' ||
+        typeof repo?.name !== 'string' ||
+        typeof repo.owner?.login !== 'string'
+      ) {
+        return null;
+      }
+
+      return {
+        owner: repo.owner.login,
+        name: repo.name,
+        number: null,
+        headSha: held.sha,
+        context:
+          typeof held.context === 'string' && held.context !== ''
+            ? held.context
+            : typeof held.name === 'string'
+              ? held.name
+              : 'status',
+        state: statusState(held.state),
+      };
+    },
   };
 }
 
@@ -149,8 +302,13 @@ function giteaFamily(kind: 'forgejo' | 'gitea'): GitProvider {
  */
 const gitlab: GitProvider = {
   kind: 'gitlab',
-  eventKind: (headers) =>
-    headers.get('x-gitlab-event') === 'Merge Request Hook' ? 'pull_request' : 'other',
+  eventKind: (headers) => {
+    const event = headers.get('x-gitlab-event');
+    if (event === 'Merge Request Hook') return 'pull_request';
+    if (event === 'Pipeline Hook') return 'checks';
+
+    return 'other';
+  },
   verifySignature(secret, headers) {
     const presented = headers.get('x-gitlab-token');
 
@@ -210,6 +368,41 @@ const gitlab: GitProvider = {
       headSha: typeof request.last_commit?.id === 'string' ? request.last_commit.id : '',
       authorLogin: typeof request.author?.username === 'string' ? request.author.username : null,
       mergedAt: typeof request.merged_at === 'string' ? request.merged_at : null,
+    };
+  },
+  parseCheck(body) {
+    const held = body as {
+      object_attributes?: { sha?: unknown; status?: unknown };
+      merge_request?: { iid?: unknown } | null;
+      project?: { path_with_namespace?: unknown };
+    };
+    const attributes = held?.object_attributes;
+    const path =
+      typeof held?.project?.path_with_namespace === 'string'
+        ? held.project.path_with_namespace
+        : null;
+    if (
+      typeof attributes?.sha !== 'string' ||
+      attributes.sha === '' ||
+      typeof attributes.status !== 'string' ||
+      path === null
+    ) {
+      return null;
+    }
+
+    const [owner, ...rest] = path.split('/');
+    const name = rest.join('/');
+    if (owner === undefined || owner === '' || name === '') return null;
+
+    const iid = held.merge_request?.iid;
+
+    return {
+      owner,
+      name,
+      number: typeof iid === 'number' ? iid : null,
+      headSha: attributes.sha,
+      context: 'pipeline',
+      state: pipelineState(attributes.status),
     };
   },
 };
@@ -302,6 +495,8 @@ const PULL_REQUEST = t.Object({
   branch: t.Union([t.String(), t.Null()]),
   authorLogin: t.Union([t.String(), t.Null()]),
   mergedAt: t.Union([t.String(), t.Null()]),
+  checks: t.Array(t.Object({ context: t.String(), state: t.String() })),
+  checksState: t.Union([t.String(), t.Null()]),
   createdAt: t.String(),
   updatedAt: t.String(),
 });
@@ -341,7 +536,9 @@ export function createGit({
         if (!github.verifySignature(secret, request.headers, body)) {
           return status(401, refusal('GIT_SIGNATURE_INVALID', messages.gitSignatureInvalid));
         }
-        if (github.eventKind(request.headers) !== 'pull_request') return { received: true };
+
+        const kind = github.eventKind(request.headers);
+        if (kind === 'other') return { received: true };
 
         let payload: unknown;
         try {
@@ -350,10 +547,13 @@ export function createGit({
           return status(400, refusal('GIT_PAYLOAD_INVALID', messages.gitPayloadInvalid));
         }
 
-        const event = github.parsePullRequest(payload);
-        if (event === null) return { received: true };
-
-        await mirror(database, github.kind, event);
+        if (kind === 'pull_request') {
+          const event = github.parsePullRequest(payload);
+          if (event !== null) await mirror(database, github.kind, event);
+        } else {
+          const check = github.parseCheck(payload);
+          if (check !== null) await applyCheck(database, github.kind, check);
+        }
 
         return { received: true };
       },
@@ -364,7 +564,7 @@ export function createGit({
           401: REFUSAL,
           404: REFUSAL,
         },
-        detail: { summary: 'A GitHub delivery: a pull request linked to its ticket' },
+        detail: { summary: 'A GitHub delivery: a pull request or a check, linked to its ticket' },
       },
     )
     .post(
@@ -395,7 +595,9 @@ export function createGit({
         if (!provider.verifySignature(secret, request.headers, body)) {
           return status(401, refusal('GIT_SIGNATURE_INVALID', messages.gitSignatureInvalid));
         }
-        if (provider.eventKind(request.headers) !== 'pull_request') return { received: true };
+
+        const kind = provider.eventKind(request.headers);
+        if (kind === 'other') return { received: true };
 
         let payload: unknown;
         try {
@@ -404,8 +606,13 @@ export function createGit({
           return status(400, refusal('GIT_PAYLOAD_INVALID', messages.gitPayloadInvalid));
         }
 
-        const event = provider.parsePullRequest(payload);
-        if (event !== null) await mirror(database, connection.provider, event);
+        if (kind === 'pull_request') {
+          const event = provider.parsePullRequest(payload);
+          if (event !== null) await mirror(database, connection.provider, event);
+        } else {
+          const check = provider.parseCheck(payload);
+          if (check !== null) await applyCheck(database, connection.provider, check);
+        }
 
         return { received: true };
       },
@@ -757,7 +964,27 @@ export function createGit({
           .where(eq(ticketPullRequest.ticketId, found.id))
           .orderBy(asc(ticketPullRequest.createdAt), asc(ticketPullRequest.id));
 
-        return { pullRequests: rows.map(asPullRequest) };
+        const checks =
+          rows.length === 0
+            ? []
+            : await database
+                .select()
+                .from(pullRequestCheck)
+                .where(
+                  inArray(
+                    pullRequestCheck.pullRequestId,
+                    rows.map((row) => row.id),
+                  ),
+                );
+
+        const byPull = new Map<string, CheckRow[]>();
+        for (const check of checks) {
+          const group = byPull.get(check.pullRequestId) ?? [];
+          group.push(check);
+          byPull.set(check.pullRequestId, group);
+        }
+
+        return { pullRequests: rows.map((row) => asPullRequest(row, byPull.get(row.id) ?? [])) };
       },
       {
         params: t.Object({ ref: t.String() }),
@@ -905,6 +1132,74 @@ function identifiers(...parts: readonly (string | null)[]): { prefix: string; nu
   return found;
 }
 
+/**
+ * Record a check against the pull request it belongs to.
+ *
+ * A delivery that names the pull request resolves by number; one that only names
+ * a commit resolves by head SHA, which is the branch the checks ran on. A check
+ * the host does not know about is ignored: a check is always a pull request's.
+ */
+async function applyCheck(database: Database, provider: string, event: CheckEvent): Promise<void> {
+  const [watched] = await database
+    .select()
+    .from(repository)
+    .where(
+      and(
+        eq(repository.provider, provider),
+        sql`lower(${repository.owner}) = lower(${event.owner})`,
+        sql`lower(${repository.name}) = lower(${event.name})`,
+      ),
+    );
+  if (!watched) return;
+
+  const [pull] =
+    event.number === null
+      ? await database
+          .select()
+          .from(ticketPullRequest)
+          .where(
+            and(
+              eq(ticketPullRequest.repositoryId, watched.id),
+              eq(ticketPullRequest.headSha, event.headSha),
+            ),
+          )
+      : await database
+          .select()
+          .from(ticketPullRequest)
+          .where(
+            and(
+              eq(ticketPullRequest.repositoryId, watched.id),
+              eq(ticketPullRequest.number, event.number),
+            ),
+          );
+  if (!pull) return;
+
+  const updatedAt = new Date();
+  await database
+    .insert(pullRequestCheck)
+    .values({
+      id: randomUUID(),
+      pullRequestId: pull.id,
+      context: event.context,
+      state: event.state,
+      updatedAt,
+    })
+    .onConflictDoUpdate({
+      target: [pullRequestCheck.pullRequestId, pullRequestCheck.context],
+      set: { state: event.state, updatedAt },
+    });
+}
+
+/** What a set of checks adds up to, or null when there are none. */
+function checksRollup(checks: readonly CheckRow[]): string | null {
+  if (checks.length === 0) return null;
+  if (checks.some((check) => check.state === 'failed')) return 'failed';
+  if (checks.some((check) => check.state === 'pending')) return 'pending';
+  if (checks.some((check) => check.state === 'passed')) return 'passed';
+
+  return 'neutral';
+}
+
 /* ── Reads and helpers ────────────────────────────────────────────────────── */
 
 function asRepository(row: typeof repository.$inferSelect) {
@@ -989,7 +1284,9 @@ function isHttpsUrl(value: string): boolean {
   }
 }
 
-function asPullRequest(row: typeof ticketPullRequest.$inferSelect) {
+type CheckRow = typeof pullRequestCheck.$inferSelect;
+
+function asPullRequest(row: typeof ticketPullRequest.$inferSelect, checks: readonly CheckRow[]) {
   return {
     id: row.id,
     ticketId: row.ticketId,
@@ -1001,6 +1298,10 @@ function asPullRequest(row: typeof ticketPullRequest.$inferSelect) {
     branch: row.branch,
     authorLogin: row.authorLogin,
     mergedAt: row.mergedAt === null ? null : row.mergedAt.toISOString(),
+    checks: checks
+      .map((check) => ({ context: check.context, state: check.state }))
+      .sort((left, right) => left.context.localeCompare(right.context)),
+    checksState: checksRollup(checks),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
