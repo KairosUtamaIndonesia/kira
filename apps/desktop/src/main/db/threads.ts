@@ -9,7 +9,7 @@ import type { ChatMode, ShapingState } from '../../preload/bridge.ts';
  * Bumped whenever the statements below change shape. A database written by a
  * newer build is refused rather than misread.
  */
-const SCHEMA_VERSION = 17;
+const SCHEMA_VERSION = 18;
 
 export type McpServerScope = 'global' | 'workspace';
 export type McpServerTransport = 'stdio' | 'streamable-http';
@@ -72,8 +72,10 @@ export interface ThreadRecord {
   mode: ChatMode;
   /** The workspace this chat is filed under, or null when it is filed nowhere. */
   workspaceId: string | null;
-  /** Project tickets explicitly linked to this chat. */
+  /** Persistent ticket work history, independent of composer context. */
   workTicketIds: string[];
+  /** Tickets the person attached as context for the next turn. */
+  attachedTicketIds: string[];
   /** The one-time shaping offer and latest proposal, persisted with the chat. */
   shaping: ShapingState | null;
   parentThreadId: string | null;
@@ -402,6 +404,14 @@ export class ThreadStore {
       }
     }
     if (row.user_version < 17) this.migrateTicketLinks();
+    if (row.user_version < 18) {
+      const columns = this.db.prepare('PRAGMA table_info(threads)').all() as { name: string }[];
+      if (!columns.some((column) => column.name === 'attached_ticket_ids_json')) {
+        // The previous list mixed context with work history. Preserve its links;
+        // the person chose to clear old composer attachments rather than guess.
+        this.db.exec('ALTER TABLE threads ADD COLUMN attached_ticket_ids_json TEXT');
+      }
+    }
     this.db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
   }
 
@@ -659,6 +669,7 @@ export class ThreadStore {
       parentThreadId?: string;
       workspaceId?: string;
       workTicketIds?: string[];
+      attachedTicketIds?: string[];
       subagent?: SubagentRecord;
       mode?: ChatMode;
     } = {},
@@ -668,12 +679,13 @@ export class ThreadStore {
     const parentThreadId = options.parentThreadId ?? null;
     const workspaceId = options.workspaceId ?? null;
     const workTicketIds = [...new Set(options.workTicketIds ?? [])];
+    const attachedTicketIds = [...new Set(options.attachedTicketIds ?? [])];
     const subagent = options.subagent ?? null;
     const mode = options.mode ?? 'build';
 
     this.db
       .prepare(
-        'INSERT INTO threads (id, cwd, workspace_id, parent_thread_id, work_ticket_ids_json, shaping_json, subagent_json, mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO threads (id, cwd, workspace_id, parent_thread_id, work_ticket_ids_json, attached_ticket_ids_json, shaping_json, subagent_json, mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       )
       .run(
         id,
@@ -681,6 +693,7 @@ export class ThreadStore {
         workspaceId,
         parentThreadId,
         JSON.stringify(workTicketIds),
+        JSON.stringify(attachedTicketIds),
         null,
         subagentJsonOf(subagent),
         mode,
@@ -694,6 +707,7 @@ export class ThreadStore {
       mode,
       workspaceId,
       workTicketIds,
+      attachedTicketIds,
       shaping: null,
       parentThreadId,
       subagent,
@@ -1029,11 +1043,18 @@ export class ThreadStore {
     this.db.prepare('UPDATE threads SET mode = ? WHERE id = ?').run(mode, threadId);
   }
 
-  /** Persist the project tickets a chat is attached to. */
+  /** Persist ticket work history without changing composer context. */
   setThreadWorkTicketIds(threadId: string, workTicketIds: string[]): void {
     this.db
       .prepare('UPDATE threads SET work_ticket_ids_json = ? WHERE id = ?')
       .run(JSON.stringify([...new Set(workTicketIds)]), threadId);
+  }
+
+  /** Change composer context without changing ticket work history. */
+  setThreadAttachedTicketIds(threadId: string, attachedTicketIds: string[]): void {
+    this.db
+      .prepare('UPDATE threads SET attached_ticket_ids_json = ? WHERE id = ?')
+      .run(JSON.stringify([...new Set(attachedTicketIds)]), threadId);
   }
 
   /** Persist the shaping offer and current proposal without touching chat activity. */
@@ -1409,6 +1430,7 @@ interface ThreadRow {
   mode: ChatMode;
   workspace_id: string | null;
   work_ticket_ids_json: string | null;
+  attached_ticket_ids_json: string | null;
   shaping_json: string | null;
   parent_thread_id: string | null;
   head_id: string | null;
@@ -1419,7 +1441,7 @@ interface ThreadRow {
 }
 
 const THREAD_COLUMNS =
-  'SELECT id, cwd, mode, workspace_id, parent_thread_id, head_id, model_id, work_ticket_ids_json, shaping_json, subagent_json, created_at, updated_at FROM threads';
+  'SELECT id, cwd, mode, workspace_id, parent_thread_id, head_id, model_id, work_ticket_ids_json, attached_ticket_ids_json, shaping_json, subagent_json, created_at, updated_at FROM threads';
 
 function subagentJsonOf(value: SubagentRecord | null): string | null {
   return value === null ? null : JSON.stringify(value);
@@ -1485,6 +1507,7 @@ function threadRecordOf(row: ThreadRow): ThreadRecord {
     mode: row.mode === 'spec' ? 'spec' : 'build',
     workspaceId: row.workspace_id,
     workTicketIds: ticketIdsOf(row.work_ticket_ids_json),
+    attachedTicketIds: ticketIdsOf(row.attached_ticket_ids_json),
     shaping: shapingOf(row.shaping_json),
     parentThreadId: row.parent_thread_id,
     subagent: subagentOf(row.subagent_json),

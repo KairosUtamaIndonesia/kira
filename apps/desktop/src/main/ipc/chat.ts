@@ -24,7 +24,7 @@ export interface ChatDeps {
   state(): ChatState;
   send(text: string): Promise<void>;
   setMode?(mode: ChatMode): Promise<void>;
-  setWorkTicketIds?(workTicketIds: string[]): Promise<void>;
+  setAttachedTicketIds?(attachedTicketIds: string[]): Promise<void>;
   approveProposal?(proposalId: string): Promise<void>;
   rejectProposal?(proposalId: string): Promise<void>;
   sendBackOutcome?(proposalId: string): Promise<void>;
@@ -37,7 +37,7 @@ export interface ChatDeps {
   /** Summarise the chat on screen now, at this boundary rather than at pi's. */
   compact(): Promise<void>;
   /** Start a chat, filed under `workspaceId` when there is one. */
-  start(workspaceId: string | null, workTicketIds?: string[]): Promise<void>;
+  start(workspaceId: string | null, attachedTicketIds?: string[]): Promise<void>;
   open(id: string): Promise<void>;
   branch(messageId: string): Promise<void>;
   edit(messageId: string): Promise<void>;
@@ -56,12 +56,12 @@ export interface ChatHandlers {
   load(): Promise<Result<ChatState>>;
   send(text: unknown): Promise<Result<null>>;
   setMode(mode: unknown): Promise<Result<null>>;
-  setWorkTicketIds(workTicketIds: unknown): Promise<Result<null>>;
+  setAttachedTicketIds(attachedTicketIds: unknown): Promise<Result<null>>;
   queue(text: unknown, lane: unknown): Promise<Result<null>>;
   unqueue(): Promise<Result<QueuedLine[]>>;
   stop(): Promise<Result<QueuedLine[]>>;
   compact(): Promise<Result<null>>;
-  start(workspaceId: unknown, workTicketIds?: unknown): Promise<Result<null>>;
+  start(workspaceId: unknown, attachedTicketIds?: unknown): Promise<Result<null>>;
   open(id: unknown): Promise<Result<null>>;
   branch(messageId: unknown): Promise<Result<null>>;
   edit(messageId: unknown): Promise<Result<null>>;
@@ -89,7 +89,7 @@ export function chatHandlers({
   state,
   send,
   setMode,
-  setWorkTicketIds,
+  setAttachedTicketIds,
   approveProposal,
   rejectProposal,
   sendBackOutcome,
@@ -123,21 +123,21 @@ export function chatHandlers({
       return nothing(() => setMode(mode));
     },
 
-    setWorkTicketIds: (workTicketIds) => {
+    setAttachedTicketIds: (attachedTicketIds) => {
       if (
-        !validWorkTicketIds(workTicketIds) ||
-        workTicketIds.length > 20 ||
-        new Set(workTicketIds).size !== workTicketIds.length
+        !validAttachedTicketIds(attachedTicketIds) ||
+        attachedTicketIds.length > 20 ||
+        new Set(attachedTicketIds).size !== attachedTicketIds.length
       ) {
         return Promise.resolve({
           ok: false,
           error: 'A chat can hold up to 20 distinct ticket references.',
         });
       }
-      if (setWorkTicketIds === undefined) {
+      if (setAttachedTicketIds === undefined) {
         return Promise.resolve({ ok: false, error: 'Changing attached tickets is unavailable.' });
       }
-      return nothing(() => setWorkTicketIds(workTicketIds));
+      return nothing(() => setAttachedTicketIds(attachedTicketIds));
     },
 
     send: (text) => {
@@ -238,7 +238,7 @@ export function chatHandlers({
 
     compact: () => nothing(compact),
 
-    start: (workspaceId, workTicketIds) => {
+    start: (workspaceId, attachedTicketIds) => {
       if (!isWorkspaceId(workspaceId)) {
         return Promise.resolve({
           ok: false,
@@ -247,11 +247,11 @@ export function chatHandlers({
       }
 
       if (
-        workTicketIds !== undefined &&
-        (!Array.isArray(workTicketIds) ||
-          workTicketIds.length > 20 ||
-          workTicketIds.some((id) => typeof id !== 'string' || id.trim() === '') ||
-          new Set(workTicketIds).size !== workTicketIds.length)
+        attachedTicketIds !== undefined &&
+        (!Array.isArray(attachedTicketIds) ||
+          attachedTicketIds.length > 20 ||
+          attachedTicketIds.some((id) => typeof id !== 'string' || id.trim() === '') ||
+          new Set(attachedTicketIds).size !== attachedTicketIds.length)
       ) {
         return Promise.resolve({
           ok: false,
@@ -259,7 +259,7 @@ export function chatHandlers({
         });
       }
 
-      return nothing(() => start(workspaceId, workTicketIds as string[] | undefined));
+      return nothing(() => start(workspaceId, attachedTicketIds as string[] | undefined));
     },
 
     open: (id) => withId(id, 'A chat needs an id.', open),
@@ -294,7 +294,7 @@ function isLane(value: unknown): value is QueuedLine['lane'] {
   return value === 'next' || value === 'later';
 }
 
-function validWorkTicketIds(value: unknown): value is string[] {
+function validAttachedTicketIds(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((id) => typeof id === 'string' && id.trim() !== '');
 }
 

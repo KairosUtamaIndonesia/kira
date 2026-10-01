@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import type { ChatEvent, Ticket, TicketChange } from '../../../preload/bridge.ts';
 import { ThreadStore } from '../../db/threads.ts';
-import { startConversation } from '../conversations.ts';
+import { listChats, startConversation } from '../conversations.ts';
 import { kiraModels } from '../models.ts';
 import { trackerFor, type TrackerAnswer, type TrackerWire } from '../../tracker.ts';
 
@@ -184,7 +184,7 @@ test('a real Kira session starts an unattached project ticket and records its ch
     store,
     workspace.folder,
     models,
-    { id: 'thread-1', workspaceId: workspace.id, workTicketIds: [spec.id, foreign.id] },
+    { id: 'thread-1', workspaceId: workspace.id, attachedTicketIds: [spec.id, foreign.id] },
     undefined,
     tracker,
   );
@@ -232,11 +232,17 @@ test('a real Kira session starts an unattached project ticket and records its ch
     assert.equal(edited.body, 'Updated');
     assert.equal(edited.status, 'running');
     assert.deepEqual(edited.assignee, { id: 'ada', name: 'Ada' });
-    assert.deepEqual(store.getThread(conversation.threadId).workTicketIds, [
+    assert.deepEqual(store.getThread(conversation.threadId).workTicketIds, [draft.id]);
+    assert.deepEqual(store.getThread(conversation.threadId).attachedTicketIds, [
       spec.id,
       foreign.id,
-      draft.id,
     ]);
+    assert.deepEqual(
+      listChats(store).find((chat) => chat.id === conversation.threadId)?.workTicketIds,
+      [draft.id],
+    );
+    store.setThreadAttachedTicketIds(conversation.threadId, [foreign.id]);
+    assert.deepEqual(store.getThread(conversation.threadId).workTicketIds, [draft.id]);
 
     store.joinWorkspace(workspace.id, foreign.projectId);
     await conversation.send('Read the attached context.');

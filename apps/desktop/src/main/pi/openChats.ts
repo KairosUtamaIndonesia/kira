@@ -78,7 +78,7 @@ export interface OpenChats {
   /** Change the current chat's mode, refusing a switch while Kira is writing. */
   setMode(mode: ChatMode): Promise<void>;
   /** Attach or detach project tickets from the current chat. */
-  setWorkTicketIds(workTicketIds: string[]): Promise<void>;
+  setAttachedTicketIds(attachedTicketIds: string[]): Promise<void>;
   /**
    * Approve a waiting proposal in the chat on screen, writing it through the
    * person-owned tracker seam. A breakdown is published and marked ready in one
@@ -125,7 +125,7 @@ export interface OpenChats {
    * lands on disk either, because where a new chat would work is worked out when
    * it becomes one.
    */
-  start(workspaceId: string | null, workTicketIds?: string[]): Promise<void>;
+  start(workspaceId: string | null, attachedTicketIds?: string[]): Promise<void>;
   /**
    * Forget a workspace, leaving its chats, and the folder they work in, alone.
    *
@@ -197,7 +197,7 @@ interface Draft {
   id: string;
   /** The workspace it was asked for, or null when it was filed nowhere. */
   workspaceId: string | null;
-  workTicketIds: string[];
+  attachedTicketIds: string[];
   /** The planning/build choice made before the first message is sent. */
   mode: ChatMode;
   /**
@@ -422,7 +422,7 @@ export function openChats(
               // switch while it was being composed.
               ...(composing.modelId === null ? {} : { modelId: composing.modelId }),
               mode: composing.mode,
-              workTicketIds: composing.workTicketIds,
+              attachedTicketIds: composing.attachedTicketIds,
             },
             memorySettings,
             tracker,
@@ -456,7 +456,7 @@ export function openChats(
    * is whatever was asked for last — including nowhere in particular, when New
    * chat was pressed after New chat here.
    */
-  function begin(workspaceId: string | null, workTicketIds: string[] = []): void {
+  function begin(workspaceId: string | null, attachedTicketIds: string[] = []): void {
     const left = shown === null ? undefined : open.get(shown);
 
     // A new chat starts on the model the one being left runs on. The choice is
@@ -466,11 +466,11 @@ export function openChats(
     const modelId = left?.modelId() ?? null;
 
     draft = draft
-      ? { ...draft, workspaceId, workTicketIds: [...new Set(workTicketIds)] }
+      ? { ...draft, workspaceId, attachedTicketIds: [...new Set(attachedTicketIds)] }
       : {
           id: randomUUID(),
           workspaceId,
-          workTicketIds: [...new Set(workTicketIds)],
+          attachedTicketIds: [...new Set(attachedTicketIds)],
           modelId,
           mode: 'build',
         };
@@ -539,8 +539,10 @@ export function openChats(
         chats: listChats(store),
         workspaces: listWorkspaces(store),
         currentId: id,
-        workTicketIds:
-          conversation === null ? (draft?.workTicketIds ?? []) : store.getThread(id).workTicketIds,
+        attachedTicketIds:
+          conversation === null
+            ? (draft?.attachedTicketIds ?? [])
+            : store.getThread(id).attachedTicketIds,
         mode: conversation === null ? (draft?.mode ?? 'build') : store.getThread(id).mode,
         draftId: draft?.id ?? null,
         transcript: conversation?.transcript() ?? {
@@ -601,11 +603,11 @@ export function openChats(
       }
       await conversation.setMode(mode);
     },
-    setWorkTicketIds: async (workTicketIds) => {
-      const ids = [...new Set(workTicketIds)];
+    setAttachedTicketIds: async (attachedTicketIds) => {
+      const ids = [...new Set(attachedTicketIds)];
       if (shown === null) {
         if (draft === null) throw new Error('No chat is open.');
-        draft = { ...draft, workTicketIds: ids };
+        draft = { ...draft, attachedTicketIds: ids };
         return;
       }
 
@@ -613,7 +615,7 @@ export function openChats(
       if (conversation.isRunning()) {
         throw new Error('Wait for Kira to finish before changing attached tickets.');
       }
-      store.setThreadWorkTicketIds(conversation.threadId, ids);
+      store.setThreadAttachedTicketIds(conversation.threadId, ids);
     },
 
     approveProposal: async (proposalId) => {
@@ -791,7 +793,7 @@ export function openChats(
             store,
             workspace.folder,
             models,
-            { id: chatId, workspaceId, workTicketIds: [ticketId] },
+            { id: chatId, workspaceId, workTicketIds: [ticketId], attachedTicketIds: [ticketId] },
             memorySettings,
             tracker,
             mcp,
@@ -824,7 +826,7 @@ export function openChats(
      */
     compact: async () => await current().compact(),
 
-    start: async (workspaceId, workTicketIds) => begin(workspaceId, workTicketIds),
+    start: async (workspaceId, attachedTicketIds) => begin(workspaceId, attachedTicketIds),
 
     choose: async (modelId) => {
       // A chat being composed is not open yet, so there is no session to switch:

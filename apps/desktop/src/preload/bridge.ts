@@ -324,7 +324,7 @@ export interface ChatConclusion {
 export interface ChatSummary {
   id: string;
   title: string;
-  /** Ticket context and work links for this chat; access is scoped to its project. */
+  /** Tickets worked in this chat, not composer context; access is project-scoped. */
   workTicketIds: string[];
   /** When the chat was created. */
   createdAt: string;
@@ -424,7 +424,8 @@ export interface ChatState {
   workspaces: WorkspaceSummary[];
   currentId: string;
   /** Project tickets attached to the current chat, including a new draft. */
-  workTicketIds: string[];
+  /** Composer ticket attachments only; work history lives on each ChatSummary. */
+  attachedTicketIds: string[];
   /** Whether the current chat is planning or can make workspace changes. */
   mode: ChatMode;
   /**
@@ -571,7 +572,7 @@ export type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 export const CHAT_CHANNELS = {
   load: 'chat:load',
   setMode: 'chat:set-mode',
-  setWorkTicketIds: 'chat:set-work-ticket-ids',
+  setAttachedTicketIds: 'chat:set-attached-ticket-ids',
   proposalApprove: 'chat:proposal-approve',
   proposalReject: 'chat:proposal-reject',
   outcomeSendBack: 'chat:outcome-send-back',
@@ -1151,7 +1152,7 @@ export interface KiraBridge {
   loadChat(): Promise<Result<ChatState>>;
   /** Change the current chat between direct building and planning-only Spec mode. */
   setChatMode(mode: ChatMode): Promise<Result<null>>;
-  setChatWorkTicketIds(workTicketIds: string[]): Promise<Result<null>>;
+  setChatAttachedTicketIds(attachedTicketIds: string[]): Promise<Result<null>>;
   /**
    * Send a message to the current chat. Resolves when Kira's turn has finished,
    * which may be long after the window has moved to another chat.
@@ -1185,7 +1186,7 @@ export interface KiraBridge {
    */
   takeQueuedBack(): Promise<Result<QueuedLine[]>>;
   /** Start a new chat and switch to it, filed under `workspaceId` when there is one. */
-  startChat(workspaceId: string | null, workTicketIds?: string[]): Promise<Result<null>>;
+  startChat(workspaceId: string | null, attachedTicketIds?: string[]): Promise<Result<null>>;
   /** Switch to a stored chat, leaving whatever it — or the chat left behind — is doing. */
   openChat(id: string): Promise<Result<null>>;
   /**

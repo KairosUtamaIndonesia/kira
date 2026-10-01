@@ -254,6 +254,7 @@ export async function startConversation(
     workspaceId?: string;
     modelId?: string;
     workTicketIds?: string[];
+    attachedTicketIds?: string[];
     mode?: ChatMode;
   } = {},
   memorySettings?: MemorySource,

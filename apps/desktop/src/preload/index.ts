@@ -65,7 +65,8 @@ const bridge: KiraBridge = {
 
   loadChat: () => ask<ChatState>(CHAT_CHANNELS.load),
   setChatMode: (mode: ChatMode) => ask<null>(CHAT_CHANNELS.setMode, mode),
-  setChatWorkTicketIds: (workTicketIds) => ask<null>(CHAT_CHANNELS.setWorkTicketIds, workTicketIds),
+  setChatAttachedTicketIds: (attachedTicketIds) =>
+    ask<null>(CHAT_CHANNELS.setAttachedTicketIds, attachedTicketIds),
 
   approveProposal: (proposalId) => ask<null>(CHAT_CHANNELS.proposalApprove, proposalId),
 
@@ -88,8 +89,8 @@ const bridge: KiraBridge = {
   stopChat: () => ask<QueuedLine[]>(CHAT_CHANNELS.stop),
   compactChat: () => ask<null>(CHAT_CHANNELS.compact),
 
-  startChat: (workspaceId, workTicketIds) =>
-    ask<null>(CHAT_CHANNELS.start, workspaceId, workTicketIds),
+  startChat: (workspaceId, attachedTicketIds) =>
+    ask<null>(CHAT_CHANNELS.start, workspaceId, attachedTicketIds),
 
   openChat: (id) => ask<null>(CHAT_CHANNELS.open, id),
 

@@ -765,9 +765,9 @@ test('a draft chat exposes its attached tickets to the composer before the first
 
   await chats.start(null, ['DEMO-1', 'DEMO-2']);
 
-  assert.deepEqual(chats.state().workTicketIds, ['DEMO-1', 'DEMO-2']);
-  await chats.setWorkTicketIds(['DEMO-2']);
-  assert.deepEqual(chats.state().workTicketIds, ['DEMO-2']);
+  assert.deepEqual(chats.state().attachedTicketIds, ['DEMO-1', 'DEMO-2']);
+  await chats.setAttachedTicketIds(['DEMO-2']);
+  assert.deepEqual(chats.state().attachedTicketIds, ['DEMO-2']);
   assert.equal(store.listThreads().length, 0);
 
   chats.closeAll();

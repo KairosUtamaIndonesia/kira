@@ -178,10 +178,11 @@ The current link on a ticket to the pull request reviewing its work.
 _Avoid_: PR URL
 
 **Linked chat**:
-A chat associated with a ticket, either supplied as context or recorded when Kira starts working
-it with the skill its kind names. A ticket lists its linked chats. The person's request defines the
-work; attaching a ticket supplies context rather than permission, and reading or editing ordinary
-ticket fields does not create a work link. There is no separate start action.
+A chat associated with a ticket through work performed there, including creating a ticket or
+starting it with the skill its kind names. A ticket lists its linked chats. Composer attachments
+are separate context: attaching or removing one does not change work history, and starting work
+does not add a composer attachment. The person's request defines the work; reading or editing
+ordinary ticket fields does not create a work link. There is no separate start action.
 _Avoid_: Session, Run (in anything a person reads), Worker, job
 
 The central relationship is:

@@ -41,7 +41,7 @@ const surface: ChatState = {
   ],
   workspaces: [],
   currentId: 'first',
-  workTicketIds: [],
+  attachedTicketIds: [],
   mode: 'build',
   draftId: null,
   transcript: { messages: [line], trailing: [], headId: 'entry-1' },
@@ -78,8 +78,8 @@ function deps(calls: string[], overrides: Partial<ChatDeps> = {}): ChatDeps {
       calls.push('unqueue');
       return [];
     },
-    start: async (workspaceId, workTicketIds) => {
-      calls.push(`start ${workspaceId ?? 'nowhere'} ${workTicketIds?.join(',') ?? ''}`);
+    start: async (workspaceId, attachedTicketIds) => {
+      calls.push(`start ${workspaceId ?? 'nowhere'} ${attachedTicketIds?.join(',') ?? ''}`);
     },
     open: async (id) => {
       calls.push(`open ${id}`);
@@ -659,7 +659,7 @@ for (const testCase of CASES) {
       load: () => handlers.load(),
       send: () => handlers.send(testCase.argument),
       setMode: () => handlers.setMode(testCase.argument as ChatMode),
-      setWorkTicketIds: () => handlers.setWorkTicketIds(testCase.argument),
+      setAttachedTicketIds: () => handlers.setAttachedTicketIds(testCase.argument),
       queue: () => handlers.queue(testCase.argument, testCase.lane),
       unqueue: () => handlers.unqueue(),
       stop: () => handlers.stop(),
@@ -735,13 +735,13 @@ test('attached ticket changes validate the list before updating the current chat
     const calls: string[] = [];
     const handlers = chatHandlers(
       deps(calls, {
-        setWorkTicketIds: async (ids) => {
+        setAttachedTicketIds: async (ids) => {
           calls.push(`tickets ${ids.join(',')}`);
         },
       }),
     );
 
-    assert.deepEqual(await handlers.setWorkTicketIds(input), want);
+    assert.deepEqual(await handlers.setAttachedTicketIds(input), want);
     assert.deepEqual(calls, wantCalls);
   }
 });

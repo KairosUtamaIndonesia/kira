@@ -71,6 +71,7 @@ export function createThread(
     parentThreadId?: string;
     workspaceId?: string;
     workTicketIds?: string[];
+    attachedTicketIds?: string[];
     mode?: ChatMode;
   } = {},
 ): PiThread {
@@ -118,6 +119,7 @@ export function forkThread(
     parentThreadId: sourceThreadId,
     workspaceId: source.workspaceId ?? undefined,
     workTicketIds: source.workTicketIds,
+    attachedTicketIds: source.attachedTicketIds,
     mode: source.mode,
   });
 

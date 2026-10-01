@@ -57,7 +57,7 @@ async function attachedTicketContext(
   const projectId =
     thread.workspaceId === null ? null : store.findWorkspace(thread.workspaceId)?.projectId;
   if (projectId === null || projectId === undefined) return '';
-  const ids = thread.workTicketIds;
+  const ids = thread.attachedTicketIds;
   if (ids.length === 0) return '';
   const read = async (id: string): Promise<Ticket | null> => {
     if (tracker === undefined) return null;

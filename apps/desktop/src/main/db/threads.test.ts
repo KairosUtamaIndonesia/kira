@@ -22,7 +22,7 @@ test('a new database reaches the current schema version', () => {
   const db = new DatabaseSync(path);
   assert.equal(
     (db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version,
-    17,
+    18,
   );
   assert.ok(
     (db.prepare('PRAGMA table_info(threads)').all() as { name: string }[]).some(
@@ -56,6 +56,44 @@ test('an ordinary chat remembers its linked project tickets', () => {
   assert.deepEqual(store.getThread(chat.id).workTicketIds, ['ticket-b', 'ticket-c']);
 
   store.close();
+});
+
+test('composer attachments can be removed without erasing work history', () => {
+  const path = storePath();
+  const store = new ThreadStore(path);
+  const chat = store.createThread(tmpdir(), {
+    workTicketIds: ['worked-ticket'],
+    attachedTicketIds: ['context-ticket', 'worked-ticket', 'context-ticket'],
+  });
+  assert.deepEqual(chat.attachedTicketIds, ['context-ticket', 'worked-ticket']);
+  store.setThreadAttachedTicketIds(chat.id, []);
+  assert.deepEqual(store.getThread(chat.id).attachedTicketIds, []);
+  assert.deepEqual(store.getThread(chat.id).workTicketIds, ['worked-ticket']);
+  store.close();
+  const reopened = new ThreadStore(path);
+  assert.deepEqual(reopened.getThread(chat.id).attachedTicketIds, []);
+  assert.deepEqual(reopened.getThread(chat.id).workTicketIds, ['worked-ticket']);
+  reopened.close();
+});
+
+test('old shared ticket lists become work history with empty composer attachments', () => {
+  const path = storePath();
+  const original = new ThreadStore(path);
+  const chat = original.createThread(tmpdir(), { workTicketIds: ['ticket-a', 'ticket-b'] });
+  original.close();
+  const old = new DatabaseSync(path);
+  old.exec('ALTER TABLE threads DROP COLUMN attached_ticket_ids_json');
+  old.exec('PRAGMA user_version = 17');
+  old.close();
+  const migrated = new ThreadStore(path);
+  assert.deepEqual(migrated.getThread(chat.id).workTicketIds, ['ticket-a', 'ticket-b']);
+  assert.deepEqual(migrated.getThread(chat.id).attachedTicketIds, []);
+  migrated.setThreadAttachedTicketIds(chat.id, ['ticket-c']);
+  migrated.close();
+  const reopened = new ThreadStore(path);
+  assert.deepEqual(reopened.getThread(chat.id).attachedTicketIds, ['ticket-c']);
+  assert.deepEqual(reopened.getThread(chat.id).workTicketIds, ['ticket-a', 'ticket-b']);
+  reopened.close();
 });
 
 /** A stored entry. Only the id, its parent and what kind it is matter here. */

@@ -45,8 +45,9 @@ review, Done or Won't do (the server's `draft`, `ready`, `running`, `needs-revie
 
 **The person's request starts work.** Kira works requested tickets in the chat's current project
 with the skill each kind names (ADR 0022), whether attached or not. Attachments supply context.
-When work begins, setting Running records the chat link and assigns the chat's person. Reading a
-ticket or editing ordinary fields does not create a work link. There is no separate Start action,
+When work begins, setting Running records the chat link and assigns the chat's person. Work links
+and composer attachments are stored separately: starting work does not attach context, and removing
+context does not erase a work link. Reading a ticket or editing ordinary fields does not create a work link. There is no separate Start action,
 and no claim, lease, heartbeat, worker or run. A ticket stays Running until someone changes it.
 
 **The current project is the access boundary.** Kira's ticket tools create, read and update tickets
@@ -93,6 +94,10 @@ ticket still ends in an Outcome the person approves.
   and what people expect to drag.
 
 ## Consequences
+
+- **Existing mixed links are retained as history.** The old shared list cannot reliably distinguish
+  work links from attachments. When separating the lists, retain its associations and clear old
+  composer attachments, as chosen by the person. New attachments do not imply work history.
 
 - **Isolation goes.** Two tickets running at once share one checkout, and Kira no longer gives
   each agent a worktree. The skills can branch or use worktrees themselves. Revisit this when two

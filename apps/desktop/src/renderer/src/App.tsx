@@ -156,7 +156,7 @@ const PARKED_PANE: ComponentProps<typeof ChatPane> = {
   browserElements: [],
   onBrowserElementsChange: NOTHING,
   onAddBrowserElement: NOTHING,
-  workTicketIds: [],
+  attachedTicketIds: [],
   workTicketDetails: {},
   linkableWorkTickets: [],
   onOpenWorkTicket: NOTHING,
@@ -241,7 +241,7 @@ export default function App() {
   const [specQueue, setSpecQueue] = useState<TicketQueue | null>(null);
   const [specQueueChatId, setSpecQueueChatId] = useState<string | null>(null);
   const [draftId, setDraftId] = useState<string | null>(null);
-  const [workTicketIds, setWorkTicketIds] = useState<string[]>([]);
+  const [attachedTicketIds, setAttachedTicketIds] = useState<string[]>([]);
   const [workTicketDetails, setWorkTicketDetails] = useState<
     Record<string, Pick<WorkTicket, 'name' | 'title'>>
   >({});
@@ -330,7 +330,7 @@ export default function App() {
       setChats(result.value.chats);
       setWorkspaces(result.value.workspaces);
       setCurrentId(result.value.currentId);
-      setWorkTicketIds(result.value.workTicketIds);
+      setAttachedTicketIds(result.value.attachedTicketIds);
       setMode(result.value.mode);
       setDraftId(result.value.draftId);
       setTranscript(result.value.transcript);
@@ -349,7 +349,7 @@ export default function App() {
         const queue = await window.kira.loadQueue(workspaceId);
         if (queue.ok) {
           setLinkableWorkTickets(queue.value.tickets);
-          rememberWorkTicketDetails(queue.value, result.value.workTicketIds);
+          rememberWorkTicketDetails(queue.value, result.value.attachedTicketIds);
           if (proposalTicket !== null) {
             setSpecQueue(queue.value);
             setSpecQueueChatId(result.value.currentId);
@@ -456,9 +456,6 @@ export default function App() {
 
       if (event.type === 'progress') {
         setTranscript(event.transcript);
-        if (event.workTicketIds !== undefined) {
-          setWorkTicketIds(event.workTicketIds);
-        }
         return;
       }
 
@@ -589,14 +586,14 @@ export default function App() {
   );
 
   /** Keep the visible composer attachments and the saved chat context in sync. */
-  const changeWorkTicketIds = useCallback(
+  const changeAttachedTicketIds = useCallback(
     async (next: string[]): Promise<void> => {
-      const result = await window.kira.setChatWorkTicketIds(next);
+      const result = await window.kira.setChatAttachedTicketIds(next);
       if (!result.ok) {
         setError({ chatId: currentId, message: result.error });
         return;
       }
-      setWorkTicketIds(next);
+      setAttachedTicketIds(next);
       setError(null);
     },
     [currentId],
@@ -903,18 +900,21 @@ export default function App() {
    * no workspace is named. A workspace's chats share its folder, which is the whole
    * point of one: the same files, the same instructions beside them.
    */
-  async function startChat(workspaceId: string | null, workTicketIds?: string[]): Promise<void> {
+  async function startChat(
+    workspaceId: string | null,
+    attachedTicketIds?: string[],
+  ): Promise<void> {
     const ticketQueue =
-      workspaceId !== null && workTicketIds !== undefined && workTicketIds.length > 0
+      workspaceId !== null && attachedTicketIds !== undefined && attachedTicketIds.length > 0
         ? window.kira.loadQueue(workspaceId)
         : null;
-    await switchChat(() => window.kira.startChat(workspaceId, workTicketIds));
+    await switchChat(() => window.kira.startChat(workspaceId, attachedTicketIds));
     if (ticketQueue !== null) {
       const queue = await ticketQueue;
       if (queue.ok) {
         setLinkableTicketsWorkspaceId(workspaceId);
         setLinkableWorkTickets(queue.value.tickets);
-        rememberWorkTicketDetails(queue.value, workTicketIds ?? []);
+        rememberWorkTicketDetails(queue.value, attachedTicketIds ?? []);
       }
     }
   }
@@ -1128,7 +1128,7 @@ export default function App() {
         ...held,
         [currentId]: [...(held[currentId] ?? []), selection],
       })),
-    workTicketIds,
+    attachedTicketIds,
     workTicketDetails,
     linkableWorkTickets:
       currentChat?.workspaceId === linkableTicketsWorkspaceId ? linkableWorkTickets : [],
@@ -1141,10 +1141,10 @@ export default function App() {
           [ticket.id]: { name: ticket.name, title: ticket.title },
         }));
       }
-      void changeWorkTicketIds([...workTicketIds, ticketId]);
+      void changeAttachedTicketIds([...attachedTicketIds, ticketId]);
     },
     onRemoveWorkTicket: (ticketId) =>
-      void changeWorkTicketIds(workTicketIds.filter((id) => id !== ticketId)),
+      void changeAttachedTicketIds(attachedTicketIds.filter((id) => id !== ticketId)),
   };
 
   /**
@@ -1300,10 +1300,10 @@ export default function App() {
                 <Text type="label" weight="medium" maxLines={1}>
                   {currentChat?.title ?? 'New chat'}
                 </Text>
-                {workTicketIds.length > 0 && (
+                {attachedTicketIds.length > 0 && (
                   <Text type="supporting" color="secondary">
-                    Working with {workTicketIds.length} attached project{' '}
-                    {workTicketIds.length === 1 ? 'ticket' : 'tickets'}
+                    Working with {attachedTicketIds.length} attached project{' '}
+                    {attachedTicketIds.length === 1 ? 'ticket' : 'tickets'}
                   </Text>
                 )}
               </div>
@@ -1488,7 +1488,7 @@ function ChatPane({
   browserElements,
   onBrowserElementsChange,
   onAddBrowserElement,
-  workTicketIds,
+  attachedTicketIds,
   workTicketDetails,
   linkableWorkTickets,
   onOpenWorkTicket,
@@ -1532,7 +1532,7 @@ function ChatPane({
   browserElements: BrowserElementSelection[];
   onBrowserElementsChange: (browserElements: BrowserElementSelection[]) => void;
   onAddBrowserElement: (selection: BrowserElementSelection) => void;
-  workTicketIds: string[];
+  attachedTicketIds: string[];
   workTicketDetails: Record<string, Pick<WorkTicket, 'name' | 'title'>>;
   linkableWorkTickets: WorkTicket[];
   onOpenWorkTicket: (ticketId: string) => void;
@@ -1639,7 +1639,7 @@ function ChatPane({
             onRestored={onRestored}
             browserElements={browserElements}
             onBrowserElementsChange={onBrowserElementsChange}
-            workTicketIds={workTicketIds}
+            attachedTicketIds={attachedTicketIds}
             workTicketDetails={workTicketDetails}
             linkableWorkTickets={linkableWorkTickets}
             onOpenWorkTicket={onOpenWorkTicket}

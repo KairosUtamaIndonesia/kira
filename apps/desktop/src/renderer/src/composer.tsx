@@ -73,7 +73,7 @@ export function Composer({
   isEditing = false,
   browserElements = [],
   onBrowserElementsChange,
-  workTicketIds = [],
+  attachedTicketIds = [],
   workTicketDetails = {},
   linkableWorkTickets = [],
   onOpenWorkTicket,
@@ -102,7 +102,7 @@ export function Composer({
   isEditing?: boolean;
   browserElements?: BrowserElementSelection[];
   onBrowserElementsChange?: (browserElements: BrowserElementSelection[]) => void;
-  workTicketIds?: string[];
+  attachedTicketIds?: string[];
   workTicketDetails?: Record<string, { name: string; title: string }>;
   linkableWorkTickets?: { id: string; name: string; title: string }[];
   onOpenWorkTicket?: (ticketId: string) => void;
@@ -122,7 +122,7 @@ export function Composer({
   // the replacement, so it still waits for a turn that is running to finish.
   const canSend = useAuiState((state) => state.composer.canSend) && !(isEditing && isRunning);
   const [isLinkTicketOpen, setIsLinkTicketOpen] = useState(false);
-  const workTicketRows = workTicketIds.map((ticketId) => {
+  const attachedTicketRows = attachedTicketIds.map((ticketId) => {
     const ticket = workTicketDetails[ticketId];
     const ticketName = ticket?.name ?? `Ticket ${ticketId.slice(0, 8)}`;
     return (
@@ -249,8 +249,8 @@ export function Composer({
     onStop: () => aui.composer.cancel(),
     input: (
       <div {...stylex.props(styles.composerInputContent)}>
-        {workTicketRows.length > 0 && (
-          <div {...stylex.props(styles.workTicketAttachments)}>{workTicketRows}</div>
+        {attachedTicketRows.length > 0 && (
+          <div {...stylex.props(styles.workTicketAttachments)}>{attachedTicketRows}</div>
         )}
         <ChatComposerInput
           onKeyDown={(event) => {
@@ -343,7 +343,7 @@ export function Composer({
               }}
               items={[
                 {
-                  label: 'Link Ticket',
+                  label: 'Attach Ticket',
                   icon: <Icon icon={TicketIcon} size="sm" />,
                   onClick: () => setIsLinkTicketOpen(true),
                 },
@@ -361,7 +361,7 @@ export function Composer({
         maxHeight="min(75dvh, 680px)"
       >
         <DialogHeader
-          title="Link Ticket"
+          title="Attach Ticket"
           subtitle="Add a project ticket to this chat’s context."
           onOpenChange={setIsLinkTicketOpen}
         />
@@ -372,7 +372,7 @@ export function Composer({
             </Text>
           ) : (
             linkableWorkTickets.map((ticket) => {
-              const isLinked = workTicketIds.includes(ticket.id);
+              const isAttached = attachedTicketIds.includes(ticket.id);
               return (
                 <div {...stylex.props(styles.ticketPickerRow)} key={ticket.id}>
                   <Icon icon={TicketIcon} size="sm" color="secondary" />
@@ -383,11 +383,11 @@ export function Composer({
                     </Text>
                   </div>
                   <Button
-                    label={isLinked ? 'Linked' : 'Link'}
-                    aria-label={isLinked ? `${ticket.name} is linked` : `Link ${ticket.name}`}
+                    label={isAttached ? 'Attached' : 'Attach'}
+                    aria-label={isAttached ? `${ticket.name} is attached` : `Attach ${ticket.name}`}
                     size="sm"
-                    variant={isLinked ? 'ghost' : 'secondary'}
-                    isDisabled={isLinked}
+                    variant={isAttached ? 'ghost' : 'secondary'}
+                    isDisabled={isAttached}
                     onClick={() => {
                       onLinkWorkTicket?.(ticket.id);
                       setIsLinkTicketOpen(false);

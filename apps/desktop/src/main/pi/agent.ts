@@ -46,6 +46,7 @@ export async function startSession(
     workspaceId?: string;
     modelId?: string;
     workTicketIds?: string[];
+    attachedTicketIds?: string[];
     mode?: ChatMode;
   } = {},
   memorySettings?: MemorySource,

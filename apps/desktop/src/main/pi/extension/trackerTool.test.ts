@@ -395,6 +395,7 @@ test('ticket tools use the current project, not attachments, as their boundary',
         const thread = createThread(store, workspace.folder, {
           workspaceId: scope.noWorkspace ? undefined : workspace.id,
           workTicketIds: before,
+          attachedTicketIds: scope.linked ? [current.id] : [],
         });
         let writes = 0;
         const write = async () => {
@@ -425,6 +426,7 @@ test('ticket tools use the current project, not attachments, as their boundary',
                 (scope.foreignBlocker && action.edit.blockedBy !== undefined)
               ? 'This chat can only access tickets in its current project.'
               : null;
+        const attachments = store.getThread(thread.threadId).attachedTicketIds;
         if (error !== null) {
           await assert.rejects(call, { message: error });
           assert.equal(writes, 0);
@@ -440,6 +442,7 @@ test('ticket tools use the current project, not attachments, as their boundary',
             assert.deepEqual(store.getThread(thread.threadId).workTicketIds, after);
           }
         }
+        assert.deepEqual(store.getThread(thread.threadId).attachedTicketIds, attachments);
       });
     }
   }

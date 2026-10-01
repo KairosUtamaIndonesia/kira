@@ -35,6 +35,8 @@
 
 - Users on Windows, macOS, and Linux can choose and test Kira's Bash-compatible executable from Settings. The saved device-local preference takes effect in open chats on their next command, and `$SHELL` in those commands matches the selected executable without changing the login shell. See [the shell setup guide](docs/custom-shell.md).
 
+- Ticket work history is separate from composer attachments. Starting work no longer adds a context chip, and removing context keeps the ticket's linked chat. Existing ticket links are retained while old composer attachments are cleared.
+
 - Chat now shows an open work trace as soon as a turn starts, updates it with live reasoning and tool activity, and gathers the turn's work into one group until the answer begins.
 
 - Kira can ask up to four structured questions in an inline chat card, with custom or partial answers, multi-select previews, per-question and shared notes, and cancellation.
