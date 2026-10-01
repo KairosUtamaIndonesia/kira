@@ -2,17 +2,22 @@ import {
   createAgentSessionFromServices,
   createAgentSessionServices,
   type AgentSession,
-} from '@earendil-works/pi-coding-agent';
-import type { ChatMode } from '../../preload/bridge.ts';
-import type { ThreadStore } from '../db/threads.ts';
-import type { MemorySource } from '../memory.ts';
-import type { Tracker } from '../tracker.ts';
-import type { McpManager } from '../mcp/servers.ts';
-import type { Questionnaires } from '../questionnaires.ts';
-import { kiraExtension } from './extension/factory.ts';
-import { bundledSkillsPath } from './resources.ts';
-import type { Models } from './models.ts';
-import { createThread, forkThread, openThread, type PiThread } from './storage.ts';
+} from "@earendil-works/pi-coding-agent";
+import type { ChatMode } from "../../preload/bridge.ts";
+import type { ThreadStore } from "../db/threads.ts";
+import type { MemorySource } from "../memory.ts";
+import type { Tracker } from "../tracker.ts";
+import type { McpManager } from "../mcp/servers.ts";
+import type { Questionnaires } from "../questionnaires.ts";
+import { kiraExtension } from "./extension/factory.ts";
+import { bundledSkillsPath, withoutUserAgentsSkills } from "./resources.ts";
+import type { Models } from "./models.ts";
+import {
+  createThread,
+  forkThread,
+  openThread,
+  type PiThread,
+} from "./storage.ts";
 
 /**
  * A running conversation.
@@ -149,7 +154,7 @@ async function boot(
   const choice = remembered ?? (await models.preferred());
   if (choice === null) {
     throw new Error(
-      'Kira is not offering any models. Sign in, and check that the server can reach its pool.',
+      "Kira is not offering any models. Sign in, and check that the server can reach its pool.",
     );
   }
 
@@ -161,7 +166,9 @@ async function boot(
   const workspaceId = store.getThread(thread.threadId).workspaceId;
   if (workspaceId !== null) {
     if (mcp !== undefined && prepareWorkspace === undefined) {
-      throw new Error('Workspace MCP preparation is required for workspace chats.');
+      throw new Error(
+        "Workspace MCP preparation is required for workspace chats.",
+      );
     }
     await prepareWorkspace?.(workspaceId);
   }
@@ -174,6 +181,7 @@ async function boot(
       modelRuntime: choice.runtime,
       resourceLoaderOptions: {
         additionalSkillPaths: [bundledSkillsPath()],
+        skillsOverride: withoutUserAgentsSkills,
         extensionFactories: [
           kiraExtension({
             cwd: thread.cwd,
