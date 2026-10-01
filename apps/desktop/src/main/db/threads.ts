@@ -9,11 +9,21 @@ import type { ChatMode, ShapingState } from '../../preload/bridge.ts';
  * Bumped whenever the statements below change shape. A database written by a
  * newer build is refused rather than misread.
  */
-const SCHEMA_VERSION = 18;
+const SCHEMA_VERSION = 19;
 
 export type McpServerScope = 'global' | 'workspace';
 export type McpServerTransport = 'stdio' | 'streamable-http';
 export type McpToolSelection = 'all' | string[];
+
+export interface MagicPromptDraft {
+  name: string;
+  aliases: string[];
+  content: string;
+}
+
+export interface MagicPromptRecord extends MagicPromptDraft {
+  id: string;
+}
 
 /** Fields accepted by the store; omitted issue-80 fields retain their old defaults. */
 export interface McpCredentialsDraft {
@@ -412,7 +422,20 @@ export class ThreadStore {
         this.db.exec('ALTER TABLE threads ADD COLUMN attached_ticket_ids_json TEXT');
       }
     }
+    if (row.user_version < 19) this.addMagicPrompts();
     this.db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+  }
+
+  /** Give app-wide reusable prompts a home independent of any workspace. */
+  private addMagicPrompts(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS magic_prompts (
+        id          TEXT PRIMARY KEY,
+        name        TEXT NOT NULL,
+        aliases_json TEXT NOT NULL,
+        content     TEXT NOT NULL
+      );
+    `);
   }
 
   /** Move legacy ticket associations into the chat's explicit ticket links. */
@@ -1064,6 +1087,62 @@ export class ThreadStore {
       .run(JSON.stringify(shaping), threadId);
   }
 
+  /** Save a reusable prompt shared across every workspace on this installation. */
+  createMagicPrompt(draft: MagicPromptDraft): MagicPromptRecord {
+    const normalized = normalizedMagicPromptDraft(draft);
+    this.assertMagicPromptLabelsAvailable(normalized);
+    const prompt = { id: randomUUID(), ...normalized };
+    this.db
+      .prepare('INSERT INTO magic_prompts (id, name, aliases_json, content) VALUES (?, ?, ?, ?)')
+      .run(prompt.id, prompt.name, JSON.stringify(prompt.aliases), prompt.content);
+    return prompt;
+  }
+
+  /** Change a saved prompt, leaving its stable identity in place. */
+  updateMagicPrompt(id: string, draft: MagicPromptDraft): MagicPromptRecord | undefined {
+    if (this.findMagicPrompt(id) === undefined) return undefined;
+    const normalized = normalizedMagicPromptDraft(draft);
+    this.assertMagicPromptLabelsAvailable(normalized, id);
+    this.db
+      .prepare('UPDATE magic_prompts SET name = ?, aliases_json = ?, content = ? WHERE id = ?')
+      .run(normalized.name, JSON.stringify(normalized.aliases), normalized.content, id);
+    return this.findMagicPrompt(id);
+  }
+
+  /** Every shared prompt, in the order it was created. */
+  listMagicPrompts(): MagicPromptRecord[] {
+    const rows = this.db
+      .prepare('SELECT id, name, aliases_json, content FROM magic_prompts ORDER BY rowid')
+      .all() as unknown as MagicPromptRow[];
+    return rows.map(magicPromptRecordOf);
+  }
+
+  /** The prompt stored under `id`, or undefined when there is none. */
+  findMagicPrompt(id: string): MagicPromptRecord | undefined {
+    const row = this.db
+      .prepare('SELECT id, name, aliases_json, content FROM magic_prompts WHERE id = ?')
+      .get(id) as MagicPromptRow | undefined;
+    return row === undefined ? undefined : magicPromptRecordOf(row);
+  }
+
+  /** Remove one shared prompt. */
+  deleteMagicPrompt(id: string): void {
+    this.db.prepare('DELETE FROM magic_prompts WHERE id = ?').run(id);
+  }
+
+  private assertMagicPromptLabelsAvailable(
+    draft: MagicPromptDraft,
+    exceptId?: string,
+  ): void {
+    const labels = new Set([draft.name, ...draft.aliases].map(magicPromptLabel));
+    for (const prompt of this.listMagicPrompts()) {
+      if (prompt.id === exceptId) continue;
+      if ([prompt.name, ...prompt.aliases].some((label) => labels.has(magicPromptLabel(label)))) {
+        throw new Error('That Magic Prompt name or alias is already in use.');
+      }
+    }
+  }
+
   /** Store one MCP server, globally or for one remembered workspace. */
   createMcpServer(draft: McpServerDraft): McpServerRecord {
     const id = randomUUID();
@@ -1538,6 +1617,39 @@ interface McpServerRow {
   tool_selection_json: string;
   enabled: number;
   created_at: string;
+}
+
+interface MagicPromptRow {
+  id: string;
+  name: string;
+  aliases_json: string;
+  content: string;
+}
+
+function normalizedMagicPromptDraft(draft: MagicPromptDraft): MagicPromptDraft {
+  const name = draft.name.trim();
+  if (name.length === 0) throw new Error('A Magic Prompt needs a name.');
+  if (draft.content.trim().length === 0) throw new Error('A Magic Prompt needs content.');
+
+  const aliases = draft.aliases.map((alias) => alias.trim()).filter(Boolean);
+  const labels = [name, ...aliases].map(magicPromptLabel);
+  if (new Set(labels).size !== labels.length) {
+    throw new Error('A Magic Prompt name and aliases must be unambiguous.');
+  }
+
+  return { name, aliases, content: draft.content };
+}
+
+function magicPromptLabel(label: string): string {
+  return label.toLowerCase();
+}
+
+function magicPromptRecordOf(row: MagicPromptRow): MagicPromptRecord {
+  const aliases = JSON.parse(row.aliases_json) as unknown;
+  if (!Array.isArray(aliases) || !aliases.every((alias) => typeof alias === 'string')) {
+    throw new Error(`Invalid aliases for Magic Prompt ${row.id}.`);
+  }
+  return { id: row.id, name: row.name, aliases, content: row.content };
 }
 
 function normalizedMcpDraft(draft: McpServerDraft): {

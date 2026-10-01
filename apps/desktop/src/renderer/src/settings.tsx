@@ -1,3 +1,4 @@
+import { AlertDialog } from '@astryxdesign/core/AlertDialog';
 import { Avatar } from '@astryxdesign/core/Avatar';
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
@@ -6,6 +7,7 @@ import { Heading } from '@astryxdesign/core/Heading';
 import { HStack } from '@astryxdesign/core/HStack';
 import { Section } from '@astryxdesign/core/Section';
 import { Selector } from '@astryxdesign/core/Selector';
+import { TextArea } from '@astryxdesign/core/TextArea';
 import { Text } from '@astryxdesign/core/Text';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { VStack } from '@astryxdesign/core/VStack';
@@ -14,6 +16,8 @@ import {
   reflectingWith,
   type AuthUser,
   type DesktopUpdateSnapshot,
+  type MagicPrompt,
+  type MagicPromptDraft,
   type MemoryChoice,
   type MemorySettings,
   type McpCredentialsDraft,
@@ -47,7 +51,7 @@ function PreferenceRow({ title, description }: { title: string; description: str
 }
 
 /** Which part of Settings is on screen. The rail's rows are these, one apiece. */
-export type Setting = 'account' | 'memory' | 'mcp' | 'updates' | 'shell';
+export type Setting = 'account' | 'memory' | 'magic-prompts' | 'mcp' | 'updates' | 'shell';
 
 /**
  * The desktop app's settings page: one pane of what Settings holds, chosen by the
@@ -77,6 +81,8 @@ export default function SettingsPage({
         <AccountPane user={user} />
       ) : showing === 'memory' ? (
         <MemorySection models={models} />
+      ) : showing === 'magic-prompts' ? (
+        <MagicPromptsSection />
       ) : showing === 'updates' ? (
         <UpdatesSection />
       ) : showing === 'shell' ? (
@@ -85,6 +91,194 @@ export default function SettingsPage({
         <McpSection workspaces={workspaces} />
       )}
     </VStack>
+  );
+}
+
+/** Reusable literal text shared by chats in every workspace on this installation. */
+function MagicPromptsSection() {
+  const [prompts, setPrompts] = useState<MagicPrompt[]>([]);
+  const [asked, setAsked] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [name, setName] = useState('');
+  const [aliases, setAliases] = useState('');
+  const [content, setContent] = useState('');
+
+  useMountEffect(() => {
+    void window.kira.loadMagicPrompts().then((result) => {
+      setAsked(true);
+      if (result.ok) setPrompts(result.value);
+      else setProblem(result.error);
+    });
+  });
+
+  function clearForm(): void {
+    setEditingId(null);
+    setName('');
+    setAliases('');
+    setContent('');
+    setProblem(null);
+  }
+
+  function editPrompt(prompt: MagicPrompt): void {
+    setEditingId(prompt.id);
+    setName(prompt.name);
+    setAliases(prompt.aliases.join('\n'));
+    setContent(prompt.content);
+    setProblem(null);
+  }
+
+  async function savePrompt(): Promise<void> {
+    setProblem(null);
+    if (name.trim() === '') {
+      setProblem('Enter a name for this Magic Prompt.');
+      return;
+    }
+    if (content.trim() === '') {
+      setProblem('Add the text this Magic Prompt should expand to.');
+      return;
+    }
+
+    const draft: MagicPromptDraft = {
+      name: name.trim(),
+      aliases: aliases.split(/\r?\n/u).map((alias) => alias.trim()).filter(Boolean),
+      content,
+    };
+    setBusy(true);
+    const result = editingId === null
+      ? await window.kira.createMagicPrompt(draft)
+      : await window.kira.updateMagicPrompt(editingId, draft);
+    setBusy(false);
+    if (!result.ok) {
+      setProblem(result.error);
+      return;
+    }
+
+    setPrompts((current) => editingId === null
+      ? [...current, result.value]
+      : current.map((prompt) => prompt.id === result.value.id ? result.value : prompt));
+    clearForm();
+  }
+
+  async function removePrompt(id: string): Promise<void> {
+    setBusy(true);
+    setProblem(null);
+    const result = await window.kira.removeMagicPrompt(id);
+    setBusy(false);
+    if (!result.ok) {
+      setProblem(result.error);
+      return;
+    }
+    setPrompts((current) => current.filter((prompt) => prompt.id !== id));
+    if (editingId === id) clearForm();
+    setDeletingId(null);
+  }
+
+  const deletingPrompt = prompts.find((prompt) => prompt.id === deletingId);
+
+  return (
+    <>
+      <VStack gap={1}>
+        <Heading level={2}>Magic Prompts</Heading>
+        <Text color="secondary" size="sm">
+          Save reusable text for every chat on this installation. Choosing a prompt inserts
+          editable text into the composer; it never sends it for you.
+        </Text>
+      </VStack>
+
+      {!asked ? (
+        <Text color="secondary" size="sm">Loading Magic Prompts…</Text>
+      ) : prompts.length === 0 ? (
+        <Text color="secondary" size="sm">No Magic Prompts yet. Add one below.</Text>
+      ) : (
+        <VStack gap={2}>
+          {prompts.map((prompt) => (
+            <Section key={prompt.id} padding={4}>
+              <HStack justify="between" align="center">
+                <VStack gap={0.5}>
+                  <Text weight="bold">{prompt.name}</Text>
+                  {prompt.aliases.length === 0 ? null : (
+                    <Text color="secondary" size="sm">Aliases: {prompt.aliases.join(', ')}</Text>
+                  )}
+                  <Text color="secondary" size="sm">
+                    {prompt.content.length > 160 ? `${prompt.content.slice(0, 160)}…` : prompt.content}
+                  </Text>
+                </VStack>
+                <HStack gap={1}>
+                  <Button
+                    label="Edit"
+                    variant="ghost"
+                    size="sm"
+                    isDisabled={busy}
+                    onClick={() => editPrompt(prompt)}
+                  />
+                  <Button
+                    label="Delete"
+                    variant="ghost"
+                    size="sm"
+                    isDisabled={busy}
+                    onClick={() => setDeletingId(prompt.id)}
+                  />
+                </HStack>
+              </HStack>
+            </Section>
+          ))}
+        </VStack>
+      )}
+
+      <Section padding={4}>
+        <VStack gap={3}>
+          <Heading level={2}>{editingId === null ? 'Add a Magic Prompt' : 'Edit Magic Prompt'}</Heading>
+          <TextInput label="Name" value={name} onChange={setName} size="sm" />
+          <TextArea
+            label="Aliases (one per line)"
+            value={aliases}
+            onChange={setAliases}
+            rows={2}
+          />
+          <TextArea
+            label="Prompt text"
+            value={content}
+            onChange={setContent}
+            rows={8}
+          />
+          {problem === null ? null : <Text color="secondary" size="sm">{problem}</Text>}
+          <HStack gap={2}>
+            <Button
+              label={editingId === null ? 'Add Magic Prompt' : 'Save Magic Prompt'}
+              variant="primary"
+              size="sm"
+              isDisabled={busy}
+              onClick={() => void savePrompt()}
+            />
+            {editingId === null ? null : (
+              <Button
+                label="Cancel"
+                variant="ghost"
+                size="sm"
+                isDisabled={busy}
+                onClick={clearForm}
+              />
+            )}
+          </HStack>
+        </VStack>
+      </Section>
+
+      {deletingPrompt === undefined ? null : (
+        <AlertDialog
+          isOpen
+          onOpenChange={(open) => {
+            if (!open) setDeletingId(null);
+          }}
+          title="Delete this Magic Prompt?"
+          description={`“${deletingPrompt.name}” will be removed from every workspace. This cannot be undone.`}
+          actionLabel="Delete prompt"
+          onAction={() => void removePrompt(deletingPrompt.id)}
+        />
+      )}
+    </>
   );
 }
 

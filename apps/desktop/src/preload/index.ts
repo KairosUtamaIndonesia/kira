@@ -4,6 +4,7 @@ import {
   BROWSER_CHANNELS,
   CHAT_CHANNELS,
   FILE_CHANNELS,
+  MAGIC_PROMPT_CHANNELS,
   MEMORY_CHANNELS,
   MCP_CHANNELS,
   MODELS_CHANNELS,
@@ -19,6 +20,8 @@ import {
   type FolderListing,
   type KiraBridge,
   type GlossaryEntry,
+  type MagicPrompt,
+  type MagicPromptDraft,
   type MemorySettings,
   type McpServer,
   type McpServerDraft,
@@ -190,6 +193,16 @@ const bridge: KiraBridge = {
   loadMemory: () => ask<MemorySettings | null>(MEMORY_CHANNELS.load),
 
   saveMemory: (decided) => ask<MemorySettings>(MEMORY_CHANNELS.save, decided),
+
+  loadMagicPrompts: () => ask<MagicPrompt[]>(MAGIC_PROMPT_CHANNELS.load),
+
+  createMagicPrompt: (draft: MagicPromptDraft) =>
+    ask<MagicPrompt>(MAGIC_PROMPT_CHANNELS.create, draft),
+
+  updateMagicPrompt: (id: string, draft: MagicPromptDraft) =>
+    ask<MagicPrompt>(MAGIC_PROMPT_CHANNELS.update, id, draft),
+
+  removeMagicPrompt: (id: string) => ask<null>(MAGIC_PROMPT_CHANNELS.remove, id),
 
   loadMcpServers: () => ask<McpServer[]>(MCP_CHANNELS.load),
 

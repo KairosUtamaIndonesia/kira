@@ -40,6 +40,7 @@ import {
   Pencil,
   Plug,
   RotateCcw,
+  Sparkles,
   Terminal,
 } from 'lucide-react';
 import {
@@ -1208,6 +1209,12 @@ export default function App() {
                 icon={Brain}
                 isSelected={setting === 'memory'}
                 onClick={() => setSetting('memory')}
+              />
+              <SideNavItem
+                label="Magic Prompts"
+                icon={Sparkles}
+                isSelected={setting === 'magic-prompts'}
+                onClick={() => setSetting('magic-prompts')}
               />
               <SideNavItem
                 label="MCP servers"

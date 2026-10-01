@@ -1033,6 +1033,19 @@ export interface MemoryChoice {
   chosen: string | null;
 }
 
+/** What someone can change on a reusable prompt shared by every workspace. */
+export interface MagicPromptDraft {
+  name: string;
+  aliases: string[];
+  /** Literal text expanded into the composer; it is not submitted on selection. */
+  content: string;
+}
+
+/** A saved shared Magic Prompt. */
+export interface MagicPrompt extends MagicPromptDraft {
+  id: string;
+}
+
 /**
  * The model the reflecting runs on: what this person chose, or what is suggested.
  *
@@ -1056,6 +1069,14 @@ export function reflectingWith(settings: MemorySettings | null): string | null {
 export const MEMORY_CHANNELS = {
   load: 'memory:load',
   save: 'memory:save',
+} as const;
+
+/** Shared reusable prompt CRUD, independent of the selected workspace. */
+export const MAGIC_PROMPT_CHANNELS = {
+  load: 'magic-prompts:load',
+  create: 'magic-prompts:create',
+  update: 'magic-prompts:update',
+  remove: 'magic-prompts:remove',
 } as const;
 
 /** The Settings surface for Kira-owned MCP servers. */
@@ -1385,6 +1406,14 @@ export interface KiraBridge {
    * not offering is refused, in the server's own words.
    */
   saveMemory(decided: MemoryChoice): Promise<Result<MemorySettings>>;
+  /** Read the prompts shared across every workspace on this installation. */
+  loadMagicPrompts(): Promise<Result<MagicPrompt[]>>;
+  /** Add a shared prompt. */
+  createMagicPrompt(draft: MagicPromptDraft): Promise<Result<MagicPrompt>>;
+  /** Edit a shared prompt without changing its id. */
+  updateMagicPrompt(id: string, draft: MagicPromptDraft): Promise<Result<MagicPrompt>>;
+  /** Remove a shared prompt. */
+  removeMagicPrompt(id: string): Promise<Result<null>>;
   /** List the global MCP servers configured on this desktop. */
   loadMcpServers(): Promise<Result<McpServer[]>>;
   /** Add a global MCP server. */

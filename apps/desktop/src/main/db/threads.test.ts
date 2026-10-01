@@ -22,12 +22,16 @@ test('a new database reaches the current schema version', () => {
   const db = new DatabaseSync(path);
   assert.equal(
     (db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version,
-    18,
+    19,
   );
   assert.ok(
     (db.prepare('PRAGMA table_info(threads)').all() as { name: string }[]).some(
       (column) => column.name === 'subagent_json',
     ),
+  );
+  assert.ok(
+    (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[])
+      .some((table) => table.name === 'magic_prompts'),
   );
   db.close();
 });
@@ -453,6 +457,82 @@ test('global MCP servers are persisted, listed and removed', () => {
 
   store.deleteMcpServer(server.id);
   assert.deepEqual(store.listMcpServers(), []);
+  store.close();
+});
+
+test('shared Magic Prompts keep literal content and stable identity through CRUD and restart', () => {
+  const path = storePath();
+  const store = new ThreadStore(path);
+  const created = store.createMagicPrompt({
+    name: 'Explain this',
+    aliases: ['explain'],
+    content: 'Read this literally:\n# keep this text',
+  });
+
+  assert.equal(store.listMagicPrompts()[0]?.id, created.id);
+  assert.equal(store.listMagicPrompts()[0]?.content, 'Read this literally:\n# keep this text');
+
+  const updated = store.updateMagicPrompt(created.id, {
+    name: 'Explain this clearly',
+    aliases: ['clear'],
+    content: 'Use these exact words:\nDo not submit yet.',
+  });
+  assert.deepEqual(updated, {
+    id: created.id,
+    name: 'Explain this clearly',
+    aliases: ['clear'],
+    content: 'Use these exact words:\nDo not submit yet.',
+  });
+  store.close();
+
+  const reopened = new ThreadStore(path);
+  assert.deepEqual(reopened.listMagicPrompts(), [updated]);
+  reopened.deleteMagicPrompt(created.id);
+  assert.deepEqual(reopened.listMagicPrompts(), []);
+  reopened.close();
+});
+
+test('Magic Prompt names and aliases are required and unambiguous', () => {
+  const store = new ThreadStore(storePath());
+  const original = store.createMagicPrompt({
+    name: 'Review',
+    aliases: ['check'],
+    content: 'Review carefully.',
+  });
+  const invalid: Array<{ name: string; draft: { name: string; aliases: string[]; content: string }; error: RegExp }> = [
+    {
+      name: 'a blank name is refused',
+      draft: { name: '  ', aliases: [], content: 'Text' },
+      error: /name/i,
+    },
+    {
+      name: 'blank content is refused',
+      draft: { name: 'Another', aliases: [], content: '\n  ' },
+      error: /content/i,
+    },
+    {
+      name: 'a name cannot match another prompt alias, ignoring case',
+      draft: { name: 'CHECK', aliases: [], content: 'Text' },
+      error: /already in use|ambiguous/i,
+    },
+    {
+      name: 'an alias cannot match another prompt name, ignoring case',
+      draft: { name: 'Different', aliases: ['review'], content: 'Text' },
+      error: /already in use|ambiguous/i,
+    },
+  ];
+
+  for (const testCase of invalid) {
+    assert.throws(() => store.createMagicPrompt(testCase.draft), testCase.error, testCase.name);
+  }
+
+  const renamed = store.updateMagicPrompt(original.id, {
+    name: 'Review',
+    aliases: ['check'],
+    content: 'Review carefully.',
+  });
+  assert.equal(renamed?.id, original.id, 'a prompt may retain its own name and aliases');
+  assert.equal(store.listMagicPrompts().length, 1, 'refused writes leave the shared list intact');
   store.close();
 });
 

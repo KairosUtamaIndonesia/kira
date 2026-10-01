@@ -21,6 +21,7 @@ import { handoffToken, signIn, type SignIn } from './auth/signIn.ts';
 import { ThreadStore } from './db/threads.ts';
 import { AUTH_CHANNELS, authHandlers } from './ipc/auth.ts';
 import { FILE_CHANNELS, fileHandlers } from './ipc/files.ts';
+import { MAGIC_PROMPT_CHANNELS, magicPromptHandlers } from './ipc/magicPrompts.ts';
 import { MCP_CHANNELS, mcpHandlers } from './ipc/mcp.ts';
 import { MEMORY_CHANNELS, memoryHandlers } from './ipc/memory.ts';
 import { MODELS_CHANNELS, modelHandlers } from './ipc/models.ts';
@@ -546,6 +547,23 @@ function registerMemoryChannels(): void {
   ipcMain.handle(MEMORY_CHANNELS.save, (_event, decided: unknown) => handlers.save(decided));
 }
 
+/** The channel the window uses to manage installation-wide Magic Prompts. */
+function registerMagicPromptChannels(): void {
+  const handlers = magicPromptHandlers({
+    list: () => store.listMagicPrompts(),
+    create: (draft) => store.createMagicPrompt(draft),
+    update: (id, draft) => store.updateMagicPrompt(id, draft),
+    remove: (id) => store.deleteMagicPrompt(id),
+  });
+
+  ipcMain.handle(MAGIC_PROMPT_CHANNELS.load, () => handlers.load());
+  ipcMain.handle(MAGIC_PROMPT_CHANNELS.create, (_event, draft: unknown) => handlers.create(draft));
+  ipcMain.handle(MAGIC_PROMPT_CHANNELS.update, (_event, id: unknown, draft: unknown) =>
+    handlers.update(id, draft),
+  );
+  ipcMain.handle(MAGIC_PROMPT_CHANNELS.remove, (_event, id: unknown) => handlers.remove(id));
+}
+
 /** The channels the window asks about global MCP servers through. */
 function registerMcpChannels(): void {
   const handlers = mcpHandlers({
@@ -878,6 +896,7 @@ if (claimTheScheme()) {
       registerChatChannels();
       registerUsageChannels();
       registerMemoryChannels();
+      registerMagicPromptChannels();
       registerMcpChannels();
       registerBrowserChannels();
       registerModelChannels();
