@@ -8,7 +8,7 @@
 
 ### Added
 
-- The composer's four leading characters are live: `@` searches this chat's workspace files and inserts a readable path reference, `/` lists the commands and skills the chat's session supports, `#` expands a shared Magic Prompt into the draft, and a leading `!` runs the rest of the draft as a local command. See [the composer guide](docs/composer.md).
+- The composer's four leading characters are live: `@` searches this chat's workspace files and inserts a readable path reference, `/` lists the commands and skills the chat's session supports, `#` expands a shared Magic Prompt into the draft, and a leading `!` runs the rest of the draft as a local command. The composer's placeholder names all four. See [the composer guide](docs/composer.md).
 
 - Magic Prompts are reusable text shared across every project on this installation: save them in **Settings → Magic Prompts**, search them after `#`, and edit the expanded text before sending. Choosing one never sends it for you.
 

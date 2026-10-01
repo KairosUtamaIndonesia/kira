@@ -1677,7 +1677,7 @@ function ChatPane({
             commands={commands}
             shellRuns={shellRuns}
             onOpenMagicPrompts={onOpenMagicPrompts}
-            placeholder="Tell Kira what to do in this folder"
+            placeholder="@ for files · / for commands and skills · ! for a local command · # for Magic Prompts"
             error={error}
             usage={usage}
             chatUsage={chatUsage}
