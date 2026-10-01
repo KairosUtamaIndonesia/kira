@@ -1,0 +1,84 @@
+import { strict as assert } from 'node:assert';
+import { test } from 'node:test';
+import type { GitConnection, GitConnectionInput } from '../../preload/bridge.ts';
+import { gitHandlers } from './git.ts';
+
+const connection: GitConnection = {
+  id: 'conn-1',
+  provider: 'forgejo',
+  authKind: 'token',
+  instanceUrl: 'https://git.example.com',
+  accountLogin: 'acme',
+  accountType: 'User',
+  createdAt: '2026-01-01T00:00:00.000Z',
+};
+
+const created = { connection, webhookSecret: 'a-secret' };
+
+test('connections lists the hosts the server is connected to', async () => {
+  const calls: string[] = [];
+  const handlers = gitHandlers({
+    connections: async () => {
+      calls.push('connections');
+      return [connection];
+    },
+    connect: async () => created,
+    disconnect: async () => null,
+  });
+
+  assert.deepEqual(await handlers.connections(), { ok: true, value: [connection] });
+  assert.deepEqual(calls, ['connections']);
+});
+
+test('connect checks the host and the token before forwarding', async () => {
+  const calls: string[] = [];
+  const handlers = gitHandlers({
+    connections: async () => [],
+    connect: async (input: GitConnectionInput) => {
+      calls.push(`connect ${input.provider} ${input.instanceUrl ?? ''}`);
+      return created;
+    },
+    disconnect: async () => null,
+  });
+
+  assert.deepEqual(
+    await handlers.connect({
+      provider: 'forgejo',
+      instanceUrl: 'https://git.example.com',
+      accessToken: 'a-token',
+    }),
+    { ok: true, value: created },
+  );
+  assert.deepEqual(calls, ['connect forgejo https://git.example.com']);
+
+  assert.deepEqual(await handlers.connect({ provider: 'bitbucket', accessToken: 'a-token' }), {
+    ok: false,
+    error: 'That is not a host to connect.',
+  });
+  assert.deepEqual(await handlers.connect({ provider: 'github', accessToken: '  ' }), {
+    ok: false,
+    error: 'That is not a host to connect.',
+  });
+});
+
+test('disconnect checks the id, and the server refusal is preserved', async () => {
+  const calls: string[] = [];
+  const handlers = gitHandlers({
+    connections: async () => [],
+    connect: async () => created,
+    disconnect: async (id: string) => {
+      calls.push(`disconnect ${id}`);
+      throw new Error('Only an administrator can connect a Git host.');
+    },
+  });
+
+  assert.deepEqual(await handlers.disconnect('conn-1'), {
+    ok: false,
+    error: 'Only an administrator can connect a Git host.',
+  });
+  assert.deepEqual(await handlers.disconnect(''), {
+    ok: false,
+    error: 'A host needs an id to disconnect.',
+  });
+  assert.deepEqual(calls, ['disconnect conn-1']);
+});

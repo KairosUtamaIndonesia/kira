@@ -19,6 +19,9 @@ import type {
   GlossaryEntry,
   BreakdownResult,
   BreakdownSlice,
+  GitConnection,
+  GitConnectionCreated,
+  GitConnectionInput,
   JoinRequest,
   ProjectSummary,
   Ticket,
@@ -160,6 +163,12 @@ export interface TrackerWire {
   ): Promise<TrackerAnswer<Repository>>;
   /** Take a repository off a project. */
   detachRepository(key: string, projectId: string, id: string): Promise<TrackerAnswer<true>>;
+  /** The Git hosts this server is connected to. */
+  connections(key: string): Promise<TrackerAnswer<GitConnection[]>>;
+  /** Connect a Git host; its webhook secret is answered once. */
+  connectHost(key: string, input: GitConnectionInput): Promise<TrackerAnswer<GitConnectionCreated>>;
+  /** Disconnect a Git host. */
+  disconnectHost(key: string, id: string): Promise<TrackerAnswer<true>>;
   /** Publish proposed children and dependency gates in one server transaction. */
   publishBreakdown?(
     key: string,
@@ -246,6 +255,12 @@ export interface Tracker {
   attachRepository(projectId: string, input: RepositoryInput): Promise<Repository>;
   /** Take a repository off a project. */
   detachRepository(projectId: string, id: string): Promise<null>;
+  /** The Git hosts this server is connected to. */
+  gitConnections(): Promise<GitConnection[]>;
+  /** Connect a Git host with a token. */
+  connectGitHost(input: GitConnectionInput): Promise<GitConnectionCreated>;
+  /** Disconnect a Git host. */
+  disconnectGitHost(id: string): Promise<null>;
   publishBreakdown(specTicketId: string, children: BreakdownSlice[]): Promise<BreakdownResult>;
   markBreakdownReady(specTicketId: string): Promise<BreakdownResult>;
   projects(): Promise<ProjectSummary[]>;
@@ -450,6 +465,26 @@ export function trackerFor({
       const held = await key();
 
       await asked(() => wire.detachRepository(held, projectId, id));
+
+      return null;
+    },
+
+    async gitConnections() {
+      const held = await key();
+
+      return await asked(() => wire.connections(held));
+    },
+
+    async connectGitHost(input) {
+      const held = await key();
+
+      return await asked(() => wire.connectHost(held, input));
+    },
+
+    async disconnectGitHost(id) {
+      const held = await key();
+
+      await asked(() => wire.disconnectHost(held, id));
 
       return null;
     },

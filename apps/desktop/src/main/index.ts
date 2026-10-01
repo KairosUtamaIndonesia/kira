@@ -28,6 +28,7 @@ import { MODELS_CHANNELS, modelHandlers } from './ipc/models.ts';
 import { USAGE_CHANNELS, usageHandlers } from './ipc/usage.ts';
 import { CHAT_CHANNELS, chatHandlers } from './ipc/chat.ts';
 import { TRACKER_CHANNELS, trackerHandlers } from './ipc/tracker.ts';
+import { GIT_CHANNELS, gitHandlers } from './ipc/git.ts';
 import { WORKSPACE_CHANNELS, workspaceHandlers } from './ipc/workspaces.ts';
 import { workspaceSummaryOf } from './pi/conversations.ts';
 import { kiraModels, type Models } from './pi/models.ts';
@@ -330,6 +331,26 @@ function registerTrackerChannels(): void {
     (_event, workspaceId: unknown, entryId: unknown, version: unknown, chatId: unknown) =>
       handlers.undoGlossary(workspaceId, entryId, version, chatId),
   );
+}
+
+/**
+ * The Git host channels.
+ *
+ * A connection is server-wide and connecting one is an administrator's act: the
+ * key this process holds is presented to the server, which decides in its own
+ * words whether that person may. The webhook secret a new connection answers with
+ * is shown once, because the server stores it sealed and never reads it back.
+ */
+function registerGitChannels(): void {
+  const handlers = gitHandlers({
+    connections: () => tracker.gitConnections(),
+    connect: (input) => tracker.connectGitHost(input),
+    disconnect: (id) => tracker.disconnectGitHost(id),
+  });
+
+  ipcMain.handle(GIT_CHANNELS.connections, () => handlers.connections());
+  ipcMain.handle(GIT_CHANNELS.connect, (_event, input: unknown) => handlers.connect(input));
+  ipcMain.handle(GIT_CHANNELS.disconnect, (_event, id: unknown) => handlers.disconnect(id));
 }
 
 /**
@@ -943,6 +964,7 @@ if (claimTheScheme()) {
       registerModelChannels();
       registerWorkspaceChannels();
       registerTrackerChannels();
+      registerGitChannels();
       registerFileChannels();
       registerAuthChannels(auth);
       registerUpdateChannels();

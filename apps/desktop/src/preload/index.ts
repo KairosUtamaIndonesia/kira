@@ -8,6 +8,7 @@ import {
   MEMORY_CHANNELS,
   MCP_CHANNELS,
   MODELS_CHANNELS,
+  GIT_CHANNELS,
   TRACKER_CHANNELS,
   UPDATE_CHANNELS,
   SHELL_CHANNELS,
@@ -18,6 +19,8 @@ import {
   type ChatState,
   type ChatMode,
   type FolderListing,
+  type GitConnection,
+  type GitConnectionCreated,
   type KiraBridge,
   type GlossaryEntry,
   type MagicPrompt,
@@ -151,6 +154,12 @@ const bridge: KiraBridge = {
     ask<Repository>(TRACKER_CHANNELS.attachRepository, projectId, input),
 
   detachRepository: (projectId, id) => ask<null>(TRACKER_CHANNELS.detachRepository, projectId, id),
+
+  loadGitConnections: () => ask<GitConnection[]>(GIT_CHANNELS.connections),
+
+  connectGitHost: (input) => ask<GitConnectionCreated>(GIT_CHANNELS.connect, input),
+
+  disconnectGitHost: (id) => ask<null>(GIT_CHANNELS.disconnect, id),
 
   undoGlossary: (workspaceId, entryId, version, chatId) =>
     ask<GlossaryEntry>(TRACKER_CHANNELS.undoGlossary, workspaceId, entryId, version, chatId),

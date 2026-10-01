@@ -665,6 +665,19 @@ export const TRACKER_CHANNELS = {
 } as const;
 
 /**
+ * The Git host channels: the hosts this server can watch, and connecting one.
+ *
+ * A connection is server-wide rather than a project's, and connecting it is an
+ * administrator's act — the server refuses anyone else in its own words, which
+ * is what reaches the window.
+ */
+export const GIT_CHANNELS = {
+  connections: 'git:connections',
+  connect: 'git:connect',
+  disconnect: 'git:disconnect',
+} as const;
+
+/**
  * A project, as the server holds one: a name and the prefix its tickets are named
  * under. `FND` is why a ticket is `FND-12` rather than a number nobody can say.
  */
@@ -857,6 +870,32 @@ export interface TicketPullRequest {
   mergedAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** A Git host this server can watch. */
+export interface GitConnection {
+  id: string;
+  provider: string;
+  authKind: string;
+  instanceUrl: string | null;
+  accountLogin: string;
+  accountType: string;
+  createdAt: string;
+}
+
+/** What connecting a host asks for: a token, and where the host is. */
+export interface GitConnectionInput {
+  provider: string;
+  instanceUrl?: string;
+  accessToken: string;
+  webhookSecret?: string;
+  accountLogin?: string;
+}
+
+/** A new connection, with the webhook secret shown once. */
+export interface GitConnectionCreated {
+  connection: GitConnection;
+  webhookSecret: string;
 }
 
 /** Someone behind a comment: a person, or Kira acting in their chat. */
@@ -1421,6 +1460,12 @@ export interface KiraBridge {
   attachRepository(projectId: string, input: RepositoryInput): Promise<Result<Repository>>;
   /** Take a repository off a project. */
   detachRepository(projectId: string, id: string): Promise<Result<null>>;
+  /** The Git hosts this server is connected to. */
+  loadGitConnections(): Promise<Result<GitConnection[]>>;
+  /** Connect a Git host with a token; its webhook secret comes back once. */
+  connectGitHost(input: GitConnectionInput): Promise<Result<GitConnectionCreated>>;
+  /** Disconnect a Git host. */
+  disconnectGitHost(id: string): Promise<Result<null>>;
   /**
    * What one folder of the chat's workspace holds, or null when that chat has
    * no workspace — a chat nothing has been said in yet has no folder to show,

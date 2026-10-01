@@ -1266,6 +1266,12 @@ export default function App() {
                 isSelected={setting === 'shell'}
                 onClick={() => setSetting('shell')}
               />
+              <SideNavItem
+                label="Git hosts"
+                icon={GitFork}
+                isSelected={setting === 'git-hosts'}
+                onClick={() => setSetting('git-hosts')}
+              />
             </SideNav>
           ) : (
             <ChatRail
@@ -1287,7 +1293,9 @@ export default function App() {
               archive={(id) => void archiveChat(id)}
               remove={setDeleting}
               move={(chat) =>
-                needsProject(chat.workspaceId, workspaces) ? () => void moveChat(chat.id) : undefined
+                needsProject(chat.workspaceId, workspaces)
+                  ? () => void moveChat(chat.id)
+                  : undefined
               }
               openSettings={() => showSurface('settings')}
               signOut={signOut}
@@ -2050,21 +2058,27 @@ function MessageBody({
 }
 
 function ShellCommandTranscript({ run }: { run: ShellCommandRun }) {
-  const status = run.status === 'cancelled'
-    ? 'Cancelled'
-    : run.status === 'error'
-      ? `Failed${run.exitCode === null ? '' : ` · exit code ${run.exitCode}`}`
-      : `Finished${run.exitCode === null ? '' : ` · exit code ${run.exitCode}`}`;
+  const status =
+    run.status === 'cancelled'
+      ? 'Cancelled'
+      : run.status === 'error'
+        ? `Failed${run.exitCode === null ? '' : ` · exit code ${run.exitCode}`}`
+        : `Finished${run.exitCode === null ? '' : ` · exit code ${run.exitCode}`}`;
 
   return (
     <div {...stylex.props(shellStyles.command)}>
-      <Text weight="medium" size="sm">You ran locally: !{run.command}</Text>
+      <Text weight="medium" size="sm">
+        You ran locally: !{run.command}
+      </Text>
       {run.output === '' ? null : <pre {...stylex.props(shellStyles.output)}>{run.output}</pre>}
       <Text color="secondary" size="sm">
-        {status}{run.truncated ? ' · output truncated' : ''}
+        {status}
+        {run.truncated ? ' · output truncated' : ''}
       </Text>
       {run.fullOutputPath === null ? null : (
-        <Text color="secondary" size="sm">Full output: {run.fullOutputPath}</Text>
+        <Text color="secondary" size="sm">
+          Full output: {run.fullOutputPath}
+        </Text>
       )}
     </div>
   );

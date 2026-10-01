@@ -15,6 +15,8 @@ import { createAuthClient } from 'better-auth/client';
 import { isAuthUser, type AuthUser } from '../../preload/bridge.ts';
 import {
   type GlossaryEntry,
+  type GitConnection,
+  type GitConnectionCreated,
   type Outcome,
   type OutcomeProposal,
   type ProjectDecision,
@@ -412,6 +414,24 @@ export function kiraFor({ server, scheme }: { server: string; scheme: string }):
         () => true,
       ),
 
+    connections: async (key) =>
+      asked(
+        () => kira.api.git.connections.get({ headers: bearerFor(key) }),
+        (data) => asGitConnections((data as { connections: unknown }).connections),
+      ),
+
+    connectHost: async (key, input) =>
+      asked(
+        () => kira.api.git.connections.post(input, { headers: bearerFor(key) }),
+        asGitConnectionCreated,
+      ),
+
+    disconnectHost: async (key, id) =>
+      asked(
+        () => kira.api.git.connections({ id }).delete(undefined, { headers: bearerFor(key) }),
+        () => true,
+      ),
+
     markBreakdownReady: async (key, specTicketId) =>
       asked(
         () =>
@@ -606,6 +626,35 @@ function asPullRequests(body: unknown): TicketPullRequest[] | null {
   if (!Array.isArray(body)) return null;
 
   return body as TicketPullRequest[];
+}
+
+function asGitConnection(body: unknown): GitConnection | null {
+  const held = body as { id?: unknown; provider?: unknown; authKind?: unknown };
+  if (
+    typeof held?.id !== 'string' ||
+    typeof held.provider !== 'string' ||
+    typeof held.authKind !== 'string'
+  ) {
+    return null;
+  }
+
+  return held as GitConnection;
+}
+
+function asGitConnections(body: unknown): GitConnection[] | null {
+  if (!Array.isArray(body)) return null;
+
+  const connections = body.map(asGitConnection);
+
+  return connections.some((each) => each === null) ? null : (connections as GitConnection[]);
+}
+
+function asGitConnectionCreated(body: unknown): GitConnectionCreated | null {
+  const held = body as { connection?: unknown; webhookSecret?: unknown };
+  const connection = asGitConnection(held?.connection);
+  if (connection === null || typeof held.webhookSecret !== 'string') return null;
+
+  return { connection, webhookSecret: held.webhookSecret };
 }
 
 function asDecision(body: unknown): ProjectDecision | null {

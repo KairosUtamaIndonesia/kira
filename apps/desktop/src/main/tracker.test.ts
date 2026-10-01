@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import type {
   GlossaryEdit,
   GlossaryEntry,
+  GitConnection,
   MapProposal,
   ProjectDecision,
   ProjectSummary,
@@ -109,6 +110,16 @@ const repository: Repository = {
   defaultBranch: 'main',
 };
 
+const connection: GitConnection = {
+  id: 'conn-1',
+  provider: 'forgejo',
+  authKind: 'token',
+  instanceUrl: 'https://git.example.com',
+  accountLogin: 'acme',
+  accountType: 'User',
+  createdAt: '2026-01-01T00:00:00.000Z',
+};
+
 /** A wire that answers whatever one case needs, and records what it was asked. */
 function wire(calls: string[], answers: Partial<TrackerWire> = {}): TrackerWire {
   return {
@@ -166,6 +177,18 @@ function wire(calls: string[], answers: Partial<TrackerWire> = {}): TrackerWire 
     },
     detachRepository: async (key, projectId, id) => {
       calls.push(`detachRepository ${key} ${projectId} ${id}`);
+      return { kind: 'ok', body: true };
+    },
+    connections: async (key) => {
+      calls.push(`connections ${key}`);
+      return { kind: 'ok', body: [] };
+    },
+    connectHost: async (key, input) => {
+      calls.push(`connectHost ${key} ${input.provider}`);
+      return { kind: 'ok', body: { connection: connection, webhookSecret: 'a-secret' } };
+    },
+    disconnectHost: async (key, id) => {
+      calls.push(`disconnectHost ${key} ${id}`);
       return { kind: 'ok', body: true };
     },
     readTicket: async (key, ref) => {

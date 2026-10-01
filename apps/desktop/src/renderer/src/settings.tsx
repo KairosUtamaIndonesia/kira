@@ -28,6 +28,7 @@ import {
   type WorkspaceSummary,
 } from '../../preload/bridge';
 import { canCheckDesktopUpdate, desktopUpdateStatusText } from './desktop-update-status';
+import { GitHostsSection } from './gitHostsSection';
 
 function useMountEffect(effect: () => void | (() => void)): void {
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -51,7 +52,14 @@ function PreferenceRow({ title, description }: { title: string; description: str
 }
 
 /** Which part of Settings is on screen. The rail's rows are these, one apiece. */
-export type Setting = 'account' | 'memory' | 'magic-prompts' | 'mcp' | 'updates' | 'shell';
+export type Setting =
+  | 'account'
+  | 'git-hosts'
+  | 'memory'
+  | 'magic-prompts'
+  | 'mcp'
+  | 'updates'
+  | 'shell';
 
 /**
  * The desktop app's settings page: one pane of what Settings holds, chosen by the
@@ -79,6 +87,8 @@ export default function SettingsPage({
 
       {showing === 'account' ? (
         <AccountPane user={user} />
+      ) : showing === 'git-hosts' ? (
+        <GitHostsSection />
       ) : showing === 'memory' ? (
         <MemorySection models={models} />
       ) : showing === 'magic-prompts' ? (
@@ -143,22 +153,28 @@ function MagicPromptsSection() {
 
     const draft: MagicPromptDraft = {
       name: name.trim(),
-      aliases: aliases.split(/\r?\n/u).map((alias) => alias.trim()).filter(Boolean),
+      aliases: aliases
+        .split(/\r?\n/u)
+        .map((alias) => alias.trim())
+        .filter(Boolean),
       content,
     };
     setBusy(true);
-    const result = editingId === null
-      ? await window.kira.createMagicPrompt(draft)
-      : await window.kira.updateMagicPrompt(editingId, draft);
+    const result =
+      editingId === null
+        ? await window.kira.createMagicPrompt(draft)
+        : await window.kira.updateMagicPrompt(editingId, draft);
     setBusy(false);
     if (!result.ok) {
       setProblem(result.error);
       return;
     }
 
-    setPrompts((current) => editingId === null
-      ? [...current, result.value]
-      : current.map((prompt) => prompt.id === result.value.id ? result.value : prompt));
+    setPrompts((current) =>
+      editingId === null
+        ? [...current, result.value]
+        : current.map((prompt) => (prompt.id === result.value.id ? result.value : prompt)),
+    );
     clearForm();
   }
 
@@ -183,15 +199,19 @@ function MagicPromptsSection() {
       <VStack gap={1}>
         <Heading level={2}>Magic Prompts</Heading>
         <Text color="secondary" size="sm">
-          Save reusable text for every chat on this installation. Choosing a prompt inserts
-          editable text into the composer; it never sends it for you.
+          Save reusable text for every chat on this installation. Choosing a prompt inserts editable
+          text into the composer; it never sends it for you.
         </Text>
       </VStack>
 
       {!asked ? (
-        <Text color="secondary" size="sm">Loading Magic Prompts…</Text>
+        <Text color="secondary" size="sm">
+          Loading Magic Prompts…
+        </Text>
       ) : prompts.length === 0 ? (
-        <Text color="secondary" size="sm">No Magic Prompts yet. Add one below.</Text>
+        <Text color="secondary" size="sm">
+          No Magic Prompts yet. Add one below.
+        </Text>
       ) : (
         <VStack gap={2}>
           {prompts.map((prompt) => (
@@ -200,10 +220,14 @@ function MagicPromptsSection() {
                 <VStack gap={0.5}>
                   <Text weight="bold">{prompt.name}</Text>
                   {prompt.aliases.length === 0 ? null : (
-                    <Text color="secondary" size="sm">Aliases: {prompt.aliases.join(', ')}</Text>
+                    <Text color="secondary" size="sm">
+                      Aliases: {prompt.aliases.join(', ')}
+                    </Text>
                   )}
                   <Text color="secondary" size="sm">
-                    {prompt.content.length > 160 ? `${prompt.content.slice(0, 160)}…` : prompt.content}
+                    {prompt.content.length > 160
+                      ? `${prompt.content.slice(0, 160)}…`
+                      : prompt.content}
                   </Text>
                 </VStack>
                 <HStack gap={1}>
@@ -230,21 +254,17 @@ function MagicPromptsSection() {
 
       <Section padding={4}>
         <VStack gap={3}>
-          <Heading level={2}>{editingId === null ? 'Add a Magic Prompt' : 'Edit Magic Prompt'}</Heading>
+          <Heading level={2}>
+            {editingId === null ? 'Add a Magic Prompt' : 'Edit Magic Prompt'}
+          </Heading>
           <TextInput label="Name" value={name} onChange={setName} size="sm" />
-          <TextArea
-            label="Aliases (one per line)"
-            value={aliases}
-            onChange={setAliases}
-            rows={2}
-          />
-          <TextArea
-            label="Prompt text"
-            value={content}
-            onChange={setContent}
-            rows={8}
-          />
-          {problem === null ? null : <Text color="secondary" size="sm">{problem}</Text>}
+          <TextArea label="Aliases (one per line)" value={aliases} onChange={setAliases} rows={2} />
+          <TextArea label="Prompt text" value={content} onChange={setContent} rows={8} />
+          {problem === null ? null : (
+            <Text color="secondary" size="sm">
+              {problem}
+            </Text>
+          )}
           <HStack gap={2}>
             <Button
               label={editingId === null ? 'Add Magic Prompt' : 'Save Magic Prompt'}
@@ -470,8 +490,8 @@ function ShellSection() {
       <VStack gap={1}>
         <Heading level={2}>Kira’s command line</Heading>
         <Text color="secondary" size="sm">
-          Kira detects Bash automatically. Choose another Bash-compatible executable if you
-          prefer a different installation or the detected one does not work.
+          Kira detects Bash automatically. Choose another Bash-compatible executable if you prefer a
+          different installation or the detected one does not work.
         </Text>
         <Text color="secondary" size="sm">
           $SHELL in Kira&apos;s Bash commands matches this choice; your login shell is unchanged.
@@ -676,8 +696,8 @@ function MemorySection({ models }: { models: readonly ModelOption[] }) {
 
             {models.length === 0 ? (
               <Text color="secondary" size="sm">
-                Kira has no model list to choose from — sign in, or check that the server can
-                reach its pool.
+                Kira has no model list to choose from — sign in, or check that the server can reach
+                its pool.
               </Text>
             ) : (
               <Selector
@@ -799,7 +819,8 @@ function McpSection({ workspaces }: { workspaces: readonly WorkspaceSummary[] })
         if (transport === 'streamable-http' && headers.trim() !== '') {
           changed.headers = JSON.parse(headers) as Record<string, string>;
         }
-        if (transport === 'streamable-http' && bearerToken !== '') changed.bearerToken = bearerToken;
+        if (transport === 'streamable-http' && bearerToken !== '')
+          changed.bearerToken = bearerToken;
         if (Object.keys(changed).length > 0) credentials = changed;
       }
     } catch {
@@ -819,9 +840,10 @@ function McpSection({ workspaces }: { workspaces: readonly WorkspaceSummary[] })
       toolSelection,
       ...(credentials === undefined ? {} : { credentials }),
     } as const;
-    const result = editingId === null
-      ? await window.kira.addMcpServer(draft)
-      : await window.kira.updateMcpServer(editingId, draft);
+    const result =
+      editingId === null
+        ? await window.kira.addMcpServer(draft)
+        : await window.kira.updateMcpServer(editingId, draft);
     setBusy(false);
     if (!result.ok) {
       setProblem(result.error);
@@ -868,16 +890,21 @@ function McpSection({ workspaces }: { workspaces: readonly WorkspaceSummary[] })
   async function changeOAuth(server: McpServer, action: 'sign-in' | 'sign-out'): Promise<void> {
     setBusy(true);
     setProblem(null);
-    const result = action === 'sign-in'
-      ? await window.kira.signInMcpServer(server.id)
-      : await window.kira.signOutMcpServer(server.id);
+    const result =
+      action === 'sign-in'
+        ? await window.kira.signInMcpServer(server.id)
+        : await window.kira.signOutMcpServer(server.id);
     setBusy(false);
     if (!result.ok) setProblem(result.error);
   }
 
   const editingServer = servers.find((server) => server.id === editingId);
   const groups = [
-    { id: 'global', label: 'Global', servers: servers.filter((server) => server.scope === 'global') },
+    {
+      id: 'global',
+      label: 'Global',
+      servers: servers.filter((server) => server.scope === 'global'),
+    },
     ...workspaces.map((workspace) => ({
       id: workspace.id,
       label: workspace.name,
@@ -901,137 +928,153 @@ function McpSection({ workspaces }: { workspaces: readonly WorkspaceSummary[] })
             <VStack key={group.id} gap={2}>
               <Heading level={2}>{group.label}</Heading>
               {group.servers.length === 0 ? (
-                <Text color="secondary" size="sm">No MCP servers in this scope.</Text>
-              ) : group.servers.map((server) => {
-            const showingTools = expandedId === server.id;
-            return (
-              <Section key={server.id} padding={4}>
-                <VStack gap={2}>
-                  <HStack justify="between" align="center">
-                    <VStack gap={0.5}>
-                      <Text weight="bold">{server.name}</Text>
-                      <Text color="secondary" size="sm">
-                        {server.transport === 'stdio'
-                          ? `${server.command} ${server.args.join(' ')}`
-                          : server.url}
-                      </Text>
-                      {server.transport === 'stdio' ? (
+                <Text color="secondary" size="sm">
+                  No MCP servers in this scope.
+                </Text>
+              ) : (
+                group.servers.map((server) => {
+                  const showingTools = expandedId === server.id;
+                  return (
+                    <Section key={server.id} padding={4}>
+                      <VStack gap={2}>
+                        <HStack justify="between" align="center">
+                          <VStack gap={0.5}>
+                            <Text weight="bold">{server.name}</Text>
+                            <Text color="secondary" size="sm">
+                              {server.transport === 'stdio'
+                                ? `${server.command} ${server.args.join(' ')}`
+                                : server.url}
+                            </Text>
+                            {server.transport === 'stdio' ? (
+                              <Text color="secondary" size="sm">
+                                Working folder: {server.cwd ?? 'inherited'}
+                              </Text>
+                            ) : null}
+                          </VStack>
+                          <HStack gap={1}>
+                            <Button
+                              label={server.status === 'connected' ? 'Reconnect' : 'Connect'}
+                              variant="ghost"
+                              size="sm"
+                              isDisabled={busy || !server.enabled}
+                              onClick={() => void reconnectServer(server.id)}
+                            />
+                            {server.transport === 'streamable-http' &&
+                            server.enabled &&
+                            (!server.hasOAuth || server.status === 'needs-sign-in') ? (
+                              <Button
+                                label="Sign in"
+                                variant="ghost"
+                                size="sm"
+                                isDisabled={busy}
+                                onClick={() => void changeOAuth(server, 'sign-in')}
+                              />
+                            ) : null}
+                            {server.hasOAuth || server.oauthCredentialsPersisted ? (
+                              <Button
+                                label="Sign out"
+                                variant="ghost"
+                                size="sm"
+                                isDisabled={busy}
+                                onClick={() => void changeOAuth(server, 'sign-out')}
+                              />
+                            ) : null}
+                            <Button
+                              label={server.enabled ? 'Disable' : 'Enable'}
+                              variant="ghost"
+                              size="sm"
+                              isDisabled={busy}
+                              onClick={() => void changeEnabled(server)}
+                            />
+                            <Button
+                              label="Edit"
+                              variant="ghost"
+                              size="sm"
+                              isDisabled={busy}
+                              onClick={() => editServer(server)}
+                            />
+                            <Button
+                              label="Remove"
+                              variant="ghost"
+                              size="sm"
+                              isDisabled={busy}
+                              onClick={() => void removeServer(server.id)}
+                            />
+                          </HStack>
+                        </HStack>
                         <Text color="secondary" size="sm">
-                          Working folder: {server.cwd ?? 'inherited'}
+                          {server.status} · {server.tools.length} tool
+                          {server.tools.length === 1 ? '' : 's'}
+                          {server.hasOAuth ? ' · signed in' : ''}
+                          {server.oauthCredentialsPersisted && !server.hasOAuth
+                            ? ' · encrypted OAuth credentials unavailable'
+                            : ''}
+                          {server.hasCredentials || server.credentialsPersisted
+                            ? server.credentialsPersisted
+                              ? server.hasCredentials
+                                ? ' · encrypted credentials'
+                                : ' · encrypted credentials unavailable'
+                              : ' · memory-only credentials'
+                            : ''}
+                          {server.status === 'failed' && server.error !== null
+                            ? ` · ${server.error}`
+                            : ''}
                         </Text>
-                      ) : null}
-                    </VStack>
-                    <HStack gap={1}>
-                      <Button
-                        label={server.status === 'connected' ? 'Reconnect' : 'Connect'}
-                        variant="ghost"
-                        size="sm"
-                        isDisabled={busy || !server.enabled}
-                        onClick={() => void reconnectServer(server.id)}
-                      />
-                      {server.transport === 'streamable-http'
-                        && server.enabled
-                        && (!server.hasOAuth || server.status === 'needs-sign-in') ? (
                         <Button
-                          label="Sign in"
+                          label={showingTools ? 'Hide tools' : 'Show tools'}
                           variant="ghost"
                           size="sm"
                           isDisabled={busy}
-                          onClick={() => void changeOAuth(server, 'sign-in')}
+                          onClick={() => setExpandedId(showingTools ? null : server.id)}
                         />
-                      ) : null}
-                      {server.hasOAuth || server.oauthCredentialsPersisted ? (
-                        <Button
-                          label="Sign out"
-                          variant="ghost"
-                          size="sm"
-                          isDisabled={busy}
-                          onClick={() => void changeOAuth(server, 'sign-out')}
-                        />
-                      ) : null}
-                      <Button
-                        label={server.enabled ? 'Disable' : 'Enable'}
-                        variant="ghost"
-                        size="sm"
-                        isDisabled={busy}
-                        onClick={() => void changeEnabled(server)}
-                      />
-                      <Button
-                        label="Edit"
-                        variant="ghost"
-                        size="sm"
-                        isDisabled={busy}
-                        onClick={() => editServer(server)}
-                      />
-                      <Button
-                        label="Remove"
-                        variant="ghost"
-                        size="sm"
-                        isDisabled={busy}
-                        onClick={() => void removeServer(server.id)}
-                      />
-                    </HStack>
-                  </HStack>
-                  <Text color="secondary" size="sm">
-                    {server.status} · {server.tools.length} tool{server.tools.length === 1 ? '' : 's'}
-                    {server.hasOAuth ? ' · signed in' : ''}
-                    {server.oauthCredentialsPersisted && !server.hasOAuth
-                      ? ' · encrypted OAuth credentials unavailable'
-                      : ''}
-                    {server.hasCredentials || server.credentialsPersisted
-                      ? server.credentialsPersisted
-                        ? server.hasCredentials ? ' · encrypted credentials' : ' · encrypted credentials unavailable'
-                        : ' · memory-only credentials'
-                      : ''}
-                    {server.status === 'failed' && server.error !== null ? ` · ${server.error}` : ''}
-                  </Text>
-                  <Button
-                    label={showingTools ? 'Hide tools' : 'Show tools'}
-                    variant="ghost"
-                    size="sm"
-                    isDisabled={busy}
-                    onClick={() => setExpandedId(showingTools ? null : server.id)}
-                  />
-                  {showingTools ? (
-                    <VStack gap={2}>
-                      <CheckboxInput
-                        label="Use all tools"
-                        description="New tools this server adds will be available automatically."
-                        value={server.toolSelection === 'all'}
-                        isLoading={busy}
-                        changeAction={(all) => {
-                          const next = all
-                            ? 'all'
-                            : server.tools.filter((tool) => tool.selected).map((tool) => tool.toolName);
-                          void changeTools(server, next);
-                        }}
-                      />
-                      {server.tools.length === 0 ? (
-                        <Text color="secondary" size="sm">No tools discovered.</Text>
-                      ) : server.tools.map((tool) => (
-                        <CheckboxInput
-                          key={tool.name}
-                          label={tool.toolName}
-                          description={tool.description}
-                          value={tool.selected}
-                          isLoading={busy || server.toolSelection === 'all'}
-                          changeAction={(enabled) => {
-                            const selected = server.toolSelection === 'all'
-                              ? server.tools.map((candidate) => candidate.toolName)
-                              : [...server.toolSelection];
-                            const next = enabled
-                              ? [...new Set([...selected, tool.toolName])]
-                              : selected.filter((name) => name !== tool.toolName);
-                            void changeTools(server, next);
-                          }}
-                        />
-                      ))}
-                    </VStack>
-                  ) : null}
-                </VStack>
-              </Section>
-            );
-              })}
+                        {showingTools ? (
+                          <VStack gap={2}>
+                            <CheckboxInput
+                              label="Use all tools"
+                              description="New tools this server adds will be available automatically."
+                              value={server.toolSelection === 'all'}
+                              isLoading={busy}
+                              changeAction={(all) => {
+                                const next = all
+                                  ? 'all'
+                                  : server.tools
+                                      .filter((tool) => tool.selected)
+                                      .map((tool) => tool.toolName);
+                                void changeTools(server, next);
+                              }}
+                            />
+                            {server.tools.length === 0 ? (
+                              <Text color="secondary" size="sm">
+                                No tools discovered.
+                              </Text>
+                            ) : (
+                              server.tools.map((tool) => (
+                                <CheckboxInput
+                                  key={tool.name}
+                                  label={tool.toolName}
+                                  description={tool.description}
+                                  value={tool.selected}
+                                  isLoading={busy || server.toolSelection === 'all'}
+                                  changeAction={(enabled) => {
+                                    const selected =
+                                      server.toolSelection === 'all'
+                                        ? server.tools.map((candidate) => candidate.toolName)
+                                        : [...server.toolSelection];
+                                    const next = enabled
+                                      ? [...new Set([...selected, tool.toolName])]
+                                      : selected.filter((name) => name !== tool.toolName);
+                                    void changeTools(server, next);
+                                  }}
+                                />
+                              ))
+                            )}
+                          </VStack>
+                        ) : null}
+                      </VStack>
+                    </Section>
+                  );
+                })
+              )}
             </VStack>
           ))}
         </VStack>
@@ -1041,7 +1084,8 @@ function McpSection({ workspaces }: { workspaces: readonly WorkspaceSummary[] })
         <VStack gap={3}>
           <Heading level={2}>{editingId === null ? 'Add a server' : 'Edit server'}</Heading>
           <Text color="secondary" size="sm">
-            Use a local command or a Streamable HTTP MCP URL. Workspace servers are offered only to chats in that workspace.
+            Use a local command or a Streamable HTTP MCP URL. Workspace servers are offered only to
+            chats in that workspace.
           </Text>
           <TextInput label="Name" value={name} onChange={setName} size="sm" />
           <Selector
@@ -1050,7 +1094,7 @@ function McpSection({ workspaces }: { workspaces: readonly WorkspaceSummary[] })
               { value: 'global', label: 'Global (all chats)' },
               ...workspaces.map((workspace) => ({ value: workspace.id, label: workspace.name })),
             ]}
-            value={scope === 'global' ? 'global' : workspaceId ?? undefined}
+            value={scope === 'global' ? 'global' : (workspaceId ?? undefined)}
             onChange={(value) => {
               if (value === 'global') {
                 setScope('global');
@@ -1060,7 +1104,7 @@ function McpSection({ workspaces }: { workspaces: readonly WorkspaceSummary[] })
                 setWorkspaceId(value);
               }
             }}
-            isDisabled={busy || workspaces.length === 0 && scope === 'workspace'}
+            isDisabled={busy || (workspaces.length === 0 && scope === 'workspace')}
           />
           <Selector
             label="Transport"
@@ -1080,8 +1124,13 @@ function McpSection({ workspaces }: { workspaces: readonly WorkspaceSummary[] })
               <TextInput
                 label="Environment variables (JSON)"
                 value={environment}
-                onChange={(value) => { setEnvironment(value); setClearCredentials(false); }}
-                placeholder={editingId === null ? '{"API_TOKEN":"..."}' : 'Leave blank to keep saved values'}
+                onChange={(value) => {
+                  setEnvironment(value);
+                  setClearCredentials(false);
+                }}
+                placeholder={
+                  editingId === null ? '{"API_TOKEN":"..."}' : 'Leave blank to keep saved values'
+                }
                 description="Protected by OS key storage when available; otherwise kept only until the app closes."
                 size="sm"
               />
@@ -1092,8 +1141,13 @@ function McpSection({ workspaces }: { workspaces: readonly WorkspaceSummary[] })
               <TextInput
                 label="HTTP headers (JSON)"
                 value={headers}
-                onChange={(value) => { setHeaders(value); setClearCredentials(false); }}
-                placeholder={editingId === null ? '{"x-api-key":"..."}' : 'Leave blank to keep saved values'}
+                onChange={(value) => {
+                  setHeaders(value);
+                  setClearCredentials(false);
+                }}
+                placeholder={
+                  editingId === null ? '{"x-api-key":"..."}' : 'Leave blank to keep saved values'
+                }
                 description="Protected by OS key storage when available; otherwise kept only until the app closes."
                 size="sm"
               />
@@ -1101,13 +1155,17 @@ function McpSection({ workspaces }: { workspaces: readonly WorkspaceSummary[] })
                 label="Bearer token"
                 type="password"
                 value={bearerToken}
-                onChange={(value) => { setBearerToken(value); setClearCredentials(false); }}
+                onChange={(value) => {
+                  setBearerToken(value);
+                  setClearCredentials(false);
+                }}
                 placeholder={editingId === null ? 'Optional' : 'Leave blank to keep saved token'}
                 size="sm"
               />
             </>
           )}
-          {editingId !== null && (editingServer?.hasCredentials || editingServer?.credentialsPersisted) ? (
+          {editingId !== null &&
+          (editingServer?.hasCredentials || editingServer?.credentialsPersisted) ? (
             <HStack justify="between" align="center">
               <Text color="secondary" size="sm">
                 {editingServer?.credentialsPersisted
@@ -1117,7 +1175,9 @@ function McpSection({ workspaces }: { workspaces: readonly WorkspaceSummary[] })
                   : 'Credentials are available only until this app closes because this device cannot encrypt them.'}
               </Text>
               <Button
-                label={clearCredentials ? 'Keep configured credentials' : 'Clear configured credentials'}
+                label={
+                  clearCredentials ? 'Keep configured credentials' : 'Clear configured credentials'
+                }
                 variant="ghost"
                 size="sm"
                 isDisabled={busy}
@@ -1125,20 +1185,39 @@ function McpSection({ workspaces }: { workspaces: readonly WorkspaceSummary[] })
               />
             </HStack>
           ) : null}
-          {clearCredentials ? <Text color="secondary" size="sm">Configured credentials will be cleared when you save.</Text> : null}
+          {clearCredentials ? (
+            <Text color="secondary" size="sm">
+              Configured credentials will be cleared when you save.
+            </Text>
+          ) : null}
           <HStack gap={2}>
             <Button
               label={editingId === null ? 'Add server' : 'Save server'}
               variant="primary"
               size="sm"
-              isDisabled={busy || name.trim() === '' || (scope === 'workspace' && workspaceId === null) || (transport === 'stdio' ? command.trim() === '' : url.trim() === '')}
+              isDisabled={
+                busy ||
+                name.trim() === '' ||
+                (scope === 'workspace' && workspaceId === null) ||
+                (transport === 'stdio' ? command.trim() === '' : url.trim() === '')
+              }
               onClick={() => void saveServer()}
             />
             {editingId === null ? null : (
-              <Button label="Cancel" variant="ghost" size="sm" isDisabled={busy} onClick={clearForm} />
+              <Button
+                label="Cancel"
+                variant="ghost"
+                size="sm"
+                isDisabled={busy}
+                onClick={clearForm}
+              />
             )}
           </HStack>
-          {problem === null ? null : <Text color="secondary" size="sm">{problem}</Text>}
+          {problem === null ? null : (
+            <Text color="secondary" size="sm">
+              {problem}
+            </Text>
+          )}
         </VStack>
       </Section>
     </>

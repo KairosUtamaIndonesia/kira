@@ -151,6 +151,18 @@ function kira(calls: string[], quirks: Quirks = {}): Kira {
       calls.push('detach a repository');
       return { kind: 'unavailable' };
     },
+    connections: async () => {
+      calls.push('read git connections');
+      return { kind: 'unavailable' };
+    },
+    connectHost: async () => {
+      calls.push('connect a git host');
+      return { kind: 'unavailable' };
+    },
+    disconnectHost: async () => {
+      calls.push('disconnect a git host');
+      return { kind: 'unavailable' };
+    },
     readTicket: async () => {
       calls.push('read a ticket');
       return { kind: 'unavailable' };
