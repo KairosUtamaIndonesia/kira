@@ -13,8 +13,10 @@ import {
   useSideNavCollapse,
 } from '@astryxdesign/core/SideNav';
 import { Text } from '@astryxdesign/core/Text';
+import { colorVars, radiusVars, spacingVars } from '@astryxdesign/core/theme/tokens.stylex';
 import { useClipboard } from '@astryxdesign/core/hooks';
 import { useToast } from '@astryxdesign/core/Toast';
+import * as stylex from '@stylexjs/stylex';
 import {
   ActionBarPrimitive,
   AuiIf,
@@ -66,6 +68,7 @@ import type {
   AuthState,
   ChatMessage as ChatLine,
   ChatConclusion,
+  ChatCommand,
   ChatMode,
   ChatMemory,
   GlossaryChangeNote,
@@ -73,6 +76,7 @@ import type {
   ChatState,
   ChatSummary,
   ChatTranscript,
+  ShellCommandRun,
   ChatUsage,
   ModelOption,
   Proposal,
@@ -167,6 +171,9 @@ const PARKED_PANE: ComponentProps<typeof ChatPane> = {
   onCancelQuestionnaire: async () => null,
   questionnaireDraft: undefined,
   onQuestionnaireDraftChange: () => {},
+  commands: [],
+  shellRuns: [],
+  onOpenMagicPrompts: () => {},
 };
 
 function readChatSort(): ChatSort {
@@ -234,6 +241,8 @@ export default function App() {
   const [modelId, setModelId] = useState<string | null>(null);
   /** What the chat on screen has used, or null when there is no session in it yet. */
   const [chatUsage, setChatUsage] = useState<ChatUsage | null>(null);
+  const [commands, setCommands] = useState<ChatCommand[]>([]);
+  const [shellRunsByChat, setShellRunsByChat] = useState<Record<string, ShellCommandRun[]>>({});
   const [shaping, setShaping] = useState<ShapingState>(NO_SHAPING);
   const [questionnaire, setQuestionnaire] = useState<QuestionnaireRequest | null>(null);
   const [questionnaireDrafts, setQuestionnaireDrafts] = useState<
@@ -341,6 +350,7 @@ export default function App() {
       const nextShaping = result.value.shaping ?? NO_SHAPING;
       setShaping(nextShaping);
       setQuestionnaire(result.value.questionnaire ?? null);
+      setCommands(result.value.commands ?? []);
       setSpecQueue(null);
       setSpecQueueChatId(null);
       const currentChat = result.value.chats.find((chat) => chat.id === result.value.currentId);
@@ -434,6 +444,22 @@ export default function App() {
         setChats((chats) =>
           chats.map((chat) => (chat.id === event.threadId ? { ...chat, workTicketIds } : chat)),
         );
+      }
+      if (event.type === 'shell-command') {
+        setShellRunsByChat((runsByChat) => {
+          const current = runsByChat[event.threadId] ?? [];
+          const runs = current.some((run) => run.id === event.run.id)
+            ? current.map((run) => (run.id === event.run.id ? event.run : run))
+            : [...current, event.run];
+          return { ...runsByChat, [event.threadId]: runs };
+        });
+        return;
+      }
+      if (event.type === 'transcript') {
+        setShellRunsByChat((runsByChat) => {
+          const { [event.threadId]: _finished, ...remaining } = runsByChat;
+          return remaining;
+        });
       }
       // A turn in a chat the window is not showing is the sidebar's business:
       // nothing here draws it, and it matters only once it is over, which is
@@ -1088,6 +1114,12 @@ export default function App() {
   /** What the pane on screen is handed, whichever chat that pane is for. */
   const paneProps: ComponentProps<typeof ChatPane> = {
     chatId: currentId,
+    commands,
+    shellRuns: shellRunsByChat[currentId] ?? [],
+    onOpenMagicPrompts: () => {
+      setSetting('magic-prompts');
+      setSurface('settings');
+    },
     repository,
     partsOf,
     trailing: drawn.trailing,
@@ -1473,6 +1505,9 @@ function SettingsNavActions({ onBack }: { onBack: () => void }) {
 
 function ChatPane({
   chatId,
+  commands,
+  shellRuns,
+  onOpenMagicPrompts,
   repository,
   partsOf,
   trailing,
@@ -1512,6 +1547,9 @@ function ChatPane({
   onCancelQuestionnaire,
 }: {
   chatId: string;
+  commands: ChatCommand[];
+  shellRuns: ShellCommandRun[];
+  onOpenMagicPrompts: () => void;
   repository: ReturnType<typeof ExportedMessageRepository.fromBranchableArray>;
   /** What each drawn message says, by its id: the parts the window draws. */
   partsOf: Map<string, readonly ChatPart[]>;
@@ -1607,12 +1645,13 @@ function ChatPane({
 
                 return (
                   <Line
+                    chatId={chatId}
                     isKira={message.role === 'assistant'}
                     messageId={message.id}
                     parts={parts}
                     isWorking={isRunning && message.isLast}
                     isEditing={message.composer.isEditing}
-                    showsActions={showsActions}
+                    showsActions={showsActions && !parts.some((part) => part.type === 'shell')}
                     onFork={onFork}
                   />
                 );
@@ -1634,6 +1673,10 @@ function ChatPane({
 
         <ThreadPrimitive.ViewportFooter className="thread-footer">
           <Composer
+            chatId={chatId}
+            commands={commands}
+            shellRuns={shellRuns}
+            onOpenMagicPrompts={onOpenMagicPrompts}
             placeholder="Tell Kira what to do in this folder"
             error={error}
             usage={usage}
@@ -1718,6 +1761,7 @@ function boundariesIn(parts: readonly ChatPart[]): ReactNode {
  * looks like is Astryx's.
  */
 function Line({
+  chatId,
   isKira,
   messageId,
   isWorking,
@@ -1726,6 +1770,7 @@ function Line({
   showsActions,
   onFork,
 }: {
+  chatId: string;
   isKira: boolean;
   messageId: string;
   isWorking: boolean;
@@ -1747,7 +1792,7 @@ function Line({
   if (isEditing) {
     return (
       <MessagePrimitive.Root className="line">
-        <Composer placeholder="Say it differently" isEditing />
+        <Composer chatId={chatId} placeholder="Say it differently" isEditing />
       </MessagePrimitive.Root>
     );
   }
@@ -1955,6 +2000,9 @@ function partLike(part: ChatPart, messageId: string, index: number): ContentPart
   if (part.type === 'text') {
     return { type: 'text', text: part.text };
   }
+  if (part.type === 'shell') {
+    return { type: 'text', text: `!${part.run.command}\n${part.run.output}` };
+  }
 
   return {
     type: 'tool-call',
@@ -1991,6 +2039,8 @@ function MessageBody({
           <Fragment key={index}>{isKira ? <Markdown>{part.text}</Markdown> : part.text}</Fragment>
         ) : part.type === 'glossary' ? (
           <GlossaryNote key={index} change={part.change} />
+        ) : part.type === 'shell' ? (
+          <ShellCommandTranscript key={part.run.id} run={part.run} />
         ) : (
           <Work key={index} part={part} isWorking={isWorking} />
         ),
@@ -1998,6 +2048,49 @@ function MessageBody({
     </>
   );
 }
+
+function ShellCommandTranscript({ run }: { run: ShellCommandRun }) {
+  const status = run.status === 'cancelled'
+    ? 'Cancelled'
+    : run.status === 'error'
+      ? `Failed${run.exitCode === null ? '' : ` · exit code ${run.exitCode}`}`
+      : `Finished${run.exitCode === null ? '' : ` · exit code ${run.exitCode}`}`;
+
+  return (
+    <div {...stylex.props(shellStyles.command)}>
+      <Text weight="medium" size="sm">You ran locally: !{run.command}</Text>
+      {run.output === '' ? null : <pre {...stylex.props(shellStyles.output)}>{run.output}</pre>}
+      <Text color="secondary" size="sm">
+        {status}{run.truncated ? ' · output truncated' : ''}
+      </Text>
+      {run.fullOutputPath === null ? null : (
+        <Text color="secondary" size="sm">Full output: {run.fullOutputPath}</Text>
+      )}
+    </div>
+  );
+}
+
+const shellStyles = stylex.create({
+  command: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: spacingVars['--spacing-2'],
+    minWidth: 0,
+  },
+  output: {
+    maxHeight: '16rem',
+    overflow: 'auto',
+    margin: 0,
+    padding: spacingVars['--spacing-2'],
+    borderRadius: radiusVars['--radius-element'],
+    backgroundColor: colorVars['--color-background-muted'],
+    color: colorVars['--color-text-primary'],
+    fontFamily: 'var(--font-family-code)',
+    fontSize: '0.75rem',
+    whiteSpace: 'pre-wrap',
+    overflowWrap: 'anywhere',
+  },
+});
 
 /** A quiet, reversible server note rather than a confirmation or approval card. */
 function GlossaryNote({ change }: { change: GlossaryChangeNote }) {
@@ -2029,6 +2122,24 @@ function GlossaryNote({ change }: { change: GlossaryChangeNote }) {
 }
 
 /** The words of a message: its text parts joined, and nothing else it carries. */
-function textOf(parts: readonly { type: string; text?: string | undefined }[]): string {
-  return parts.flatMap((part) => (part.type === 'text' ? [part.text ?? ''] : [])).join('');
+function textOf(
+  parts: readonly { type: string; text?: string | undefined; run?: unknown }[],
+): string {
+  return parts
+    .flatMap((part) => {
+      if (part.type === 'text') return [part.text ?? ''];
+      if (part.type === 'shell' && isShellRun(part.run)) {
+        return [`!${part.run.command}\n${part.run.output}`];
+      }
+      return [];
+    })
+    .join('');
+}
+
+/** Whether a shell part's payload is a local run, which the loose `textOf` has not typed. */
+function isShellRun(run: unknown): run is ShellCommandRun {
+  if (typeof run !== 'object' || run === null) return false;
+
+  const held = run as { command?: unknown; output?: unknown };
+  return typeof held.command === 'string' && typeof held.output === 'string';
 }

@@ -8,6 +8,12 @@
 
 ### Added
 
+- The composer's four leading characters are live: `@` searches this chat's workspace files and inserts a readable path reference, `/` lists the commands and skills the chat's session supports, `#` expands a shared Magic Prompt into the draft, and a leading `!` runs the rest of the draft as a local command. See [the composer guide](docs/composer.md).
+
+- Magic Prompts are reusable text shared across every project on this installation: save them in **Settings → Magic Prompts**, search them after `#`, and edit the expanded text before sending. Choosing one never sends it for you.
+
+- A leading `!` in the composer runs a local command in the chat's working folder without starting an AI turn. The output streams while it runs and is kept in the chat as context Kira can read, with a Run action, a Cancel command action, and no model call or allowance spend. One command runs per chat at a time.
+
 - The chat rail shows how long Kira has been working in each running chat, ticking once a second in the status dot's blue. Workspace headings no longer show chat counts.
 
 - The chat rail is a ledger: each workspace is a ruled section, chats are single rows with a short age, and a workspace's Work, new chat and menu appear when you point at its name, so a project's Work is one click away. The rail now shares the chat's ground, the chat you are in is marked with a small red dot instead of a red block, and the account row at the bottom lines up with the chats above it.

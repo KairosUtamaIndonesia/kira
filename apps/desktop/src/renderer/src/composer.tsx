@@ -6,6 +6,7 @@ import {
   ChatComposerDrawer,
   ChatComposerInput,
   ChatSendButton,
+  type ChatComposerTrigger,
   type ChatComposerProps,
 } from '@astryxdesign/core/Chat';
 import { Icon } from '@astryxdesign/core/Icon';
@@ -25,10 +26,20 @@ import {
   spacingVars,
 } from '@astryxdesign/core/theme/tokens.stylex';
 import { useAui, useAuiState } from '@assistant-ui/react';
-import { ChevronDown, Gauge, Plus, Ticket as TicketIcon, X } from 'lucide-react';
-import { useEffect, useState, type ReactNode } from 'react';
+import { ChevronDown, FileText, Gauge, Plus, Terminal, Ticket as TicketIcon, X } from 'lucide-react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import * as stylex from '@stylexjs/stylex';
-import type { ChatMode, ChatUsage, ModelOption, QueuedLine, Usage } from '../../preload/bridge';
+import type {
+  ChatCommand,
+  ChatMode,
+  ChatUsage,
+  MagicPrompt,
+  ModelOption,
+  QueuedLine,
+  ShellCommandRun,
+  Usage,
+} from '../../preload/bridge';
+import type { SearchableItem, SearchSource } from '@astryxdesign/core/Typeahead';
 import { chatLines, formatTokens, warningFor } from './allowanceText';
 import {
   browserElementsInMessage,
@@ -36,6 +47,20 @@ import {
   formatBrowserElementDraft,
   type BrowserElementSelection,
 } from './browser/elementSelection';
+import {
+  fileReferenceValue,
+  matchingCommands,
+  matchingMagicPrompts,
+  restoredFileReference,
+  submissionFor,
+} from './composerSelectors';
+
+type SelectorPayload =
+  | { kind: 'file'; path: string }
+  | { kind: 'command'; command: ChatCommand }
+  | { kind: 'manage-prompts' }
+  | { kind: 'prompt'; prompt: MagicPrompt };
+type SelectorItem = SearchableItem<{ group?: string; payload: SelectorPayload }>;
 
 /**
  * The composer, said in Astryx's words.
@@ -57,6 +82,10 @@ import {
  * and stopping hands them back into this box, so the box is where they return.
  */
 export function Composer({
+  chatId,
+  commands = [],
+  shellRuns = [],
+  onOpenMagicPrompts,
   placeholder,
   error,
   usage = null,
@@ -80,6 +109,10 @@ export function Composer({
   onLinkWorkTicket,
   onRemoveWorkTicket,
 }: {
+  chatId: string;
+  commands?: ChatCommand[];
+  shellRuns?: ShellCommandRun[];
+  onOpenMagicPrompts?: () => void;
   placeholder: string;
   error?: string | null;
   /** What this person has used of their allowance this month, or no reading. */
@@ -122,6 +155,119 @@ export function Composer({
   // the replacement, so it still waits for a turn that is running to finish.
   const canSend = useAuiState((state) => state.composer.canSend) && !(isEditing && isRunning);
   const [isLinkTicketOpen, setIsLinkTicketOpen] = useState(false);
+  const [magicPrompts, setMagicPrompts] = useState<MagicPrompt[]>([]);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
+  const isShellDraft = !isEditing && text.startsWith('!');
+  const shellRefusal = isShellDraft && isRunning
+    ? 'Wait until Kira has finished before running a local command.'
+    : null;
+
+  useMountEffect(() => {
+    void window.kira.loadMagicPrompts().then((result) => {
+      if (result.ok) setMagicPrompts(result.value);
+    });
+  });
+
+  const triggers = useMemo<ChatComposerTrigger[]>(() => {
+    const fileSearch: SearchSource<SelectorItem> = {
+      bootstrap: () => [],
+      search: async (query) => {
+        const result = await window.kira.searchWorkspaceFiles(chatId, query);
+        return result.ok
+          ? result.value.map((path) => ({
+              id: path,
+              label: path,
+              auxiliaryData: { payload: { kind: 'file' as const, path } },
+            }))
+          : [];
+      },
+    };
+    const commandSearch: SearchSource<SelectorItem> = {
+      bootstrap: () => commandItems(commands, ''),
+      search: (query) => commandItems(commands, query),
+    };
+    const promptSearch: SearchSource<SelectorItem> = {
+      bootstrap: () => promptItems(magicPrompts, '', onOpenMagicPrompts === undefined),
+      search: (query) => promptItems(magicPrompts, query, onOpenMagicPrompts === undefined),
+    };
+    const renderItem = (item: SearchableItem): ReactNode => {
+      const payload = (item.auxiliaryData as SelectorItem['auxiliaryData'])?.payload;
+      const detail =
+        payload?.kind === 'command'
+          ? [payload.command.category, payload.command.description].filter(Boolean).join(' · ')
+          : payload?.kind === 'prompt' && payload.prompt.aliases.length > 0
+            ? `Aliases: ${payload.prompt.aliases.join(', ')}`
+            : null;
+      return (
+        <VStack gap={0.5}>
+          <Text>{item.label}</Text>
+          {detail ? <Text color="secondary" size="sm">{detail}</Text> : null}
+        </VStack>
+      );
+    };
+
+    return [
+      {
+        character: '@',
+        searchSource: fileSearch,
+        renderItem,
+        emptySearchResultsText: 'No matching workspace files.',
+        onSelect: (item: SearchableItem) => {
+          const payload = (item.auxiliaryData as SelectorItem['auxiliaryData'])?.payload;
+          if (payload?.kind !== 'file') return item.label;
+          return {
+            value: fileReferenceValue(payload.path),
+            label: payload.path,
+            variant: 'neutral' as const,
+            icon: <Icon icon={FileText} size="sm" />,
+          };
+        },
+        deserialize: (value: string) => {
+          const restored = restoredFileReference(value);
+          return restored === null
+            ? null
+            : {
+                value: restored.value,
+                label: restored.path,
+                variant: 'neutral' as const,
+                icon: <Icon icon={FileText} size="sm" />,
+              };
+        },
+      },
+      {
+        character: '/',
+        searchSource: commandSearch,
+        renderItem,
+        emptySearchResultsText: 'No available commands or skills.',
+        onSelect: (item: SearchableItem) => {
+          const payload = (item.auxiliaryData as SelectorItem['auxiliaryData'])?.payload;
+          return payload?.kind === 'command' ? `${payload.command.invocation} ` : item.label;
+        },
+      },
+      {
+        character: '#',
+        searchSource: promptSearch,
+        renderItem,
+        emptySearchResultsText: 'No matching Magic Prompts.',
+        renderEmptySearchResults: () => (
+          <Button
+            label="Manage Magic Prompts"
+            size="sm"
+            variant="ghost"
+            onClick={onOpenMagicPrompts}
+          />
+        ),
+        onSelect: (item: SearchableItem) => {
+          const payload = (item.auxiliaryData as SelectorItem['auxiliaryData'])?.payload;
+          if (payload?.kind === 'manage-prompts') {
+            onOpenMagicPrompts?.();
+            return '';
+          }
+          return payload?.kind === 'prompt' ? payload.prompt.content : item.label;
+        },
+      },
+    ];
+  }, [chatId, commands, magicPrompts, onOpenMagicPrompts]);
   const attachedTicketRows = attachedTicketIds.map((ticketId) => {
     const ticket = workTicketDetails[ticketId];
     const ticketName = ticket?.name ?? `Ticket ${ticketId.slice(0, 8)}`;
@@ -152,13 +298,53 @@ export function Composer({
       </div>
     );
   });
-  const sendDraft = (steer: boolean = true): void => {
+  const sendDraft = (draftText: string = text, steer: boolean = true): void => {
+    setSubmissionError(null);
+    const submission = submissionFor(draftText, isEditing);
+
+    if (submission.type === 'empty-shell') {
+      setSubmissionError('Add a command after ! before running it.');
+      return;
+    }
+
+    if (submission.type === 'shell') {
+      if (isRunning) {
+        setSubmissionError('Wait until Kira has finished before running a local command.');
+        aui.composer.setText(draftText);
+        return;
+      }
+      void window.kira.runShellCommand(chatId, submission.command).then((result) => {
+        if (!result.ok) {
+          aui.composer.setText(draftText);
+          setSubmissionError(result.error);
+          return;
+        }
+        aui.composer.setText('');
+      }).catch((failure: unknown) => {
+        aui.composer.setText(draftText);
+        setSubmissionError(failure instanceof Error ? failure.message : String(failure));
+      });
+      return;
+    }
+
+    if (submission.type === 'compact') {
+      void window.kira.compactChat().then((result) => {
+        if (!result.ok) {
+          aui.composer.setText(draftText);
+          setSubmissionError(result.error);
+          return;
+        }
+        aui.composer.setText('');
+      });
+      return;
+    }
+
     if (isEditing || browserElements.length === 0) {
       if (steer) aui.composer.send();
       else aui.composer.send({ steer: false });
       return;
     }
-    aui.composer.setText(browserElementsInMessage(aui.composer.getState().text, browserElements));
+    aui.composer.setText(browserElementsInMessage(draftText, browserElements));
     onBrowserElementsChange?.([]);
     if (steer) aui.composer.send();
     else aui.composer.send({ steer: false });
@@ -180,15 +366,22 @@ export function Composer({
 
   const composer: ChatComposerProps = {
     value: text,
-    onChange: (next) => aui.composer.setText(next),
-    onSubmit: () => sendDraft(),
+    onChange: (next) => {
+      setSubmissionError(null);
+      aui.composer.setText(next);
+    },
+    onSubmit: (submitted) => sendDraft(submitted),
     placeholder,
     // The refusal owns the status line, because it is what the reader has to act
     // on; the warning has it only when nothing else does. Astryx's own slot under
     // the box either way.
     status: error
       ? { type: 'error', message: error }
-      : usage?.warned
+      : submissionError !== null
+        ? { type: 'error', message: submissionError }
+        : shellRefusal !== null
+          ? { type: 'warning', message: shellRefusal }
+          : usage?.warned
         ? { type: 'warning', message: warningFor(usage) }
         : undefined,
     // The gauge and mode belong beside the send button: they describe what the
@@ -245,7 +438,7 @@ export function Composer({
     ),
     // The same button, in its other state: while Kira is writing there is
     // something to stop, and stopping is what it does instead of sending.
-    isStopShown: canCancel && !isEditing,
+    isStopShown: canCancel && !isEditing && !isShellDraft,
     onStop: () => aui.composer.cancel(),
     input: (
       <div {...stylex.props(styles.composerInputContent)}>
@@ -253,6 +446,7 @@ export function Composer({
           <div {...stylex.props(styles.workTicketAttachments)}>{attachedTicketRows}</div>
         )}
         <ChatComposerInput
+          triggers={isEditing ? undefined : triggers}
           onKeyDown={(event) => {
             if (event.key !== 'Enter' || event.shiftKey) {
               return;
@@ -262,7 +456,7 @@ export function Composer({
             // turn instead of handing them over at Kira's next step.
             if (event.altKey && canSend) {
               event.preventDefault();
-              sendDraft(false);
+              sendDraft(text, false);
               return;
             }
 
@@ -275,8 +469,16 @@ export function Composer({
     ),
     sendButton: isEditing ? (
       <Button label="Save" isDisabled={!canSend} onClick={() => sendDraft()} />
+    ) : isShellDraft ? (
+      <Button
+        label="Run"
+        icon={<Icon icon={Terminal} size="sm" />}
+        isIconOnly
+        isDisabled={!canSend || isRunning}
+        onClick={() => sendDraft(text)}
+      />
     ) : (
-      <ChatSendButton isDisabled={!canSend} />
+      <ChatSendButton isDisabled={!canSend} onSend={() => sendDraft(text)} />
     ),
   };
 
@@ -314,6 +516,14 @@ export function Composer({
           />
         </div>
       )}
+      {shellRuns.filter((run) => run.status === 'running').map((run) => (
+        <ShellCommandActivity
+          key={run.id}
+          chatId={chatId}
+          run={run}
+          onError={setSubmissionError}
+        />
+      ))}
       <ChatComposer
         {...composer}
         drawer={
@@ -424,6 +634,74 @@ const MODES: { value: ChatMode; label: string; says: string }[] = [
   },
 ];
 
+function commandItems(commands: readonly ChatCommand[], query: string): SelectorItem[] {
+  return matchingCommands(commands, query).map((command) => ({
+    id: command.id,
+    label: command.label,
+    auxiliaryData: {
+      group: command.category,
+      payload: { kind: 'command', command },
+    },
+  }));
+}
+
+function promptItems(
+  prompts: readonly MagicPrompt[],
+  query: string,
+  managing: boolean,
+): SelectorItem[] {
+  const items = matchingMagicPrompts(prompts, query).map((prompt) => ({
+    id: prompt.id,
+    label: prompt.name,
+    auxiliaryData: { payload: { kind: 'prompt', prompt } as SelectorPayload },
+  }));
+  if (!managing) {
+    return [
+      ...items,
+      {
+        id: 'manage-magic-prompts',
+        label: 'Manage Magic Prompts…',
+        auxiliaryData: { payload: { kind: 'manage-prompts' } as SelectorPayload },
+      },
+    ];
+  }
+  return items;
+}
+
+function useMountEffect(effect: () => void | (() => void)): void {
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(effect, []);
+}
+
+function ShellCommandActivity({
+  chatId,
+  run,
+  onError,
+}: {
+  chatId: string;
+  run: ShellCommandRun;
+  onError: (message: string) => void;
+}): ReactNode {
+  return (
+    <section {...stylex.props(styles.shellActivity)} aria-label="Local command running">
+      <div {...stylex.props(styles.shellActivityHead)}>
+        <Text weight="medium" size="sm">Running locally: !{run.command}</Text>
+        <Button
+          label="Cancel command"
+          size="sm"
+          variant="ghost"
+          onClick={() => {
+            void window.kira.cancelShellCommand(chatId, run.id).then((result) => {
+              if (!result.ok) onError(result.error);
+            });
+          }}
+        />
+      </div>
+      {run.output === '' ? null : <pre {...stylex.props(styles.shellOutput)}>{run.output}</pre>}
+    </section>
+  );
+}
+
 /**
  * What this person has used of their allowance, behind an icon.
  *
@@ -502,6 +780,32 @@ const styles = stylex.create({
     flexDirection: 'column',
     gap: spacingVars['--spacing-2'],
     minWidth: 0,
+  },
+  shellActivity: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: spacingVars['--spacing-2'],
+    minWidth: 0,
+    padding: spacingVars['--spacing-2'],
+    borderRadius: radiusVars['--radius-element'],
+    backgroundColor: colorVars['--color-background-muted'],
+  },
+  shellActivityHead: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacingVars['--spacing-2'],
+    minWidth: 0,
+  },
+  shellOutput: {
+    maxHeight: '12rem',
+    overflow: 'auto',
+    margin: 0,
+    color: colorVars['--color-text-secondary'],
+    fontFamily: 'var(--font-family-code)',
+    fontSize: '0.75rem',
+    whiteSpace: 'pre-wrap',
+    overflowWrap: 'anywhere',
   },
   workTicketName: {
     flexShrink: 0,
