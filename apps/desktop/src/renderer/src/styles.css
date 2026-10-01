@@ -161,80 +161,19 @@
 }
 
 /*
- * A project with nothing in it yet still draws open (see the comment above
- * where it is rendered), so this is what fills that space instead of a group
- * that looks like it leads nowhere. Padding matches a chat row's so the line
- * sits where a chat row would.
+ * The chat rail's hover tools (a section's Work, new chat and menu; a chat's menu)
+ * are as dim as the gutter icons and counts beside them, and come up to full
+ * strength under the pointer. Astryx's icon buttons take their colour from a rule
+ * no prop reaches, so it is said here, from the wrapper `chatRail.tsx` gives them.
+ * `!important`: StyleX's own rules carry ID-level specificity here.
  */
-.empty-workspace {
-  display: block;
-  padding: var(--spacing-1-5) var(--spacing-2);
+.rail-tools button {
+  color: var(--color-text-secondary) !important;
 }
 
-/*
- * A chat row's "..." menu stays out of the way until there's a reason to reach
- * for it: hidden until the row is hovered or the trigger itself is focused
- * (keyboard access, no pointer required), and pinned visible for as long as
- * its own menu is open — the popover content renders outside this row through
- * Astryx's Layer system, so :focus-within stops matching the moment focus
- * moves into it, and the trigger would otherwise vanish under an open menu.
- */
-.chat-row .astryx-more-menu {
-  opacity: 0;
-}
-
-.chat-row:hover .astryx-more-menu,
-.chat-row .astryx-more-menu:focus-visible,
-.chat-row-menu-open .astryx-more-menu {
-  opacity: 1;
-}
-
-/*
- * The unfiled "Chats" group sits at the sidebar's top level, not inside
- * anything — Astryx's disclosure indent (--spacing-6, on the children
- * gutter every SideNavItem draws the same way) reads as nesting that isn't
- * there. Zeroed here rather than on the group itself, since SideNavItem
- * exposes no hook to reach only its own children gutter.
- */
-.unfiled-chats [role='group'] > div {
-  padding-inline-start: 0 !important;
-}
-
-/*
- * A project's chats stay indented — they really are nested — with tree
- * lines standing in for the indent alone. One shared vertical stroke runs
- * through the list, including the space above its first row; each row adds
- * the short horizontal arm of the tree without moving its own content.
- */
-.workspace-group [role='group'] {
-  position: relative;
-  padding-top: var(--spacing-1);
-}
-
-.workspace-group [role='group']::before {
-  content: '';
-  position: absolute;
-  top: calc(0px - var(--spacing-1));
-  bottom: 0;
-  left: 12px;
-  width: 1px;
-  background: var(--color-border);
-}
-
-.workspace-group [role='group'] > div > * {
-  position: relative;
-  margin-left: -12px;
-  padding-left: 12px;
-}
-
-.workspace-group [role='group'] > div > *::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 0;
-  width: 12px;
-  height: 1px;
-  background: var(--color-border);
+.rail-tools button:hover,
+.rail-tools button:focus-visible {
+  color: var(--color-text-primary) !important;
 }
 
 /*

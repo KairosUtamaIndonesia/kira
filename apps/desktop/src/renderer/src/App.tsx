@@ -1,13 +1,11 @@
 import { AlertDialog } from '@astryxdesign/core/AlertDialog';
 import { AppShell } from '@astryxdesign/core/AppShell';
-import { Button, type ButtonVariant } from '@astryxdesign/core/Button';
+import { Button } from '@astryxdesign/core/Button';
 import { ChatMessage, ChatMessageBubble } from '@astryxdesign/core/Chat';
-import { ContextMenu } from '@astryxdesign/core/ContextMenu';
 import { DropdownMenu } from '@astryxdesign/core/DropdownMenu';
 import { Icon } from '@astryxdesign/core/Icon';
 import { IconButton } from '@astryxdesign/core/IconButton';
 import { Markdown } from '@astryxdesign/core/Markdown';
-import { MoreMenu } from '@astryxdesign/core/MoreMenu';
 import {
   SideNav,
   SideNavCollapseButton,
@@ -15,7 +13,6 @@ import {
   SideNavItem,
   useSideNavCollapse,
 } from '@astryxdesign/core/SideNav';
-import { Spinner } from '@astryxdesign/core/Spinner';
 import { Text } from '@astryxdesign/core/Text';
 import { useClipboard } from '@astryxdesign/core/hooks';
 import { useToast } from '@astryxdesign/core/Toast';
@@ -33,18 +30,13 @@ import {
 } from '@assistant-ui/react';
 import {
   ArrowLeft,
-  ArrowUpDown,
   Brain,
   Check,
   CircleUserRound,
   Copy,
   Download,
-  Folder,
-  FolderPlus,
   GitFork,
   LogOut,
-  MessageSquareDashed,
-  MessagesSquare,
   PanelLeft,
   PanelRight,
   Pencil,
@@ -52,7 +44,6 @@ import {
   RotateCcw,
   Settings2,
   Terminal,
-  Ticket,
 } from 'lucide-react';
 import {
   Fragment,
@@ -65,7 +56,7 @@ import {
 } from 'react';
 import { Composer } from './composer';
 import { EmptyThread } from './emptyThread';
-import { CHAT_SORT_LABELS, type ChatSort, relativeTime, sortChats } from './chatOrdering';
+import { type ChatSort, sortChats } from './chatOrdering';
 import { SignIn } from './signIn';
 import { Workbench, useWorkbench } from './workbench';
 import {
@@ -108,7 +99,7 @@ import SettingsPage, { type Setting } from './settings';
 import type { ProposalVerdict } from './proposalCard';
 import { MoveToProject } from './moveToProject.tsx';
 import { needsProject } from './moveToProject.ts';
-import { copy } from './workCopy.ts';
+import { ChatRail } from './chatRail.tsx';
 import { approvedSpecTicket } from './specPane';
 
 /**
@@ -120,7 +111,6 @@ import { approvedSpecTicket } from './specPane';
 const PENDING_ID = 'pending-message';
 const STREAMING_ID = 'streaming-reply';
 const CHAT_SORT_STORAGE_KEY = 'kira.chat-sort';
-const CHAT_SORT_OPTIONS: ChatSort[] = ['recent', 'created', 'alphabetical'];
 // Astryx's own floor (180px) truncates a chat row's title to one or two
 // letters before its timestamp and menu even fit — 320px is the width a
 // live resize check landed on where every row in this sidebar (a chat title
@@ -1031,30 +1021,8 @@ export default function App() {
     handBack(result.value);
   }
 
-  /**
-   * The chats filed nowhere: what is left over once a workspace has taken the
-   * chats that belong to it. They keep the list they have always had.
-   */
+  /** The chats in the order the rail lists them, in a workspace or out of one. */
   const orderedChats = useMemo(() => sortChats(chats, chatSort), [chatSort, chats]);
-  const unfiled = orderedChats.filter((chat) => chat.workspaceId === null);
-
-  /**
-   * One chat in the sidebar. A workspace's chats and the chats filed nowhere are
-   * drawn the same way and can be put away or thrown away the same way, so the
-   * row is made in one place for both lists.
-   */
-  const chatRow = (chat: ChatSummary) => (
-    <ChatRow
-      key={chat.id}
-      chat={chat}
-      isCurrent={chat.id === currentId}
-      isRunning={running.includes(chat.id)}
-      onOpen={() => void switchChat(() => window.kira.openChat(chat.id))}
-      onArchive={() => void archiveChat(chat.id)}
-      onDelete={() => setDeleting(chat)}
-      onMove={needsProject(chat.workspaceId, workspaces) ? () => void moveChat(chat.id) : undefined}
-    />
-  );
 
   /** Move a chat into a project on its own, with nothing waiting on the answer. */
   async function moveChat(chatId: string): Promise<void> {
@@ -1253,128 +1221,29 @@ export default function App() {
               />
             </SideNav>
           ) : (
-            <SideNav
+            <ChatRail
               header={<KiraSideNavHeader />}
-              collapsible={{ hasButton: false }}
-              resizable={SIDEBAR_RESIZABLE}
-              // Settings and sign out both belong to the account using this window
-              // rather than to any one chat, so they share one menu at the foot of
-              // the nav instead of a permanent row apiece — the account's own
-              // name and initial are what opens it, in place of a plain label.
-              footer={
-                <AccountMenu
-                  name={auth.user.name}
-                  onOpenSettings={() => showSurface('settings')}
-                  onSignOut={signOut}
-                />
+              accountName={auth.user.name}
+              workspaces={workspaces}
+              chats={orderedChats}
+              currentId={currentId}
+              running={running}
+              chatSort={chatSort}
+              onChooseSort={chooseChatSort}
+              openChat={(id) => void switchChat(() => window.kira.openChat(id))}
+              newChat={(workspaceId) => void startChat(workspaceId)}
+              newWorkspace={() => void addWorkspace()}
+              openWork={openWork}
+              openWorkHome={openWorkHome}
+              removeWorkspace={(id) => void removeWorkspace(id)}
+              archive={(id) => void archiveChat(id)}
+              remove={setDeleting}
+              move={(chat) =>
+                needsProject(chat.workspaceId, workspaces) ? () => void moveChat(chat.id) : undefined
               }
-              topContent={
-                // Never disabled: a new chat starts beside whatever Kira is writing
-                // in, which is the point of a chat being a session of its own.
-                <NavActions
-                  chatSort={chatSort}
-                  onNewChat={() => void startChat(null)}
-                  onNewWorkspace={() => void addWorkspace()}
-                  onOpenWork={openWorkHome}
-                  onChooseSort={chooseChatSort}
-                />
-              }
-            >
-              {/*
-               * Workspaces first: a workspace is set up on purpose, so the chats filed
-               * nowhere are what is left over. A workspace is drawn even with no chats
-               * in it, because a folder chosen to work in is a workspace already.
-               *
-               * A workspace is a disclosure row rather than a heading over its chats,
-               * because that is the one shape a collapsed rail can draw: the rail
-               * shows icons, and only an item that owns its chats can offer them in
-               * the flyout it opens there.
-               */}
-              {workspaces.map((workspace) => {
-                const workspaceChats = orderedChats.filter(
-                  (chat) => chat.workspaceId === workspace.id,
-                );
-                // A workspace with a turn in flight keeps its menu down to what it can
-                // still do: the chat is filed under it, and there is nothing to take
-                // the filing out of while it runs.
-                const writing = workspaceChats.some((chat) => running.includes(chat.id));
-
-                return (
-                  // SideNavItem doesn't expose a hook for styling its own children
-                  // gutter (className lands on the primary element, not the
-                  // disclosure wrapper) — this div is what .workspace-group in
-                  // styles.css uses to draw the tree lines under a workspace without
-                  // touching the unfiled Chats list below, which keeps Astryx's
-                  // default indent but skips the lines.
-                  <div className="workspace-group" key={workspace.id}>
-                    <SideNavItem
-                      label={workspace.name}
-                      icon={Folder}
-                      // Marking the workspace is how the collapsed rail says which one holds
-                      // the chat on screen. It carries aria-current as well, which is
-                      // slightly more than the truth — the chat is current, not the
-                      // folder holding it.
-                      isSelected={workspaceChats.some((chat) => chat.id === currentId)}
-                      collapsible
-                      actions={
-                        <MoreMenu
-                          label={`What to do with ${workspace.name}`}
-                          items={[
-                            {
-                              label: 'Open the work',
-                              onClick: () => openWork(workspace.id),
-                            },
-                            {
-                              label: 'New chat here',
-                              onClick: () => void startChat(workspace.id),
-                            },
-                            ...(writing
-                              ? []
-                              : [
-                                  {
-                                    label: 'Remove workspace',
-                                    onClick: () => void removeWorkspace(workspace.id),
-                                  },
-                                ]),
-                          ]}
-                        />
-                      }
-                    >
-                      {workspaceChats.length > 0 ? (
-                        workspaceChats.map(chatRow)
-                      ) : (
-                        // A workspace is drawn open with nothing in it before its first
-                        // chat, which otherwise looks like a disclosure that leads
-                        // nowhere — this is what tells someone the "..." above is
-                        // where to start one.
-                        <Text type="supporting" color="secondary" className="empty-workspace">
-                          No chats yet — use the menu above to start one.
-                        </Text>
-                      )}
-                    </SideNavItem>
-                  </div>
-                );
-              })}
-
-              {unfiled.length > 0 && (
-                // Unwrapped from a workspace, so nothing here is nested under
-                // anything else — .unfiled-chats in styles.css zeroes out
-                // Astryx's default disclosure indent to say so visually too.
-                <div className="unfiled-chats">
-                  <SideNavItem
-                    label="Chats"
-                    icon={MessagesSquare}
-                    collapsible
-                    // The order the list is read in sits with the list, in the row
-                    // that heads it. Astryx draws a row's actions after its chevron,
-                    // which is why this is not the left of it.
-                    actions={<SortMenu chatSort={chatSort} onChooseSort={chooseChatSort} />}
-                  >
-                    {unfiled.map(chatRow)}
-                  </SideNavItem>
-                </div>
-              )}
-            </SideNav>
+              openSettings={() => showSurface('settings')}
+              signOut={signOut}
+            />
           )
         }
       >
@@ -1636,12 +1505,6 @@ function AccountAvatar({ name }: { name: string }) {
  * another's — see where this is used for why that matters.
  */
 /**
- * What you do to the list itself: start a chat, start a workspace. The nav column
- * has room for both labels, so they are rows there; the collapsed rail does not,
- * so the same two are icon-only buttons that their label names. The order the list
- * is read in travels with them — see SortMenu for why it is drawn in both places.
- */
-/**
  * Settings' one way out, drawn where the chat rail draws its own primary
  * actions — an icon alone when the rail is collapsed, a labelled row when it
  * is not.
@@ -1671,216 +1534,6 @@ function SettingsNavActions({ onBack }: { onBack: () => void }) {
         onClick={onBack}
       />
     </div>
-  );
-}
-
-function NavActions({
-  chatSort,
-  onNewChat,
-  onNewWorkspace,
-  onOpenWork,
-  onChooseSort,
-}: {
-  chatSort: ChatSort;
-  onNewChat: () => void;
-  onNewWorkspace: () => void;
-  onOpenWork: () => void;
-  onChooseSort: (sort: ChatSort) => void;
-}) {
-  const { isCollapsed } = useSideNavCollapse();
-
-  if (isCollapsed) {
-    return (
-      <div className="nav-actions">
-        <IconButton
-          label="New chat"
-          icon={<Icon icon={MessageSquareDashed} size="sm" />}
-          variant="primary"
-          onClick={onNewChat}
-        />
-        <IconButton
-          label="New workspace"
-          icon={<Icon icon={FolderPlus} size="sm" />}
-          variant="secondary"
-          onClick={onNewWorkspace}
-        />
-        <IconButton
-          label="Work"
-          icon={<Icon icon={Ticket} size="sm" />}
-          variant="ghost"
-          onClick={onOpenWork}
-        />
-        <SortMenu chatSort={chatSort} onChooseSort={onChooseSort} variant="secondary" />
-      </div>
-    );
-  }
-
-  return (
-    <div className="nav-actions nav-actions-expanded">
-      <Button
-        label="New chat"
-        icon={<Icon icon={MessageSquareDashed} size="sm" />}
-        variant="primary"
-        width="100%"
-        onClick={onNewChat}
-      />
-      <Button
-        label="New workspace"
-        icon={<Icon icon={FolderPlus} size="sm" />}
-        variant="ghost"
-        width="100%"
-        onClick={onNewWorkspace}
-      />
-      <Button
-        label="Work"
-        icon={<Icon icon={Ticket} size="sm" />}
-        variant="ghost"
-        width="100%"
-        onClick={onOpenWork}
-      />
-      {/*
-       * The work is a workspace's own: a project's tickets are read from the row
-       * that works them, which is why there is no entry for it up here.
-       */}
-    </div>
-  );
-}
-
-/**
- * The order the list is read in. Icon-only wherever it is drawn, because neither
- * place has room for a label: the rail is a strip of icons, and in the Chats row
- * it sits beside that row's chevron. What names it is the tooltip, which is also
- * the button's accessible name.
- */
-function SortMenu({
-  chatSort,
-  onChooseSort,
-  variant = 'ghost',
-}: {
-  chatSort: ChatSort;
-  onChooseSort: (sort: ChatSort) => void;
-  variant?: ButtonVariant;
-}) {
-  const label = `Sort: ${CHAT_SORT_LABELS[chatSort]}`;
-
-  return (
-    <DropdownMenu
-      button={{
-        label,
-        icon: <Icon icon={ArrowUpDown} size="sm" />,
-        isIconOnly: true,
-        variant,
-        tooltip: label,
-      }}
-      items={CHAT_SORT_OPTIONS.map((sort) => ({
-        id: sort,
-        label: CHAT_SORT_LABELS[sort],
-        onClick: () => onChooseSort(sort),
-        endContent: sort === chatSort ? <span aria-hidden>✓</span> : undefined,
-      }))}
-    />
-  );
-}
-
-/**
- * One chat in the sidebar. The same row belongs to a workspace and to nobody, so
- * it is drawn the same way in both lists.
- */
-function ChatRow({
-  chat,
-  isCurrent,
-  isRunning,
-  onOpen,
-  onArchive,
-  onDelete,
-  onMove,
-}: {
-  chat: ChatSummary;
-  isCurrent: boolean;
-  isRunning: boolean;
-  onOpen: () => void;
-  onArchive: () => void;
-  onDelete: () => void;
-  /** Only given to a chat that is in no project, which is the one that can be moved. */
-  onMove?: (() => void) | undefined;
-}) {
-  // A chat Kira is writing in is neither put away nor thrown away, so both rows
-  // say why rather than being missing from the menu.
-  const writing = isRunning ? 'Kira is writing in this chat.' : undefined;
-
-  // The menu trigger only shows on hover/focus so a list of many chats doesn't
-  // read as a wall of buttons — but its popover content renders outside this
-  // row (through the Layer system), so :focus-within stops matching the
-  // instant focus moves into the open menu. Track open state explicitly so
-  // the trigger stays visible for as long as the menu it opened is up.
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-
-  // Shared with the row's visible menu below: right-click is a shortcut to the
-  // same items, not a second set of them.
-  const items = [
-    ...(onMove === undefined
-      ? []
-      : [
-          {
-            label: copy.filing.menu,
-            description: writing ?? copy.filing.menuNote,
-            isDisabled: isRunning,
-            onClick: onMove,
-          },
-        ]),
-    {
-      label: 'Archive',
-      // What putting a chat away leaves behind is out of sight, so the menu
-      // says what it did rather than leaving it to be guessed at.
-      description: writing ?? 'Out of the sidebar, kept as it is.',
-      isDisabled: isRunning,
-      onClick: onArchive,
-    },
-    {
-      label: 'Delete',
-      description: writing,
-      variant: 'destructive' as const,
-      isDisabled: isRunning,
-      onClick: onDelete,
-    },
-  ];
-
-  return (
-    <ContextMenu label={`What to do with ${chat.title}`} items={items}>
-      {/* SideNavItem forwards `className` to its own internal primary element,
-          whose later focus-ring props silently overwrite it — so the
-          hover/focus-reveal hook for the row's menu (see .chat-row in
-          styles.css) lives on a wrapper we control instead. */}
-      <div className={`chat-row${isMenuOpen ? ' chat-row-menu-open' : ''}`}>
-        <SideNavItem
-          label={chat.title}
-          icon={chat.workTicketIds.length > 0 ? Ticket : undefined}
-          isSelected={isCurrent}
-          // A chat Kira is writing in is marked, because that keeps going whether or
-          // not this window is showing it. Otherwise, when a chat's title is not
-          // enough to tell it from another (two chats can share a title), how long
-          // ago it was last spoken in is.
-          endContent={
-            isRunning ? (
-              <Spinner size="sm" shade="subtle" aria-label="Kira is writing" />
-            ) : (
-              <Text type="supporting">{relativeTime(chat.updatedAt)}</Text>
-            )
-          }
-          // Right-click reaches the same menu, but nothing on the row hinted that
-          // until now: this is the visible entry point, matching the "..." a
-          // workspace already offers for the same kind of decision.
-          actions={
-            <MoreMenu
-              label={`What to do with ${chat.title}`}
-              items={items}
-              onOpenChange={setIsMenuOpen}
-            />
-          }
-          onClick={onOpen}
-        />
-      </div>
-    </ContextMenu>
   );
 }
 
