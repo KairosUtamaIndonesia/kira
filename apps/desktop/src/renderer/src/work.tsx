@@ -121,6 +121,7 @@ import type {
 } from '../../preload/bridge.ts';
 import { Blockers } from './workBlockers.tsx';
 import { Timeline } from './workTimeline.tsx';
+import { RepositoriesDialog } from './workRepositories.tsx';
 import { NewTicketDialog, TicketFields } from './workNewTicket.tsx';
 import { FilterBar, FilterToolbar } from './workFilters.tsx';
 import { copy } from './workCopy.ts';
@@ -1218,6 +1219,7 @@ export function WorkSurface({
     readWorkDisplay(window.location.search),
   );
   const [isWriting, setIsWriting] = useState(false);
+  const [isChoosingRepositories, setIsChoosingRepositories] = useState(false);
   /** What the server last refused, in its own words. */
   const toast = useToast();
   const [refusal, setRefusal] = useState<string | null>(null);
@@ -1506,6 +1508,20 @@ export function WorkSurface({
             isDisabled={queue === null}
           />
           <Button
+            label={copy.header.repositories}
+            icon={<Icon icon={GitBranch} size="sm" />}
+            variant="secondary"
+            size="sm"
+            isDisabled={queue === null}
+            onClick={() => {
+              setOpenId(null);
+              setIsFull(false);
+              setIsWriting(false);
+              setRefusal(null);
+              setIsChoosingRepositories(true);
+            }}
+          />
+          <Button
             label={copy.header.newTicket}
             icon={<Icon icon={Plus} size="sm" />}
             variant="primary"
@@ -1554,6 +1570,14 @@ export function WorkSurface({
               setOpenId(written.id);
             }
           }}
+        />
+      )}
+
+      {isChoosingRepositories && queue !== null && (
+        <RepositoriesDialog
+          projectId={queue.project.id}
+          projectName={queue.project.name}
+          onClose={() => setIsChoosingRepositories(false)}
         />
       )}
 

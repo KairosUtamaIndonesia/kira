@@ -18,6 +18,8 @@ import {
   TICKET_STATUSES,
   TRACKER_CHANNELS,
   type GlossaryEntry,
+  type Repository,
+  type RepositoryInput,
   type Result,
   type Ticket,
   type TicketChange,
@@ -55,6 +57,12 @@ export interface TrackerDeps {
     parentId?: string,
     authorKind?: 'member' | 'kira',
   ): Promise<TicketComment>;
+  /** A project's repositories. */
+  repositories(projectId: string): Promise<Repository[]>;
+  /** Attach a repository to a project. */
+  attachRepository(projectId: string, input: RepositoryInput): Promise<Repository>;
+  /** Take a repository off a project. */
+  detachRepository(projectId: string, id: string): Promise<null>;
   /** Restore a glossary entry only if its visible version still matches. */
   undoGlossary?(
     workspaceId: string,
@@ -77,6 +85,9 @@ export interface TrackerHandlers {
     parentId: unknown,
     authorKind: unknown,
   ): Promise<Result<TicketComment>>;
+  repositories(projectId: unknown): Promise<Result<Repository[]>>;
+  attachRepository(projectId: unknown, input: unknown): Promise<Result<Repository>>;
+  detachRepository(projectId: unknown, id: unknown): Promise<Result<null>>;
   undoGlossary(
     workspaceId: unknown,
     entryId: unknown,
@@ -98,6 +109,9 @@ export function trackerHandlers({
   ungate,
   timeline,
   comment,
+  repositories,
+  attachRepository,
+  detachRepository,
   undoGlossary,
 }: TrackerDeps): TrackerHandlers & QuestionTrackerHandlers {
   return {
@@ -196,6 +210,38 @@ export function trackerHandlers({
           authorKind === 'kira' ? 'kira' : undefined,
         ),
       );
+    },
+
+    repositories: (projectId) => {
+      if (!isId(projectId)) {
+        return Promise.resolve({ ok: false, error: 'Repositories are read for a project.' });
+      }
+
+      return envelope(() => repositories(projectId));
+    },
+
+    attachRepository: (projectId, input) => {
+      if (!isId(projectId)) {
+        return Promise.resolve({ ok: false, error: 'A repository is attached to a project.' });
+      }
+
+      const asked = repositoryIn(input);
+      if (asked === null) {
+        return Promise.resolve({ ok: false, error: 'That is not a repository to attach.' });
+      }
+
+      return envelope(() => attachRepository(projectId, asked));
+    },
+
+    detachRepository: (projectId, id) => {
+      if (!isId(projectId)) {
+        return Promise.resolve({ ok: false, error: 'A repository is taken off a project.' });
+      }
+      if (!isId(id)) {
+        return Promise.resolve({ ok: false, error: 'A repository needs an id to be removed.' });
+      }
+
+      return envelope(() => detachRepository(projectId, id));
     },
 
     undoGlossary: (workspaceId, entryId, version, chatId) => {
@@ -352,4 +398,32 @@ function criteriaIn(value: unknown): string[] | null {
   if (!value.every((each) => typeof each === 'string')) return null;
 
   return value as string[];
+}
+
+/** The hosts a project's work may happen in. */
+const REPOSITORY_PROVIDERS = ['github', 'forgejo', 'gitea', 'gitlab'];
+
+/** A repository being attached, or null when it is not one. */
+function repositoryIn(value: unknown): RepositoryInput | null {
+  if (typeof value !== 'object' || value === null) return null;
+
+  const held = value as {
+    owner?: unknown;
+    name?: unknown;
+    provider?: unknown;
+    defaultBranch?: unknown;
+  };
+  if (typeof held.owner !== 'string' || held.owner.trim() === '') return null;
+  if (typeof held.name !== 'string' || held.name.trim() === '') return null;
+  if (held.provider !== undefined && !REPOSITORY_PROVIDERS.includes(held.provider as string)) {
+    return null;
+  }
+  if (held.defaultBranch !== undefined && typeof held.defaultBranch !== 'string') return null;
+
+  return {
+    owner: held.owner.trim(),
+    name: held.name.trim(),
+    ...(held.provider === undefined ? {} : { provider: held.provider as string }),
+    ...(held.defaultBranch === undefined ? {} : { defaultBranch: held.defaultBranch as string }),
+  };
 }

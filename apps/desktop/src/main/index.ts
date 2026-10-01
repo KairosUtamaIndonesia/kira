@@ -279,6 +279,9 @@ function registerTrackerChannels(): void {
     timeline: (ticketId, limit) => tracker.timeline(ticketId, limit),
     comment: (ticketId, body, parentId, authorKind) =>
       tracker.comment(ticketId, body, parentId, authorKind),
+    repositories: (projectId) => tracker.repositories(projectId),
+    attachRepository: (projectId, input) => tracker.attachRepository(projectId, input),
+    detachRepository: (projectId, id) => tracker.detachRepository(projectId, id),
     undoGlossary: (workspaceId, entryId, version, chatId) =>
       tracker.undoGlossary!(workspaceId, entryId, version, chatId),
   });
@@ -308,6 +311,15 @@ function registerTrackerChannels(): void {
     TRACKER_CHANNELS.comment,
     (_event, ticketId: unknown, body: unknown, parentId: unknown, authorKind: unknown) =>
       handlers.comment(ticketId, body, parentId, authorKind),
+  );
+  ipcMain.handle(TRACKER_CHANNELS.repositories, (_event, projectId: unknown) =>
+    handlers.repositories(projectId),
+  );
+  ipcMain.handle(TRACKER_CHANNELS.attachRepository, (_event, projectId: unknown, input: unknown) =>
+    handlers.attachRepository(projectId, input),
+  );
+  ipcMain.handle(TRACKER_CHANNELS.detachRepository, (_event, projectId: unknown, id: unknown) =>
+    handlers.detachRepository(projectId, id),
   );
   ipcMain.handle(
     TRACKER_CHANNELS.undoGlossary,

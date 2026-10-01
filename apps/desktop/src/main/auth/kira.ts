@@ -22,6 +22,7 @@ import {
   TICKET_KINDS,
   TICKET_STATUSES,
   type ProjectSummary,
+  type Repository,
   type Ticket,
   type TicketComment,
   type TicketQueue,
@@ -381,6 +382,31 @@ export function kiraFor({ server, scheme }: { server: string; scheme: string }):
         (data) => asComment((data as { comment: unknown }).comment),
       ),
 
+    repositories: async (key, projectId) =>
+      asked(
+        () => kira.api.projects({ ref: projectId }).repositories.get({ headers: bearerFor(key) }),
+        (data) => asRepositories((data as { repositories: unknown }).repositories),
+      ),
+
+    attachRepository: async (key, projectId, input) =>
+      asked(
+        () =>
+          kira.api.projects({ ref: projectId }).repositories.post(input, {
+            headers: bearerFor(key),
+          }),
+        (data) => asRepository((data as { repository: unknown }).repository),
+      ),
+
+    detachRepository: async (key, projectId, id) =>
+      asked(
+        () =>
+          kira.api
+            .projects({ ref: projectId })
+            .repositories({ id })
+            .delete(undefined, { headers: bearerFor(key) }),
+        () => true,
+      ),
+
     markBreakdownReady: async (key, specTicketId) =>
       asked(
         () =>
@@ -547,6 +573,28 @@ function asTimeline(body: unknown): TimelineEntry[] | null {
   if (!Array.isArray(held?.entries)) return null;
 
   return held.entries as TimelineEntry[];
+}
+
+function asRepository(body: unknown): Repository | null {
+  const held = body as { id?: unknown; projectId?: unknown; owner?: unknown; name?: unknown };
+  if (
+    typeof held?.id !== 'string' ||
+    typeof held.projectId !== 'string' ||
+    typeof held.owner !== 'string' ||
+    typeof held.name !== 'string'
+  ) {
+    return null;
+  }
+
+  return held as Repository;
+}
+
+function asRepositories(body: unknown): Repository[] | null {
+  if (!Array.isArray(body)) return null;
+
+  const repositories = body.map(asRepository);
+
+  return repositories.some((each) => each === null) ? null : (repositories as Repository[]);
 }
 
 function asDecision(body: unknown): ProjectDecision | null {

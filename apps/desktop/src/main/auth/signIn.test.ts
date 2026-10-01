@@ -135,6 +135,18 @@ function kira(calls: string[], quirks: Quirks = {}): Kira {
       calls.push('write a comment');
       return { kind: 'unavailable' };
     },
+    repositories: async () => {
+      calls.push('read repositories');
+      return { kind: 'unavailable' };
+    },
+    attachRepository: async () => {
+      calls.push('attach a repository');
+      return { kind: 'unavailable' };
+    },
+    detachRepository: async () => {
+      calls.push('detach a repository');
+      return { kind: 'unavailable' };
+    },
     readTicket: async () => {
       calls.push('read a ticket');
       return { kind: 'unavailable' };

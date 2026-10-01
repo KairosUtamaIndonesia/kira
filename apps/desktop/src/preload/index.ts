@@ -28,6 +28,7 @@ import {
   type McpToolSelection,
   type ModelOption,
   type ProjectSummary,
+  type Repository,
   type Ticket,
   type TicketComment,
   type TicketQueue,
@@ -141,6 +142,13 @@ const bridge: KiraBridge = {
 
   postComment: (ticketId, body, parentId, authorKind) =>
     ask<TicketComment>(TRACKER_CHANNELS.comment, ticketId, body, parentId, authorKind),
+
+  loadRepositories: (projectId) => ask<Repository[]>(TRACKER_CHANNELS.repositories, projectId),
+
+  attachRepository: (projectId, input) =>
+    ask<Repository>(TRACKER_CHANNELS.attachRepository, projectId, input),
+
+  detachRepository: (projectId, id) => ask<null>(TRACKER_CHANNELS.detachRepository, projectId, id),
 
   undoGlossary: (workspaceId, entryId, version, chatId) =>
     ask<GlossaryEntry>(TRACKER_CHANNELS.undoGlossary, workspaceId, entryId, version, chatId),

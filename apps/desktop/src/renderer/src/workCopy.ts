@@ -45,6 +45,26 @@ export const copy = {
     prefixLine: (prefix: string, note: string) => `${prefix} · ${note}`,
     newTicket: 'New ticket',
     startChat: (n: number) => `Start chat with ${count(n, 'ticket')}`,
+    repositories: 'Repositories',
+  },
+
+  /* ── A project's repositories, where its pull requests come from ──────── */
+  repositories: {
+    title: 'Repositories',
+    subtitle: (project: string) => `Where ${project}’s work happens`,
+    empty:
+      'No repositories are attached yet. A pull request is only watched once its repository is here.',
+    loading: 'Loading repositories',
+    failed: 'Couldn’t load repositories.',
+    remove: (owner: string, name: string) => `Remove ${owner}/${name}`,
+    provider: 'Host',
+    owner: 'Owner',
+    ownerPlaceholder: 'acme',
+    name: 'Repository',
+    namePlaceholder: 'api',
+    attach: 'Attach repository',
+    attaching: 'Attaching',
+    defaultBranch: (branch: string) => `default branch ${branch}`,
   },
 
   /* ── Statuses (the board's lanes and the List's groups) ───────────────── */

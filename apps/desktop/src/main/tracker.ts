@@ -25,6 +25,8 @@ import type {
   TicketComment,
   DecisionProposal,
   ProjectDecision,
+  Repository,
+  RepositoryInput,
   TicketChange,
   TicketDraft,
   TicketQueue,
@@ -146,6 +148,16 @@ export interface TrackerWire {
     parentId?: string,
     authorKind?: 'member' | 'kira',
   ): Promise<TrackerAnswer<TicketComment>>;
+  /** A project's repositories. */
+  repositories(key: string, projectId: string): Promise<TrackerAnswer<Repository[]>>;
+  /** Attach a repository to a project. */
+  attachRepository(
+    key: string,
+    projectId: string,
+    input: RepositoryInput,
+  ): Promise<TrackerAnswer<Repository>>;
+  /** Take a repository off a project. */
+  detachRepository(key: string, projectId: string, id: string): Promise<TrackerAnswer<true>>;
   /** Publish proposed children and dependency gates in one server transaction. */
   publishBreakdown?(
     key: string,
@@ -224,6 +236,12 @@ export interface Tracker {
     parentId?: string,
     authorKind?: 'member' | 'kira',
   ): Promise<TicketComment>;
+  /** The repositories a project's work happens in. */
+  repositories(projectId: string): Promise<Repository[]>;
+  /** Attach a repository to a project. */
+  attachRepository(projectId: string, input: RepositoryInput): Promise<Repository>;
+  /** Take a repository off a project. */
+  detachRepository(projectId: string, id: string): Promise<null>;
   publishBreakdown(specTicketId: string, children: BreakdownSlice[]): Promise<BreakdownResult>;
   markBreakdownReady(specTicketId: string): Promise<BreakdownResult>;
   projects(): Promise<ProjectSummary[]>;
@@ -404,6 +422,26 @@ export function trackerFor({
       const held = await key();
 
       return await asked(() => wire.comment(held, ticketId, body, parentId, authorKind));
+    },
+
+    async repositories(projectId) {
+      const held = await key();
+
+      return await asked(() => wire.repositories(held, projectId));
+    },
+
+    async attachRepository(projectId, input) {
+      const held = await key();
+
+      return await asked(() => wire.attachRepository(held, projectId, input));
+    },
+
+    async detachRepository(projectId, id) {
+      const held = await key();
+
+      await asked(() => wire.detachRepository(held, projectId, id));
+
+      return null;
     },
 
     async publishBreakdown(specTicketId, children) {

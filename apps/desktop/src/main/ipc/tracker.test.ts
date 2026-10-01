@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import {
   TICKET_KINDS,
+  type Repository,
   type Ticket,
   type TicketComment,
   type TicketDraft,
@@ -84,6 +85,15 @@ const comment: TicketComment = {
   updatedAt: '2026-01-01T00:00:00.000Z',
 };
 
+const repository: Repository = {
+  id: 'repo-1',
+  projectId: 'kira-project',
+  provider: 'github',
+  owner: 'acme',
+  name: 'api',
+  defaultBranch: 'main',
+};
+
 /** Deps that record what they were asked to do; `overrides` replace one of them. */
 function deps(calls: string[], overrides: Partial<TrackerDeps> = {}): TrackerDeps {
   return {
@@ -114,6 +124,18 @@ function deps(calls: string[], overrides: Partial<TrackerDeps> = {}): TrackerDep
     comment: async (ticketId, body, parentId, authorKind) => {
       calls.push(`comment ${ticketId} ${body} ${parentId ?? ''} ${authorKind ?? ''}`);
       return comment;
+    },
+    repositories: async (projectId) => {
+      calls.push(`repositories ${projectId}`);
+      return [repository];
+    },
+    attachRepository: async (projectId, input) => {
+      calls.push(`attachRepository ${projectId} ${input.owner}/${input.name}`);
+      return repository;
+    },
+    detachRepository: async (projectId, id) => {
+      calls.push(`detachRepository ${projectId} ${id}`);
+      return null;
     },
     ...overrides,
   };
@@ -424,6 +446,68 @@ test('timeline reads a ticket’s conversation and comment says something on it'
   assert.deepEqual(await handlers.comment('ticket-1', 'Hi', undefined, 'robot'), {
     ok: false,
     error: 'That is not an author.',
+  });
+});
+
+test('repositories reads, attaches, and detaches, with the host checked', async () => {
+  const calls: string[] = [];
+  const handlers = trackerHandlers(
+    deps(calls, {
+      repositories: async (projectId) => {
+        calls.push(`repositories ${projectId}`);
+        return [repository];
+      },
+      attachRepository: async (projectId, input) => {
+        calls.push(
+          `attachRepository ${projectId} ${input.owner}/${input.name}/${input.provider ?? ''}`,
+        );
+        return repository;
+      },
+      detachRepository: async (projectId, id) => {
+        calls.push(`detachRepository ${projectId} ${id}`);
+        return null;
+      },
+    }),
+  );
+
+  assert.deepEqual(await handlers.repositories('kira-project'), { ok: true, value: [repository] });
+  assert.deepEqual(
+    await handlers.attachRepository('kira-project', {
+      owner: 'acme',
+      name: 'api',
+      provider: 'gitea',
+    }),
+    { ok: true, value: repository },
+  );
+  assert.deepEqual(await handlers.detachRepository('kira-project', 'repo-1'), {
+    ok: true,
+    value: null,
+  });
+  assert.deepEqual(calls, [
+    'repositories kira-project',
+    'attachRepository kira-project acme/api/gitea',
+    'detachRepository kira-project repo-1',
+  ]);
+
+  assert.deepEqual(await handlers.repositories(''), {
+    ok: false,
+    error: 'Repositories are read for a project.',
+  });
+  assert.deepEqual(await handlers.attachRepository('kira-project', { owner: '', name: 'api' }), {
+    ok: false,
+    error: 'That is not a repository to attach.',
+  });
+  assert.deepEqual(
+    await handlers.attachRepository('kira-project', {
+      owner: 'acme',
+      name: 'api',
+      provider: 'bitbucket',
+    }),
+    { ok: false, error: 'That is not a repository to attach.' },
+  );
+  assert.deepEqual(await handlers.detachRepository('kira-project', ''), {
+    ok: false,
+    error: 'A repository needs an id to be removed.',
   });
 });
 

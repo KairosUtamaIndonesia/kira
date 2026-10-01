@@ -657,6 +657,9 @@ export const TRACKER_CHANNELS = {
   ungate: 'tracker:ungate',
   timeline: 'tracker:timeline',
   comment: 'tracker:comment',
+  repositories: 'tracker:repositories',
+  attachRepository: 'tracker:repository-attach',
+  detachRepository: 'tracker:repository-detach',
   undoGlossary: 'tracker:glossary:undo',
 } as const;
 
@@ -819,6 +822,24 @@ export interface TicketQueue {
   project: ProjectSummary;
   tickets: Ticket[];
   counts: Record<TicketStatus, number>;
+}
+
+/** A repository a project's work happens in, as the host names it. */
+export interface Repository {
+  id: string;
+  projectId: string;
+  provider: string;
+  owner: string;
+  name: string;
+  defaultBranch: string;
+}
+
+/** What attaching a repository asks for. */
+export interface RepositoryInput {
+  owner: string;
+  name: string;
+  provider?: string;
+  defaultBranch?: string;
 }
 
 /** Someone behind a comment: a person, or Kira acting in their chat. */
@@ -1375,6 +1396,12 @@ export interface KiraBridge {
     parentId?: string,
     authorKind?: 'member' | 'kira',
   ): Promise<Result<TicketComment>>;
+  /** The repositories a project's work happens in. */
+  loadRepositories(projectId: string): Promise<Result<Repository[]>>;
+  /** Attach a repository to a project. */
+  attachRepository(projectId: string, input: RepositoryInput): Promise<Result<Repository>>;
+  /** Take a repository off a project. */
+  detachRepository(projectId: string, id: string): Promise<Result<null>>;
   /**
    * What one folder of the chat's workspace holds, or null when that chat has
    * no workspace — a chat nothing has been said in yet has no folder to show,

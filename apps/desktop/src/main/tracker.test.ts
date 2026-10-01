@@ -6,6 +6,7 @@ import type {
   MapProposal,
   ProjectDecision,
   ProjectSummary,
+  Repository,
   Ticket,
   TicketComment,
   TicketDraft,
@@ -99,6 +100,15 @@ const timeline: TimelineEntry[] = [
   },
 ];
 
+const repository: Repository = {
+  id: 'repo-1',
+  projectId: project.id,
+  provider: 'github',
+  owner: 'acme',
+  name: 'api',
+  defaultBranch: 'main',
+};
+
 /** A wire that answers whatever one case needs, and records what it was asked. */
 function wire(calls: string[], answers: Partial<TrackerWire> = {}): TrackerWire {
   return {
@@ -141,6 +151,18 @@ function wire(calls: string[], answers: Partial<TrackerWire> = {}): TrackerWire 
     comment: async (key, ticketId, body, parentId, authorKind) => {
       calls.push(`comment ${key} ${ticketId} ${body} ${parentId ?? ''} ${authorKind ?? ''}`);
       return { kind: 'ok', body: comment };
+    },
+    repositories: async (key, projectId) => {
+      calls.push(`repositories ${key} ${projectId}`);
+      return { kind: 'ok', body: [repository] };
+    },
+    attachRepository: async (key, projectId, input) => {
+      calls.push(`attachRepository ${key} ${projectId} ${input.owner}/${input.name}`);
+      return { kind: 'ok', body: repository };
+    },
+    detachRepository: async (key, projectId, id) => {
+      calls.push(`detachRepository ${key} ${projectId} ${id}`);
+      return { kind: 'ok', body: true };
     },
     readTicket: async (key, ref) => {
       calls.push(`readTicket ${key} ${ref}`);
