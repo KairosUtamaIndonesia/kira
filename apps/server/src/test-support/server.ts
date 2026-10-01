@@ -18,6 +18,7 @@ export const ENV = {
   KIRA_AUTH_SECRET: 'a'.repeat(32),
   KIRA_BASE_URL: ORIGIN,
   KIRA_GITHUB_WEBHOOK_SECRET: 'test-github-webhook-secret',
+  KIRA_GIT_SECRET_KEY: Buffer.alloc(32, 7).toString('base64'),
 };
 
 /** A server with a database of its own, as it would be at boot. */

@@ -33,6 +33,14 @@ export const messages = {
     `${owner}/${name} is already attached to this project.`,
   repositoryNotFound: 'That repository is no longer attached to this project.',
 
+  gitConnectionUnknown: 'No Git host is connected as that.',
+  gitConnectionExists: 'That host is already connected.',
+  gitProviderUnknown: 'Choose a host: github, forgejo, gitea, or gitlab.',
+  gitKeyMissing: 'Connecting a host needs KIRA_GIT_SECRET_KEY set on this server.',
+  gitTokenRequired: 'Paste the access token for the host.',
+  gitInstanceUrlInvalid: 'Give the host’s address as a secure HTTPS URL.',
+  notAnAdmin: 'Only an administrator can connect a Git host.',
+
   kindUnknown: (kinds: readonly string[]) => `Choose a ticket kind: ${list(kinds)}.`,
   statusUnknown: (statuses: readonly string[]) => `Choose a status: ${list(statuses)}.`,
   priorityUnknown: (priorities: readonly string[]) => `Choose a priority: ${list(priorities)}.`,

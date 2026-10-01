@@ -18,7 +18,40 @@ async function signedIn() {
   const { app, auth } = await boot();
   const person = await user(auth);
   const key = (await issue(auth, person.id, 'git-test')).key;
-  return { app, key, person };
+  return { app, auth, key, person };
+}
+
+/** Make the signed-in person an administrator, which connecting a host requires. */
+async function makeAdmin(auth: Awaited<ReturnType<typeof boot>>['auth'], userId: string) {
+  const context = await auth.$context;
+  await context.internalAdapter.updateUser(userId, { role: 'admin' });
+}
+
+function giteaDelivery(payload: unknown, secret: string, event = 'pull_request'): RequestInit {
+  const body = JSON.stringify(payload);
+  const signature = createHmac('sha256', secret).update(body).digest('hex');
+
+  return {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-gitea-event': event,
+      'x-gitea-signature': signature,
+    },
+    body,
+  };
+}
+
+function gitlabDelivery(payload: unknown, secret: string): RequestInit {
+  return {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-gitlab-event': 'Merge Request Hook',
+      'x-gitlab-token': secret,
+    },
+    body: JSON.stringify(payload),
+  };
 }
 
 async function makeProject(app: Awaited<ReturnType<typeof boot>>['app'], key: string) {
@@ -248,5 +281,161 @@ describe('git webhook', () => {
       headers: bearer(key),
     });
     expect((await linked.json()).pullRequests).toEqual([]);
+  });
+});
+
+describe('connected hosts', () => {
+  test('connects a host as an administrator and shows the webhook secret once', async () => {
+    const { app, auth, key, person } = await signedIn();
+
+    const refused = await send(
+      app,
+      '/api/git/connections',
+      json('POST', key, {
+        provider: 'forgejo',
+        instanceUrl: 'https://git.example.com',
+        accessToken: 'a-token',
+      }),
+    );
+    expect(refused.status).toBe(403);
+
+    await makeAdmin(auth, person.id);
+
+    const connected = await send(
+      app,
+      '/api/git/connections',
+      json('POST', key, {
+        provider: 'forgejo',
+        instanceUrl: 'https://git.example.com',
+        accessToken: 'a-token',
+      }),
+    );
+    expect(connected.status).toBe(200);
+    const body = (await connected.json()) as {
+      connection: Record<string, unknown>;
+      webhookSecret: string;
+    };
+    expect(body.connection).toMatchObject({
+      provider: 'forgejo',
+      authKind: 'token',
+      instanceUrl: 'https://git.example.com',
+    });
+    expect(typeof body.webhookSecret).toBe('string');
+
+    const listed = await send(app, '/api/git/connections', { headers: bearer(key) });
+    const connections = (await listed.json()).connections as unknown[];
+    expect(connections).toHaveLength(1);
+    // The secret is stored sealed and never read back out.
+    expect(JSON.stringify(connections)).not.toContain(body.webhookSecret);
+  });
+
+  test('links and completes a ticket from a connected Forgejo host', async () => {
+    const { app, auth, key, person } = await signedIn();
+    await makeAdmin(auth, person.id);
+    const project = await makeProject(app, key);
+    const made = await makeTicket(app, key, project.id, { title: 'Self-hosted work' });
+    await send(app, `/api/tickets/${made.id}`, json('PATCH', key, { status: 'needs-review' }));
+
+    const connected = await send(
+      app,
+      '/api/git/connections',
+      json('POST', key, {
+        provider: 'forgejo',
+        instanceUrl: 'https://git.example.com',
+        accessToken: 'a-token',
+      }),
+    );
+    const { connection, webhookSecret } = (await connected.json()) as {
+      connection: { id: string };
+      webhookSecret: string;
+    };
+    await send(
+      app,
+      `/api/projects/${project.id}/repositories`,
+      json('POST', key, { owner: 'acme', name: 'api', provider: 'forgejo' }),
+    );
+
+    const opened = await send(
+      app,
+      `/api/webhooks/git/${connection.id}`,
+      giteaDelivery(pullRequest({ number: 2, title: `${made.name}: self-hosted` }), webhookSecret),
+    );
+    expect(opened.status).toBe(200);
+
+    const merged = await send(
+      app,
+      `/api/webhooks/git/${connection.id}`,
+      giteaDelivery(
+        pullRequest({
+          number: 2,
+          title: `${made.name}: self-hosted`,
+          state: 'closed',
+          merged: true,
+          mergedAt: '2026-10-01T00:00:00.000Z',
+        }),
+        webhookSecret,
+      ),
+    );
+    expect(merged.status).toBe(200);
+
+    const after = await send(app, `/api/tickets/${made.id}`, { headers: bearer(key) });
+    expect((await after.json()).ticket.status).toBe('done');
+  });
+
+  test('links a ticket from a connected GitLab host', async () => {
+    const { app, auth, key, person } = await signedIn();
+    await makeAdmin(auth, person.id);
+    const project = await makeProject(app, key);
+    const made = await makeTicket(app, key, project.id, { title: 'GitLab work' });
+
+    const connected = await send(
+      app,
+      '/api/git/connections',
+      json('POST', key, {
+        provider: 'gitlab',
+        instanceUrl: 'https://git.example.com',
+        accessToken: 'a-token',
+      }),
+    );
+    const { connection, webhookSecret } = (await connected.json()) as {
+      connection: { id: string };
+      webhookSecret: string;
+    };
+    await send(
+      app,
+      `/api/projects/${project.id}/repositories`,
+      json('POST', key, { owner: 'acme', name: 'api', provider: 'gitlab' }),
+    );
+
+    const delivered = await send(
+      app,
+      `/api/webhooks/git/${connection.id}`,
+      gitlabDelivery(
+        {
+          object_attributes: {
+            iid: 5,
+            url: 'https://git.example.com/acme/api/-/merge_requests/5',
+            title: `${made.name}: gitlab`,
+            state: 'closed',
+            action: 'merge',
+            source_branch: 'fnd-5',
+            last_commit: { id: 'abc' },
+            author: { username: 'ada' },
+            draft: false,
+            merged_at: '2026-10-01T00:00:00.000Z',
+          },
+          project: { path_with_namespace: 'acme/api', name: 'api' },
+        },
+        webhookSecret,
+      ),
+    );
+    expect(delivered.status).toBe(200);
+
+    const linked = await send(app, `/api/tickets/${made.id}/pull-requests`, {
+      headers: bearer(key),
+    });
+    const prs = (await linked.json()).pullRequests as Array<{ number: number; state: string }>;
+    expect(prs).toHaveLength(1);
+    expect(prs[0]).toMatchObject({ number: 5, state: 'merged' });
   });
 });

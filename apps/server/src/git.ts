@@ -12,7 +12,7 @@
  * assume GitHub. GitHub is the first adapter; Forgejo, Gitea and GitLab record
  * themselves in `git_connection` as their adapters land.
  */
-import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { Elysia, t } from 'elysia';
 import type { Auth } from './auth';
@@ -22,7 +22,8 @@ import { recordActivity } from './activity';
 import { keyHolder, type HeldUser } from './keys';
 import { refusal, REFUSAL } from './refusals';
 import { messages } from './messages';
-import { project, repository, ticket, ticketPullRequest } from './schema';
+import { loadKey, open, seal } from './secretbox';
+import { gitConnection, project, repository, ticket, ticketPullRequest } from './schema';
 
 /* ── The provider adapter ─────────────────────────────────────────────────── */
 
@@ -119,7 +120,111 @@ function stateOf(pull: {
   return 'open';
 }
 
-const PROVIDERS: Record<string, GitProvider> = { [github.kind]: github };
+/**
+ * Forgejo and Gitea: wire-identical to each other, HMAC-SHA256 over the raw body
+ * with `X-Gitea-Signature` and `X-Gitea-Event`. Their payload shape matches
+ * GitHub's closely enough that the pull-request parser is shared.
+ */
+function giteaFamily(kind: 'forgejo' | 'gitea'): GitProvider {
+  return {
+    kind,
+    eventKind: (headers) =>
+      headers.get('x-gitea-event') === 'pull_request' ? 'pull_request' : 'other',
+    verifySignature(secret, headers, body) {
+      const header = headers.get('x-gitea-signature');
+      if (header === null) return false;
+
+      return sameBytes(Buffer.from(header.replace(/^sha256=/, ''), 'hex'), sign(secret, body));
+    },
+    parsePullRequest: (body) => github.parsePullRequest(body),
+  };
+}
+
+/**
+ * GitLab: a plaintext `X-Gitlab-Token` compare, `X-Gitlab-Event`, and merge
+ * requests, whose path carries the owner and name.
+ */
+const gitlab: GitProvider = {
+  kind: 'gitlab',
+  eventKind: (headers) =>
+    headers.get('x-gitlab-event') === 'Merge Request Hook' ? 'pull_request' : 'other',
+  verifySignature(secret, headers) {
+    const presented = headers.get('x-gitlab-token');
+
+    return presented !== null && sameBytes(Buffer.from(presented), Buffer.from(secret));
+  },
+  parsePullRequest(body) {
+    const held = body as {
+      object_attributes?: {
+        iid?: unknown;
+        url?: unknown;
+        title?: unknown;
+        state?: unknown;
+        action?: unknown;
+        source_branch?: unknown;
+        last_commit?: { id?: unknown };
+        author?: { username?: unknown };
+        merged_at?: unknown;
+        draft?: unknown;
+        work_in_progress?: unknown;
+      };
+      project?: { name?: unknown; path_with_namespace?: unknown };
+    };
+    const request = held?.object_attributes;
+    const path =
+      typeof held?.project?.path_with_namespace === 'string'
+        ? held.project.path_with_namespace
+        : null;
+    if (
+      typeof request?.iid !== 'number' ||
+      typeof request.url !== 'string' ||
+      typeof request.title !== 'string' ||
+      path === null
+    ) {
+      return null;
+    }
+
+    const [owner, ...rest] = path.split('/');
+    const name = rest.join('/');
+    if (owner === undefined || owner === '' || name === '') return null;
+
+    const merged = request.state === 'merged' || request.action === 'merge';
+
+    return {
+      owner,
+      name,
+      number: request.iid,
+      title: request.title,
+      state: merged
+        ? 'merged'
+        : request.state === 'closed'
+          ? 'closed'
+          : request.draft === true || request.work_in_progress === true
+            ? 'draft'
+            : 'open',
+      url: request.url,
+      branch: typeof request.source_branch === 'string' ? request.source_branch : null,
+      headSha: typeof request.last_commit?.id === 'string' ? request.last_commit.id : '',
+      authorLogin: typeof request.author?.username === 'string' ? request.author.username : null,
+      mergedAt: typeof request.merged_at === 'string' ? request.merged_at : null,
+    };
+  },
+};
+
+function sign(secret: string, body: Uint8Array): Buffer {
+  return createHmac('sha256', secret).update(body).digest();
+}
+
+function sameBytes(left: Buffer, right: Buffer): boolean {
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
+const PROVIDERS: Record<string, GitProvider> = {
+  [github.kind]: github,
+  forgejo: giteaFamily('forgejo'),
+  gitea: giteaFamily('gitea'),
+  gitlab,
+};
 
 /* ── The routes ───────────────────────────────────────────────────────────── */
 
@@ -147,6 +252,16 @@ const PULL_REQUEST = t.Object({
   updatedAt: t.String(),
 });
 
+const CONNECTION = t.Object({
+  id: t.String(),
+  provider: t.String(),
+  authKind: t.String(),
+  instanceUrl: t.Union([t.String(), t.Null()]),
+  accountLogin: t.String(),
+  accountType: t.String(),
+  createdAt: t.String(),
+});
+
 type Asking = { readonly refused: ReturnType<typeof refusal> } | { readonly user: HeldUser };
 
 export function createGit({
@@ -158,6 +273,8 @@ export function createGit({
   config: Config;
   database: Database;
 }) {
+  const key = loadKey(config.git.secretKey);
+
   return new Elysia()
     .post(
       '/api/webhooks/github',
@@ -182,7 +299,7 @@ export function createGit({
         const event = github.parsePullRequest(payload);
         if (event === null) return { received: true };
 
-        await mirror(database, event);
+        await mirror(database, github.kind, event);
 
         return { received: true };
       },
@@ -194,6 +311,190 @@ export function createGit({
           404: REFUSAL,
         },
         detail: { summary: 'A GitHub delivery: a pull request linked to its ticket' },
+      },
+    )
+    .post(
+      '/api/webhooks/git/:connectionId',
+      async ({ request, params, status }) => {
+        const [connection] = await database
+          .select()
+          .from(gitConnection)
+          .where(eq(gitConnection.id, params.connectionId));
+        const provider = connection === undefined ? undefined : PROVIDERS[connection.provider];
+        // Unknown, unconfigured and unreadable all answer the same way: no such
+        // connection is watched, which is what a caller learns either way.
+        if (
+          connection === undefined ||
+          provider === undefined ||
+          key === null ||
+          connection.webhookSecretEncrypted === null
+        ) {
+          return status(404, refusal('GIT_CONNECTION_UNKNOWN', messages.gitConnectionUnknown));
+        }
+
+        const secret = open(key, connection.webhookSecretEncrypted);
+        if (secret === null) {
+          return status(404, refusal('GIT_CONNECTION_UNKNOWN', messages.gitConnectionUnknown));
+        }
+
+        const body = new Uint8Array(await request.arrayBuffer());
+        if (!provider.verifySignature(secret, request.headers, body)) {
+          return status(401, refusal('GIT_SIGNATURE_INVALID', messages.gitSignatureInvalid));
+        }
+        if (provider.eventKind(request.headers) !== 'pull_request') return { received: true };
+
+        let payload: unknown;
+        try {
+          payload = JSON.parse(new TextDecoder().decode(body));
+        } catch {
+          return status(400, refusal('GIT_PAYLOAD_INVALID', messages.gitPayloadInvalid));
+        }
+
+        const event = provider.parsePullRequest(payload);
+        if (event !== null) await mirror(database, connection.provider, event);
+
+        return { received: true };
+      },
+      {
+        params: t.Object({ connectionId: t.String() }),
+        response: {
+          200: t.Object({ received: t.Boolean() }),
+          400: REFUSAL,
+          401: REFUSAL,
+          404: REFUSAL,
+        },
+        detail: { summary: 'A delivery from a connected host, for one connection' },
+      },
+    )
+    .get(
+      '/api/git/connections',
+      async ({ request, status }) => {
+        const held = await asking(auth, request);
+        if ('refused' in held) return status(401, held.refused);
+
+        const rows = await database
+          .select()
+          .from(gitConnection)
+          .orderBy(asc(gitConnection.createdAt), asc(gitConnection.id));
+
+        return { connections: rows.map(asConnection) };
+      },
+      {
+        response: {
+          200: t.Object({ connections: t.Array(CONNECTION) }),
+          401: REFUSAL,
+        },
+        detail: { summary: 'The Git hosts this server is connected to' },
+      },
+    )
+    .post(
+      '/api/git/connections',
+      async ({ request, body, status }) => {
+        const held = await asking(auth, request);
+        if ('refused' in held) return status(401, held.refused);
+        if (!(await isAdmin(auth, held.user.id))) {
+          return status(403, refusal('NOT_AN_ADMIN', messages.notAnAdmin));
+        }
+
+        const provider = body.provider.trim();
+        if (!(provider in PROVIDERS)) {
+          return status(400, refusal('GIT_PROVIDER_UNKNOWN', messages.gitProviderUnknown));
+        }
+        if (key === null) {
+          return status(400, refusal('GIT_KEY_MISSING', messages.gitKeyMissing));
+        }
+
+        const accessToken = body.accessToken.trim();
+        if (accessToken === '') {
+          return status(400, refusal('GIT_TOKEN_REQUIRED', messages.gitTokenRequired));
+        }
+
+        const instanceUrl = body.instanceUrl?.trim() ?? '';
+        if (provider !== 'github' && !isHttpsUrl(instanceUrl)) {
+          return status(400, refusal('GIT_INSTANCE_URL_INVALID', messages.gitInstanceUrlInvalid));
+        }
+        if (provider === 'github' && instanceUrl !== '' && !isHttpsUrl(instanceUrl)) {
+          return status(400, refusal('GIT_INSTANCE_URL_INVALID', messages.gitInstanceUrlInvalid));
+        }
+
+        const webhookSecret = body.webhookSecret?.trim() || randomBytes(32).toString('hex');
+        const made = {
+          id: randomUUID(),
+          provider,
+          authKind: 'token',
+          instanceUrl: instanceUrl === '' ? null : instanceUrl,
+          accountLogin: body.accountLogin?.trim() || 'unknown',
+          accountType: 'User',
+          accessTokenEncrypted: seal(key, accessToken),
+          webhookSecretEncrypted: seal(key, webhookSecret),
+        };
+
+        try {
+          await database.insert(gitConnection).values(made);
+        } catch (error) {
+          if (postgresCode(error) === '23505') {
+            return status(409, refusal('GIT_CONNECTION_EXISTS', messages.gitConnectionExists));
+          }
+          throw error;
+        }
+
+        return {
+          connection: asConnection({
+            ...made,
+            installationId: null,
+            updatedAt: new Date(),
+            createdAt: new Date(),
+          }),
+          /** Shown once, because it is stored sealed and never read back out. */
+          webhookSecret,
+        };
+      },
+      {
+        body: t.Object({
+          provider: t.String(),
+          instanceUrl: t.Optional(t.String()),
+          accessToken: t.String(),
+          webhookSecret: t.Optional(t.String()),
+          accountLogin: t.Optional(t.String()),
+        }),
+        response: {
+          200: t.Object({ connection: CONNECTION, webhookSecret: t.String() }),
+          400: REFUSAL,
+          401: REFUSAL,
+          403: REFUSAL,
+          409: REFUSAL,
+        },
+        detail: { summary: 'Connect a Git host with a token and receive its webhook secret' },
+      },
+    )
+    .delete(
+      '/api/git/connections/:id',
+      async ({ request, params, status }) => {
+        const held = await asking(auth, request);
+        if ('refused' in held) return status(401, held.refused);
+        if (!(await isAdmin(auth, held.user.id))) {
+          return status(403, refusal('NOT_AN_ADMIN', messages.notAnAdmin));
+        }
+
+        const [removed] = await database
+          .delete(gitConnection)
+          .where(eq(gitConnection.id, params.id))
+          .returning({ id: gitConnection.id });
+        if (!removed) {
+          return status(404, refusal('GIT_CONNECTION_UNKNOWN', messages.gitConnectionUnknown));
+        }
+
+        return { connection: null };
+      },
+      {
+        params: t.Object({ id: t.String() }),
+        response: {
+          200: t.Object({ connection: t.Null() }),
+          401: REFUSAL,
+          403: REFUSAL,
+          404: REFUSAL,
+        },
+        detail: { summary: 'Disconnect a Git host' },
       },
     )
     .get(
@@ -351,13 +652,17 @@ export function createGit({
  * of repositories is what scopes every other project out. A pull request that
  * names no ticket is ignored too, because a row is always a ticket's.
  */
-async function mirror(database: Database, event: PullRequestEvent): Promise<void> {
+async function mirror(
+  database: Database,
+  provider: string,
+  event: PullRequestEvent,
+): Promise<void> {
   const [watched] = await database
     .select()
     .from(repository)
     .where(
       and(
-        eq(repository.provider, github.kind),
+        eq(repository.provider, provider),
         sql`lower(${repository.owner}) = lower(${event.owner})`,
         sql`lower(${repository.name}) = lower(${event.name})`,
       ),
@@ -384,7 +689,7 @@ async function mirror(database: Database, event: PullRequestEvent): Promise<void
   const values = {
     ticketId: ticket_.id,
     repositoryId: watched.id,
-    provider: github.kind,
+    provider,
     number: event.number,
     title: event.title,
     state: event.state,
@@ -483,6 +788,36 @@ function asRepository(row: typeof repository.$inferSelect) {
     name: row.name,
     defaultBranch: row.defaultBranch,
   };
+}
+
+function asConnection(row: typeof gitConnection.$inferSelect) {
+  return {
+    id: row.id,
+    provider: row.provider,
+    authKind: row.authKind,
+    instanceUrl: row.instanceUrl,
+    accountLogin: row.accountLogin,
+    accountType: row.accountType,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+/** Whether a person holds the admin role, which connecting a host requires. */
+async function isAdmin(auth: Auth, userId: string): Promise<boolean> {
+  const context = await auth.$context;
+  const found = await context.internalAdapter.findUserById(userId);
+
+  return (found as { role?: string | null } | null)?.role === 'admin';
+}
+
+function isHttpsUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+
+    return url.protocol === 'https:' && url.username === '' && url.password === '';
+  } catch {
+    return false;
+  }
 }
 
 function asPullRequest(row: typeof ticketPullRequest.$inferSelect) {

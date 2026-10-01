@@ -25,6 +25,11 @@ export interface Config {
      * entirely rather than accepting an unsigned one (docs/adr/0026).
      */
     webhookSecret: string | null;
+    /**
+     * Base64 key for sealing a token connection's secrets at rest. Null refuses
+     * storing a connection rather than keeping one in the clear.
+     */
+    secretKey: string | null;
   };
   entra: {
     tenantId: string;
@@ -173,6 +178,7 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
         .default(ALLOWANCE_TIMEZONE),
       KIRA_REFLECTION_MODEL: z.string().trim().min(1, REQUIRED).optional(),
       KIRA_GITHUB_WEBHOOK_SECRET: z.string().trim().min(1, REQUIRED).optional(),
+      KIRA_GIT_SECRET_KEY: z.string().trim().min(1, REQUIRED).optional(),
     },
     runtimeEnv: env,
     // An empty value in a .env file means unset, not "set to an empty string",
@@ -215,6 +221,7 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     },
     git: {
       webhookSecret: parsed.KIRA_GITHUB_WEBHOOK_SECRET ?? null,
+      secretKey: parsed.KIRA_GIT_SECRET_KEY ?? null,
     },
     entra: {
       tenantId: parsed.KIRA_ENTRA_TENANT_ID,
