@@ -13,7 +13,7 @@
  * was. The marks on the rows are git's answer too, and they are asked for beside
  * the listing rather than once per row.
  */
-import { readdir } from 'node:fs/promises';
+import { lstat, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { FolderListing, WorkspaceEntry } from '../../preload/bridge.ts';
 import { changedByGit, listedByGit } from './git.ts';
@@ -50,6 +50,71 @@ export async function listFolder(root: string, path: string): Promise<FolderList
   // Nothing is marked, because git could not answer — which is not the same as
   // nothing having changed, so the pane says which of the two it is.
   return { entries: drawn(listing), filtered: false, changed: null };
+}
+
+/** The maximum number of matching files offered by one composer search. */
+const SEARCH_RESULT_LIMIT = 50;
+/** A non-Git workspace has no ignore-aware index, so keep its fallback walk bounded. */
+const FALLBACK_SCAN_LIMIT = 20_000;
+
+/** Search workspace paths only, following Git's ignore policy without reading file contents. */
+export async function searchWorkspaceFiles(root: string, query: string): Promise<string[]> {
+  const named = await listedByGit(root);
+  const candidates = named === null ? await unindexedFiles(root) : named;
+  const needle = query.toLowerCase();
+  const matches = candidates
+    .filter((path) => needle === '' || path.toLowerCase().includes(needle))
+    .sort(byPath);
+  const found: string[] = [];
+
+  for (const path of matches) {
+    // lstat keeps a workspace symlink from turning a reference into a path outside it.
+    try {
+      if (!(await lstat(join(root, path))).isFile()) continue;
+    } catch {
+      continue;
+    }
+    found.push(path);
+    if (found.length === SEARCH_RESULT_LIMIT) break;
+  }
+
+  return found;
+}
+
+/** Files in a workspace Git cannot index, without following links or walking without bound. */
+async function unindexedFiles(root: string): Promise<string[]> {
+  const found: string[] = [];
+  const folders = [{ absolute: root, relative: '' }];
+  let scanned = 0;
+
+  while (folders.length > 0 && scanned < FALLBACK_SCAN_LIMIT) {
+    const folder = folders.shift();
+    if (folder === undefined) break;
+    const items = await readdir(folder.absolute, { withFileTypes: true });
+    items.sort((one, other) => byPath(one.name, other.name));
+
+    for (const item of items) {
+      if (item.isSymbolicLink()) continue;
+      scanned += 1;
+      const path = at(folder.relative, item.name);
+      if (item.isDirectory()) {
+        folders.push({ absolute: join(folder.absolute, item.name), relative: path });
+      } else if (item.isFile()) {
+        found.push(path);
+      }
+      if (scanned >= FALLBACK_SCAN_LIMIT) break;
+    }
+  }
+
+  return found;
+}
+
+/** Alphabetical, case-insensitive, with a stable tie-breaker. */
+function byPath(one: string, other: string): number {
+  const folded = one.toLowerCase();
+  const against = other.toLowerCase();
+  if (folded !== against) return folded < against ? -1 : 1;
+  return one === other ? 0 : one < other ? -1 : 1;
 }
 
 /**

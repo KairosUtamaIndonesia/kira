@@ -1,10 +1,11 @@
 import { strict as assert } from 'node:assert';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import type { WorkspaceEntry } from '../../preload/bridge.ts';
 import { tempDir } from '../test-support/temp.ts';
-import { childrenOf, listFolder } from './listing.ts';
+import { childrenOf, listFolder, searchWorkspaceFiles } from './listing.ts';
 
 interface Case {
   name: string;
@@ -132,4 +133,51 @@ test('a folder that is not there is a failure, not an empty folder', async () =>
   const root = tempDir('kira-folder-');
 
   await assert.rejects(listFolder(root, 'gone'), /ENOENT/);
+});
+
+test('file search follows Git ignores, matches paths case-insensitively, and does not follow symlinks', async () => {
+  const root = tempDir('kira-file-search-');
+  const outside = tempDir('kira-file-search-outside-');
+  mkdirSync(join(root, 'src'), { recursive: true });
+  mkdirSync(join(root, 'docs'), { recursive: true });
+  mkdirSync(join(root, 'secret'), { recursive: true });
+  mkdirSync(join(outside, 'nested'), { recursive: true });
+  writeFileSync(join(root, '.gitignore'), 'secret/\n');
+  writeFileSync(join(root, 'src', 'Login.ts'), 'contents are not searched');
+  writeFileSync(join(root, 'docs', 'login guide.md'), '');
+  writeFileSync(join(root, 'secret', 'login-token.ts'), '');
+  writeFileSync(join(outside, 'login-outside.ts'), '');
+  writeFileSync(join(outside, 'nested', 'login-nested.ts'), '');
+  symlinkSync(join(outside, 'login-outside.ts'), join(root, 'login-link.ts'));
+  symlinkSync(join(outside, 'nested'), join(root, 'linked-directory'));
+  execFileSync('git', ['init', '--quiet'], { cwd: root });
+
+  assert.deepEqual(await searchWorkspaceFiles(root, 'LOGIN'), [
+    'docs/login guide.md',
+    'src/Login.ts',
+  ]);
+});
+
+test('file search returns at most fifty results in stable path order', async () => {
+  const root = tempDir('kira-file-search-');
+  execFileSync('git', ['init', '--quiet'], { cwd: root });
+  for (let index = 59; index >= 0; index -= 1) {
+    writeFileSync(join(root, `login-${String(index).padStart(2, '0')}.ts`), '');
+  }
+
+  assert.deepEqual(
+    await searchWorkspaceFiles(root, 'login'),
+    Array.from({ length: 50 }, (_, index) => `login-${String(index).padStart(2, '0')}.ts`),
+  );
+});
+
+test('file search in a non-Git workspace does not descend through linked folders', async () => {
+  const root = tempDir('kira-file-search-');
+  const outside = tempDir('kira-file-search-outside-');
+  mkdirSync(join(root, 'src'));
+  writeFileSync(join(root, 'src', 'Login.ts'), '');
+  writeFileSync(join(outside, 'login-outside.ts'), '');
+  symlinkSync(outside, join(root, 'linked'));
+
+  assert.deepEqual(await searchWorkspaceFiles(root, 'login'), ['src/Login.ts']);
 });

@@ -834,6 +834,7 @@ export interface TicketChange {
  */
 export const FILE_CHANNELS = {
   list: 'file:list',
+  search: 'file:search',
   read: 'file:read',
   write: 'file:write',
   create: 'file:create',
@@ -1302,6 +1303,8 @@ export interface KiraBridge {
    * which is not the same as a folder with nothing in it.
    */
   listWorkspaceFolder(chatId: string, path: string): Promise<Result<FolderListing | null>>;
+  /** Search file names in the chat's workspace without reading their contents. */
+  searchWorkspaceFiles(chatId: string, query: string): Promise<Result<string[]>>;
   /**
    * One file's text, from a path inside the chat's workspace. A file too large
    * to read, or one that is not text, is refused with a sentence saying so

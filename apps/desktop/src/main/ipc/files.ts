@@ -40,6 +40,8 @@ export interface FileDeps {
   workspaceOf(chatId: string): string | null;
   /** What one folder of a workspace holds, by a path from its root. */
   list(root: string, path: string): Promise<FolderListing>;
+  /** Search file paths only, returning workspace-relative matches. */
+  search(root: string, query: string): Promise<string[]>;
   /** One file's text, by a path from the workspace root. */
   read(root: string, path: string): Promise<string>;
   /** Replace a text file only if it still holds what the window opened. */
@@ -58,6 +60,7 @@ export interface FileDeps {
 
 export interface FileHandlers {
   list(chatId: unknown, path: unknown): Promise<Result<FolderListing | null>>;
+  search(chatId: unknown, query: unknown): Promise<Result<string[]>>;
   read(chatId: unknown, path: unknown): Promise<Result<string>>;
   write(chatId: unknown, path: unknown, expected: unknown, content: unknown): Promise<Result<null>>;
   create(chatId: unknown, path: unknown, kind: unknown): Promise<Result<null>>;
@@ -77,6 +80,7 @@ export interface FileHandlers {
 export function fileHandlers({
   workspaceOf,
   list,
+  search,
   read,
   write,
   create,
@@ -131,6 +135,17 @@ export function fileHandlers({
         const asked = target(chatId, path);
 
         return asked === null ? null : list(asked.root, asked.path);
+      }),
+
+    search: (chatId, query) =>
+      envelope(async () => {
+        if (typeof query !== 'string' || query.length > 200) {
+          throw new Error('File search needs a text query of 200 characters or fewer.');
+        }
+        const root = rootOf(chatId);
+        if (root === null) throw new Error('This chat has no workspace yet.');
+
+        return search(root, query.trim());
       }),
 
     read: (chatId, path) =>

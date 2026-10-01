@@ -138,6 +138,8 @@ const bridge: KiraBridge = {
   listWorkspaceFolder: (chatId, path) =>
     ask<FolderListing | null>(FILE_CHANNELS.list, chatId, path),
 
+  searchWorkspaceFiles: (chatId, query) => ask<string[]>(FILE_CHANNELS.search, chatId, query),
+
   readWorkspaceFile: (chatId, path) => ask<string>(FILE_CHANNELS.read, chatId, path),
 
   writeWorkspaceFile: (chatId, path, expected, content) =>

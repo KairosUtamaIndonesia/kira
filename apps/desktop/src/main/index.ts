@@ -35,7 +35,7 @@ import { memoryFor, type MemoryKeeper } from './memory.ts';
 import { trackerFor, type Tracker } from './tracker.ts';
 import { usageFor, type UsageKeeper } from './usage.ts';
 import { type OpenChats, openChats } from './pi/openChats.ts';
-import { listFolder } from './workspace/listing.ts';
+import { listFolder, searchWorkspaceFiles } from './workspace/listing.ts';
 import { hasRemote } from './workspace/git.ts';
 import {
   createWorkspaceItem,
@@ -314,6 +314,7 @@ function registerFileChannels(): void {
   const handlers = fileHandlers({
     workspaceOf: (chatId) => store.findThread(chatId)?.cwd ?? null,
     list: listFolder,
+    search: searchWorkspaceFiles,
     read: readWorkspaceFile,
     write: writeWorkspaceFile,
     create: createWorkspaceItem,
@@ -327,6 +328,9 @@ function registerFileChannels(): void {
 
   ipcMain.handle(FILE_CHANNELS.list, (_event, chatId: unknown, path: unknown) =>
     handlers.list(chatId, path),
+  );
+  ipcMain.handle(FILE_CHANNELS.search, (_event, chatId: unknown, query: unknown) =>
+    handlers.search(chatId, query),
   );
   ipcMain.handle(FILE_CHANNELS.read, (_event, chatId: unknown, path: unknown) =>
     handlers.read(chatId, path),

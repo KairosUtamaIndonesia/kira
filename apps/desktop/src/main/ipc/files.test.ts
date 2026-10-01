@@ -35,6 +35,10 @@ function deps(calls: string[], overrides: Partial<FileDeps> = {}): FileDeps {
       calls.push(`list ${root}:${path}`);
       return listing;
     },
+    search: async (root, query) => {
+      calls.push(`search ${root}:${query}`);
+      return ['src/auth/login.ts'];
+    },
     read: async (root, path) => {
       calls.push(`read ${root}:${path}`);
       return 'const one = 1;\n';
@@ -211,6 +215,25 @@ for (const testCase of CASES) {
     assert.deepEqual(calls, testCase.wantCalls);
   });
 }
+
+test('search finds workspace-relative file paths without reading file contents', async () => {
+  const calls: string[] = [];
+  const handlers = fileHandlers(
+    deps(calls, {
+      search: async (root, query) => {
+        calls.push(`search ${root}:${query}`);
+        return ['src/auth/login.ts'];
+      },
+      read: () => assert.fail('file search must not read file contents'),
+    }),
+  );
+
+  assert.deepEqual(await handlers.search('c1', 'login'), {
+    ok: true,
+    value: ['src/auth/login.ts'],
+  });
+  assert.deepEqual(calls, ['workspace of c1', 'search /work/api:login']);
+});
 
 test('write sends only a workspace-relative file and its expected contents to the workspace', async () => {
   const calls: string[] = [];
