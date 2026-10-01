@@ -103,6 +103,8 @@ test('tracker tools expose ticket operations and person-owned publication contro
     'tracker_update_glossary',
     'tracker_create_ticket',
     'tracker_update_ticket',
+    'tracker_comment',
+    'tracker_read_timeline',
     'tracker_add_blocker',
     'tracker_remove_blocker',
   ]);

@@ -224,6 +224,8 @@ test('tracker tools are registered alongside the ordinary extension tools', () =
       'tracker_update_glossary',
       'tracker_create_ticket',
       'tracker_update_ticket',
+      'tracker_comment',
+      'tracker_read_timeline',
       'tracker_add_blocker',
       'tracker_remove_blocker',
     ]);

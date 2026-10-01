@@ -21,6 +21,15 @@ import { NO_PROJECT, type Tracker } from '../../tracker.ts';
 
 const EMPTY = Type.Object({});
 const TICKET = Type.Object({ ref: Type.String({ minLength: 1 }) });
+const COMMENT = Type.Object({
+  ref: Type.String({ minLength: 1 }),
+  body: Type.String({ minLength: 1 }),
+  parentId: Type.Optional(Type.String({ minLength: 1 })),
+});
+const TIMELINE = Type.Object({
+  ref: Type.String({ minLength: 1 }),
+  limit: Type.Optional(Type.Number({ minimum: 1, maximum: 500 })),
+});
 const DRAFT = Type.Object({
   kind: Type.String({ minLength: 1 }),
   title: Type.String(),
@@ -334,6 +343,38 @@ export function trackerTools(
           store.setThreadWorkTicketIds(threadId, [...new Set([...ids, current.id])]);
         }
         return textResult(updated);
+      },
+    }),
+    tool({
+      name: 'tracker_comment',
+      label: 'Comment on tracker ticket',
+      description:
+        'Say something on a ticket in this chat’s current project, or reply to a comment on it by naming that comment as `parentId`. The comment is recorded as Kira’s while this chat is where it was written.',
+      promptSnippet:
+        'Comment on a ticket in the current project, or reply to a comment on it, when the person asks or when you change a ticket and the reason belongs on it.',
+      parameters: COMMENT,
+      async execute(params) {
+        const { ref, body, parentId } = params as {
+          ref: string;
+          body: string;
+          parentId?: string;
+        };
+        const ticket = await projectTicket(ref);
+        if (body.trim() === '') throw new Error('A comment says something.');
+        return textResult(await tracker.comment(ticket.id, body, parentId, 'kira'));
+      },
+    }),
+    tool({
+      name: 'tracker_read_timeline',
+      label: 'Read ticket timeline',
+      description:
+        'Read a ticket’s comments and history as one timeline, oldest first. Pass `limit` to keep only the newest entries of a long ticket.',
+      promptSnippet: 'Read a ticket’s comments and history before continuing work on it.',
+      parameters: TIMELINE,
+      async execute(params) {
+        const { ref, limit } = params as { ref: string; limit?: number };
+        const ticket = await projectTicket(ref);
+        return textResult(await tracker.timeline(ticket.id, limit));
       },
     }),
     tool({
