@@ -120,6 +120,7 @@ import type {
   WorkspaceSummary,
 } from '../../preload/bridge.ts';
 import { Blockers } from './workBlockers.tsx';
+import { PullRequests } from './workPullRequests.tsx';
 import { Timeline } from './workTimeline.tsx';
 import { RepositoriesDialog } from './workRepositories.tsx';
 import { NewTicketDialog, TicketFields } from './workNewTicket.tsx';
@@ -3084,6 +3085,7 @@ function TicketReading({
               {copy.ticket.openPullRequest}
             </a>
           )}
+          <PullRequests key={ticket.id} ticketId={ticket.id} />
           <section {...stylex.props(styles.section)}>
             <Text type="label" weight="medium">
               {copy.ticket.about}

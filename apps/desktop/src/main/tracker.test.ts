@@ -152,6 +152,10 @@ function wire(calls: string[], answers: Partial<TrackerWire> = {}): TrackerWire 
       calls.push(`comment ${key} ${ticketId} ${body} ${parentId ?? ''} ${authorKind ?? ''}`);
       return { kind: 'ok', body: comment };
     },
+    pullRequests: async (key, ticketId) => {
+      calls.push(`pullRequests ${key} ${ticketId}`);
+      return { kind: 'ok', body: [] };
+    },
     repositories: async (key, projectId) => {
       calls.push(`repositories ${key} ${projectId}`);
       return { kind: 'ok', body: [repository] };

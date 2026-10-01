@@ -244,6 +244,11 @@ export const copy = {
     conversationRetry: 'Try again',
     kira: 'Kira',
     someone: 'Someone',
+    pullRequests: 'Pull requests',
+    noPullRequests: 'No pull request is linked to this ticket yet.',
+    pullRequestsLoading: 'Loading pull requests',
+    pullRequestsFailed: 'Couldn’t load the pull requests.',
+    pullRequestBy: (who: string) => `by ${who}`,
   },
   /* ── What the server recorded happening to a ticket ───────────────────── */
   activity: {

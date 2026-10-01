@@ -31,6 +31,7 @@ import {
   type Repository,
   type Ticket,
   type TicketComment,
+  type TicketPullRequest,
   type TicketQueue,
   type TimelineEntry,
   type WorkspaceSummary,
@@ -143,8 +144,9 @@ const bridge: KiraBridge = {
   postComment: (ticketId, body, parentId, authorKind) =>
     ask<TicketComment>(TRACKER_CHANNELS.comment, ticketId, body, parentId, authorKind),
 
-  loadRepositories: (projectId) => ask<Repository[]>(TRACKER_CHANNELS.repositories, projectId),
+  loadPullRequests: (ticketId) => ask<TicketPullRequest[]>(TRACKER_CHANNELS.pullRequests, ticketId),
 
+  loadRepositories: (projectId) => ask<Repository[]>(TRACKER_CHANNELS.repositories, projectId),
   attachRepository: (projectId, input) =>
     ask<Repository>(TRACKER_CHANNELS.attachRepository, projectId, input),
 

@@ -27,6 +27,7 @@ import type {
   ProjectDecision,
   Repository,
   RepositoryInput,
+  TicketPullRequest,
   TicketChange,
   TicketDraft,
   TicketQueue,
@@ -148,9 +149,10 @@ export interface TrackerWire {
     parentId?: string,
     authorKind?: 'member' | 'kira',
   ): Promise<TrackerAnswer<TicketComment>>;
+  /** A ticket's pull requests, newest first. */
+  pullRequests(key: string, ticketId: string): Promise<TrackerAnswer<TicketPullRequest[]>>;
   /** A project's repositories. */
   repositories(key: string, projectId: string): Promise<TrackerAnswer<Repository[]>>;
-  /** Attach a repository to a project. */
   attachRepository(
     key: string,
     projectId: string,
@@ -236,6 +238,8 @@ export interface Tracker {
     parentId?: string,
     authorKind?: 'member' | 'kira',
   ): Promise<TicketComment>;
+  /** A ticket's pull requests, newest first. */
+  pullRequests(ticketId: string): Promise<TicketPullRequest[]>;
   /** The repositories a project's work happens in. */
   repositories(projectId: string): Promise<Repository[]>;
   /** Attach a repository to a project. */
@@ -428,6 +432,12 @@ export function trackerFor({
       const held = await key();
 
       return await asked(() => wire.repositories(held, projectId));
+    },
+
+    async pullRequests(ticketId) {
+      const held = await key();
+
+      return await asked(() => wire.pullRequests(held, ticketId));
     },
 
     async attachRepository(projectId, input) {

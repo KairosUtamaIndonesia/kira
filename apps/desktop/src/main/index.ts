@@ -279,6 +279,7 @@ function registerTrackerChannels(): void {
     timeline: (ticketId, limit) => tracker.timeline(ticketId, limit),
     comment: (ticketId, body, parentId, authorKind) =>
       tracker.comment(ticketId, body, parentId, authorKind),
+    pullRequests: (ticketId) => tracker.pullRequests(ticketId),
     repositories: (projectId) => tracker.repositories(projectId),
     attachRepository: (projectId, input) => tracker.attachRepository(projectId, input),
     detachRepository: (projectId, id) => tracker.detachRepository(projectId, id),
@@ -311,6 +312,9 @@ function registerTrackerChannels(): void {
     TRACKER_CHANNELS.comment,
     (_event, ticketId: unknown, body: unknown, parentId: unknown, authorKind: unknown) =>
       handlers.comment(ticketId, body, parentId, authorKind),
+  );
+  ipcMain.handle(TRACKER_CHANNELS.pullRequests, (_event, ticketId: unknown) =>
+    handlers.pullRequests(ticketId),
   );
   ipcMain.handle(TRACKER_CHANNELS.repositories, (_event, projectId: unknown) =>
     handlers.repositories(projectId),

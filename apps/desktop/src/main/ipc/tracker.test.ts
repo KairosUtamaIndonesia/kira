@@ -129,6 +129,10 @@ function deps(calls: string[], overrides: Partial<TrackerDeps> = {}): TrackerDep
       calls.push(`repositories ${projectId}`);
       return [repository];
     },
+    pullRequests: async (ticketId) => {
+      calls.push(`pullRequests ${ticketId}`);
+      return [];
+    },
     attachRepository: async (projectId, input) => {
       calls.push(`attachRepository ${projectId} ${input.owner}/${input.name}`);
       return repository;
@@ -483,10 +487,12 @@ test('repositories reads, attaches, and detaches, with the host checked', async 
     ok: true,
     value: null,
   });
+  assert.deepEqual(await handlers.pullRequests('ticket-1'), { ok: true, value: [] });
   assert.deepEqual(calls, [
     'repositories kira-project',
     'attachRepository kira-project acme/api/gitea',
     'detachRepository kira-project repo-1',
+    'pullRequests ticket-1',
   ]);
 
   assert.deepEqual(await handlers.repositories(''), {
@@ -508,6 +514,10 @@ test('repositories reads, attaches, and detaches, with the host checked', async 
   assert.deepEqual(await handlers.detachRepository('kira-project', ''), {
     ok: false,
     error: 'A repository needs an id to be removed.',
+  });
+  assert.deepEqual(await handlers.pullRequests(''), {
+    ok: false,
+    error: 'Pull requests are read for a ticket.',
   });
 });
 

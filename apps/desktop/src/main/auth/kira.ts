@@ -25,6 +25,7 @@ import {
   type Repository,
   type Ticket,
   type TicketComment,
+  type TicketPullRequest,
   type TicketQueue,
   type TimelineEntry,
 } from '../../preload/bridge.ts';
@@ -387,7 +388,11 @@ export function kiraFor({ server, scheme }: { server: string; scheme: string }):
         () => kira.api.projects({ ref: projectId }).repositories.get({ headers: bearerFor(key) }),
         (data) => asRepositories((data as { repositories: unknown }).repositories),
       ),
-
+    pullRequests: async (key, ticketId) =>
+      asked(
+        () => kira.api.tickets({ ref: ticketId })['pull-requests'].get({ headers: bearerFor(key) }),
+        (data) => asPullRequests((data as { pullRequests: unknown }).pullRequests),
+      ),
     attachRepository: async (key, projectId, input) =>
       asked(
         () =>
@@ -595,6 +600,12 @@ function asRepositories(body: unknown): Repository[] | null {
   const repositories = body.map(asRepository);
 
   return repositories.some((each) => each === null) ? null : (repositories as Repository[]);
+}
+
+function asPullRequests(body: unknown): TicketPullRequest[] | null {
+  if (!Array.isArray(body)) return null;
+
+  return body as TicketPullRequest[];
 }
 
 function asDecision(body: unknown): ProjectDecision | null {

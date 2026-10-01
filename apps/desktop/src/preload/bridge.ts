@@ -657,6 +657,7 @@ export const TRACKER_CHANNELS = {
   ungate: 'tracker:ungate',
   timeline: 'tracker:timeline',
   comment: 'tracker:comment',
+  pullRequests: 'tracker:pull-requests',
   repositories: 'tracker:repositories',
   attachRepository: 'tracker:repository-attach',
   detachRepository: 'tracker:repository-detach',
@@ -840,6 +841,22 @@ export interface RepositoryInput {
   name: string;
   provider?: string;
   defaultBranch?: string;
+}
+
+/** A pull request reviewing a ticket, as its host states it. */
+export interface TicketPullRequest {
+  id: string;
+  ticketId: string;
+  provider: string;
+  number: number;
+  title: string;
+  state: string;
+  url: string;
+  branch: string | null;
+  authorLogin: string | null;
+  mergedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 /** Someone behind a comment: a person, or Kira acting in their chat. */
@@ -1396,6 +1413,8 @@ export interface KiraBridge {
     parentId?: string,
     authorKind?: 'member' | 'kira',
   ): Promise<Result<TicketComment>>;
+  /** The pull requests reviewing a ticket. */
+  loadPullRequests(ticketId: string): Promise<Result<TicketPullRequest[]>>;
   /** The repositories a project's work happens in. */
   loadRepositories(projectId: string): Promise<Result<Repository[]>>;
   /** Attach a repository to a project. */

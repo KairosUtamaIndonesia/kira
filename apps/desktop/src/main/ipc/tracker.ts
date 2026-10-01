@@ -27,6 +27,7 @@ import {
   type TicketDraft,
   type TicketKind,
   type TicketPriority,
+  type TicketPullRequest,
   type TicketQueue,
   type TimelineEntry,
 } from '../../preload/bridge.ts';
@@ -57,6 +58,8 @@ export interface TrackerDeps {
     parentId?: string,
     authorKind?: 'member' | 'kira',
   ): Promise<TicketComment>;
+  /** A ticket's pull requests, newest first. */
+  pullRequests(ticketId: string): Promise<TicketPullRequest[]>;
   /** A project's repositories. */
   repositories(projectId: string): Promise<Repository[]>;
   /** Attach a repository to a project. */
@@ -85,6 +88,7 @@ export interface TrackerHandlers {
     parentId: unknown,
     authorKind: unknown,
   ): Promise<Result<TicketComment>>;
+  pullRequests(ticketId: unknown): Promise<Result<TicketPullRequest[]>>;
   repositories(projectId: unknown): Promise<Result<Repository[]>>;
   attachRepository(projectId: unknown, input: unknown): Promise<Result<Repository>>;
   detachRepository(projectId: unknown, id: unknown): Promise<Result<null>>;
@@ -109,6 +113,7 @@ export function trackerHandlers({
   ungate,
   timeline,
   comment,
+  pullRequests,
   repositories,
   attachRepository,
   detachRepository,
@@ -218,6 +223,14 @@ export function trackerHandlers({
       }
 
       return envelope(() => repositories(projectId));
+    },
+
+    pullRequests: (ticketId) => {
+      if (!isId(ticketId)) {
+        return Promise.resolve({ ok: false, error: 'Pull requests are read for a ticket.' });
+      }
+
+      return envelope(() => pullRequests(ticketId));
     },
 
     attachRepository: (projectId, input) => {

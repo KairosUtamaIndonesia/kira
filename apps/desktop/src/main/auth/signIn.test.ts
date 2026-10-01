@@ -139,6 +139,10 @@ function kira(calls: string[], quirks: Quirks = {}): Kira {
       calls.push('read repositories');
       return { kind: 'unavailable' };
     },
+    pullRequests: async () => {
+      calls.push('read pull requests');
+      return { kind: 'unavailable' };
+    },
     attachRepository: async () => {
       calls.push('attach a repository');
       return { kind: 'unavailable' };
