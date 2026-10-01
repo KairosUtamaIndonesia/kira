@@ -254,6 +254,7 @@ export default function App() {
     headId: null,
   });
   const [running, setRunning] = useState<string[]>([]);
+  const [runningSince, setRunningSince] = useState<Record<string, number>>({});
   const [streaming, setStreaming] = useState<string | null>(null);
   const [queued, setQueued] = useState<QueuedLine[]>([]);
   /** What Kira is holding for the chat on screen. */
@@ -357,6 +358,7 @@ export default function App() {
         } else setLinkableWorkTickets([]);
       } else setLinkableWorkTickets([]);
       setRunning(result.value.running);
+      setRunningSince(result.value.runningSince);
       setStreaming(result.value.streaming);
       setQueued(result.value.queued);
       setMemory(result.value.memory);
@@ -1234,6 +1236,7 @@ export default function App() {
               chats={orderedChats}
               currentId={currentId}
               running={running}
+              runningSince={runningSince}
               chatSort={chatSort}
               onChooseSort={chooseChatSort}
               openChat={(id) => void switchChat(() => window.kira.openChat(id))}

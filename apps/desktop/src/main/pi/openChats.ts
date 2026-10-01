@@ -553,6 +553,12 @@ export function openChats(
         memory: conversation?.memory() ?? [],
         conclusions: conversation?.conclusions() ?? [],
         running: [...open.values()].filter((each) => each.isRunning()).map((each) => each.threadId),
+        runningSince: Object.fromEntries(
+          [...open.values()].flatMap((each) => {
+            const startedAt = each.runningSince();
+            return startedAt === null ? [] : [[each.threadId, startedAt]];
+          }),
+        ),
         streaming: conversation?.streaming() ?? null,
         queued: conversation?.queued() ?? [],
         // What the chat is actually running on rather than what is written down

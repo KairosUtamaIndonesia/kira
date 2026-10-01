@@ -183,6 +183,8 @@ export interface Conversation {
   subscribe(listener: (event: ChatEvent) => void): () => void;
   /** Whether Kira is writing in this chat right now. */
   isRunning(): boolean;
+  /** When the current turn began, or null when the chat is idle. */
+  runningSince(): number | null;
   /** The reply being written: one message's words, or null when there are none. */
   streaming(): string | null;
   /** Stop receiving events and dispose the session. */
@@ -361,8 +363,10 @@ function conversationOf(
     return lanes(steering, followUp);
   };
 
+  let runningSince: number | null = null;
   const unsubscribe = kira.session.subscribe((event) => {
     if (event.type === 'agent_start') {
+      runningSince = Date.now();
       emit({ type: 'started', threadId: kira.threadId });
     }
     if (
@@ -451,6 +455,7 @@ function conversationOf(
     // wholesale. This is what makes the transcript exact after a turn.
     if (event.type === 'agent_settled') {
       writing = null;
+      runningSince = null;
       // Before the transcript goes out: the window reads its whole state on
       // hearing it, so the memory that goes with these turns has to be written
       // down by the time it does.
@@ -618,6 +623,7 @@ function conversationOf(
       };
     },
     isRunning: () => kira.session.isStreaming,
+    runningSince: () => runningSince,
     modelId: () => kira.session.model?.id ?? null,
     chatUsage: () => {
       const full = kira.session.getContextUsage();

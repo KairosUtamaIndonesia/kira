@@ -39,10 +39,11 @@ import {
   Settings2,
   Ticket,
 } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { ChatSummary, WorkspaceSummary } from '../../preload/bridge';
 import { CHAT_SORT_LABELS, type ChatSort } from './chatOrdering';
 import { railMarker } from './chatRail.stylex.ts';
+import { formatRunDuration } from './chatTiming.ts';
 import { copy } from './workCopy.ts';
 
 export interface ChatRailProps {
@@ -54,6 +55,9 @@ export interface ChatRailProps {
   currentId: string | null;
   /** Ids of the chats Kira is writing in. */
   running: string[];
+  runningSince: Record<string, number>;
+  /** Current time for the sidebar's live run clock. */
+  now?: number;
   chatSort: ChatSort;
   onChooseSort: (sort: ChatSort) => void;
   openChat: (id: string) => void;
@@ -75,6 +79,11 @@ export interface ChatRailProps {
 const SECTION_LIMIT = 5;
 
 const DAY = 86_400_000;
+
+function useMountEffect(effect: () => void | (() => void)): void {
+  // eslint-disable-next-line no-restricted-syntax, react-hooks/exhaustive-deps -- explicit mount-only timer.
+  useEffect(effect, []);
+}
 
 /** `now`, `5m`, `3h`, `2d`, `3w`, `4mo`: short enough to sit in a mono column. */
 function shortAge(iso: string): string {
@@ -573,6 +582,9 @@ function ChatRow({ chat, p }: { chat: ChatSummary; p: ChatRailProps }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const isCurrent = chat.id === p.currentId;
   const isRunning = p.running.includes(chat.id);
+  const runningDuration = isRunning && p.now !== undefined && p.runningSince[chat.id] !== undefined
+    ? formatRunDuration(p.now - p.runningSince[chat.id]!)
+    : null;
   const items = chatItems(chat, p);
 
   return (
@@ -601,7 +613,7 @@ function ChatRow({ chat, p }: { chat: ChatSummary; p: ChatRailProps }) {
             {chat.title}
           </span>
           <span {...stylex.props(styles.figure, styles.age, isMenuOpen && styles.ageHidden)}>
-            {shortAge(chat.updatedAt)}
+            {runningDuration ?? shortAge(chat.updatedAt)}
           </span>
         </button>
         <span {...withClass(stylex.props(styles.rowMenu, isMenuOpen && styles.rowMenuOpen), 'rail-tools')}>
@@ -832,6 +844,13 @@ function Actions({ p }: { p: ChatRailProps }) {
 }
 
 export function ChatRail(p: ChatRailProps) {
+  const [now, setClock] = useState(0);
+  useMountEffect(() => {
+    setClock(Date.now());
+    const timer = window.setInterval(() => setClock(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  });
+
   return (
     <SideNav
       header={p.header}
@@ -842,7 +861,7 @@ export function ChatRail(p: ChatRailProps) {
       footer={<AccountMenu name={p.accountName} onOpenSettings={p.openSettings} onSignOut={p.signOut} />}
       topContent={<Actions p={p} />}
     >
-      <Ledger p={p} />
+      <Ledger p={{ ...p, now }} />
     </SideNav>
   );
 }

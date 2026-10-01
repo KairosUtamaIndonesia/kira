@@ -1750,6 +1750,11 @@ test('a turn goes on being work Kira was told about, even when it is not answere
       rememberedModels(provider.url),
     );
 
+    let startedAt: number | null = null;
+    const unsubscribe = conversation.subscribe((event) => {
+      if (event.type === 'started') startedAt = conversation.runningSince();
+    });
+
     // The turn fails at the provider and settles anyway, which is when the
     // observer runs. What the person was told is Kira's from then on whether or
     // not an answer arrived — the point of watching the chat rather than the
@@ -1757,11 +1762,15 @@ test('a turn goes on being work Kira was told about, even when it is not answere
     // the turn itself made, and that one is why this case needs a stub at all.
     await assert.rejects(() => conversation.send('Fix the auth bug in the login flow'));
 
+    assert.equal(typeof startedAt, 'number');
+    assert.equal(conversation.runningSince(), null);
+
     assert.deepEqual(
       conversation.memory().map(({ kind, text }) => ({ kind, text })),
       [{ kind: 'goal', text: 'Fix the auth bug in the login flow' }],
     );
     conversation.close();
+    unsubscribe();
   } finally {
     await provider.stop();
     store.close();

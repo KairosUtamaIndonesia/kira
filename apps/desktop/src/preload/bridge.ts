@@ -455,6 +455,8 @@ export interface ChatState {
    * its own session, so one keeps writing while the reader is in another.
    */
   running: string[];
+  /** When each currently running chat's turn began, as epoch milliseconds. */
+  runningSince: Record<string, number>;
   /** The reply being written in the current chat, or null when none is. */
   streaming: string | null;
   /** Words waiting to be read in the current chat, in the order she will read them. */

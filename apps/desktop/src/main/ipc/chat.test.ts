@@ -48,6 +48,7 @@ const surface: ChatState = {
   memory: [{ kind: 'goal', at: '2026-01-01T00:00:00.000Z', text: 'fix the auth bug' }],
   conclusions: [{ text: 'the bug is in the session lookup', coversThrough: 3 }],
   running: [],
+  runningSince: {},
   streaming: null,
   queued: [],
   modelId: 'gpt-6-astra',
