@@ -426,6 +426,12 @@ export default function App() {
           return remaining;
         });
       }
+      if (event.type === 'progress' && event.workTicketIds !== undefined) {
+        const workTicketIds = event.workTicketIds;
+        setChats((chats) =>
+          chats.map((chat) => (chat.id === event.threadId ? { ...chat, workTicketIds } : chat)),
+        );
+      }
       // A turn in a chat the window is not showing is the sidebar's business:
       // nothing here draws it, and it matters only once it is over, which is
       // when the list — and which chats are running — is read again.
@@ -450,6 +456,9 @@ export default function App() {
 
       if (event.type === 'progress') {
         setTranscript(event.transcript);
+        if (event.workTicketIds !== undefined) {
+          setWorkTicketIds(event.workTicketIds);
+        }
         return;
       }
 

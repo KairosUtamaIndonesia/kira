@@ -105,8 +105,9 @@ drawn twice, so that reach is where it was first worked out.
 _Avoid_: Reflection (what the code says), insight, summary (that is the compaction's own)
 
 **Running**:
-The status of a ticket someone is working: the agent sets it when it begins on a ticket linked in its
-chat, and assigns the chat's person. Nothing expires it; anyone can change it (ADR 0024).
+The status of a ticket someone is working: when the agent begins requested work in the chat's
+project, it records the chat link and assigns the chat's person. Nothing expires it; anyone can
+change it (ADR 0024).
 _Avoid_: Claim, lease, lock
 
 **Ticket**:
@@ -168,7 +169,7 @@ _Avoid_: Gate, dependency, prerequisite
 
 **Status**:
 The stored stage of a ticket: Draft, Ready, Running, Needs review, Done or Won't do. A person may
-choose any status. For tickets linked in its chat, the agent may set Running or Needs review; it
+choose any status. For requested tickets in its chat's project, the agent may set Running or Needs review; it
 cannot set Done or Won't do. An open blocker also shows Blocked without changing the stored status.
 _Avoid_: Readiness, band, execution state, claim
 
@@ -177,9 +178,10 @@ The current link on a ticket to the pull request reviewing its work.
 _Avoid_: PR URL
 
 **Linked chat**:
-A chat with a ticket linked, in which the agent works it with the skill its kind names. A ticket
-lists its linked chats. Linking a ticket in the composer is the person's way to ask for that work;
-there is no separate start action.
+A chat associated with a ticket, either supplied as context or recorded when Kira starts working
+it with the skill its kind names. A ticket lists its linked chats. The person's request defines the
+work; attaching a ticket supplies context rather than permission, and reading or editing ordinary
+ticket fields does not create a work link. There is no separate start action.
 _Avoid_: Session, Run (in anything a person reads), Worker, job
 
 The central relationship is:

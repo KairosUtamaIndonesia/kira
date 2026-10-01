@@ -17,7 +17,7 @@ import {
   type Ticket,
 } from '../../../preload/bridge.ts';
 import type { ThreadStore } from '../../db/threads.ts';
-import type { Tracker } from '../../tracker.ts';
+import { NO_PROJECT, type Tracker } from '../../tracker.ts';
 
 const EMPTY = Type.Object({});
 const TICKET = Type.Object({ ref: Type.String({ minLength: 1 }) });
@@ -162,10 +162,12 @@ export function trackerTools(
   tracker: Tracker,
 ): ToolDefinition[] {
   const workspace = (): string => workspaceFor(store, threadId);
-  const linkedTicket = async (ref: string): Promise<Ticket> => {
+  const projectTicket = async (ref: string): Promise<Ticket> => {
+    const projectId = store.findWorkspace(workspace())?.projectId;
+    if (projectId === undefined || projectId === null) throw new Error(NO_PROJECT);
     const ticket = await tracker.readTicket(ref);
-    if (!store.getThread(threadId).workTicketIds.includes(ticket.id)) {
-      throw new Error('This chat can only change tickets linked to it.');
+    if (ticket.projectId !== projectId) {
+      throw new Error('This chat can only access tickets in its current project.');
     }
     return ticket;
   };
@@ -189,7 +191,7 @@ export function trackerTools(
       parameters: TICKET,
       async execute(params) {
         const { ref } = params as { ref: string };
-        return textResult(await tracker.readTicket(ref));
+        return textResult(await projectTicket(ref));
       },
     }),
     tool({
@@ -259,9 +261,9 @@ export function trackerTools(
       name: 'tracker_update_ticket',
       label: 'Update tracker ticket',
       description:
-        'Update a ticket linked to this chat. Set status to `running` (Running) or `needs-review` (Needs review); Done and Won’t do stay with the person. After opening a pull request, attach its HTTPS URL. With no remote, Needs review needs no URL; if a remote exists but publishing or opening the pull request fails, leave the ticket Running. Running assigns the ticket to the signed-in person.',
+        'Update a ticket in this chat’s current project when the person requests it; attaching the ticket is not required. Set status to `running` (Running) or `needs-review` (Needs review); Done and Won’t do stay with the person. After opening a pull request, attach its HTTPS URL. With no remote, Needs review needs no URL; if a remote exists but publishing or opening the pull request fails, leave the ticket Running. Running assigns the ticket to the signed-in person and records this chat as working it; ordinary field edits do not link the chat.',
       promptSnippet:
-        'Update a linked ticket: set `running` when work starts. After opening a pull request, set `needs-review` and attach its HTTPS URL. With no remote, set `needs-review` without a URL; if a remote exists but publishing or opening the pull request fails, leave the ticket `running` and report why. Never set Done or Won’t do.',
+        'Update a requested ticket in the current project, attached or not: set `running` when work starts to record its chat link. After opening a pull request, set `needs-review` and attach its HTTPS URL. With no remote, set `needs-review` without a URL; if a remote exists but publishing or opening the pull request fails, leave the ticket `running` and report why. Never set Done or Won’t do.',
       parameters: EDIT,
       async execute(params) {
         const edit = params as {
@@ -274,7 +276,7 @@ export function trackerTools(
           priority?: string;
           tags?: string[];
         };
-        const current = await linkedTicket(edit.ref);
+        const current = await projectTicket(edit.ref);
 
         const change: TicketChange = {};
         if (edit.title !== undefined) change.title = edit.title;
@@ -326,37 +328,44 @@ export function trackerTools(
           change.priority = edit.priority as TicketChange['priority'];
         }
         if (edit.tags !== undefined) change.tags = edit.tags;
-        return textResult(await tracker.change(current.id, change));
+        const updated = await tracker.change(current.id, change);
+        if (change.status === 'running') {
+          const ids = store.getThread(threadId).workTicketIds;
+          store.setThreadWorkTicketIds(threadId, [...new Set([...ids, current.id])]);
+        }
+        return textResult(updated);
       },
     }),
     tool({
       name: 'tracker_add_blocker',
       label: 'Add ticket blocker',
-      description: 'Add a ticket as a blocker to a ticket linked to this chat.',
-      promptSnippet: 'Add a blocker to a ticket linked to this chat.',
+      description: 'Add a ticket as a blocker to another ticket in the current project when asked.',
+      promptSnippet: 'Add a requested blocker between tickets in the current project.',
       parameters: Type.Object({
         ref: Type.String({ minLength: 1 }),
         blockedBy: Type.String({ minLength: 1 }),
       }),
       async execute(params) {
         const { ref, blockedBy } = params as { ref: string; blockedBy: string };
-        const ticket = await linkedTicket(ref);
-        return textResult(await tracker.gate(ticket.id, blockedBy));
+        const ticket = await projectTicket(ref);
+        const blocker = await projectTicket(blockedBy);
+        return textResult(await tracker.gate(ticket.id, blocker.id));
       },
     }),
     tool({
       name: 'tracker_remove_blocker',
       label: 'Remove ticket blocker',
-      description: 'Remove a blocker from a ticket linked to this chat.',
-      promptSnippet: 'Remove a blocker from a ticket linked to this chat.',
+      description: 'Remove a blocker between tickets in the current project when asked.',
+      promptSnippet: 'Remove a requested blocker between tickets in the current project.',
       parameters: Type.Object({
         ref: Type.String({ minLength: 1 }),
         blockedBy: Type.String({ minLength: 1 }),
       }),
       async execute(params) {
         const { ref, blockedBy } = params as { ref: string; blockedBy: string };
-        const ticket = await linkedTicket(ref);
-        return textResult(await tracker.ungate(ticket.id, blockedBy));
+        const ticket = await projectTicket(ref);
+        const blocker = await projectTicket(blockedBy);
+        return textResult(await tracker.ungate(ticket.id, blocker.id));
       },
     }),
   ];

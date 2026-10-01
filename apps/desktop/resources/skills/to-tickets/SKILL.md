@@ -30,4 +30,4 @@ Call `shape_breakdown_proposal` with all the slices. The approval card appears o
 
 If readiness was refused, the approved tickets remain Draft. Tell the person which tickets need clearer completion criteria so they can edit them in Work and retry readiness from the breakdown card. Do not propose or publish the breakdown again.
 
-After approval, the person links the ticket or tickets they want worked in a chat's composer. Kira works those linked tickets in that chat with the skill named by each ticket's kind; there is no separate start action.
+After approval, the person can request work on tickets in the current project, including asking for the first actionable ticket. Attachments are optional context. Kira uses the skill named by each ticket's kind and sets Running when work begins, which records the chat link automatically; there is no separate start action.

@@ -414,7 +414,14 @@ function conversationOf(
         event.type === 'tool_execution_end' ||
         event.type === 'message_end')
     ) {
-      emit({ type: 'progress', threadId: kira.threadId, transcript: transcriptOf(kira) });
+      emit({
+        type: 'progress',
+        threadId: kira.threadId,
+        transcript: transcriptOf(kira),
+        ...(event.type === 'tool_execution_end' && event.toolName === 'tracker_update_ticket'
+          ? { workTicketIds: store.getThread(kira.threadId).workTicketIds }
+          : {}),
+      });
     }
     // A message that has ended is in the transcript. Whatever is written next is
     // a message of its own, so nothing is in flight here any more — and the

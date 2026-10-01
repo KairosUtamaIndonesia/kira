@@ -53,12 +53,17 @@ async function attachedTicketContext(
   threadId: string,
   tracker: Tracker | undefined,
 ): Promise<string> {
-  const ids = store.getThread(threadId).workTicketIds;
+  const thread = store.getThread(threadId);
+  const projectId =
+    thread.workspaceId === null ? null : store.findWorkspace(thread.workspaceId)?.projectId;
+  if (projectId === null || projectId === undefined) return '';
+  const ids = thread.workTicketIds;
   if (ids.length === 0) return '';
   const read = async (id: string): Promise<Ticket | null> => {
     if (tracker === undefined) return null;
     try {
-      return await tracker.readTicket(id);
+      const ticket = await tracker.readTicket(id);
+      return ticket.projectId === projectId ? ticket : null;
     } catch {
       return null;
     }
@@ -80,7 +85,7 @@ async function attachedTicketContext(
   return [
     '',
     '## Attached project tickets',
-    'Work on these linked tickets using the matching workflow skill. Use tracker tools only for tickets linked to this chat. Set Running when work begins. After opening a pull request, attach its HTTPS URL and set Needs review. With no remote, set Needs review without a link; if a remote exists but publishing or opening the PR fails, leave the ticket Running and report why. Never mark a ticket Done; a person does that after merging. The agent cannot delete tickets or mark them Won’t do.',
+    'These tickets provide context for the person’s request, not a permission boundary or instructions to start every attached ticket.',
     ...lines,
   ].join('\n');
 }

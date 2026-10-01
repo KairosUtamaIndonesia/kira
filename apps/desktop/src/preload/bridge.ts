@@ -324,7 +324,7 @@ export interface ChatConclusion {
 export interface ChatSummary {
   id: string;
   title: string;
-  /** Tickets linked to this chat; the agent may update only these tickets. */
+  /** Ticket context and work links for this chat; access is scoped to its project. */
   workTicketIds: string[];
   /** When the chat was created. */
   createdAt: string;
@@ -547,7 +547,7 @@ export type ChatEvent =
       beginsReply: boolean;
     }
   | { type: 'transcript'; threadId: string; transcript: ChatTranscript }
-  | { type: 'progress'; threadId: string; transcript: ChatTranscript }
+  | { type: 'progress'; threadId: string; transcript: ChatTranscript; workTicketIds?: string[] }
   /**
    * The first words of a turn in this chat: it is being written in.
    *

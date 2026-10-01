@@ -26,7 +26,7 @@
 
 - A ticket's drawer can expand into a full view: the ticket reads as a document, with its status actions, facts, blockers, and linked chats in a box that stays beside it while the document scrolls.
 
-- Work is a ticket store. A ticket linked in a chat is worked there with the skill for its kind. Agent-created tickets start as Draft; the agent can update only tickets linked to that chat, and its status changes are limited to Running and Needs review. It cannot delete or close tickets. Pull-request review and merge happen on GitHub, and a person marks a ticket Done afterward.
+- Work is a ticket store. Kira works requested tickets in the chat's current project with the skill for each kind, attached or not. Agent-created tickets start as Draft; status changes are limited to Running and Needs review. Starting work records the chat link automatically; reading or editing ordinary fields does not. Other projects and person-owned approval actions remain protected. Kira cannot delete or close tickets. Pull-request review and merge happen on GitHub, and a person marks a ticket Done afterward.
 
 - Tickets can show one current **Open pull request** link. Kira attaches it after opening a PR; with no remote, it can set Needs review without one, while a remote that cannot publish or open a PR leaves the ticket Running.
 

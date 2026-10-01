@@ -2,6 +2,8 @@
 
 Date: 2026-09-30
 
+Amended: 2026-10-01 — the project, not ticket attachments, is the agent's access boundary.
+
 Supersedes ADR 0012, ADR 0013, ADR 0019 and ADR 0023. Amends ADR 0011, ADR 0017 and ADR 0021.
 
 ## Context
@@ -41,16 +43,18 @@ review, Done or Won't do (the server's `draft`, `ready`, `running`, `needs-revie
 `wont-do`). People may set any status; an open blocker adds a Blocked marker without changing it.
 `gate`, `closure` and the derived band go.
 
-**Linking a ticket is starting it.** A person links a ticket in the composer, and the agent works
-it with the skill its kind names (ADR 0022). When it begins it sets the ticket Running and assigns
-the chat's person. There is no separate Start action, and no claim, lease, heartbeat, worker or run.
-A ticket stays Running until someone changes it.
+**The person's request starts work.** Kira works requested tickets in the chat's current project
+with the skill each kind names (ADR 0022), whether attached or not. Attachments supply context.
+When work begins, setting Running records the chat link and assigns the chat's person. Reading a
+ticket or editing ordinary fields does not create a work link. There is no separate Start action,
+and no claim, lease, heartbeat, worker or run. A ticket stays Running until someone changes it.
 
-**The agent changes only tickets linked in its chat.** Kira's ticket tools create, read and update
-tickets and edit blockers; it cannot delete tickets. A ticket created by the agent is Draft and
-linked to that chat. A person makes it Ready when it is ready to start. Updates are limited to linked tickets, and the agent may set only Running or
-Needs review as a status. Done and Won't do, publishing tickets, and approving a spec or Decision
-stay a person's press (ADR 0022).
+**The current project is the access boundary.** Kira's ticket tools create, read and update tickets
+and edit blockers in that project, as the person's request calls for; attachments grant no extra
+access. Both ends of a blocker must belong to the current project. Kira cannot delete tickets.
+A ticket created by the agent is Draft and linked to that chat. A person makes it Ready when it
+is ready to start. The agent may set only Running or Needs review as a status. Done and Won't do,
+publishing tickets, and approving a spec or Decision stay a person's press (ADR 0022).
 
 **A pull request is the review.** When the work is done and the checkout has a remote, Kira opens a
 pull request, attaches its HTTPS URL to the ticket, and sets Needs review; if publishing or opening
@@ -70,6 +74,11 @@ ticket still ends in an Outcome the person approves.
 
 ## Considered options
 
+- **Attached tickets as the access boundary.** This made an explicit request such as "work on the
+  first actionable ticket" fail when the spec was attached but its implementation ticket was not.
+  Extending access to a spec's children still makes attachments into permissions and fails ordinary
+  requests to edit another project ticket. Project-scoped access keeps unrelated projects protected,
+  while the person's request defines the work and chat links record it.
 - **GitHub Issues as the store.** It is what the skills were written against. Kira already holds
   the Glossary and Decisions on the server (ADR 0020), a project can span repositories
   (ADR 0010), and the board, kinds and blockers are built. Making GitHub the store would add a
@@ -90,8 +99,8 @@ ticket still ends in an Outcome the person approves.
   running tickets colliding in one folder becomes a real complaint, not before.
 - **The per-run record goes.** A ticket keeps its linked chats, a chat is its transcript, and the
   pull request is the record of the change. Runs, verdicts and deliveries are not kept.
-- **An agent can update only linked tickets.** It may set Running or Needs review; the person sets
-  Done or Won't do.
+- **An agent can update requested tickets in the current project.** It may set Running or Needs review;
+  the person sets Done or Won't do. A successful Running update records the chat link automatically.
 - **Done after a merge is manual.** Nothing tells Kira a pull request merged, so the person sets
   Done. If that is forgotten often, the smallest fix is for the agent to check its pull request
   when its chat is reopened and offer to close the ticket.

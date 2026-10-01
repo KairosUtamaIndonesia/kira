@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import type { Ticket } from '../../../preload/bridge.ts';
+import type { ChatEvent, Ticket, TicketChange } from '../../../preload/bridge.ts';
 import { ThreadStore } from '../../db/threads.ts';
 import { startConversation } from '../conversations.ts';
 import { kiraModels } from '../models.ts';
@@ -41,7 +41,7 @@ function streamAnswer(response: ServerResponse, body: unknown): void {
   response.end(`data: ${JSON.stringify(body)}\n\ndata: [DONE]\n\n`);
 }
 
-test('a real Kira session reads and edits through the main-process tracker seam', async (t) => {
+test('a real Kira session starts an unattached project ticket and records its chat link', async (t) => {
   const previousHome = process.env['HOME'];
   const previousAgentDir = process.env['PI_CODING_AGENT_DIR'];
   process.env['HOME'] = mkdtempSync(join(tmpdir(), 'kira-tracker-session-home-'));
@@ -54,6 +54,7 @@ test('a real Kira session reads and edits through the main-process tracker seam'
   });
 
   const requests: Array<Record<string, unknown>> = [];
+  const events: ChatEvent[] = [];
   let providerCalls = 0;
   const provider = createServer(async (request, response) => {
     let text = '';
@@ -66,7 +67,10 @@ test('a real Kira session reads and edits through the main-process tracker seam'
       const tool =
         providerCalls === 1
           ? { name: 'tracker_queue', arguments: '{}' }
-          : { name: 'tracker_update_ticket', arguments: '{"ref":"FND-1","body":"Updated"}' };
+          : {
+              name: 'tracker_update_ticket',
+              arguments: '{"ref":"FND-1","body":"Updated","status":"running"}',
+            };
       streamAnswer(response, {
         id: `chatcmpl-tool-${providerCalls}`,
         object: 'chat.completion.chunk',
@@ -92,6 +96,14 @@ test('a real Kira session reads and edits through the main-process tracker seam'
       return;
     }
 
+    if (providerCalls === 3) {
+      assert.ok(
+        events.some(
+          (event) => event.type === 'progress' && event.workTicketIds?.includes('ticket-1'),
+        ),
+      );
+      assert.ok(!events.some((event) => event.type === 'transcript'));
+    }
     streamAnswer(response, {
       id: 'chatcmpl-final',
       object: 'chat.completion.chunk',
@@ -115,6 +127,14 @@ test('a real Kira session reads and edits through the main-process tracker seam'
   const workspace = store.rememberWorkspace(
     mkdtempSync(join(tmpdir(), 'kira-tracker-session-space-')),
   );
+  store.joinWorkspace(workspace.id, draft.projectId);
+  const spec = { ...draft, id: 'spec-1', name: 'FND-0', kind: 'spec' as const };
+  const foreign = {
+    ...draft,
+    id: 'foreign-1',
+    projectId: 'project-2',
+    body: 'Foreign private body',
+  };
   const cachePath = join(
     mkdtempSync(join(tmpdir(), 'kira-tracker-session-models-')),
     'models.json',
@@ -130,26 +150,32 @@ test('a real Kira session reads and edits through the main-process tracker seam'
     catalog: async () => ({ kind: 'unavailable' as const }),
   });
   const calls: string[] = [];
-  let edited = draft;
+  let edited = { ...draft, status: 'ready' as Ticket['status'] };
   const answer = <T>(body: T): TrackerAnswer<T> => ({ kind: 'ok', body });
   const wire = {
+    currentUser: async () => answer({ id: 'ada' }),
     queue: async (key: string, projectId: string) => {
       calls.push(`queue:${key}:${projectId}`);
       return answer({ tickets: [edited] });
     },
     readTicket: async (key: string, ref: string) => {
       calls.push(`read:${key}:${ref}`);
-      return answer(edited);
+      return answer(ref === spec.id ? spec : ref === foreign.id ? foreign : edited);
     },
-    changeTicket: async (key: string, ticketId: string, change: { body?: string }) => {
+    changeTicket: async (key: string, ticketId: string, change: TicketChange) => {
       calls.push(`change:${key}:${ticketId}`);
-      edited = { ...edited, body: change.body ?? edited.body };
+      edited = {
+        ...edited,
+        body: change.body ?? edited.body,
+        status: change.status ?? edited.status,
+        assignee: change.assigneeId ? { id: change.assigneeId, name: 'Ada' } : edited.assignee,
+      };
       return answer(edited);
     },
   } as unknown as TrackerWire;
   const tracker = trackerFor({
     token: async () => 'device-key',
-    projectOf: (workspaceId) => (workspaceId === workspace.id ? workspace.id : null),
+    projectOf: (workspaceId) => store.findWorkspace(workspaceId)?.projectId ?? null,
     joinLocally: () => undefined,
     wire,
   });
@@ -158,20 +184,22 @@ test('a real Kira session reads and edits through the main-process tracker seam'
     store,
     workspace.folder,
     models,
-    { id: 'thread-1', workspaceId: workspace.id, workTicketIds: [draft.id] },
+    { id: 'thread-1', workspaceId: workspace.id, workTicketIds: [spec.id, foreign.id] },
     undefined,
     tracker,
   );
+  conversation.subscribe((event) => events.push(event));
   try {
-    await conversation.send('Read the queue and update the draft.');
+    await conversation.send('Work on the first actionable ticket.');
     const firstRequest = requests[0];
     assert.ok(firstRequest);
     const toolNames = (firstRequest.tools as Array<{ function: { name: string } }>).map(
       (tool) => tool.function.name,
     );
     assert.deepEqual(calls, [
-      'read:device-key:ticket-1',
-      `queue:device-key:${workspace.id}`,
+      'read:device-key:spec-1',
+      'read:device-key:foreign-1',
+      'queue:device-key:project-1',
       'read:device-key:FND-1',
       'change:device-key:ticket-1',
     ]);
@@ -196,7 +224,39 @@ test('a real Kira session reads and edits through the main-process tracker seam'
       /remote exists but publishing or opening the PR fails, leave the ticket Running/,
     );
     assert.match(systemPrompt ?? '', /Never mark a ticket Done/);
+    assert.match(systemPrompt ?? '', /Attachments provide context, not permission/);
+    assert.match(systemPrompt ?? '', /current project, attached or not/);
+    assert.doesNotMatch(systemPrompt ?? '', /only for tickets linked to this chat/);
+    assert.doesNotMatch(systemPrompt ?? '', /Foreign private body/);
+    assert.match(systemPrompt ?? '', /choosing one ready, unblocked ticket/);
     assert.equal(edited.body, 'Updated');
+    assert.equal(edited.status, 'running');
+    assert.deepEqual(edited.assignee, { id: 'ada', name: 'Ada' });
+    assert.deepEqual(store.getThread(conversation.threadId).workTicketIds, [
+      spec.id,
+      foreign.id,
+      draft.id,
+    ]);
+
+    store.joinWorkspace(workspace.id, foreign.projectId);
+    await conversation.send('Read the attached context.');
+    const promptOf = (request: Record<string, unknown>) =>
+      (request.messages as Array<{ role: string; content?: string }>).find(
+        (message) => message.role === 'system',
+      )?.content ?? '';
+    const movedPrompt = promptOf(requests.at(-1)!);
+    assert.match(movedPrompt, /Foreign private body/);
+    assert.doesNotMatch(movedPrompt, /A draft|\(id: spec-1\)|\(id: ticket-1\)/);
+
+    const unjoined = store.rememberWorkspace(mkdtempSync(join(tmpdir(), 'kira-unjoined-')));
+    store.fileThread(conversation.threadId, unjoined);
+    const readsBefore = calls.filter((call) => call.startsWith('read:')).length;
+    await conversation.send('Read the attached context.');
+    assert.doesNotMatch(
+      promptOf(requests.at(-1)!),
+      /Attached project tickets|Foreign private body/,
+    );
+    assert.equal(calls.filter((call) => call.startsWith('read:')).length, readsBefore);
   } finally {
     conversation.close();
     store.close();

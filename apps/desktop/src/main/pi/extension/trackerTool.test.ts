@@ -49,6 +49,7 @@ test('tracker tools expose ticket operations and person-owned publication contro
     mkdtempSync(join(tmpdir(), 'kira-tracker-tool-space-')),
   );
   const current = ticket('draft');
+  store.joinWorkspace(workspace.id, current.projectId);
   // Use a real thread record so workspace resolution is exercised at the same
   // boundary as an actual session.
   const threadRecord = createThread(store, workspace.folder, {
@@ -344,64 +345,143 @@ test('breakdown proposals reject invalid kinds and dependencies before a card is
   }
 });
 
-test('ticket updates and blocker edits require a chat link', async () => {
+test('ticket tools use the current project, not attachments, as their boundary', async (t) => {
+  const actions = [
+    { name: 'read', tool: 'tracker_read_ticket', edit: {}, writes: 0 },
+    { name: 'rename', tool: 'tracker_update_ticket', edit: { title: 'Renamed' }, writes: 1 },
+    { name: 'start work', tool: 'tracker_update_ticket', edit: { status: 'running' }, writes: 1 },
+    { name: 'add blocker', tool: 'tracker_add_blocker', edit: { blockedBy: 'FND-2' }, writes: 1 },
+    {
+      name: 'remove blocker',
+      tool: 'tracker_remove_blocker',
+      edit: { blockedBy: 'FND-2' },
+      writes: 1,
+    },
+  ];
+  const scopes = [
+    { name: 'same project, unattached', projectId: 'project-1', linked: false },
+    { name: 'same project, attached', projectId: 'project-1', linked: true },
+    { name: 'another project', projectId: 'project-2', linked: false },
+    { name: 'another project, attached', projectId: 'project-2', linked: true },
+    {
+      name: 'blocker from another project',
+      projectId: 'project-1',
+      linked: false,
+      foreignBlocker: true,
+    },
+    { name: 'workspace without a project', projectId: null, linked: true },
+    { name: 'chat without a workspace', projectId: 'project-1', linked: true, noWorkspace: true },
+  ];
+
+  for (const scope of scopes) {
+    for (const action of actions) {
+      await t.test(`${scope.name}: ${action.name}`, async (t) => {
+        const store = new ThreadStore(
+          join(mkdtempSync(join(tmpdir(), 'kira-tracker-tool-store-')), 'threads.db'),
+        );
+        t.after(() => store.close());
+        const workspace = store.rememberWorkspace(
+          mkdtempSync(join(tmpdir(), 'kira-tracker-tool-space-')),
+        );
+        if (scope.projectId !== null) store.joinWorkspace(workspace.id, scope.projectId);
+        const current = ticket('ready');
+        const blocker = {
+          ...current,
+          id: 'ticket-2',
+          name: 'FND-2',
+          projectId: scope.foreignBlocker ? 'project-2' : current.projectId,
+        };
+        const before = scope.linked ? [current.id] : ['spec-1'];
+        const thread = createThread(store, workspace.folder, {
+          workspaceId: scope.noWorkspace ? undefined : workspace.id,
+          workTicketIds: before,
+        });
+        let writes = 0;
+        const write = async () => {
+          writes += 1;
+          return current;
+        };
+        const tools = trackerTools(store, thread.threadId, {
+          readTicket: async (ref: string) => (ref === blocker.name ? blocker : current),
+          currentUserId: async () => 'ada',
+          change: write,
+          gate: write,
+          ungate: write,
+        } as never);
+        const tool = tools.find((tool) => tool.name === action.tool)!;
+        const call = () =>
+          tool.execute(
+            'call-project',
+            { ref: current.name, ...action.edit },
+            undefined,
+            undefined,
+            {} as never,
+          );
+        const error = scope.noWorkspace
+          ? 'This chat is not filed in a project workspace.'
+          : scope.projectId === null
+            ? 'This folder is not working a project yet.'
+            : scope.projectId !== current.projectId ||
+                (scope.foreignBlocker && action.edit.blockedBy !== undefined)
+              ? 'This chat can only access tickets in its current project.'
+              : null;
+        if (error !== null) {
+          await assert.rejects(call, { message: error });
+          assert.equal(writes, 0);
+          assert.deepEqual(store.getThread(thread.threadId).workTicketIds, before);
+        } else {
+          await call();
+          assert.equal(writes, action.writes);
+          const after =
+            action.name === 'start work' && !scope.linked ? [...before, current.id] : before;
+          assert.deepEqual(store.getThread(thread.threadId).workTicketIds, after);
+          if (action.name === 'start work') {
+            await call();
+            assert.deepEqual(store.getThread(thread.threadId).workTicketIds, after);
+          }
+        }
+      });
+    }
+  }
+});
+
+test('a refused Running update leaves the chat link unchanged', async (t) => {
   const store = new ThreadStore(
     join(mkdtempSync(join(tmpdir(), 'kira-tracker-tool-store-')), 'threads.db'),
   );
+  t.after(() => store.close());
   const workspace = store.rememberWorkspace(
     mkdtempSync(join(tmpdir(), 'kira-tracker-tool-space-')),
   );
-  const thread = createThread(store, workspace.folder, { workspaceId: workspace.id });
-  const calls: string[] = [];
   const current = ticket('ready');
-  let writes = 0;
+  store.joinWorkspace(workspace.id, current.projectId);
+  const thread = createThread(store, workspace.folder, {
+    workspaceId: workspace.id,
+    workTicketIds: ['spec-1'],
+  });
   const tools = trackerTools(store, thread.threadId, {
-    queue: async () => ({}) as TicketQueue,
-    readTicket: async () => {
-      calls.push('read');
-      return current;
-    },
+    readTicket: async () => current,
     currentUserId: async () => 'ada',
-    write: async () => current,
     change: async () => {
-      writes += 1;
-      return current;
-    },
-    gate: async () => {
-      writes += 1;
-      return current;
-    },
-    ungate: async () => {
-      writes += 1;
-      return current;
+      throw new Error('Kira could not be reached.');
     },
   } as never);
-
   await assert.rejects(
-    tools[6]!.execute(
-      'call-1',
-      { ref: current.name, body: 'No' },
-      undefined,
-      undefined,
-      {} as never,
-    ),
-    { message: 'This chat can only change tickets linked to it.' },
+    tools
+      .find((tool) => tool.name === 'tracker_update_ticket')!
+      .execute(
+        'call-running',
+        { ref: current.name, status: 'running' },
+        undefined,
+        undefined,
+        {} as never,
+      ),
+    { message: 'Kira could not be reached.' },
   );
-  for (const [index, params] of [
-    [7, { ref: current.name, blockedBy: 'FND-2' }],
-    [8, { ref: current.name, blockedBy: 'FND-2' }],
-  ] as const) {
-    await assert.rejects(
-      tools[index]!.execute('call-blocker', params, undefined, undefined, {} as never),
-      { message: 'This chat can only change tickets linked to it.' },
-    );
-  }
-  assert.deepEqual(calls, ['read', 'read', 'read']);
-  assert.equal(writes, 0);
-  store.close();
+  assert.deepEqual(store.getThread(thread.threadId).workTicketIds, ['spec-1']);
 });
 
-test('linked-ticket status updates allow only Running and Needs review', async () => {
+test('project ticket status updates allow only Running and Needs review', async () => {
   interface StatusCase {
     edit: Record<string, unknown>;
     status: string;
@@ -543,9 +623,9 @@ test('linked-ticket status updates allow only Running and Needs review', async (
         ...ticket(item.currentStatus ?? 'ready'),
         pullRequestUrl: item.currentPullRequestUrl ?? null,
       };
+      store.joinWorkspace(workspace.id, current.projectId);
       const thread = createThread(store, workspace.folder, {
         workspaceId: workspace.id,
-        workTicketIds: [current.id],
       });
       const changes: unknown[] = [];
       const tools = trackerTools(store, thread.threadId, {
@@ -571,11 +651,17 @@ test('linked-ticket status updates allow only Running and Needs review', async (
       if (item.allowed) {
         await call();
         assert.deepEqual(changes, [item.change], item.status);
+        assert.deepEqual(
+          store.getThread(thread.threadId).workTicketIds,
+          item.change?.status === 'running' ? [current.id] : [],
+          item.status,
+        );
       } else {
         await assert.rejects(call, {
           message: item.error ?? 'The agent can set only Running or Needs review.',
         });
         assert.deepEqual(changes, [], item.status);
+        assert.deepEqual(store.getThread(thread.threadId).workTicketIds, [], item.status);
       }
       store.close();
     });
