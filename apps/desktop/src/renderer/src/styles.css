@@ -16,14 +16,19 @@
  */
 
 /*
- * The nav column is a column, and nothing in it is meant to move sideways: the
- * resize handle sits flush against its edge and reaches 1px past it, which the
- * shell's own horizontally scrolling panel would otherwise draw a scrollbar for.
- * The shell, not a pane — AppShell styles this panel but offers no prop for its
- * overflow, so naming Astryx's theming target is the only way to say it.
+ * The nav column shares the chat's ground (the surface token) and is split from it by a
+ * hairline, rather than being a lighter frame of its own — the rail and the chat read as
+ * one window. And it is a column, and nothing in it is meant to move sideways: the
+ * resize handle sits flush against its edge and reaches 1px past it, which the shell's
+ * own scrolling panel would otherwise draw a scrollbar for. The shell, not a pane —
+ * AppShell styles this panel but offers no prop for either, so naming Astryx's theming
+ * target is the only way to say it. `!important`: the panel's StyleX rules carry
+ * ID-level specificity here, which outranks any class selector of ours.
  */
 .astryx-app-shell-sidenav {
-  overflow-x: clip;
+  overflow-x: clip !important;
+  background-color: var(--color-background-surface) !important;
+  border-inline-end: 1px solid var(--color-border);
 }
 
 /*
@@ -61,26 +66,6 @@
 .side-nav-header-collapsed {
   flex-direction: column;
   gap: var(--spacing-1);
-}
-
-/*
- * The signed-in account's initial (see AccountMenu/AccountAvatar in App.tsx).
- * Square, like `.brand-mark` above, but with a neutral fill so it reads as a
- * person, not the product.
- */
-.account-avatar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  background: var(--color-background-muted);
-  color: var(--color-text-primary);
-  font-family: var(--font-family-heading);
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1;
-  flex-shrink: 0;
 }
 
 /*
@@ -138,26 +123,21 @@
 }
 
 /*
- * The account trigger names who's signed in, so it reads left-to-right like
- * every other row in the rail (avatar, then name) rather than centering the
- * way a plain button does. The disclosure chevron is Astryx's `endContent`,
- * the button's last child regardless of theme — pinning it there with its
- * own margin holds it at the row's trailing edge while the avatar and name
- * stay pinned to the leading edge above. Button wraps icon/label/endContent
- * in a `display: contents` span (so they lay out as the button's own flex
- * items, not a nested row) followed by a `position: absolute` a11y status
- * span for loading announcements — out of flow, so it never renders and
- * cannot be `:last-child` here; the chevron is the *contents* span's own
- * last child instead. `!important`: StyleX gives its own generated class
- * the same ID-level specificity trick noted above, which otherwise wins
- * over this margin regardless of source order.
+ * The account trigger reads left to right like every row in the rail — initial, name,
+ * disclosure — and its padding is the rail's own 8px rather than the button's 12px, so
+ * the initial lands in the status gutter's column (see `AccountMenu` in chatRail.tsx).
+ * `!important`: StyleX gives its own generated class the same ID-level specificity
+ * trick noted above, which otherwise wins regardless of source order.
  */
 .account-menu-trigger {
-  justify-content: flex-start;
+  justify-content: flex-start !important;
+  padding-inline: var(--spacing-2) !important;
 }
 
-.account-menu-trigger > span:first-child > span:last-child {
-  margin-left: auto !important;
+/* The button wraps its label in a span of its own; it fills the row so the chevron can sit at the end. */
+.account-menu-trigger > span:first-child > span {
+  flex: 1;
+  min-width: 0;
 }
 
 /*

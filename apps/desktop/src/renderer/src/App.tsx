@@ -2,7 +2,6 @@ import { AlertDialog } from '@astryxdesign/core/AlertDialog';
 import { AppShell } from '@astryxdesign/core/AppShell';
 import { Button } from '@astryxdesign/core/Button';
 import { ChatMessage, ChatMessageBubble } from '@astryxdesign/core/Chat';
-import { DropdownMenu } from '@astryxdesign/core/DropdownMenu';
 import { Icon } from '@astryxdesign/core/Icon';
 import { IconButton } from '@astryxdesign/core/IconButton';
 import { Markdown } from '@astryxdesign/core/Markdown';
@@ -36,13 +35,11 @@ import {
   Copy,
   Download,
   GitFork,
-  LogOut,
   PanelLeft,
   PanelRight,
   Pencil,
   Plug,
   RotateCcw,
-  Settings2,
   Terminal,
 } from 'lucide-react';
 import {
@@ -99,7 +96,7 @@ import SettingsPage, { type Setting } from './settings';
 import type { ProposalVerdict } from './proposalCard';
 import { MoveToProject } from './moveToProject.tsx';
 import { needsProject } from './moveToProject.ts';
-import { ChatRail } from './chatRail.tsx';
+import { AccountMenu, ChatRail } from './chatRail.tsx';
 import { approvedSpecTicket } from './specPane';
 
 /**
@@ -1413,88 +1410,6 @@ function KiraSideNavHeader() {
         <Icon icon={PanelLeft} size="sm" />
       </SideNavCollapseButton>
     </div>
-  );
-}
-
-/**
- * Settings and sign out are both about the account signed into this window
- * rather than about any one chat, so they share the one place in the rail
- * that already names that account instead of each keeping a permanent row.
- * The trigger is the account's own name and initial — not a plain label —
- * so opening the menu also answers "who am I signed in as" without a second
- * glance at Settings. It opens upward: this sits at the foot of the rail,
- * with nothing below it to open into.
- */
-function AccountMenu({
-  name,
-  onOpenSettings,
-  onSignOut,
-}: {
-  name: string;
-  onOpenSettings: () => void;
-  onSignOut: () => void;
-}) {
-  const { isCollapsed } = useSideNavCollapse();
-  const items = [
-    {
-      label: 'Settings',
-      icon: <Icon icon={Settings2} size="sm" />,
-      onClick: onOpenSettings,
-    },
-    {
-      label: 'Sign out',
-      icon: <Icon icon={LogOut} size="sm" />,
-      onClick: onSignOut,
-    },
-  ];
-
-  // Collapsed, there's no row width for the name or the disclosure chevron
-  // to sit in — isIconOnly is the same square-button treatment the other
-  // rail actions take collapsed (see NavActions, SortMenu), so the avatar
-  // centers the way theirs does instead of keying off name/chevron layout
-  // that isn't there.
-  if (isCollapsed) {
-    return (
-      <DropdownMenu
-        placement="above"
-        button={{
-          label: `${name}, account menu`,
-          icon: <AccountAvatar name={name} />,
-          isIconOnly: true,
-          variant: 'ghost',
-        }}
-        items={items}
-      />
-    );
-  }
-
-  return (
-    <DropdownMenu
-      placement="above"
-      button={{
-        label: `${name}, account menu`,
-        icon: <AccountAvatar name={name} />,
-        children: name,
-        variant: 'ghost',
-        width: '100%',
-        className: 'account-menu-trigger',
-      }}
-      items={items}
-    />
-  );
-}
-
-/**
- * The signed-in account's initial, drawn the same square way as `KiraMark`
- * so both read as the rail's two identity marks — but in a neutral fill,
- * since this one names a person rather than the product.
- */
-function AccountAvatar({ name }: { name: string }) {
-  const initial = name.trim().charAt(0).toUpperCase() || '?';
-  return (
-    <span className="account-avatar" aria-hidden="true">
-      {initial}
-    </span>
   );
 }
 

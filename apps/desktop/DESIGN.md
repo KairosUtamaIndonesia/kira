@@ -126,7 +126,7 @@ The palette is warm ink (dark) and warm paper (light): low-chroma, faintly brown
 
 ### Neutral
 
-- **Frame** (`colors.neutral-body`): the sidebar and app frame, one small step off the canvas.
+- **Frame** (`colors.neutral-body`): the app frame around the working area, one small step off the canvas. The chat rail is not part of it: it sits on the canvas and is split from the chat by a hairline.
 - **Canvas** (`colors.neutral-bg`): the working area where chats and boards sit.
 - **Raised surface** (`colors.neutral-surface`): cards and controls. Steps between surfaces are deliberately small (≈1.05:1); borders do most of the separating.
 - **Hover and pressed**: translucent overlays of the foreground (white in dark, black in light), not separate fills.
@@ -202,7 +202,18 @@ Components are crisp and lightly lifted. Prefer Astryx primitives and Kira theme
 
 ### Navigation
 
-- **Style:** keep the app's persistent navigation quiet at rest; use primary text for the active destination, secondary text for inactive items, and a muted accent surface for selected emphasis. Preserve keyboard focus and the compact mobile navigation affordance.
+- **Style:** keep the app's persistent navigation quiet at rest; use primary text for the active destination, secondary text for inactive items, and a muted accent surface for selected emphasis. Preserve keyboard focus and the compact mobile navigation affordance. The chat rail is the exception to the muted accent surface; see below.
+
+### Chat rail
+
+The rail is a ledger, drawn the way Work is, and it shares the canvas rather than being a lighter frame beside it (`chatRail.tsx`; the nav panel's ground and edge are set in `styles.css`).
+
+- **Sections, not a tree.** A workspace is a ruled section: a hairline above, its name in the heading face, and a zero-padded mono count at the end. Chats are 32px rows with no indent and no tree lines. A section shows five chats, then "Show N more"; the chat on screen is never hidden behind it.
+- **Two columns.** The left gutter (16px) holds status: a chevron on a head, a ticket glyph or a live dot on a chat. The right column holds the age in short mono (`now`, `5m`, `2d`). Chat titles, section names and the account name start at one left edge.
+- **Hover tools replace the count.** A section's Work, new chat and menu, and a chat's menu, appear under the pointer or on focus in the place of the count or age, drawn as dim as the gutter and brightened on hover. A project's Work is one click from the rail; the top Work button opens the project chooser.
+- **Red marks the chat on screen, and nothing else here.** The selected chat is a neutral row with a red dot in the gutter (or a red ticket glyph), and the section that holds it has a 1px red rule. Do not fill a rail row with the accent: a wash reads as a second selection beside Work's.
+- **The account row** ends the rail below a hairline: initial in the gutter column, name where titles start, the disclosure chevron at the count's edge. Settings' rail ends with the same row.
+- **Collapsed**, the rail is a column of tiles, one per workspace, with the actions above and the account initial below.
 
 ### Chat empty state
 

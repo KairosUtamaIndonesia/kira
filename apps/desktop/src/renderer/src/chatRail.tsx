@@ -31,6 +31,7 @@ import {
   ArrowUpDown,
   ChevronDown,
   ChevronRight,
+  ChevronsUpDown,
   FolderPlus,
   LogOut,
   MessagesSquare,
@@ -113,7 +114,7 @@ const styles = stylex.create({
       ':hover': colorVars['--color-overlay-hover'],
     },
   },
-  rowCurrent: { backgroundColor: colorVars['--color-accent-muted'] },
+  rowCurrent: { backgroundColor: colorVars['--color-neutral'] },
   rowMain: {
     display: 'flex',
     flex: 1,
@@ -144,6 +145,14 @@ const styles = stylex.create({
     whiteSpace: 'nowrap',
   },
   titleCurrent: { fontWeight: 600 },
+  // The one red mark on the chat on screen: a dot, or the ticket glyph it already has.
+  gutterCurrent: { color: colorVars['--color-accent'] },
+  currentDot: {
+    width: 6,
+    height: 6,
+    borderRadius: radiusVars['--radius-full'],
+    backgroundColor: colorVars['--color-accent'],
+  },
   gutter: {
     display: 'inline-flex',
     flexShrink: 0,
@@ -230,7 +239,7 @@ const styles = stylex.create({
       position: 'absolute',
       insetInline: spacingVars['--spacing-2'],
       insetBlockEnd: -1,
-      height: 2,
+      height: 1,
       backgroundColor: colorVars['--color-accent'],
     },
   },
@@ -287,7 +296,7 @@ const styles = stylex.create({
     insetInlineEnd: spacingVars['--spacing-1'],
     display: 'flex',
     transform: 'translateY(-50%)',
-    backgroundColor: colorVars['--color-background-body'],
+    backgroundColor: colorVars['--color-background-surface'],
     opacity: {
       default: 0,
       [stylex.when.ancestor(':hover', railMarker)]: 1,
@@ -322,6 +331,50 @@ const styles = stylex.create({
     textAlign: 'start',
     cursor: 'pointer',
   },
+
+  // The foot of the rail: ruled like the sections above it, with the account's initial
+  // in the status gutter's column and its name where chat titles start.
+  account: {
+    marginBlockStart: spacingVars['--spacing-1'],
+    paddingBlockStart: spacingVars['--spacing-1'],
+    borderBlockStartWidth: 1,
+    borderBlockStartStyle: 'solid',
+    borderBlockStartColor: colorVars['--color-border'],
+  },
+  accountRow: {
+    display: 'flex',
+    flex: 1,
+    alignItems: 'center',
+    gap: spacingVars['--spacing-2'],
+    minWidth: 0,
+  },
+  avatar: {
+    display: 'grid',
+    placeItems: 'center',
+    flexShrink: 0,
+    width: 20,
+    height: 20,
+    // 20px drawn in the 16px gutter column, so the name lines up with chat titles.
+    marginInline: -2,
+    backgroundColor: colorVars['--color-neutral'],
+    color: colorVars['--color-text-primary'],
+    fontFamily: typographyVars['--font-family-heading'],
+    fontSize: textSizeVars['--font-size-xs'],
+    fontWeight: 700,
+    lineHeight: 1,
+  },
+  accountName: {
+    flex: 1,
+    minWidth: 0,
+    overflow: 'hidden',
+    textAlign: 'start',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: '0.8125rem',
+    fontWeight: 500,
+    color: colorVars['--color-text-primary'],
+  },
+  accountChevron: { flexShrink: 0, color: colorVars['--color-text-secondary'] },
 
   // Above the list.
   actions: { display: 'flex', alignItems: 'center', gap: spacingVars['--spacing-1'] },
@@ -460,31 +513,56 @@ function SortMenu({ p }: { p: ChatRailProps }) {
 
 /**
  * Settings and sign out are about the account signed into this window rather than
- * any one chat, so they share the one place that names it. It opens upward: it sits
- * at the foot of the rail, with nothing below it to open into.
+ * any one chat or setting, so they share the one row that names it — the account's
+ * own initial and name rather than a plain label, so opening the menu also answers
+ * "who am I signed in as". It opens upward: it sits at the foot of the rail, with
+ * nothing below it to open into. Both rails (chats and Settings) end with it.
  */
-function AccountRow({ p }: { p: ChatRailProps }) {
+export function AccountMenu({
+  name,
+  onOpenSettings,
+  onSignOut,
+}: {
+  name: string;
+  onOpenSettings: () => void;
+  onSignOut: () => void;
+}) {
   const { isCollapsed } = useSideNavCollapse();
+  const label = `${name}, account menu`;
+  const avatar = (
+    <span {...stylex.props(styles.avatar)} aria-hidden="true">
+      {initialOf(name)}
+    </span>
+  );
+
   return (
-    <DropdownMenu
-      placement="above"
-      button={{
-        label: `${p.accountName}, account menu`,
-        icon: (
-          <span className="account-avatar" aria-hidden="true">
-            {initialOf(p.accountName)}
-          </span>
-        ),
-        ...(isCollapsed
-          ? { isIconOnly: true }
-          : { children: p.accountName, width: '100%', className: 'account-menu-trigger' }),
-        variant: 'ghost',
-      }}
-      items={[
-        { label: 'Settings', icon: <Icon icon={Settings2} size="sm" />, onClick: p.openSettings },
-        { label: 'Sign out', icon: <Icon icon={LogOut} size="sm" />, onClick: p.signOut },
-      ]}
-    />
+    <div {...stylex.props(!isCollapsed && styles.account)}>
+      <DropdownMenu
+        placement="above"
+        hasChevron={false}
+        button={
+          isCollapsed
+            ? { label, icon: avatar, isIconOnly: true, variant: 'ghost' }
+            : {
+                label,
+                variant: 'ghost',
+                width: '100%',
+                className: 'account-menu-trigger',
+                children: (
+                  <span {...stylex.props(styles.accountRow)}>
+                    {avatar}
+                    <span {...stylex.props(styles.accountName)}>{name}</span>
+                    <ChevronsUpDown size={14} {...stylex.props(styles.accountChevron)} aria-hidden />
+                  </span>
+                ),
+              }
+        }
+        items={[
+          { label: 'Settings', icon: <Icon icon={Settings2} size="sm" />, onClick: onOpenSettings },
+          { label: 'Sign out', icon: <Icon icon={LogOut} size="sm" />, onClick: onSignOut },
+        ]}
+      />
+    </div>
   );
 }
 
@@ -507,7 +585,7 @@ function ChatRow({ chat, p }: { chat: ChatSummary; p: ChatRailProps }) {
           title={chat.title}
           onClick={() => p.openChat(chat.id)}
         >
-          <span {...stylex.props(styles.gutter)}>
+          <span {...stylex.props(styles.gutter, isCurrent && styles.gutterCurrent)}>
             {isRunning ? (
               <>
                 <span {...stylex.props(styles.live)} aria-hidden="true" />
@@ -515,6 +593,8 @@ function ChatRow({ chat, p }: { chat: ChatSummary; p: ChatRailProps }) {
               </>
             ) : chat.workTicketIds.length > 0 ? (
               <Ticket size={12} aria-label="Linked to a ticket" />
+            ) : isCurrent ? (
+              <span {...stylex.props(styles.currentDot)} aria-hidden="true" />
             ) : null}
           </span>
           <span {...stylex.props(styles.title, isCurrent && styles.titleCurrent)}>
@@ -759,7 +839,7 @@ export function ChatRail(p: ChatRailProps) {
       collapsible={{ hasButton: false }}
       // Astryx's own 180px floor cut chat titles to a letter or two.
       resizable={{ autoSaveId: 'kira.sidebar', minWidth: 320 }}
-      footer={<AccountRow p={p} />}
+      footer={<AccountMenu name={p.accountName} onOpenSettings={p.openSettings} onSignOut={p.signOut} />}
       topContent={<Actions p={p} />}
     >
       <Ledger p={p} />
