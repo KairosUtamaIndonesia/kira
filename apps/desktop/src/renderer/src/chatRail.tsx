@@ -2,12 +2,12 @@
  * The chat rail: workspaces and the chats in them, as a ledger.
  *
  * It is drawn the way Work is — ruled sections, one row per chat, mono figures —
- * rather than as a tree. A workspace is a ruled section headed by its name and a
- * zero-padded count; a chat is a row with a status gutter on the left (a ticket
- * link or a live dot) and its age on the right. Both edges are columns, so a list
- * of rows reads as a table. Kira red marks only the chat on screen.
+ * rather than as a tree. A workspace is a ruled section headed by its name; a chat
+ * is a row with a status gutter on the left (a ticket link or a live dot) and its
+ * age on the right. Both edges are columns, so a list of rows reads as a table.
+ * Kira red marks only the chat on screen.
  *
- * A section's tools (Work, new chat, menu) replace its count under the pointer, so
+ * A section's tools (Work, new chat, menu) appear under the pointer, so
  * a project's work is one click from the rail. The collapsed rail is a column of
  * tiles, one per workspace.
  *
@@ -96,8 +96,6 @@ function shortAge(iso: string): string {
   return `${Math.floor(diff / (30 * DAY))}mo`;
 }
 
-const pad = (n: number): string => String(n).padStart(2, '0');
-
 const initialOf = (name: string): string => name.trim().charAt(0).toUpperCase() || '?';
 
 /** Merge a StyleX result with a plain class, for the few rules styles.css owns. */
@@ -176,6 +174,7 @@ const styles = stylex.create({
     fontVariantNumeric: 'tabular-nums',
     color: colorVars['--color-text-secondary'],
   },
+  runningFigure: { color: colorVars['--color-icon-blue'] },
   age: {
     minWidth: 28,
     textAlign: 'end',
@@ -280,7 +279,7 @@ const styles = stylex.create({
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
-  // Right end of a head: the count at rest, replaced by the tools under the pointer.
+  // Right end of a head: the tools appear here under the pointer or on focus.
   slot: {
     position: 'relative',
     display: 'flex',
@@ -290,13 +289,6 @@ const styles = stylex.create({
     width: 40,
     height: 32,
     paddingInlineEnd: spacingVars['--spacing-2'],
-  },
-  count: {
-    visibility: {
-      default: 'visible',
-      [stylex.when.ancestor(':hover', railMarker)]: 'hidden',
-      [stylex.when.ancestor(':focus-within', railMarker)]: 'hidden',
-    },
   },
   // Opaque, so the tools sit over the end of a long name instead of squeezing it at rest.
   tools: {
@@ -612,7 +604,14 @@ function ChatRow({ chat, p }: { chat: ChatSummary; p: ChatRailProps }) {
           <span {...stylex.props(styles.title, isCurrent && styles.titleCurrent)}>
             {chat.title}
           </span>
-          <span {...stylex.props(styles.figure, styles.age, isMenuOpen && styles.ageHidden)}>
+          <span
+            {...stylex.props(
+              styles.figure,
+              runningDuration !== null && styles.runningFigure,
+              styles.age,
+              isMenuOpen && styles.ageHidden,
+            )}
+          >
             {runningDuration ?? shortAge(chat.updatedAt)}
           </span>
         </button>
@@ -668,7 +667,6 @@ function Section({
           </span>
         </button>
         <span {...stylex.props(styles.slot)}>
-          <span {...stylex.props(styles.figure, styles.count)}>{pad(chats.length)}</span>
           <span {...withClass(stylex.props(styles.tools), 'rail-tools')}>
             {workspace ? (
               <>

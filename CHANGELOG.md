@@ -8,9 +8,9 @@
 
 ### Added
 
-- The chat rail shows how long Kira has been working in each running chat, ticking once a second.
+- The chat rail shows how long Kira has been working in each running chat, ticking once a second in the status dot's blue. Workspace headings no longer show chat counts.
 
-- The chat rail is a ledger: each workspace is a ruled section with a count, chats are single rows with a short age, and a workspace's Work, new chat and menu appear when you point at its name, so a project's Work is one click away. The rail now shares the chat's ground, the chat you are in is marked with a small red dot instead of a red block, and the account row at the bottom lines up with the chats above it.
+- The chat rail is a ledger: each workspace is a ruled section, chats are single rows with a short age, and a workspace's Work, new chat and menu appear when you point at its name, so a project's Work is one click away. The rail now shares the chat's ground, the chat you are in is marked with a small red dot instead of a red block, and the account row at the bottom lines up with the chats above it.
 
 - Kira admins can inspect live shared provider Credential health, add Codex and Claude logins through a remote-safe OAuth flow, and manage Credentials from the console. Per-user Allowances remain separate from provider health; management changes are audited without storing credentials or OAuth callback URLs.
 
