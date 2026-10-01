@@ -473,6 +473,125 @@ export const ticketRelationship = pgTable(
   ],
 );
 
+/**
+ * A Git host Kira can watch: how it is reached and how its webhooks are trusted.
+ *
+ * The shape is provider-agnostic on purpose. `authKind` says what the rest of the
+ * columns mean: an App installation (GitHub) holds an installation id and no
+ * secret, because its tokens are minted live from credentials in the environment;
+ * a token connection (Forgejo, Gitea, GitLab, or GitHub through a personal
+ * token) holds an instance URL and secrets encrypted at rest. Forgejo and Gitea
+ * share one adapter, being wire-identical. GitHub's first path uses only the
+ * environment webhook secret, so this table is where the token and App metadata
+ * land as those connections are built (docs/adr/0026).
+ */
+export const gitConnection = pgTable(
+  'git_connection',
+  {
+    id: text('id').primaryKey(),
+    /** github, forgejo, gitea or gitlab. */
+    provider: text('provider').notNull(),
+    /** app or token. */
+    authKind: text('authKind').notNull(),
+    /** The host's URL for a self-hosted instance; null for github.com. */
+    instanceUrl: text('instanceUrl'),
+    accountLogin: text('accountLogin').notNull(),
+    /** User or Organization, as the host states it. */
+    accountType: text('accountType').notNull().default('User'),
+    /** An App installation's id; null for a token connection. */
+    installationId: bigint('installationId', { mode: 'number' }),
+    /** Token connections only: the access token, sealed. */
+    accessTokenEncrypted: text('accessTokenEncrypted'),
+    /** Token connections only: the webhook secret, sealed, shown once on connect. */
+    webhookSecretEncrypted: text('webhookSecretEncrypted'),
+    createdAt: timestamp('createdAt', { withTimezone: true })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: timestamp('updatedAt', { withTimezone: true })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    uniqueIndex('git_connection_provider_instance_key').on(table.provider, table.instanceUrl),
+    index('git_connection_by_installation').on(table.provider, table.installationId),
+  ],
+);
+
+/**
+ * One repository a project's work happens in.
+ *
+ * This is ADR 0010's named field: the list a project needs once a run must build
+ * its own checkout, and the thing a pull request is recognised against. A
+ * repository belongs to a project, not the other way around, because a project is
+ * a body of work that may span several (docs/adr/0026).
+ */
+export const repository = pgTable(
+  'repository',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('projectId')
+      .notNull()
+      .references(() => project.id, { onDelete: 'cascade' }),
+    /** github, forgejo, gitea or gitlab. */
+    provider: text('provider').notNull().default('github'),
+    owner: text('owner').notNull(),
+    name: text('name').notNull(),
+    defaultBranch: text('defaultBranch').notNull().default('main'),
+    createdAt: timestamp('createdAt', { withTimezone: true })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    uniqueIndex('repository_project_remote_key').on(
+      table.projectId,
+      table.provider,
+      table.owner,
+      table.name,
+    ),
+    index('repository_by_remote').on(table.provider, table.owner, table.name),
+  ],
+);
+
+/**
+ * A pull request a ticket is being reviewed in.
+ *
+ * The ticket's one current pull request, as rows rather than a URL, so its state
+ * can be watched: a merge moves a ticket in Needs review to Done, which is the
+ * manual step ADR 0024 left open. `state` is the host's own word, normalised to
+ * open, draft, merged or closed. A `repositoryId` of null keeps history if the
+ * repository association is later removed (docs/adr/0026).
+ */
+export const ticketPullRequest = pgTable(
+  'ticket_pull_request',
+  {
+    id: text('id').primaryKey(),
+    ticketId: text('ticketId')
+      .notNull()
+      .references(() => ticket.id, { onDelete: 'cascade' }),
+    repositoryId: text('repositoryId').references(() => repository.id, { onDelete: 'set null' }),
+    provider: text('provider').notNull().default('github'),
+    number: integer('number').notNull(),
+    title: text('title').notNull(),
+    /** open, draft, merged or closed. */
+    state: text('state').notNull(),
+    url: text('url').notNull(),
+    branch: text('branch'),
+    headSha: text('headSha').notNull().default(''),
+    authorLogin: text('authorLogin'),
+    mergedAt: timestamp('mergedAt', { withTimezone: true }),
+    createdAt: timestamp('createdAt', { withTimezone: true })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: timestamp('updatedAt', { withTimezone: true })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    uniqueIndex('ticket_pull_request_remote_key').on(table.repositoryId, table.number),
+    index('ticket_pull_request_by_ticket').on(table.ticketId, table.createdAt),
+  ],
+);
+
 /** An append-only record of an administrator's changes to the shared Pool. */
 export const poolAudit = pgTable(
   'pool_audit',
@@ -583,10 +702,13 @@ export const schema = {
   ticket,
   ticketComment,
   ticketActivity,
+  ticketPullRequest,
+  repository,
   outcome,
   glossaryEntry,
   glossaryHistory,
   gate,
   ticketRelationship,
+  gitConnection,
   poolAudit,
 };

@@ -5,6 +5,7 @@ import type { Config } from './config';
 import type { Database } from './database';
 import { createAllowances } from './allowance';
 import { createComments } from './comments';
+import { createGit } from './git';
 import { handoffLink, handoffToken } from './handoff';
 import { keyHolder } from './keys';
 import { createMemory } from './memory';
@@ -145,6 +146,7 @@ export function createApp({
       .use(createGlossary({ auth, database }))
       .use(createTickets({ auth, database }))
       .use(createComments({ auth, database }))
+      .use(createGit({ auth, config, database }))
       .use(createPoolManagement({ auth, config, database }))
   );
 }

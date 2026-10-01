@@ -24,6 +24,15 @@ export const messages = {
   commentDeleted: 'That comment has already been removed.',
   timelineLimitInvalid: 'Ask for between 1 and 500 entries.',
 
+  gitDisabled: 'Git connections are not configured on this server.',
+  gitSignatureInvalid: 'That delivery was not signed by the configured secret.',
+  gitPayloadInvalid: 'That delivery could not be read.',
+  repositoryRemoteRequired: 'A repository needs an owner and a name, like acme and api.',
+  repositoryProviderUnknown: 'Choose a host: github.',
+  repositoryExists: (owner: string, name: string) =>
+    `${owner}/${name} is already attached to this project.`,
+  repositoryNotFound: 'That repository is no longer attached to this project.',
+
   kindUnknown: (kinds: readonly string[]) => `Choose a ticket kind: ${list(kinds)}.`,
   statusUnknown: (statuses: readonly string[]) => `Choose a status: ${list(statuses)}.`,
   priorityUnknown: (priorities: readonly string[]) => `Choose a priority: ${list(priorities)}.`,

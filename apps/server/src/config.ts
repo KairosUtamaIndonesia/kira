@@ -19,6 +19,13 @@ export interface Config {
   memory: {
     reflectionModel: string | null;
   };
+  git: {
+    /**
+     * The secret GitHub signs its webhooks with. Null disables the webhook
+     * entirely rather than accepting an unsigned one (docs/adr/0026).
+     */
+    webhookSecret: string | null;
+  };
   entra: {
     tenantId: string;
     clientId: string;
@@ -165,6 +172,7 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
         .refine(isTimeZone, 'must be an IANA time zone name, such as Asia/Jakarta')
         .default(ALLOWANCE_TIMEZONE),
       KIRA_REFLECTION_MODEL: z.string().trim().min(1, REQUIRED).optional(),
+      KIRA_GITHUB_WEBHOOK_SECRET: z.string().trim().min(1, REQUIRED).optional(),
     },
     runtimeEnv: env,
     // An empty value in a .env file means unset, not "set to an empty string",
@@ -204,6 +212,9 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     },
     memory: {
       reflectionModel: parsed.KIRA_REFLECTION_MODEL ?? DEFAULT_REFLECTION_MODEL,
+    },
+    git: {
+      webhookSecret: parsed.KIRA_GITHUB_WEBHOOK_SECRET ?? null,
     },
     entra: {
       tenantId: parsed.KIRA_ENTRA_TENANT_ID,
