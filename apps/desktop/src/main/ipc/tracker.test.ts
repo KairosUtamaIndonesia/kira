@@ -81,6 +81,7 @@ const comment: TicketComment = {
   authorKind: 'member',
   body: 'A comment says something.',
   deleted: false,
+  mine: true,
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
 };
@@ -124,6 +125,14 @@ function deps(calls: string[], overrides: Partial<TrackerDeps> = {}): TrackerDep
     comment: async (ticketId, body, parentId, authorKind) => {
       calls.push(`comment ${ticketId} ${body} ${parentId ?? ''} ${authorKind ?? ''}`);
       return comment;
+    },
+    editComment: async (commentId, body) => {
+      calls.push(`editComment ${commentId} ${body}`);
+      return { ...comment, body };
+    },
+    deleteComment: async (commentId) => {
+      calls.push(`deleteComment ${commentId}`);
+      return null;
     },
     repositories: async (projectId) => {
       calls.push(`repositories ${projectId}`);
@@ -421,6 +430,14 @@ test('timeline reads a ticket’s conversation and comment says something on it'
         calls.push(`comment ${ticketId} ${body} ${parentId ?? ''} ${authorKind ?? ''}`);
         return comment;
       },
+      editComment: async (commentId, body) => {
+        calls.push(`editComment ${commentId} ${body}`);
+        return { ...comment, body };
+      },
+      deleteComment: async (commentId) => {
+        calls.push(`deleteComment ${commentId}`);
+        return null;
+      },
     }),
   );
 
@@ -429,7 +446,17 @@ test('timeline reads a ticket’s conversation and comment says something on it'
     ok: true,
     value: comment,
   });
-  assert.deepEqual(calls, ['timeline ticket-1 50', 'comment ticket-1 Working on it.  kira']);
+  assert.deepEqual(await handlers.editComment('comment-1', 'Changed'), {
+    ok: true,
+    value: { ...comment, body: 'Changed' },
+  });
+  assert.deepEqual(await handlers.deleteComment('comment-1'), { ok: true, value: null });
+  assert.deepEqual(calls, [
+    'timeline ticket-1 50',
+    'comment ticket-1 Working on it.  kira',
+    'editComment comment-1 Changed',
+    'deleteComment comment-1',
+  ]);
 
   assert.deepEqual(await handlers.timeline('', 50), {
     ok: false,
@@ -450,6 +477,14 @@ test('timeline reads a ticket’s conversation and comment says something on it'
   assert.deepEqual(await handlers.comment('ticket-1', 'Hi', undefined, 'robot'), {
     ok: false,
     error: 'That is not an author.',
+  });
+  assert.deepEqual(await handlers.editComment('', 'x'), {
+    ok: false,
+    error: 'A comment needs an id to be changed.',
+  });
+  assert.deepEqual(await handlers.deleteComment(''), {
+    ok: false,
+    error: 'A comment needs an id to be removed.',
   });
 });
 

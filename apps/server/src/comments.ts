@@ -31,6 +31,8 @@ const COMMENT = t.Object({
   authorKind: t.String(),
   body: t.String(),
   deleted: t.Boolean(),
+  /** Whether the person asking wrote it, so the window can offer to change it. */
+  mine: t.Boolean(),
   createdAt: t.String(),
   updatedAt: t.String(),
 });
@@ -45,6 +47,7 @@ const TIMELINE_COMMENT = t.Object({
   body: t.String(),
   parentId: t.Union([t.String(), t.Null()]),
   deleted: t.Boolean(),
+  mine: t.Boolean(),
   createdAt: t.String(),
   updatedAt: t.String(),
 });
@@ -78,7 +81,7 @@ export function createComments({ auth, database }: { auth: Auth; database: Datab
         const found = await resolveTicket(database, params.ref);
         if (!found) return status(404, refusal('TICKET_NOT_FOUND', messages.ticketNotFound));
 
-        return { comments: await commentsOn(database, found.ticket.id) };
+        return { comments: await commentsOn(database, found.ticket.id, held.user.id) };
       },
       {
         params: t.Object({ ref: t.String() }),
@@ -132,6 +135,7 @@ export function createComments({ auth, database }: { auth: Auth; database: Datab
           comment: asComment(
             { ...made, createdAt: new Date(), updatedAt: new Date(), deletedAt: null },
             { id: held.user.id, name: held.user.name },
+            held.user.id,
           ),
         };
       },
@@ -178,6 +182,7 @@ export function createComments({ auth, database }: { auth: Auth; database: Datab
           comment: asComment(
             { ...comment, body: text, updatedAt },
             await authorOf(database, comment.authorId),
+            held.user.id,
           ),
         };
       },
@@ -255,7 +260,7 @@ export function createComments({ auth, database }: { auth: Auth; database: Datab
           return status(400, refusal('LIMIT_INVALID', messages.timelineLimitInvalid));
 
         const entries: TimelineEntry[] = [
-          ...(await commentsOn(database, found.ticket.id)).map(asTimelineComment),
+          ...(await commentsOn(database, found.ticket.id, held.user.id)).map(asTimelineComment),
           ...(await activityOn(database, found.ticket.id)),
         ];
 
@@ -284,8 +289,8 @@ function readLimit(raw: string | undefined): number | null | undefined {
   return limit;
 }
 
-/** Comments on one ticket, oldest first. */
-async function commentsOn(database: Database, ticketId: string): Promise<View[]> {
+/** Comments on one ticket, oldest first, each saying whether the asker wrote it. */
+async function commentsOn(database: Database, ticketId: string, viewerId: string): Promise<View[]> {
   const rows = await database
     .select()
     .from(ticketComment)
@@ -297,7 +302,7 @@ async function commentsOn(database: Database, ticketId: string): Promise<View[]>
     rows.map((each) => each.authorId),
   );
 
-  return rows.map((row) => asComment(row, authors.get(row.authorId ?? '') ?? null));
+  return rows.map((row) => asComment(row, authors.get(row.authorId ?? '') ?? null, viewerId));
 }
 
 /** The history of one ticket, oldest first, each entry naming the person behind it. */
@@ -319,7 +324,7 @@ async function activityOn(database: Database, ticketId: string): Promise<Activit
 type View = ReturnType<typeof asComment>;
 type ActivityView = ReturnType<typeof asTimelineActivity>;
 
-function asComment(row: CommentRow, author: Member | null) {
+function asComment(row: CommentRow, author: Member | null, viewerId: string) {
   return {
     id: row.id,
     ticketId: row.ticketId,
@@ -328,6 +333,7 @@ function asComment(row: CommentRow, author: Member | null) {
     authorKind: row.authorKind,
     body: row.body,
     deleted: row.deletedAt !== null,
+    mine: row.authorId !== null && row.authorId === viewerId,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -342,6 +348,7 @@ function asTimelineComment(comment: View) {
     body: comment.body,
     parentId: comment.parentId,
     deleted: comment.deleted,
+    mine: comment.mine,
     createdAt: comment.createdAt,
     updatedAt: comment.updatedAt,
   };

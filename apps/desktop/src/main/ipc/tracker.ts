@@ -58,6 +58,10 @@ export interface TrackerDeps {
     parentId?: string,
     authorKind?: 'member' | 'kira',
   ): Promise<TicketComment>;
+  /** Change the words of a comment you wrote. */
+  editComment(commentId: string, body: string): Promise<TicketComment>;
+  /** Remove a comment you wrote, keeping any replies it has. */
+  deleteComment(commentId: string): Promise<null>;
   /** A ticket's pull requests, newest first. */
   pullRequests(ticketId: string): Promise<TicketPullRequest[]>;
   /** A project's repositories. */
@@ -89,6 +93,8 @@ export interface TrackerHandlers {
     authorKind: unknown,
   ): Promise<Result<TicketComment>>;
   pullRequests(ticketId: unknown): Promise<Result<TicketPullRequest[]>>;
+  editComment(commentId: unknown, body: unknown): Promise<Result<TicketComment>>;
+  deleteComment(commentId: unknown): Promise<Result<null>>;
   repositories(projectId: unknown): Promise<Result<Repository[]>>;
   attachRepository(projectId: unknown, input: unknown): Promise<Result<Repository>>;
   detachRepository(projectId: unknown, id: unknown): Promise<Result<null>>;
@@ -113,6 +119,8 @@ export function trackerHandlers({
   ungate,
   timeline,
   comment,
+  editComment,
+  deleteComment,
   pullRequests,
   repositories,
   attachRepository,
@@ -215,6 +223,25 @@ export function trackerHandlers({
           authorKind === 'kira' ? 'kira' : undefined,
         ),
       );
+    },
+
+    editComment: (commentId, body) => {
+      if (!isId(commentId)) {
+        return Promise.resolve({ ok: false, error: 'A comment needs an id to be changed.' });
+      }
+      if (typeof body !== 'string' || body.trim() === '') {
+        return Promise.resolve({ ok: false, error: 'A comment says something.' });
+      }
+
+      return envelope(() => editComment(commentId, body));
+    },
+
+    deleteComment: (commentId) => {
+      if (!isId(commentId)) {
+        return Promise.resolve({ ok: false, error: 'A comment needs an id to be removed.' });
+      }
+
+      return envelope(() => deleteComment(commentId));
     },
 
     repositories: (projectId) => {

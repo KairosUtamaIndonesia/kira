@@ -83,6 +83,7 @@ const comment: TicketComment = {
   authorKind: 'kira',
   body: 'Working on it.',
   deleted: false,
+  mine: true,
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
 };
@@ -96,6 +97,7 @@ const timeline: TimelineEntry[] = [
     authorKind: comment.authorKind,
     body: comment.body,
     deleted: comment.deleted,
+    mine: comment.mine,
     createdAt: comment.createdAt,
     updatedAt: comment.updatedAt,
   },
@@ -162,6 +164,14 @@ function wire(calls: string[], answers: Partial<TrackerWire> = {}): TrackerWire 
     comment: async (key, ticketId, body, parentId, authorKind) => {
       calls.push(`comment ${key} ${ticketId} ${body} ${parentId ?? ''} ${authorKind ?? ''}`);
       return { kind: 'ok', body: comment };
+    },
+    editComment: async (key, commentId, body) => {
+      calls.push(`editComment ${key} ${commentId} ${body}`);
+      return { kind: 'ok', body: { ...comment, body } };
+    },
+    deleteComment: async (key, commentId) => {
+      calls.push(`deleteComment ${key} ${commentId}`);
+      return { kind: 'ok', body: true };
     },
     pullRequests: async (key, ticketId) => {
       calls.push(`pullRequests ${key} ${ticketId}`);

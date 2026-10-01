@@ -657,6 +657,8 @@ export const TRACKER_CHANNELS = {
   ungate: 'tracker:ungate',
   timeline: 'tracker:timeline',
   comment: 'tracker:comment',
+  editComment: 'tracker:comment-edit',
+  deleteComment: 'tracker:comment-delete',
   pullRequests: 'tracker:pull-requests',
   repositories: 'tracker:repositories',
   attachRepository: 'tracker:repository-attach',
@@ -917,6 +919,8 @@ export interface TicketComment {
   authorKind: string;
   body: string;
   deleted: boolean;
+  /** Whether the signed-in person wrote it, so the window can offer to change it. */
+  mine: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -1461,6 +1465,10 @@ export interface KiraBridge {
   ): Promise<Result<TicketComment>>;
   /** The pull requests reviewing a ticket. */
   loadPullRequests(ticketId: string): Promise<Result<TicketPullRequest[]>>;
+  /** Change the words of a comment you wrote. */
+  editComment(commentId: string, body: string): Promise<Result<TicketComment>>;
+  /** Remove a comment you wrote, keeping any replies it has. */
+  deleteComment(commentId: string): Promise<Result<null>>;
   /** The repositories a project's work happens in. */
   loadRepositories(projectId: string): Promise<Result<Repository[]>>;
   /** Attach a repository to a project. */

@@ -148,6 +148,11 @@ const bridge: KiraBridge = {
   postComment: (ticketId, body, parentId, authorKind) =>
     ask<TicketComment>(TRACKER_CHANNELS.comment, ticketId, body, parentId, authorKind),
 
+  editComment: (commentId, body) =>
+    ask<TicketComment>(TRACKER_CHANNELS.editComment, commentId, body),
+
+  deleteComment: (commentId) => ask<null>(TRACKER_CHANNELS.deleteComment, commentId),
+
   loadPullRequests: (ticketId) => ask<TicketPullRequest[]>(TRACKER_CHANNELS.pullRequests, ticketId),
 
   loadRepositories: (projectId) => ask<Repository[]>(TRACKER_CHANNELS.repositories, projectId),

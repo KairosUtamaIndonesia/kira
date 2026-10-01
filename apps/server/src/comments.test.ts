@@ -99,9 +99,11 @@ describe('comments', () => {
     const comments = (await listed.json()).comments as Array<{
       id: string;
       author: { name: string } | null;
+      mine: boolean;
     }>;
     expect(comments.map((each) => each.id)).toEqual([root.id, reply.id]);
     expect(comments[0]!.author!.name).toBe(person.name);
+    expect(comments.map((each) => each.mine)).toEqual([true, true]);
   });
 
   test('lets Kira say something on a ticket', async () => {

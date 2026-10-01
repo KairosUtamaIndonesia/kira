@@ -153,6 +153,10 @@ export interface TrackerWire {
     parentId?: string,
     authorKind?: 'member' | 'kira',
   ): Promise<TrackerAnswer<TicketComment>>;
+  /** Change the words of a comment you wrote. */
+  editComment(key: string, commentId: string, body: string): Promise<TrackerAnswer<TicketComment>>;
+  /** Remove a comment you wrote, keeping any replies it has. */
+  deleteComment(key: string, commentId: string): Promise<TrackerAnswer<true>>;
   /** A ticket's pull requests, newest first. */
   pullRequests(key: string, ticketId: string): Promise<TrackerAnswer<TicketPullRequest[]>>;
   /** A project's repositories. */
@@ -250,6 +254,10 @@ export interface Tracker {
     parentId?: string,
     authorKind?: 'member' | 'kira',
   ): Promise<TicketComment>;
+  /** Change the words of a comment you wrote. */
+  editComment(commentId: string, body: string): Promise<TicketComment>;
+  /** Remove a comment you wrote. */
+  deleteComment(commentId: string): Promise<null>;
   /** A ticket's pull requests, newest first. */
   pullRequests(ticketId: string): Promise<TicketPullRequest[]>;
   /** The repositories a project's work happens in. */
@@ -446,6 +454,20 @@ export function trackerFor({
       const held = await key();
 
       return await asked(() => wire.comment(held, ticketId, body, parentId, authorKind));
+    },
+
+    async editComment(commentId, body) {
+      const held = await key();
+
+      return await asked(() => wire.editComment(held, commentId, body));
+    },
+
+    async deleteComment(commentId) {
+      const held = await key();
+
+      await asked(() => wire.deleteComment(held, commentId));
+
+      return null;
     },
 
     async repositories(projectId) {

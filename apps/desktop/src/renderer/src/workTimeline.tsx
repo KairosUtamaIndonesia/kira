@@ -196,6 +196,22 @@ export function Timeline({ ticket }: Props) {
                 onReply={() =>
                   setReplyTo({ id: entry.id, name: actorName(entry.authorKind, entry.author) })
                 }
+                onEdit={async (body) => {
+                  const answer = await window.kira.editComment(entry.id, body);
+                  if (!answer.ok) setTrouble(answer.error);
+                  else {
+                    setTrouble(null);
+                    await load();
+                  }
+                }}
+                onRemove={async () => {
+                  const answer = await window.kira.deleteComment(entry.id);
+                  if (!answer.ok) setTrouble(answer.error);
+                  else {
+                    setTrouble(null);
+                    await load();
+                  }
+                }}
               />
             ) : (
               <li key={`activity-${entry.id}`} {...stylex.props(ui.activity)}>
@@ -250,15 +266,29 @@ export function Timeline({ ticket }: Props) {
   );
 }
 
-/** One comment, with the reply action that answers it. */
+/** One comment, with the actions that answer, change, or remove it. */
 function Comment({
   entry,
   onReply,
+  onEdit,
+  onRemove,
 }: {
   entry: Extract<TimelineEntry, { type: 'comment' }>;
   onReply: () => void;
+  onEdit: (body: string) => Promise<void>;
+  onRemove: () => Promise<void>;
 }) {
   const name = actorName(entry.authorKind, entry.author);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(entry.body);
+
+  async function save(): Promise<void> {
+    const body = draft.trim();
+    if (body === '') return;
+
+    await onEdit(body);
+    setEditing(false);
+  }
 
   return (
     <li {...stylex.props(ui.comment)}>
@@ -274,6 +304,34 @@ function Comment({
         <Text type="supporting" color="secondary" {...stylex.props(ui.removed)}>
           {copy.ticket.commentRemoved}
         </Text>
+      ) : editing ? (
+        <div {...stylex.props(ui.edit)}>
+          <TextArea
+            label={copy.ticket.editComment}
+            value={draft}
+            onChange={setDraft}
+            rows={3}
+            maxLength={MAX_COMMENT}
+          />
+          <div {...stylex.props(ui.commentActions)}>
+            <Button
+              label={copy.ticket.cancelEdit}
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setDraft(entry.body);
+                setEditing(false);
+              }}
+            />
+            <Button
+              label={copy.ticket.saveComment}
+              size="sm"
+              variant="primary"
+              isDisabled={draft.trim() === ''}
+              onClick={() => void save()}
+            />
+          </div>
+        </div>
       ) : (
         <div {...stylex.props(ui.commentBody)}>
           <Markdown density="compact" onLinkClick={openLink}>
@@ -281,7 +339,7 @@ function Comment({
           </Markdown>
         </div>
       )}
-      {!entry.deleted && (
+      {!entry.deleted && !editing && (
         <div {...stylex.props(ui.commentActions)}>
           <Button
             label={`${copy.ticket.reply} ${name}`}
@@ -289,6 +347,25 @@ function Comment({
             variant="ghost"
             onClick={onReply}
           />
+          {entry.mine && (
+            <>
+              <Button
+                label={copy.ticket.editComment}
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setDraft(entry.body);
+                  setEditing(true);
+                }}
+              />
+              <Button
+                label={copy.ticket.removeComment}
+                size="sm"
+                variant="ghost"
+                onClick={() => void onRemove()}
+              />
+            </>
+          )}
         </div>
       )}
     </li>
@@ -355,6 +432,12 @@ const ui = stylex.create({
   commentActions: {
     display: 'flex',
     justifyContent: 'flex-end',
+    gap: spacingVars['--spacing-2'],
+  },
+  edit: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: spacingVars['--spacing-2'],
   },
   removed: {
     fontStyle: 'italic',

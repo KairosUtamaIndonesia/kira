@@ -386,6 +386,18 @@ export function kiraFor({ server, scheme }: { server: string; scheme: string }):
         (data) => asComment((data as { comment: unknown }).comment),
       ),
 
+    editComment: async (key, commentId, body) =>
+      asked(
+        () => kira.api.comments({ id: commentId }).patch({ body }, { headers: bearerFor(key) }),
+        (data) => asComment((data as { comment: unknown }).comment),
+      ),
+
+    deleteComment: async (key, commentId) =>
+      asked(
+        () => kira.api.comments({ id: commentId }).delete(undefined, { headers: bearerFor(key) }),
+        () => true,
+      ),
+
     repositories: async (key, projectId) =>
       asked(
         () => kira.api.projects({ ref: projectId }).repositories.get({ headers: bearerFor(key) }),
