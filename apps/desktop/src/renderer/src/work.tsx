@@ -120,6 +120,7 @@ import type {
   WorkspaceSummary,
 } from '../../preload/bridge.ts';
 import { Blockers } from './workBlockers.tsx';
+import { Timeline } from './workTimeline.tsx';
 import { NewTicketDialog, TicketFields } from './workNewTicket.tsx';
 import { FilterBar, FilterToolbar } from './workFilters.tsx';
 import { copy } from './workCopy.ts';
@@ -3191,6 +3192,7 @@ function TicketReading({
               </div>
             </details>
           )}
+          <Timeline key={ticket.id} ticket={ticket} />
         </>
       )}
     </TicketPanel>
