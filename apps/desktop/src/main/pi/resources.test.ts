@@ -3,9 +3,10 @@ import { cp, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { test } from 'node:test';
 import { DefaultResourceLoader, SettingsManager } from '@earendil-works/pi-coding-agent';
+import { build } from 'vite';
 import { bundledSkillsPath } from './resources.ts';
 
 const EXPECTED_SKILLS = [
@@ -25,6 +26,7 @@ const FORBIDDEN_HOST_SPECIFIC_WORDS = /\bgh\b|github|labels?|\.scratch/i;
 const desktopRoot = join(dirname(fileURLToPath(import.meta.url)), '../../../');
 // Keep this loader test independent from skills installed on the developer's machine.
 process.env['HOME'] = mkdtempSync(join(tmpdir(), 'kira-resource-home-'));
+process.env['PI_CODING_AGENT_DIR'] = mkdtempSync(join(tmpdir(), 'kira-resource-config-'));
 
 function tempDir(prefix: string): Promise<string> {
   return mkdtemp(join(tmpdir(), prefix));
@@ -83,4 +85,49 @@ test('a packaged resource copy loads beside workspace .agents skills', async () 
 
 test('a development resource path resolves to the checked-in bundle', () => {
   assert.equal(bundledSkillsPath({ isPackaged: false }), join(desktopRoot, 'resources', 'skills'));
+});
+
+test('compiled desktop skills load independently of the workspace', async (t) => {
+  const app = await tempDir('kira-resource-compiled-');
+  const outDir = join(app, 'out', 'main');
+  const shippedSkills = join(app, 'resources', 'skills');
+  await cp(join(desktopRoot, 'resources', 'skills'), shippedSkills, { recursive: true });
+  await build({
+    configFile: false,
+    logLevel: 'silent',
+    build: {
+      ssr: join(desktopRoot, 'src', 'main', 'pi', 'resources.ts'),
+      outDir,
+      rollupOptions: { output: { format: 'es', entryFileNames: 'index.mjs' } },
+    },
+  });
+  const compiled = await import(pathToFileURL(join(outDir, 'index.mjs')).href);
+
+  for (const workspaceSkill of [false, true]) {
+    await t.test(workspaceSkill ? 'with a workspace skill' : 'in an empty workspace', async () => {
+      const workspace = await tempDir('kira-resource-workspace-');
+      const agentDir = await tempDir('kira-resource-agent-');
+      if (workspaceSkill) await writeWorkspaceSkill(workspace);
+      const skillsPath = compiled.bundledSkillsPath({ isPackaged: false });
+      assert.equal(skillsPath, shippedSkills);
+
+      const loader = new DefaultResourceLoader({
+        cwd: workspace,
+        agentDir,
+        settingsManager: SettingsManager.create(workspace, agentDir, { projectTrusted: true }),
+        additionalSkillPaths: [skillsPath],
+      });
+      await loader.reload();
+      assert.deepEqual(
+        loader
+          .getSkills()
+          .skills.map((skill) => skill.name)
+          .sort(),
+        [...EXPECTED_SKILLS, ...(workspaceSkill ? ['workspace-only'] : [])].sort(),
+      );
+      const implement = loader.getSkills().skills.find((skill) => skill.name === 'implement');
+      assert.equal(implement?.filePath, join(shippedSkills, 'implement', 'SKILL.md'));
+      assert.match(await readFile(implement!.filePath, 'utf8'), /name: implement/);
+    });
+  }
 });

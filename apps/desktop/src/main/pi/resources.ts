@@ -3,7 +3,10 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const BUNDLED_SKILLS_DIR = 'skills';
-const sourceSkillsPath = join(dirname(fileURLToPath(import.meta.url)), '../../../resources/skills');
+const moduleDir = dirname(fileURLToPath(import.meta.url));
+const sourceSkillsPath = join(moduleDir, '../../../resources/skills');
+// Vite moves this module from src/main/pi to out/main when it bundles the desktop.
+const compiledSkillsPath = join(moduleDir, '../../resources/skills');
 
 type ResourcePathOptions = {
   /** Override the packaged check in tests and in packaging tools. */
@@ -26,5 +29,6 @@ export function bundledSkillsPath(options: ResourcePathOptions = {}): string {
   const packagedPath = resourcesPath === undefined ? null : join(resourcesPath, BUNDLED_SKILLS_DIR);
   const isPackaged = options.isPackaged ?? (packagedPath !== null && existsSync(packagedPath));
 
-  return isPackaged && packagedPath !== null ? packagedPath : sourceSkillsPath;
+  if (isPackaged && packagedPath !== null) return packagedPath;
+  return existsSync(compiledSkillsPath) ? compiledSkillsPath : sourceSkillsPath;
 }

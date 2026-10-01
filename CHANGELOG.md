@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Bundled workflow skills load correctly in the compiled development desktop, including chats in empty workspace folders.
+
 ### Added
 
 - The chat rail is a ledger: each workspace is a ruled section with a count, chats are single rows with a short age, and a workspace's Work, new chat and menu appear when you point at its name, so a project's Work is one click away. The rail now shares the chat's ground, the chat you are in is marked with a small red dot instead of a red block, and the account row at the bottom lines up with the chats above it.
