@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  AnyPgColumn,
   bigint,
   boolean,
   index,
@@ -490,6 +491,80 @@ export const poolAudit = pgTable(
 );
 
 /**
+ * Something said on a ticket, by a person or by Kira.
+ *
+ * A reply names its root with `parentId`, so a thread is one level deep: Kira's
+ * ticket tools and the composer reply to the root rather than nesting further,
+ * and the timeline draws it without a tree. `authorId` is cleared rather than
+ * cascaded when its person leaves, for the same reason a project's is — the
+ * conversation outlives whoever wrote it.
+ *
+ * A comment with replies is tombstoned rather than removed: `deletedAt` is set
+ * and the body is cleared, so the replies below it still have a root. A comment
+ * with no replies is deleted outright. `authorKind` is the client's word that a
+ * write was Kira's rather than the person's; the desktop holds the person's key,
+ * so the server cannot tell them apart on its own (docs/adr/0026).
+ */
+export const ticketComment = pgTable(
+  'ticket_comment',
+  {
+    id: text('id').primaryKey(),
+    ticketId: text('ticketId')
+      .notNull()
+      .references(() => ticket.id, { onDelete: 'cascade' }),
+    parentId: text('parentId').references((): AnyPgColumn => ticketComment.id, {
+      onDelete: 'set null',
+    }),
+    authorId: text('authorId').references(() => user.id, { onDelete: 'set null' }),
+    /** member or kira. */
+    authorKind: text('authorKind').notNull().default('member'),
+    body: text('body').notNull(),
+    createdAt: timestamp('createdAt', { withTimezone: true })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: timestamp('updatedAt', { withTimezone: true })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    deletedAt: timestamp('deletedAt', { withTimezone: true }),
+  },
+  (table) => [
+    index('ticket_comment_by_ticket').on(table.ticketId, table.createdAt),
+    index('ticket_comment_by_parent').on(table.parentId),
+  ],
+);
+
+/**
+ * One change to a ticket the server recorded, so its page can say what happened.
+ *
+ * The server writes a row where it already writes the change rather than through
+ * a bus Kira does not have. `actorId` is cleared when its person leaves, and is
+ * null for a change the server made on its own. `details` carries whatever the
+ * action needs to be read: the old and new status, the person chosen, the pull
+ * request merged.
+ */
+export const ticketActivity = pgTable(
+  'ticket_activity',
+  {
+    id: text('id').primaryKey(),
+    ticketId: text('ticketId')
+      .notNull()
+      .references(() => ticket.id, { onDelete: 'cascade' }),
+    actorId: text('actorId').references(() => user.id, { onDelete: 'set null' }),
+    /** member, kira or system. */
+    actorKind: text('actorKind').notNull().default('member'),
+    action: text('action').notNull(),
+    details: jsonb('details')
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp('createdAt', { withTimezone: true })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [index('ticket_activity_by_ticket').on(table.ticketId, table.createdAt)],
+);
+
+/**
  * Everything, under the names Better Auth asks for. Its adapter looks up a
  * model by these keys and a field by the key inside it, so the export names are
  * part of the contract rather than a matter of taste.
@@ -506,6 +581,8 @@ export const schema = {
   project,
   decision,
   ticket,
+  ticketComment,
+  ticketActivity,
   outcome,
   glossaryEntry,
   glossaryHistory,

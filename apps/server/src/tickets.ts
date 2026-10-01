@@ -17,6 +17,7 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
 import { Elysia, t } from 'elysia';
+import { type ActivityEntry, recordActivity } from './activity';
 import type { Auth } from './auth';
 import type { Database } from './database';
 import { keyHolder, type HeldUser } from './keys';
@@ -347,6 +348,15 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
           authorId: held.user.id,
           sourceChatId: body.sourceChatId ?? null,
         });
+
+        await recordActivity(database, [
+          {
+            ticketId: written.id,
+            actorId: held.user.id,
+            actorKind: 'member',
+            action: 'created',
+          },
+        ]);
 
         return { ticket: await one(database, found, written) };
       },
@@ -916,6 +926,11 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
 
         await database.update(ticket).set(changed).where(eq(ticket.id, found.ticket.id));
 
+        await recordActivity(
+          database,
+          await changesTo(database, found.ticket, after, held.user.id),
+        );
+
         return {
           ticket: await one(database, found.project, { ...after, ...changed }),
         };
@@ -956,10 +971,23 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
 
         // Adding the same gate twice is the same gate: the table's primary key is the
         // pair, so this is the constraint doing the work rather than a read first.
-        await database
+        const [added] = await database
           .insert(gate)
           .values({ ticketId: found.ticket.id, gatedById: names.ticket.id })
-          .onConflictDoNothing();
+          .onConflictDoNothing()
+          .returning({ ticketId: gate.ticketId });
+
+        if (added) {
+          await recordActivity(database, [
+            {
+              ticketId: found.ticket.id,
+              actorId: held.user.id,
+              actorKind: 'member',
+              action: 'blocker_added',
+              details: { blocker: asNamed(names.ticket, names.project.prefix) },
+            },
+          ]);
+        }
 
         return { ticket: await one(database, found.project, found.ticket) };
       },
@@ -982,9 +1010,22 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
         const names = await resolve(database, params.gatedBy);
 
         if (names) {
-          await database
+          const [removed] = await database
             .delete(gate)
-            .where(and(eq(gate.ticketId, found.ticket.id), eq(gate.gatedById, names.ticket.id)));
+            .where(and(eq(gate.ticketId, found.ticket.id), eq(gate.gatedById, names.ticket.id)))
+            .returning({ ticketId: gate.ticketId });
+
+          if (removed) {
+            await recordActivity(database, [
+              {
+                ticketId: found.ticket.id,
+                actorId: held.user.id,
+                actorKind: 'member',
+                action: 'blocker_removed',
+                details: { blocker: asNamed(names.ticket, names.project.prefix) },
+              },
+            ]);
+          }
         }
 
         return { ticket: await one(database, found.project, found.ticket) };
@@ -1325,6 +1366,69 @@ async function assigneesOf(database: Database, rows: Row[]) {
     .where(inArray(user.id, ids));
 
   return new Map(people.map((each) => [each.id, each]));
+}
+
+/** One person by id, or null when nobody holds it. */
+async function personOf(
+  database: Database,
+  id: string | null,
+): Promise<{ id: string; name: string } | null> {
+  if (id === null) return null;
+
+  const [found] = await database
+    .select({ id: user.id, name: user.name })
+    .from(user)
+    .where(eq(user.id, id));
+
+  return found ?? null;
+}
+
+/**
+ * What an edit changed, one entry per field, for the ticket's history.
+ *
+ * An assignee change carries the person's name as well as their id, so a
+ * timeline entry can be drawn without resolving anyone: a reader of old history
+ * should not need the person to still be here (docs/adr/0026).
+ */
+async function changesTo(
+  database: Database,
+  before: Row,
+  after: Row,
+  actorId: string,
+): Promise<ActivityEntry[]> {
+  const entry = (
+    action: ActivityEntry['action'],
+    details: Record<string, unknown>,
+  ): ActivityEntry => ({
+    ticketId: after.id,
+    actorId,
+    actorKind: 'member',
+    action,
+    details,
+  });
+  const changes: ActivityEntry[] = [];
+
+  if (after.status !== before.status) {
+    changes.push(entry('status_changed', { from: before.status, to: after.status }));
+  }
+  if (after.priority !== before.priority) {
+    changes.push(entry('priority_changed', { from: before.priority, to: after.priority }));
+  }
+  if (after.title !== before.title) {
+    changes.push(entry('title_changed', { from: before.title, to: after.title }));
+  }
+  if (after.body !== before.body) {
+    changes.push(entry('body_updated', {}));
+  }
+  if (after.assigneeId !== before.assigneeId) {
+    const [was, now] = await Promise.all([
+      personOf(database, before.assigneeId),
+      personOf(database, after.assigneeId),
+    ]);
+    changes.push(entry('assignee_changed', { from: was, to: now }));
+  }
+
+  return changes;
 }
 
 interface Planning {

@@ -17,6 +17,13 @@ export const messages = {
   assigneeNotFound: 'That person is not a member of this project.',
   pullRequestUrlInvalid: 'Use a secure HTTPS link for the pull request.',
 
+  commentNotFound: 'That comment no longer exists.',
+  commentBodyRequired: 'Write something before posting.',
+  commentParentOtherTicket: 'A reply must belong to the same ticket.',
+  commentNotYours: 'Only the person who wrote a comment can change it.',
+  commentDeleted: 'That comment has already been removed.',
+  timelineLimitInvalid: 'Ask for between 1 and 500 entries.',
+
   kindUnknown: (kinds: readonly string[]) => `Choose a ticket kind: ${list(kinds)}.`,
   statusUnknown: (statuses: readonly string[]) => `Choose a status: ${list(statuses)}.`,
   priorityUnknown: (priorities: readonly string[]) => `Choose a priority: ${list(priorities)}.`,
