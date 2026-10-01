@@ -17,6 +17,7 @@ import {
   type GlossaryEntry,
   type GitConnection,
   type GitConnectionCreated,
+  type GitHubConnect,
   type Outcome,
   type OutcomeProposal,
   type ProjectDecision,
@@ -432,6 +433,9 @@ export function kiraFor({ server, scheme }: { server: string; scheme: string }):
         () => true,
       ),
 
+    githubConnect: async (key) =>
+      asked(() => kira.api.git.github.connect.get({ headers: bearerFor(key) }), asGitHubConnect),
+
     markBreakdownReady: async (key, specTicketId) =>
       asked(
         () =>
@@ -655,6 +659,14 @@ function asGitConnectionCreated(body: unknown): GitConnectionCreated | null {
   if (connection === null || typeof held.webhookSecret !== 'string') return null;
 
   return { connection, webhookSecret: held.webhookSecret };
+}
+
+function asGitHubConnect(body: unknown): GitHubConnect | null {
+  const held = body as { configured?: unknown; url?: unknown };
+  if (typeof held?.configured !== 'boolean') return null;
+  if (held.url !== null && typeof held.url !== 'string') return null;
+
+  return { configured: held.configured, url: held.url as string | null };
 }
 
 function asDecision(body: unknown): ProjectDecision | null {

@@ -26,8 +26,9 @@ export async function boot(
   entra: Partial<Config['entra']> = {},
   pool: Partial<Config['pool']> = {},
   memory: Partial<Config['memory']> = {},
+  git: Partial<Config['git']> = {},
 ) {
-  const config = configured(ENV, entra, pool, memory);
+  const config = configured(ENV, entra, pool, memory, git);
   const database = await freshDatabase(config.databaseUrl);
   await migrate(database);
   const auth = await createAuth(config, database);
@@ -69,6 +70,7 @@ function configured(
   entra: Partial<Config['entra']>,
   pool: Partial<Config['pool']> = {},
   memory: Partial<Config['memory']> = {},
+  git: Partial<Config['git']> = {},
 ) {
   const base = loadConfig(env);
   return {
@@ -76,6 +78,7 @@ function configured(
     entra: { ...base.entra, ...entra },
     pool: { ...base.pool, ...pool },
     memory: { ...base.memory, ...memory },
+    git: { ...base.git, ...git },
   };
 }
 

@@ -675,6 +675,7 @@ export const GIT_CHANNELS = {
   connections: 'git:connections',
   connect: 'git:connect',
   disconnect: 'git:disconnect',
+  githubConnect: 'git:github-connect',
 } as const;
 
 /**
@@ -896,6 +897,12 @@ export interface GitConnectionInput {
 export interface GitConnectionCreated {
   connection: GitConnection;
   webhookSecret: string;
+}
+
+/** Whether this server installs a GitHub App, and where to install it. */
+export interface GitHubConnect {
+  configured: boolean;
+  url: string | null;
 }
 
 /** Someone behind a comment: a person, or Kira acting in their chat. */
@@ -1466,6 +1473,8 @@ export interface KiraBridge {
   connectGitHost(input: GitConnectionInput): Promise<Result<GitConnectionCreated>>;
   /** Disconnect a Git host. */
   disconnectGitHost(id: string): Promise<Result<null>>;
+  /** Where to install this server's GitHub App, or that none is configured. */
+  loadGitHubConnect(): Promise<Result<GitHubConnect>>;
   /**
    * What one folder of the chat's workspace holds, or null when that chat has
    * no workspace — a chat nothing has been said in yet has no folder to show,

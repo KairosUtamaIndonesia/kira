@@ -16,7 +16,7 @@ import { Text } from '@astryxdesign/core/Text';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { VStack } from '@astryxdesign/core/VStack';
 import { useCallback, useEffect, useState } from 'react';
-import type { GitConnection } from '../../preload/bridge';
+import type { GitConnection, GitHubConnect } from '../../preload/bridge';
 
 const HOSTS = [
   { value: 'github', label: 'GitHub' },
@@ -39,6 +39,7 @@ export function GitHostsSection() {
   const [accountLogin, setAccountLogin] = useState('');
   const [busy, setBusy] = useState(false);
   const [secret, setSecret] = useState<{ id: string; value: string } | null>(null);
+  const [github, setGithub] = useState<GitHubConnect | null>(null);
 
   const load = useCallback(async () => {
     const answer = await window.kira.loadGitConnections();
@@ -50,8 +51,14 @@ export function GitHostsSection() {
     }
   }, []);
 
+  const loadGithub = useCallback(async () => {
+    const answer = await window.kira.loadGitHubConnect();
+    if (answer.ok) setGithub(answer.value);
+  }, []);
+
   useMountEffect(() => {
     void load();
+    void loadGithub();
   });
 
   async function connect(): Promise<void> {
@@ -153,6 +160,20 @@ export function GitHostsSection() {
               </HStack>
             ))}
           </VStack>
+        )}
+
+        {github?.configured === true && github.url !== null && (
+          <HStack justify="between" align="center">
+            <Text size="sm" color="secondary">
+              Install the GitHub App to watch GitHub without a personal token.
+            </Text>
+            <Button
+              label="Install the GitHub App"
+              size="sm"
+              variant="secondary"
+              onClick={() => window.open(github.url ?? '', '_blank', 'noopener')}
+            />
+          </HStack>
         )}
 
         <VStack gap={3}>

@@ -15,31 +15,58 @@ const connection: GitConnection = {
 
 const created = { connection, webhookSecret: 'a-secret' };
 
-test('connections lists the hosts the server is connected to', async () => {
-  const calls: string[] = [];
-  const handlers = gitHandlers({
+/** Deps that record what they were asked, with the host methods each test needs. */
+function deps(
+  calls: string[],
+  overrides: Partial<Parameters<typeof gitHandlers>[0]> = {},
+): Parameters<typeof gitHandlers>[0] {
+  return {
     connections: async () => {
       calls.push('connections');
       return [connection];
     },
     connect: async () => created,
     disconnect: async () => null,
-  });
+    githubConnect: async () => {
+      calls.push('githubConnect');
+      return { configured: false, url: null };
+    },
+    ...overrides,
+  };
+}
+
+test('connections lists the hosts the server is connected to', async () => {
+  const calls: string[] = [];
+  const handlers = gitHandlers(deps(calls));
 
   assert.deepEqual(await handlers.connections(), { ok: true, value: [connection] });
   assert.deepEqual(calls, ['connections']);
 });
 
+test('githubConnect reports where to install the App', async () => {
+  const calls: string[] = [];
+  const handlers = gitHandlers(
+    deps(calls, {
+      githubConnect: async () => ({ configured: true, url: 'https://github.com/apps/kira' }),
+    }),
+  );
+
+  assert.deepEqual(await handlers.githubConnect(), {
+    ok: true,
+    value: { configured: true, url: 'https://github.com/apps/kira' },
+  });
+});
+
 test('connect checks the host and the token before forwarding', async () => {
   const calls: string[] = [];
-  const handlers = gitHandlers({
-    connections: async () => [],
-    connect: async (input: GitConnectionInput) => {
-      calls.push(`connect ${input.provider} ${input.instanceUrl ?? ''}`);
-      return created;
-    },
-    disconnect: async () => null,
-  });
+  const handlers = gitHandlers(
+    deps(calls, {
+      connect: async (input: GitConnectionInput) => {
+        calls.push(`connect ${input.provider} ${input.instanceUrl ?? ''}`);
+        return created;
+      },
+    }),
+  );
 
   assert.deepEqual(
     await handlers.connect({
@@ -63,14 +90,14 @@ test('connect checks the host and the token before forwarding', async () => {
 
 test('disconnect checks the id, and the server refusal is preserved', async () => {
   const calls: string[] = [];
-  const handlers = gitHandlers({
-    connections: async () => [],
-    connect: async () => created,
-    disconnect: async (id: string) => {
-      calls.push(`disconnect ${id}`);
-      throw new Error('Only an administrator can connect a Git host.');
-    },
-  });
+  const handlers = gitHandlers(
+    deps(calls, {
+      disconnect: async (id: string) => {
+        calls.push(`disconnect ${id}`);
+        throw new Error('Only an administrator can connect a Git host.');
+      },
+    }),
+  );
 
   assert.deepEqual(await handlers.disconnect('conn-1'), {
     ok: false,

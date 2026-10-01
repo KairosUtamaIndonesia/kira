@@ -21,6 +21,7 @@ import {
   type FolderListing,
   type GitConnection,
   type GitConnectionCreated,
+  type GitHubConnect,
   type KiraBridge,
   type GlossaryEntry,
   type MagicPrompt,
@@ -160,6 +161,8 @@ const bridge: KiraBridge = {
   connectGitHost: (input) => ask<GitConnectionCreated>(GIT_CHANNELS.connect, input),
 
   disconnectGitHost: (id) => ask<null>(GIT_CHANNELS.disconnect, id),
+
+  loadGitHubConnect: () => ask<GitHubConnect>(GIT_CHANNELS.githubConnect),
 
   undoGlossary: (workspaceId, entryId, version, chatId) =>
     ask<GlossaryEntry>(TRACKER_CHANNELS.undoGlossary, workspaceId, entryId, version, chatId),

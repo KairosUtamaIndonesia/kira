@@ -22,6 +22,7 @@ import type {
   GitConnection,
   GitConnectionCreated,
   GitConnectionInput,
+  GitHubConnect,
   JoinRequest,
   ProjectSummary,
   Ticket,
@@ -169,6 +170,8 @@ export interface TrackerWire {
   connectHost(key: string, input: GitConnectionInput): Promise<TrackerAnswer<GitConnectionCreated>>;
   /** Disconnect a Git host. */
   disconnectHost(key: string, id: string): Promise<TrackerAnswer<true>>;
+  /** Where to install this server's GitHub App, or that none is configured. */
+  githubConnect(key: string): Promise<TrackerAnswer<GitHubConnect>>;
   /** Publish proposed children and dependency gates in one server transaction. */
   publishBreakdown?(
     key: string,
@@ -261,6 +264,8 @@ export interface Tracker {
   connectGitHost(input: GitConnectionInput): Promise<GitConnectionCreated>;
   /** Disconnect a Git host. */
   disconnectGitHost(id: string): Promise<null>;
+  /** Where to install this server's GitHub App, or that none is configured. */
+  loadGitHubConnect(): Promise<GitHubConnect>;
   publishBreakdown(specTicketId: string, children: BreakdownSlice[]): Promise<BreakdownResult>;
   markBreakdownReady(specTicketId: string): Promise<BreakdownResult>;
   projects(): Promise<ProjectSummary[]>;
@@ -487,6 +492,12 @@ export function trackerFor({
       await asked(() => wire.disconnectHost(held, id));
 
       return null;
+    },
+
+    async loadGitHubConnect() {
+      const held = await key();
+
+      return await asked(() => wire.githubConnect(held));
     },
 
     async publishBreakdown(specTicketId, children) {

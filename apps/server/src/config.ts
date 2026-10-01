@@ -30,6 +30,14 @@ export interface Config {
      * storing a connection rather than keeping one in the clear.
      */
     secretKey: string | null;
+    /**
+     * The GitHub App's own credentials, when this server installs one. All three
+     * are needed to install it; the slug alone still names the install page.
+     * Absent means GitHub is connected with a token or the environment webhook.
+     */
+    appSlug: string | null;
+    appId: string | null;
+    appPrivateKey: string | null;
   };
   entra: {
     tenantId: string;
@@ -179,6 +187,9 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
       KIRA_REFLECTION_MODEL: z.string().trim().min(1, REQUIRED).optional(),
       KIRA_GITHUB_WEBHOOK_SECRET: z.string().trim().min(1, REQUIRED).optional(),
       KIRA_GIT_SECRET_KEY: z.string().trim().min(1, REQUIRED).optional(),
+      KIRA_GITHUB_APP_SLUG: z.string().trim().min(1, REQUIRED).optional(),
+      KIRA_GITHUB_APP_ID: z.string().trim().min(1, REQUIRED).optional(),
+      KIRA_GITHUB_APP_PRIVATE_KEY: z.string().trim().min(1, REQUIRED).optional(),
     },
     runtimeEnv: env,
     // An empty value in a .env file means unset, not "set to an empty string",
@@ -222,6 +233,9 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     git: {
       webhookSecret: parsed.KIRA_GITHUB_WEBHOOK_SECRET ?? null,
       secretKey: parsed.KIRA_GIT_SECRET_KEY ?? null,
+      appSlug: parsed.KIRA_GITHUB_APP_SLUG ?? null,
+      appId: parsed.KIRA_GITHUB_APP_ID ?? null,
+      appPrivateKey: parsed.KIRA_GITHUB_APP_PRIVATE_KEY ?? null,
     },
     entra: {
       tenantId: parsed.KIRA_ENTRA_TENANT_ID,

@@ -39,6 +39,8 @@ export const messages = {
   gitKeyMissing: 'Connecting a host needs KIRA_GIT_SECRET_KEY set on this server.',
   gitTokenRequired: 'Paste the access token for the host.',
   gitInstanceUrlInvalid: 'Give the host’s address as a secure HTTPS URL.',
+  gitStateInvalid: 'That install did not start here. Begin again from Kira.',
+  gitInstallationInvalid: 'That install is not one GitHub named.',
   notAnAdmin: 'Only an administrator can connect a Git host.',
 
   kindUnknown: (kinds: readonly string[]) => `Choose a ticket kind: ${list(kinds)}.`,

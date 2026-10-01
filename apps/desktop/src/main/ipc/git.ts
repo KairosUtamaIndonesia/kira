@@ -10,6 +10,7 @@ import {
   type GitConnection,
   type GitConnectionCreated,
   type GitConnectionInput,
+  type GitHubConnect,
   GIT_CHANNELS,
   type Result,
 } from '../../preload/bridge.ts';
@@ -24,17 +25,26 @@ export interface GitDeps {
   connections(): Promise<GitConnection[]>;
   connect(input: GitConnectionInput): Promise<GitConnectionCreated>;
   disconnect(id: string): Promise<null>;
+  githubConnect(): Promise<GitHubConnect>;
 }
 
 export interface GitHandlers {
   connections(): Promise<Result<GitConnection[]>>;
   connect(input: unknown): Promise<Result<GitConnectionCreated>>;
   disconnect(id: unknown): Promise<Result<null>>;
+  githubConnect(): Promise<Result<GitHubConnect>>;
 }
 
-export function gitHandlers({ connections, connect, disconnect }: GitDeps): GitHandlers {
+export function gitHandlers({
+  connections,
+  connect,
+  disconnect,
+  githubConnect,
+}: GitDeps): GitHandlers {
   return {
     connections: () => envelope(() => connections()),
+
+    githubConnect: () => envelope(() => githubConnect()),
 
     connect: (input) => {
       const asked = connectionIn(input);

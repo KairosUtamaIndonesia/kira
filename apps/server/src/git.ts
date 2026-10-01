@@ -12,7 +12,7 @@
  * assume GitHub. GitHub is the first adapter; Forgejo, Gitea and GitLab record
  * themselves in `git_connection` as their adapters land.
  */
-import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHmac, createSign, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { Elysia, t } from 'elysia';
 import type { Auth } from './auth';
@@ -61,10 +61,10 @@ const github: GitProvider = {
     const header = headers.get('x-hub-signature-256');
     if (header === null || !header.startsWith('sha256=')) return false;
 
-    const delivered = Buffer.from(header.slice('sha256='.length), 'hex');
-    const expected = createHmac('sha256', secret).update(body).digest();
+    const delivered = hexDigest(header.slice('sha256='.length));
+    if (delivered === null) return false;
 
-    return delivered.length === expected.length && timingSafeEqual(delivered, expected);
+    return sameBytes(delivered, sign(secret, body));
   },
   parsePullRequest(body) {
     const held = body as {
@@ -134,7 +134,10 @@ function giteaFamily(kind: 'forgejo' | 'gitea'): GitProvider {
       const header = headers.get('x-gitea-signature');
       if (header === null) return false;
 
-      return sameBytes(Buffer.from(header.replace(/^sha256=/, ''), 'hex'), sign(secret, body));
+      const delivered = hexDigest(header.replace(/^sha256=/, ''));
+      if (delivered === null) return false;
+
+      return sameBytes(delivered, sign(secret, body));
     },
     parsePullRequest: (body) => github.parsePullRequest(body),
   };
@@ -217,6 +220,57 @@ function sign(secret: string, body: Uint8Array): Buffer {
 
 function sameBytes(left: Buffer, right: Buffer): boolean {
   return left.length === right.length && timingSafeEqual(left, right);
+}
+
+/**
+ * A 64-character SHA-256 digest, or null when the text is not one.
+ *
+ * `Buffer.from(text, 'hex')` silently stops at the first character that is not a
+ * hex digit, so `"<a real digest>x"` would decode to the real digest and compare
+ * equal. Validating the whole string first is what keeps a tampered signature or
+ * state from passing on its valid prefix.
+ */
+function hexDigest(value: string): Buffer | null {
+  if (!/^[0-9a-fA-F]{64}$/.test(value)) return null;
+
+  return Buffer.from(value, 'hex');
+}
+
+/**
+ * A GitHub install state: a nonce and its HMAC, so the callback can trust that
+ * the install it is being told about is one this server started.
+ */
+function signState(secret: string, nonce: string): string {
+  const mac = createHmac('sha256', secret).update(nonce).digest('hex');
+
+  return `${nonce}.${mac}`;
+}
+
+function verifyState(secret: string, state: string): string | null {
+  const [nonce, mac] = state.split('.');
+  if (nonce === undefined || mac === undefined || nonce === '' || mac === '') return null;
+
+  const delivered = hexDigest(mac);
+  if (delivered === null) return null;
+
+  const expected = createHmac('sha256', secret).update(nonce).digest();
+
+  return sameBytes(delivered, expected) ? nonce : null;
+}
+
+/** A GitHub App JWT: RS256, under ten minutes, as GitHub requires. */
+function signAppJwt(appId: string, privateKey: string): string {
+  const now = Math.floor(Date.now() / 1000);
+  const encode = (value: unknown): string =>
+    Buffer.from(JSON.stringify(value)).toString('base64url');
+  const signing = `${encode({ alg: 'RS256', typ: 'JWT' })}.${encode({
+    iat: now - 60,
+    exp: now + 540,
+    iss: appId,
+  })}`;
+  const signature = createSign('RSA-SHA256').update(signing).sign(privateKey);
+
+  return `${signing}.${signature.toString('base64url')}`;
 }
 
 const PROVIDERS: Record<string, GitProvider> = {
@@ -495,6 +549,80 @@ export function createGit({
           404: REFUSAL,
         },
         detail: { summary: 'Disconnect a Git host' },
+      },
+    )
+    .get(
+      '/api/git/github/connect',
+      async ({ request, status }) => {
+        const held = await asking(auth, request);
+        if ('refused' in held) return status(401, held.refused);
+        if (!(await isAdmin(auth, held.user.id))) {
+          return status(403, refusal('NOT_AN_ADMIN', messages.notAnAdmin));
+        }
+
+        const slug = config.git.appSlug;
+        if (slug === null || config.git.webhookSecret === null) {
+          return { configured: false, url: null };
+        }
+
+        const state = signState(config.git.webhookSecret, randomBytes(16).toString('hex'));
+
+        return {
+          configured: true,
+          url: `https://github.com/apps/${encodeURIComponent(slug)}/installations/new?state=${encodeURIComponent(state)}`,
+        };
+      },
+      {
+        response: {
+          200: t.Object({ configured: t.Boolean(), url: t.Union([t.String(), t.Null()]) }),
+          401: REFUSAL,
+          403: REFUSAL,
+        },
+        detail: { summary: 'The GitHub App install URL for this server, when one is configured' },
+      },
+    )
+    .get(
+      '/api/git/github/setup',
+      async ({ query, status }) => {
+        const secret = config.git.webhookSecret;
+        if (secret === null) return status(404, refusal('GIT_DISABLED', messages.gitDisabled));
+        if (verifyState(secret, query.state) === null) {
+          return status(400, refusal('GIT_STATE_INVALID', messages.gitStateInvalid));
+        }
+
+        const installationId = Number(query.installation_id);
+        if (!Number.isInteger(installationId) || installationId <= 0) {
+          return status(400, refusal('GIT_INSTALLATION_INVALID', messages.gitInstallationInvalid));
+        }
+
+        const account = await githubInstallationAccount(config, installationId);
+        const existing = await findAppConnection(database, installationId);
+
+        if (existing) {
+          await database
+            .update(gitConnection)
+            .set({ accountLogin: account.login, accountType: account.type, updatedAt: new Date() })
+            .where(eq(gitConnection.id, existing.id));
+        } else {
+          await database.insert(gitConnection).values({
+            id: randomUUID(),
+            provider: 'github',
+            authKind: 'app',
+            instanceUrl: null,
+            accountLogin: account.login,
+            accountType: account.type,
+            installationId,
+          });
+        }
+
+        return new Response(
+          '<!doctype html><meta charset="utf-8"><title>Kira</title><p>GitHub is connected to Kira. You can close this window and return to the app.</p>',
+          { headers: { 'content-type': 'text/html; charset=utf-8' } },
+        );
+      },
+      {
+        query: t.Object({ installation_id: t.String(), state: t.String() }),
+        detail: { summary: 'The GitHub App post-install callback' },
       },
     )
     .get(
@@ -808,6 +936,47 @@ async function isAdmin(auth: Auth, userId: string): Promise<boolean> {
   const found = await context.internalAdapter.findUserById(userId);
 
   return (found as { role?: string | null } | null)?.role === 'admin';
+}
+
+/** The account an installation belongs to, or a placeholder when it cannot be read. */
+async function githubInstallationAccount(
+  config: Config,
+  installationId: number,
+): Promise<{ login: string; type: string }> {
+  const { appId, appPrivateKey } = config.git;
+  if (appId === null || appPrivateKey === null) return { login: 'unknown', type: 'Organization' };
+
+  try {
+    const jwt = signAppJwt(appId, appPrivateKey.replace(/\\n/g, '\n'));
+    const response = await fetch(`https://api.github.com/app/installations/${installationId}`, {
+      headers: {
+        authorization: `Bearer ${jwt}`,
+        accept: 'application/vnd.github+json',
+        'user-agent': 'kira',
+      },
+    });
+    if (!response.ok) return { login: 'unknown', type: 'Organization' };
+
+    const body = (await response.json()) as { account?: { login?: unknown; type?: unknown } };
+
+    return {
+      login: typeof body.account?.login === 'string' ? body.account.login : 'unknown',
+      type: typeof body.account?.type === 'string' ? body.account.type : 'Organization',
+    };
+  } catch {
+    return { login: 'unknown', type: 'Organization' };
+  }
+}
+
+async function findAppConnection(database: Database, installationId: number) {
+  const [found] = await database
+    .select()
+    .from(gitConnection)
+    .where(
+      and(eq(gitConnection.provider, 'github'), eq(gitConnection.installationId, installationId)),
+    );
+
+  return found;
 }
 
 function isHttpsUrl(value: string): boolean {

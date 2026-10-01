@@ -439,3 +439,54 @@ describe('connected hosts', () => {
     expect(prs[0]).toMatchObject({ number: 5, state: 'merged' });
   });
 });
+
+describe('the GitHub App', () => {
+  test('reports whether an App is configured, and refuses a non-administrator', async () => {
+    const { app, auth, key, person } = await signedIn();
+
+    const refused = await send(app, '/api/git/github/connect', { headers: bearer(key) });
+    expect(refused.status).toBe(403);
+
+    await makeAdmin(auth, person.id);
+    const answer = await send(app, '/api/git/github/connect', { headers: bearer(key) });
+    expect(answer.status).toBe(200);
+    expect(await answer.json()).toEqual({ configured: false, url: null });
+  });
+
+  test('installs with a signed state, and records the connection without App credentials', async () => {
+    const { app, auth } = await boot({}, {}, {}, { appSlug: 'kira-test' });
+    const person = await user(auth);
+    const key = (await issue(auth, person.id, 'github-app-test')).key;
+    await makeAdmin(auth, person.id);
+
+    const connect = await send(app, '/api/git/github/connect', { headers: bearer(key) });
+    expect(connect.status).toBe(200);
+    const body = (await connect.json()) as { configured: boolean; url: string };
+    expect(body.configured).toBe(true);
+    expect(body.url).toContain('https://github.com/apps/kira-test/installations/new?state=');
+
+    const state = new URL(body.url).searchParams.get('state');
+    expect(typeof state).toBe('string');
+
+    const tampered = await send(
+      app,
+      `/api/git/github/setup?installation_id=42&state=${encodeURIComponent(`${state}x`)}`,
+    );
+    expect(tampered.status).toBe(400);
+
+    const installed = await send(
+      app,
+      `/api/git/github/setup?installation_id=42&state=${encodeURIComponent(state!)}`,
+    );
+    expect(installed.status).toBe(200);
+
+    const listed = await send(app, '/api/git/connections', { headers: bearer(key) });
+    const connections = (await listed.json()).connections as Array<Record<string, unknown>>;
+    expect(connections).toHaveLength(1);
+    expect(connections[0]).toMatchObject({
+      provider: 'github',
+      authKind: 'app',
+      accountLogin: 'unknown',
+    });
+  });
+});
