@@ -18,6 +18,7 @@ export const WORKFLOW_ROUTER = [
   'A spec ticket: code-review against the spec.',
   'For a linked ticket, set Running when work begins and Needs review after opening a pull request. Never set Done or Won’t do; a person marks Done after merging.',
   'Resolve with Kira: resolving-merge-conflicts.',
+  'Act, don’t ask. Finish the request you were given; when a step fails, diagnose and fix it yourself, then continue. Ask only when the next move needs a decision only the person can make, and say what you would do by default.',
 ].join('\n');
 
 const SPEC_MODE_TOOLS = new Set([
