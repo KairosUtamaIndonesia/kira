@@ -23,7 +23,9 @@ import {
   TICKET_STATUSES,
   type ProjectSummary,
   type Ticket,
+  type TicketComment,
   type TicketQueue,
+  type TimelineEntry,
 } from '../../preload/bridge.ts';
 import type { TrackerAnswer } from '../tracker.ts';
 import { type Kira, RETURN_PATH } from './signIn.ts';
@@ -355,6 +357,30 @@ export function kiraFor({ server, scheme }: { server: string; scheme: string }):
         asBreakdown,
       ),
 
+    timeline: async (key, ticketId, limit) =>
+      asked(
+        () =>
+          kira.api.tickets({ ref: ticketId }).timeline.get({
+            headers: bearerFor(key),
+            query: limit === undefined ? {} : { limit: String(limit) },
+          }),
+        asTimeline,
+      ),
+
+    comment: async (key, ticketId, body, parentId, authorKind) =>
+      asked(
+        () =>
+          kira.api.tickets({ ref: ticketId }).comments.post(
+            {
+              body,
+              ...(parentId === undefined ? {} : { parentId }),
+              ...(authorKind === undefined ? {} : { authorKind }),
+            },
+            { headers: bearerFor(key) },
+          ),
+        (data) => asComment((data as { comment: unknown }).comment),
+      ),
+
     markBreakdownReady: async (key, specTicketId) =>
       asked(
         () =>
@@ -501,6 +527,26 @@ function asQueue(body: unknown): TicketQueue | null {
   if (tickets.some((each) => each === null)) return null;
 
   return { ...(body as object), tickets } as TicketQueue;
+}
+
+function asComment(body: unknown): TicketComment | null {
+  const held = body as { id?: unknown; ticketId?: unknown; body?: unknown };
+  if (
+    typeof held?.id !== 'string' ||
+    typeof held.ticketId !== 'string' ||
+    typeof held.body !== 'string'
+  ) {
+    return null;
+  }
+
+  return held as TicketComment;
+}
+
+function asTimeline(body: unknown): TimelineEntry[] | null {
+  const held = body as { entries?: unknown };
+  if (!Array.isArray(held?.entries)) return null;
+
+  return held.entries as TimelineEntry[];
 }
 
 function asDecision(body: unknown): ProjectDecision | null {

@@ -127,6 +127,14 @@ function kira(calls: string[], quirks: Quirks = {}): Kira {
       calls.push('ungate a ticket');
       return { kind: 'unavailable' };
     },
+    timeline: async () => {
+      calls.push('read a timeline');
+      return { kind: 'unavailable' };
+    },
+    comment: async () => {
+      calls.push('write a comment');
+      return { kind: 'unavailable' };
+    },
     readTicket: async () => {
       calls.push('read a ticket');
       return { kind: 'unavailable' };

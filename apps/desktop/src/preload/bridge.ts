@@ -655,6 +655,8 @@ export const TRACKER_CHANNELS = {
   change: 'tracker:change',
   gate: 'tracker:gate',
   ungate: 'tracker:ungate',
+  timeline: 'tracker:timeline',
+  comment: 'tracker:comment',
   undoGlossary: 'tracker:glossary:undo',
 } as const;
 
@@ -818,6 +820,40 @@ export interface TicketQueue {
   tickets: Ticket[];
   counts: Record<TicketStatus, number>;
 }
+
+/** Someone behind a comment: a person, or Kira acting in their chat. */
+export type CommentAuthor = { id: string; name: string } | null;
+
+/** What was said on a ticket, by a person or by Kira. */
+export interface TicketComment {
+  id: string;
+  ticketId: string;
+  parentId: string | null;
+  author: CommentAuthor;
+  authorKind: string;
+  body: string;
+  deleted: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * One row of a ticket's timeline: something said, or something that happened.
+ *
+ * The history is the server's own record of a change; `details` is whatever that
+ * change needed to be read, with names already resolved.
+ */
+export type TimelineEntry =
+  | ({ type: 'comment' } & Omit<TicketComment, 'ticketId'>)
+  | {
+      type: 'activity';
+      id: string;
+      actor: CommentAuthor;
+      actorKind: string;
+      action: string;
+      details: Record<string, unknown>;
+      createdAt: string;
+    };
 
 /** What writing a ticket down asks for. */
 export interface TicketDraft {
@@ -1327,6 +1363,18 @@ export interface KiraBridge {
   gateTicket(ticketId: string, gatedBy: string): Promise<Result<Ticket>>;
   /** Take a gate off a ticket. */
   ungateTicket(ticketId: string, gatedBy: string): Promise<Result<Ticket>>;
+  /**
+   * A ticket's comments and history as one timeline, oldest first. `limit` keeps
+   * only the newest entries, which is what a long ticket is read through.
+   */
+  loadTimeline(ticketId: string, limit?: number): Promise<Result<TimelineEntry[]>>;
+  /** Say something on a ticket, or reply to a comment on it. */
+  postComment(
+    ticketId: string,
+    body: string,
+    parentId?: string,
+    authorKind?: 'member' | 'kira',
+  ): Promise<Result<TicketComment>>;
   /**
    * What one folder of the chat's workspace holds, or null when that chat has
    * no workspace — a chat nothing has been said in yet has no folder to show,

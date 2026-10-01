@@ -21,10 +21,12 @@ import {
   type Result,
   type Ticket,
   type TicketChange,
+  type TicketComment,
   type TicketDraft,
   type TicketKind,
   type TicketPriority,
   type TicketQueue,
+  type TimelineEntry,
 } from '../../preload/bridge.ts';
 import { envelope, isId } from './result.ts';
 
@@ -44,6 +46,15 @@ export interface TrackerDeps {
   gate(ticketId: string, gatedBy: string): Promise<Ticket>;
   /** Take a gate off a ticket. */
   ungate(ticketId: string, gatedBy: string): Promise<Ticket>;
+  /** A ticket's comments and history as one timeline, oldest first. */
+  timeline(ticketId: string, limit?: number): Promise<TimelineEntry[]>;
+  /** Say something on a ticket, or reply to a comment on it. */
+  comment(
+    ticketId: string,
+    body: string,
+    parentId?: string,
+    authorKind?: 'member' | 'kira',
+  ): Promise<TicketComment>;
   /** Restore a glossary entry only if its visible version still matches. */
   undoGlossary?(
     workspaceId: string,
@@ -59,6 +70,13 @@ export interface TrackerHandlers {
   change(ticketId: unknown, change: unknown): Promise<Result<Ticket>>;
   gate(ticketId: unknown, gatedBy: unknown): Promise<Result<Ticket>>;
   ungate(ticketId: unknown, gatedBy: unknown): Promise<Result<Ticket>>;
+  timeline(ticketId: unknown, limit: unknown): Promise<Result<TimelineEntry[]>>;
+  comment(
+    ticketId: unknown,
+    body: unknown,
+    parentId: unknown,
+    authorKind: unknown,
+  ): Promise<Result<TicketComment>>;
   undoGlossary(
     workspaceId: unknown,
     entryId: unknown,
@@ -78,6 +96,8 @@ export function trackerHandlers({
   change,
   gate,
   ungate,
+  timeline,
+  comment,
   undoGlossary,
 }: TrackerDeps): TrackerHandlers & QuestionTrackerHandlers {
   return {
@@ -133,6 +153,50 @@ export function trackerHandlers({
 
     ungate: (ticketId, gatedBy) =>
       gateCall('A ticket needs an id to be ungated.', ticketId, gatedBy, ungate),
+
+    timeline: (ticketId, limit) => {
+      if (!isId(ticketId)) {
+        return Promise.resolve({ ok: false, error: 'A timeline is read for a ticket.' });
+      }
+      if (
+        limit !== undefined &&
+        limit !== null &&
+        (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1)
+      ) {
+        return Promise.resolve({ ok: false, error: 'A timeline is read up to a whole number.' });
+      }
+
+      return envelope(() => timeline(ticketId, typeof limit === 'number' ? limit : undefined));
+    },
+
+    comment: (ticketId, body, parentId, authorKind) => {
+      if (!isId(ticketId)) {
+        return Promise.resolve({ ok: false, error: 'A comment is written on a ticket.' });
+      }
+      if (typeof body !== 'string' || body.trim() === '') {
+        return Promise.resolve({ ok: false, error: 'A comment says something.' });
+      }
+      if (parentId !== undefined && parentId !== null && !isId(parentId)) {
+        return Promise.resolve({ ok: false, error: 'A reply answers a comment.' });
+      }
+      if (
+        authorKind !== undefined &&
+        authorKind !== null &&
+        authorKind !== 'member' &&
+        authorKind !== 'kira'
+      ) {
+        return Promise.resolve({ ok: false, error: 'That is not an author.' });
+      }
+
+      return envelope(() =>
+        comment(
+          ticketId,
+          body,
+          typeof parentId === 'string' ? parentId : undefined,
+          authorKind === 'kira' ? 'kira' : undefined,
+        ),
+      );
+    },
 
     undoGlossary: (workspaceId, entryId, version, chatId) => {
       if (!isId(workspaceId)) {

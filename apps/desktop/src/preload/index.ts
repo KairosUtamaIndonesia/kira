@@ -29,7 +29,9 @@ import {
   type ModelOption,
   type ProjectSummary,
   type Ticket,
+  type TicketComment,
   type TicketQueue,
+  type TimelineEntry,
   type WorkspaceSummary,
   type WorkspaceAsset,
   type QueuedLine,
@@ -133,6 +135,12 @@ const bridge: KiraBridge = {
   gateTicket: (ticketId, gatedBy) => ask<Ticket>(TRACKER_CHANNELS.gate, ticketId, gatedBy),
 
   ungateTicket: (ticketId, gatedBy) => ask<Ticket>(TRACKER_CHANNELS.ungate, ticketId, gatedBy),
+
+  loadTimeline: (ticketId, limit) =>
+    ask<TimelineEntry[]>(TRACKER_CHANNELS.timeline, ticketId, limit),
+
+  postComment: (ticketId, body, parentId, authorKind) =>
+    ask<TicketComment>(TRACKER_CHANNELS.comment, ticketId, body, parentId, authorKind),
 
   undoGlossary: (workspaceId, entryId, version, chatId) =>
     ask<GlossaryEntry>(TRACKER_CHANNELS.undoGlossary, workspaceId, entryId, version, chatId),

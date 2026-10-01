@@ -22,11 +22,13 @@ import type {
   JoinRequest,
   ProjectSummary,
   Ticket,
+  TicketComment,
   DecisionProposal,
   ProjectDecision,
   TicketChange,
   TicketDraft,
   TicketQueue,
+  TimelineEntry,
   Outcome,
   OutcomeProposal,
   MapProposal,
@@ -134,6 +136,16 @@ export interface TrackerWire {
   gateTicket(key: string, ticketId: string, gatedBy: string): Promise<TrackerAnswer<Ticket>>;
   /** Take a gate off a ticket. */
   ungateTicket(key: string, ticketId: string, gatedBy: string): Promise<TrackerAnswer<Ticket>>;
+  /** A ticket's comments and history as one timeline, oldest first. */
+  timeline(key: string, ticketId: string, limit?: number): Promise<TrackerAnswer<TimelineEntry[]>>;
+  /** Say something on a ticket, or reply to a comment on it. */
+  comment(
+    key: string,
+    ticketId: string,
+    body: string,
+    parentId?: string,
+    authorKind?: 'member' | 'kira',
+  ): Promise<TrackerAnswer<TicketComment>>;
   /** Publish proposed children and dependency gates in one server transaction. */
   publishBreakdown?(
     key: string,
@@ -203,6 +215,15 @@ export interface Tracker {
   change(ticketId: string, change: TicketChange): Promise<Ticket>;
   gate(ticketId: string, gatedBy: string): Promise<Ticket>;
   ungate(ticketId: string, gatedBy: string): Promise<Ticket>;
+  /** Read a ticket's comments and history as one timeline, oldest first. */
+  timeline(ticketId: string, limit?: number): Promise<TimelineEntry[]>;
+  /** Say something on a ticket, or reply to a comment on it. */
+  comment(
+    ticketId: string,
+    body: string,
+    parentId?: string,
+    authorKind?: 'member' | 'kira',
+  ): Promise<TicketComment>;
   publishBreakdown(specTicketId: string, children: BreakdownSlice[]): Promise<BreakdownResult>;
   markBreakdownReady(specTicketId: string): Promise<BreakdownResult>;
   projects(): Promise<ProjectSummary[]>;
@@ -371,6 +392,18 @@ export function trackerFor({
       const held = await key();
 
       return await asked(() => wire.ungateTicket(held, ticketId, gatedBy));
+    },
+
+    async timeline(ticketId, limit) {
+      const held = await key();
+
+      return await asked(() => wire.timeline(held, ticketId, limit));
+    },
+
+    async comment(ticketId, body, parentId, authorKind) {
+      const held = await key();
+
+      return await asked(() => wire.comment(held, ticketId, body, parentId, authorKind));
     },
 
     async publishBreakdown(specTicketId, children) {

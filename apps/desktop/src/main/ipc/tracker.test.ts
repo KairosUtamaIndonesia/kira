@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import {
   TICKET_KINDS,
   type Ticket,
+  type TicketComment,
   type TicketDraft,
   type TicketQueue,
 } from '../../preload/bridge.ts';
@@ -71,6 +72,18 @@ const draft: TicketDraft = {
   criteria: ['A criterion is one line'],
 };
 
+const comment: TicketComment = {
+  id: 'comment-1',
+  ticketId: ticket.id,
+  parentId: null,
+  author: { id: 'ada', name: 'Ada Lovelace' },
+  authorKind: 'member',
+  body: 'A comment says something.',
+  deleted: false,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+};
+
 /** Deps that record what they were asked to do; `overrides` replace one of them. */
 function deps(calls: string[], overrides: Partial<TrackerDeps> = {}): TrackerDeps {
   return {
@@ -93,6 +106,14 @@ function deps(calls: string[], overrides: Partial<TrackerDeps> = {}): TrackerDep
     ungate: async (ticketId, gatedBy) => {
       calls.push(`ungate ${ticketId} ${gatedBy}`);
       return ticket;
+    },
+    timeline: async (ticketId, limit) => {
+      calls.push(`timeline ${ticketId} ${limit ?? ''}`);
+      return [];
+    },
+    comment: async (ticketId, body, parentId, authorKind) => {
+      calls.push(`comment ${ticketId} ${body} ${parentId ?? ''} ${authorKind ?? ''}`);
+      return comment;
     },
     ...overrides,
   };
@@ -359,6 +380,50 @@ test('undoGlossary validates the visible version and preserves the server refusa
   assert.deepEqual(await handlers.undoGlossary('workspace-1', 'entry-1', 0, 'chat-1'), {
     ok: false,
     error: 'A glossary Undo needs a version.',
+  });
+});
+
+test('timeline reads a ticket’s conversation and comment says something on it', async () => {
+  const calls: string[] = [];
+  const handlers = trackerHandlers(
+    deps(calls, {
+      timeline: async (ticketId, limit) => {
+        calls.push(`timeline ${ticketId} ${limit ?? ''}`);
+        return [];
+      },
+      comment: async (ticketId, body, parentId, authorKind) => {
+        calls.push(`comment ${ticketId} ${body} ${parentId ?? ''} ${authorKind ?? ''}`);
+        return comment;
+      },
+    }),
+  );
+
+  assert.deepEqual(await handlers.timeline('ticket-1', 50), { ok: true, value: [] });
+  assert.deepEqual(await handlers.comment('ticket-1', 'Working on it.', undefined, 'kira'), {
+    ok: true,
+    value: comment,
+  });
+  assert.deepEqual(calls, ['timeline ticket-1 50', 'comment ticket-1 Working on it.  kira']);
+
+  assert.deepEqual(await handlers.timeline('', 50), {
+    ok: false,
+    error: 'A timeline is read for a ticket.',
+  });
+  assert.deepEqual(await handlers.timeline('ticket-1', 0), {
+    ok: false,
+    error: 'A timeline is read up to a whole number.',
+  });
+  assert.deepEqual(await handlers.comment('ticket-1', '   ', undefined, undefined), {
+    ok: false,
+    error: 'A comment says something.',
+  });
+  assert.deepEqual(await handlers.comment('ticket-1', 'Hi', '', undefined), {
+    ok: false,
+    error: 'A reply answers a comment.',
+  });
+  assert.deepEqual(await handlers.comment('ticket-1', 'Hi', undefined, 'robot'), {
+    ok: false,
+    error: 'That is not an author.',
   });
 });
 

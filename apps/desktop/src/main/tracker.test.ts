@@ -7,8 +7,10 @@ import type {
   ProjectDecision,
   ProjectSummary,
   Ticket,
+  TicketComment,
   TicketDraft,
   TicketQueue,
+  TimelineEntry,
   WorkspaceSummary,
 } from '../preload/bridge.ts';
 import {
@@ -71,6 +73,32 @@ const queue: TicketQueue = {
 
 const draft: TicketDraft = { kind: 'feature', title: 'A ticket', body: '', criteria: [] };
 
+const comment: TicketComment = {
+  id: 'comment-1',
+  ticketId: ticket.id,
+  parentId: null,
+  author: { id: 'ada', name: 'Ada' },
+  authorKind: 'kira',
+  body: 'Working on it.',
+  deleted: false,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+};
+
+const timeline: TimelineEntry[] = [
+  {
+    type: 'comment',
+    id: comment.id,
+    parentId: comment.parentId,
+    author: comment.author,
+    authorKind: comment.authorKind,
+    body: comment.body,
+    deleted: comment.deleted,
+    createdAt: comment.createdAt,
+    updatedAt: comment.updatedAt,
+  },
+];
+
 /** A wire that answers whatever one case needs, and records what it was asked. */
 function wire(calls: string[], answers: Partial<TrackerWire> = {}): TrackerWire {
   return {
@@ -105,6 +133,14 @@ function wire(calls: string[], answers: Partial<TrackerWire> = {}): TrackerWire 
     ungateTicket: async (key, ticketId, gatedBy) => {
       calls.push(`ungateTicket ${key} ${ticketId} ${gatedBy}`);
       return { kind: 'ok', body: ticket };
+    },
+    timeline: async (key, ticketId, limit) => {
+      calls.push(`timeline ${key} ${ticketId} ${limit ?? ''}`);
+      return { kind: 'ok', body: timeline };
+    },
+    comment: async (key, ticketId, body, parentId, authorKind) => {
+      calls.push(`comment ${key} ${ticketId} ${body} ${parentId ?? ''} ${authorKind ?? ''}`);
+      return { kind: 'ok', body: comment };
     },
     readTicket: async (key, ref) => {
       calls.push(`readTicket ${key} ${ref}`);

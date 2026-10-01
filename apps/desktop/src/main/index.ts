@@ -276,6 +276,9 @@ function registerTrackerChannels(): void {
     change: (ticketId, change) => tracker.change(ticketId, change),
     gate: (ticketId, gatedBy) => tracker.gate(ticketId, gatedBy),
     ungate: (ticketId, gatedBy) => tracker.ungate(ticketId, gatedBy),
+    timeline: (ticketId, limit) => tracker.timeline(ticketId, limit),
+    comment: (ticketId, body, parentId, authorKind) =>
+      tracker.comment(ticketId, body, parentId, authorKind),
     undoGlossary: (workspaceId, entryId, version, chatId) =>
       tracker.undoGlossary!(workspaceId, entryId, version, chatId),
   });
@@ -297,6 +300,14 @@ function registerTrackerChannels(): void {
   );
   ipcMain.handle(TRACKER_CHANNELS.ungate, (_event, ticketId: unknown, gatedBy: unknown) =>
     handlers.ungate(ticketId, gatedBy),
+  );
+  ipcMain.handle(TRACKER_CHANNELS.timeline, (_event, ticketId: unknown, limit: unknown) =>
+    handlers.timeline(ticketId, limit),
+  );
+  ipcMain.handle(
+    TRACKER_CHANNELS.comment,
+    (_event, ticketId: unknown, body: unknown, parentId: unknown, authorKind: unknown) =>
+      handlers.comment(ticketId, body, parentId, authorKind),
   );
   ipcMain.handle(
     TRACKER_CHANNELS.undoGlossary,
