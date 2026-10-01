@@ -44,7 +44,7 @@ Multica has built both surfaces and is the reference for their shape. It also su
 - **Activity is written on the paths that exist today** — the ticket update route and the blocker routes. Status transitions reached through a breakdown, an Outcome approval or a merge should record activity as they are touched; until then the timeline is complete for edits and sparse for those transitions.
 - **Comments are tombstoned, not deleted,** when they have replies, so a thread does not dangle. A comment with no replies is removed outright.
 - **CI status is deliberately not modelled.** GitHub check suites, GitLab pipelines and Gitea commit statuses differ the most of anything here, and a pull request that is reviewed on its host does not need Kira to render its checks.
-- **The connection is recorded but not yet set up through a host.** A project's repositories and the pull requests against them work today, and GitHub's webhook is verified with `KIRA_GITHUB_WEBHOOK_SECRET` in the environment. A `git_connection` row is where an App installation or a token connection is written as those flows are built; until then a self-hosted host is watched by the same webhook once its adapter lands.
+- **A host is connected with a token, and its secret is shown once.** An administrator connects a host (`POST /api/git/connections`) and is handed the webhook secret once; the host's webhook points at `/api/webhooks/git/{connectionId}`, and the secret is stored sealed under `KIRA_GIT_SECRET_KEY` and never read back. GitHub's App installation flow is not built: GitHub is watched through the environment secret at `/api/webhooks/github`, or through a token connection like any other host.
 
 ## Sources
 
