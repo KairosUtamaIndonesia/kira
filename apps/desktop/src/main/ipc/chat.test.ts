@@ -659,6 +659,8 @@ for (const testCase of CASES) {
     const run = {
       load: () => handlers.load(),
       send: () => handlers.send(testCase.argument),
+      runShell: () => handlers.runShell(testCase.argument, testCase.secondArgument),
+      cancelShell: () => handlers.cancelShell(testCase.argument, testCase.secondArgument),
       setMode: () => handlers.setMode(testCase.argument as ChatMode),
       setAttachedTicketIds: () => handlers.setAttachedTicketIds(testCase.argument),
       queue: () => handlers.queue(testCase.argument, testCase.lane),
@@ -848,4 +850,45 @@ test('questionnaire submissions require and preserve both chat and request ids',
     ['answer', 'chat-1', 'request-1', payload],
     ['cancel', 'chat-1', 'request-1'],
   ]);
+});
+
+test('local command operations validate and preserve the explicit chat target', async () => {
+  const calls: string[] = [];
+  const handlers = chatHandlers(
+    deps(calls, {
+      startShell: async (chatId, command) => {
+        calls.push(`run ${chatId} ${command}`);
+        return 'run-1';
+      },
+      cancelShell: (chatId, runId) => {
+        calls.push(`cancel ${chatId} ${runId}`);
+        return true;
+      },
+    }),
+  ) as ChatHandlers & {
+    runShell(chatId: unknown, command: unknown): Promise<unknown>;
+    cancelShell(chatId: unknown, runId: unknown): Promise<unknown>;
+  };
+
+  assert.deepEqual(await handlers.runShell('', 'pwd'), {
+    ok: false,
+    error: 'A local command needs a chat id.',
+  });
+  assert.deepEqual(await handlers.runShell('chat-1', '  '), {
+    ok: false,
+    error: 'A local command needs some text.',
+  });
+  assert.deepEqual(await handlers.runShell('chat-1', '!pwd'), {
+    ok: true,
+    value: 'run-1',
+  });
+  assert.deepEqual(await handlers.cancelShell('', 'run-1'), {
+    ok: false,
+    error: 'A local command needs a chat and run id.',
+  });
+  assert.deepEqual(await handlers.cancelShell('chat-1', 'run-1'), {
+    ok: true,
+    value: null,
+  });
+  assert.deepEqual(calls, ['run chat-1 !pwd', 'cancel chat-1 run-1']);
 });

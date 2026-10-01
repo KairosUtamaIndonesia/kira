@@ -75,6 +75,16 @@ export interface OpenChats {
   showing(): string | null;
   /** Send one message to the chat on screen and wait for the turn to finish. */
   send(text: string): Promise<void>;
+  /**
+   * Run one local command in the chat `chatId` names, without starting a turn.
+   *
+   * The chat is named rather than taken from what is on screen, so a switch
+   * midway cannot retarget the command at another chat's folder. Answers the
+   * run's id, which is what stops it.
+   */
+  startShell(chatId: string, command: string): Promise<string>;
+  /** Stop the local command `runId` names in `chatId`. */
+  cancelShell(chatId: string, runId: string): boolean;
   /** Change the current chat's mode, refusing a switch while Kira is writing. */
   setMode(mode: ChatMode): Promise<void>;
   /** Attach or detach project tickets from the current chat. */
@@ -351,7 +361,11 @@ export function openChats(
    * turn is over.
    */
   function release(conversation: Conversation): void {
-    if (conversation.threadId !== shown && !conversation.isRunning()) {
+    if (
+      conversation.threadId !== shown &&
+      !conversation.isRunning() &&
+      !conversation.shellRunning()
+    ) {
       close(conversation);
     }
   }
@@ -443,8 +457,13 @@ export function openChats(
    * while the turn runs.
    */
   function whileIdle(id: string): void {
-    if (open.get(id)?.isRunning()) {
+    const conversation = open.get(id);
+
+    if (conversation?.isRunning()) {
       throw new Error('Kira is writing in this chat.');
+    }
+    if (conversation?.shellRunning()) {
+      throw new Error('A local command is running in this chat.');
     }
   }
 
@@ -571,6 +590,7 @@ export function openChats(
         // anything or filled anything yet.
         chatUsage: conversation?.chatUsage() ?? null,
         shaping: conversation === null ? noShaping() : shapingFor(conversation.threadId),
+        commands: conversation?.commands() ?? [],
         questionnaire:
           conversation === null || questionnaires === undefined
             ? null
@@ -597,6 +617,32 @@ export function openChats(
         release(conversation);
       }
     },
+    startShell: async (chatId, command) => {
+      // Addressed by the chat the window named, not by what is on screen: a
+      // switch while this is in flight must not move the command elsewhere.
+      const conversation = open.get(chatId);
+
+      if (conversation === undefined) {
+        if (draft?.id !== chatId) throw new Error('That chat is not open.');
+
+        // A command in a chat still being composed starts it, exactly as the
+        // first message would, so the run is recorded in the chat it was typed in.
+        const started = await currentForSend();
+
+        try {
+          return await started.runShell(command);
+        } finally {
+          release(started);
+        }
+      }
+
+      try {
+        return await conversation.runShell(command);
+      } finally {
+        release(conversation);
+      }
+    },
+    cancelShell: (chatId, runId) => open.get(chatId)?.cancelShell(runId) ?? false,
     setMode: async (mode) => {
       if (shown === null && draft !== null) {
         draft = { ...draft, mode };

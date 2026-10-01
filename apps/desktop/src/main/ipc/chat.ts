@@ -23,6 +23,8 @@ export interface ChatDeps {
   /** The whole surface: chats, current chat, transcript. */
   state(): ChatState;
   send(text: string): Promise<void>;
+  startShell?(chatId: string, command: string): Promise<string>;
+  cancelShell?(chatId: string, runId: string): boolean;
   setMode?(mode: ChatMode): Promise<void>;
   setAttachedTicketIds?(attachedTicketIds: string[]): Promise<void>;
   approveProposal?(proposalId: string): Promise<void>;
@@ -55,6 +57,8 @@ export interface ChatDeps {
 export interface ChatHandlers {
   load(): Promise<Result<ChatState>>;
   send(text: unknown): Promise<Result<null>>;
+  runShell(chatId: unknown, command: unknown): Promise<Result<string>>;
+  cancelShell(chatId: unknown, runId: unknown): Promise<Result<null>>;
   setMode(mode: unknown): Promise<Result<null>>;
   setAttachedTicketIds(attachedTicketIds: unknown): Promise<Result<null>>;
   queue(text: unknown, lane: unknown): Promise<Result<null>>;
@@ -88,6 +92,8 @@ export interface ShapeChatHandlers {
 export function chatHandlers({
   state,
   send,
+  startShell,
+  cancelShell,
   setMode,
   setAttachedTicketIds,
   approveProposal,
@@ -151,6 +157,40 @@ export function chatHandlers({
       }
 
       return nothing(() => send(text));
+    },
+
+    runShell: (chatId, command) => {
+      if (!isId(chatId)) {
+        return Promise.resolve({ ok: false, error: 'A local command needs a chat id.' });
+      }
+      if (typeof command !== 'string' || command.trim() === '') {
+        return Promise.resolve({ ok: false, error: 'A local command needs some text.' });
+      }
+      if (command.length > 16_384) {
+        return Promise.resolve({ ok: false, error: 'That local command is too long.' });
+      }
+      if (startShell === undefined) {
+        return Promise.resolve({ ok: false, error: 'Local command execution is unavailable.' });
+      }
+
+      return envelope(() => startShell(chatId, command));
+    },
+
+    cancelShell: (chatId, runId) => {
+      if (!isId(chatId) || !isId(runId)) {
+        return Promise.resolve({
+          ok: false,
+          error: 'A local command needs a chat and run id.',
+        });
+      }
+      if (cancelShell === undefined) {
+        return Promise.resolve({ ok: false, error: 'Local command cancellation is unavailable.' });
+      }
+      if (!cancelShell(chatId, runId)) {
+        return Promise.resolve({ ok: false, error: 'That local command is no longer running.' });
+      }
+
+      return Promise.resolve({ ok: true, value: null });
     },
 
     approveProposal: (proposalId) => {

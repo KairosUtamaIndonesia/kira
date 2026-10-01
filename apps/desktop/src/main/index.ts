@@ -95,6 +95,8 @@ function registerChatChannels(): void {
   const handlers = chatHandlers({
     state: () => chats.state(),
     send: (text) => chats.send(text),
+    startShell: (chatId, command) => chats.startShell(chatId, command),
+    cancelShell: (chatId, runId) => chats.cancelShell(chatId, runId),
     setMode: (mode) => chats.setMode(mode),
     setAttachedTicketIds: (attachedTicketIds) => chats.setAttachedTicketIds(attachedTicketIds),
     approveProposal: (proposalId) => chats.approveProposal(proposalId),
@@ -164,6 +166,14 @@ function registerChatChannels(): void {
     void usage.refresh();
     return answer;
   });
+  // A local command makes no model call, so the month's reading is not asked for
+  // again: nothing here can spend an allowance.
+  ipcMain.handle(CHAT_CHANNELS.runShell, (_event, chatId: unknown, command: unknown) =>
+    handlers.runShell(chatId, command),
+  );
+  ipcMain.handle(CHAT_CHANNELS.cancelShell, (_event, chatId: unknown, runId: unknown) =>
+    handlers.cancelShell(chatId, runId),
+  );
   ipcMain.handle(CHAT_CHANNELS.queue, (_event, text: unknown, lane: unknown) =>
     handlers.queue(text, lane),
   );

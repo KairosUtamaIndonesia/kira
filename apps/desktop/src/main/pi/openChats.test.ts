@@ -13,7 +13,7 @@ import { writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { test } from 'node:test';
 import { getAgentDir, SettingsManager } from '@earendil-works/pi-coding-agent';
-import type { ChatState } from '../../preload/bridge.ts';
+import type { ChatEvent, ChatState } from '../../preload/bridge.ts';
 import { ThreadStore } from '../db/threads.ts';
 import { tempDir } from '../test-support/temp.ts';
 import { type OpenChats, openChats } from './openChats.ts';
@@ -140,6 +140,138 @@ function newWorkspaces(): { make: () => string; made: string[] } {
 async function begin(chats: OpenChats): Promise<void> {
   await chats.start(null);
 }
+
+test('the active chat exposes only commands and skills loaded into its Pi session', async () => {
+  const fixture = storedChats();
+  const chats = openChats(fixture.store, () => {}, newWorkspaces().make, MODELS);
+
+  try {
+    await show(chats, fixture, 0);
+
+    const commands = chats.state().commands ?? [];
+    const implement = commands.find((command) => command.invocation === '/skill:implement');
+
+    assert.deepEqual(
+      implement && { label: implement.label, category: implement.category },
+      { label: '/skill:implement', category: 'Skills' },
+    );
+    assert.equal(commands.some((command) => command.invocation === '/skill:personal-tool'), false);
+  } finally {
+    chats.closeAll();
+    fixture.store.close();
+  }
+});
+
+/** Wait until `condition` answers something, rather than guessing at a delay. */
+async function waitFor<T>(condition: () => T | undefined, description: string): Promise<T> {
+  const started = Date.now();
+
+  while (true) {
+    const found = condition();
+    if (found !== undefined) return found;
+    if (Date.now() - started > 5_000) throw new Error(`Timed out waiting for ${description}.`);
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+test('a local command runs in the chat it names, and its transcript carries the output', async () => {
+  const fixture = storedChats();
+  const chats = openChats(fixture.store, () => {}, newWorkspaces().make, MODELS);
+
+  try {
+    await show(chats, fixture, 0);
+
+    const runId = await chats.startShell(fixture.ids[0]!, 'printf hello');
+    assert.equal(typeof runId, 'string');
+
+    const shell = chats
+      .state()
+      .transcript.messages.flatMap((message) => message.parts)
+      .find((part) => part.type === 'shell');
+    if (shell?.type !== 'shell') throw new Error('the transcript does not carry the run');
+
+    assert.deepEqual(
+      {
+        command: shell.run.command,
+        output: shell.run.output,
+        status: shell.run.status,
+        exitCode: shell.run.exitCode,
+      },
+      { command: 'printf hello', output: 'hello', status: 'complete', exitCode: 0 },
+    );
+  } finally {
+    chats.closeAll();
+    fixture.store.close();
+  }
+});
+
+test('a local command is refused in a chat that is not open', async () => {
+  const fixture = storedChats();
+  const chats = openChats(fixture.store, () => {}, newWorkspaces().make, MODELS);
+
+  try {
+    await assert.rejects(chats.startShell('nobody', 'printf hello'), /not open/);
+  } finally {
+    chats.closeAll();
+    fixture.store.close();
+  }
+});
+
+test('a second local command is refused while one is running in the chat', async () => {
+  const fixture = storedChats();
+  const chats = openChats(fixture.store, () => {}, newWorkspaces().make, MODELS);
+
+  try {
+    await show(chats, fixture, 0);
+
+    const running = chats.startShell(fixture.ids[0]!, 'sleep 3');
+    await assert.rejects(chats.startShell(fixture.ids[0]!, 'printf second'), /already running/);
+    await running;
+  } finally {
+    chats.closeAll();
+    fixture.store.close();
+  }
+});
+
+test('a running local command is cancelled by the id it reported', async () => {
+  const events: ChatEvent[] = [];
+  const fixture = storedChats();
+  const chats = openChats(fixture.store, (event) => events.push(event), newWorkspaces().make, MODELS);
+
+  try {
+    await show(chats, fixture, 0);
+
+    const running = chats.startShell(fixture.ids[0]!, 'sleep 3');
+    const runId = await waitFor(() => {
+      const reported = events.find((event) => event.type === 'shell-command');
+      return reported?.type === 'shell-command' ? reported.run.id : undefined;
+    }, 'the run to report its id');
+
+    assert.equal(chats.cancelShell(fixture.ids[0]!, runId), true);
+    await running;
+
+    const last = events.filter((event) => event.type === 'shell-command').at(-1);
+    assert.equal(last?.type === 'shell-command' ? last.run.status : null, 'cancelled');
+  } finally {
+    chats.closeAll();
+    fixture.store.close();
+  }
+});
+
+test('cancelling a run that is not running answers no', async () => {
+  const fixture = storedChats();
+  const chats = openChats(fixture.store, () => {}, newWorkspaces().make, MODELS);
+
+  try {
+    await show(chats, fixture, 0);
+
+    assert.equal(chats.cancelShell(fixture.ids[0]!, 'nothing-runs-by-this-id'), false);
+  } finally {
+    chats.closeAll();
+    fixture.store.close();
+  }
+});
 
 interface Case {
   name: string;

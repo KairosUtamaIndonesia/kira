@@ -132,6 +132,28 @@ export function resultOf(entries: readonly Stored[], callId: string): Part | nul
   return null;
 }
 
+/** A command the person ran themselves, as pi holds it. */
+type ByHand = Extract<Said, { role: 'bashExecution' }>;
+
+/**
+ * A command the person ran themselves, with what it printed and how it ended.
+ *
+ * The output is carried because what a command *came to* is the point of running
+ * it: a `git commit` typed by hand is still a commit, and a reconstruction that
+ * kept only the command would have to guess whether it worked.
+ */
+function ranByHand(message: ByHand): string {
+  const headed = `$ ${message.command}`;
+  const status = message.cancelled
+    ? ' (cancelled)'
+    : message.exitCode === undefined || message.exitCode === 0
+      ? ''
+      : ` (exit code ${message.exitCode})`;
+  const output = message.output.trimEnd();
+
+  return output === '' ? `${headed}${status}` : `${headed}${status}\n${output}`;
+}
+
 /** The pieces one message is made of. */
 function partsOf(message: Said): Part[] {
   switch (message.role) {
@@ -179,7 +201,7 @@ function partsOf(message: Said): Part[] {
     }
 
     case 'bashExecution':
-      return [{ kind: 'text', text: `$ ${message.command}` }];
+      return [{ kind: 'text', text: ranByHand(message) }];
 
     case 'branchSummary':
       return [{ kind: 'text', text: message.summary }];
@@ -257,7 +279,7 @@ function turnIn(message: Said): Turn | null {
     // A command the person ran themselves, which is part of what happened even
     // though no model was involved.
     case 'bashExecution':
-      return turn('tool', `$ ${message.command}`);
+      return turn('tool', ranByHand(message));
 
     // The summary of the branch this chat was forked from. It is what happened
     // before this chat existed, so it is carried as words.

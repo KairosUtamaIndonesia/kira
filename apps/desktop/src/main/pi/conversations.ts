@@ -11,12 +11,14 @@
  * session entry is.
  */
 import type { AgentSessionEvent, FileEntry, SessionEntry } from '@earendil-works/pi-coding-agent';
+import { randomUUID } from 'node:crypto';
 import { basename, dirname } from 'node:path';
 import type {
   ChatMode,
   ChatConclusion,
   ChatEvent,
   GlossaryChangeNote,
+  ChatCommand,
   ChatMemory,
   ChatMessage,
   ChatPart,
@@ -30,6 +32,7 @@ import type {
   BreakdownSlice,
   SpecProposal,
   MemoryKind,
+  ShellCommandRun,
   ToolImage,
   WorkspaceSummary,
   QueuedLine,
@@ -92,6 +95,20 @@ export interface Conversation {
   choose(modelId: string): Promise<void>;
   /** The conversation as a tree, and the branch on screen. */
   transcript(): ChatTranscript;
+  /** Commands, templates, and skills loaded into this active Pi session. */
+  commands(): ChatCommand[];
+  /**
+   * Run one local command in this chat's folder, without starting a model turn.
+   *
+   * pi records the run as an entry of its own, so it persists exactly like a
+   * turn and the next session context carries it. Answers the run's id, which is
+   * what stops it.
+   */
+  runShell(command: string): Promise<string>;
+  /** Stop the local command `runId` names. Answers whether it was running. */
+  cancelShell(runId: string): boolean;
+  /** Whether a user-run local command is running in this chat right now. */
+  shellRunning(): boolean;
   /**
    * What Kira is holding for this chat, in the order it was first said.
    *
@@ -364,11 +381,19 @@ function conversationOf(
   };
 
   let runningSince: number | null = null;
+  /** The local command running in this chat, by the id it was given, or none. */
+  let shellRunningId: string | null = null;
+  /** Whether pi is summarising this chat right now, which a shell run must not race. */
+  let compacting = false;
   const unsubscribe = kira.session.subscribe((event) => {
     if (event.type === 'agent_start') {
       runningSince = Date.now();
       emit({ type: 'started', threadId: kira.threadId });
     }
+    // A compaction rewrites the entry list a shell run records into, so one is
+    // not started while the other is in flight. pi says when each begins and ends.
+    if (event.type === 'compaction_start') compacting = true;
+    if (event.type === 'compaction_end') compacting = false;
     if (
       event.type === 'message_update' &&
       event.message.role === 'assistant' &&
@@ -522,6 +547,40 @@ function conversationOf(
   return {
     threadId: kira.threadId,
     transcript: () => transcriptOf(kira),
+    commands: () => {
+      const session = kira.session;
+
+      return [
+        {
+          id: 'compact',
+          label: '/compact',
+          description: 'Summarise this chat now.',
+          invocation: '/compact',
+          category: 'Commands' as const,
+        },
+        ...session.extensionRunner.getRegisteredCommands().map((command) => ({
+          id: `extension:${command.invocationName}`,
+          label: `/${command.invocationName}`,
+          description: command.description ?? '',
+          invocation: `/${command.invocationName}`,
+          category: 'Commands' as const,
+        })),
+        ...session.promptTemplates.map((template) => ({
+          id: `prompt:${template.name}`,
+          label: `/${template.name}`,
+          description: template.description,
+          invocation: `/${template.name}`,
+          category: 'Commands' as const,
+        })),
+        ...session.resourceLoader.getSkills().skills.map((skill) => ({
+          id: `skill:${skill.name}`,
+          label: `/skill:${skill.name}`,
+          description: skill.description,
+          invocation: `/skill:${skill.name}`,
+          category: 'Skills' as const,
+        })),
+      ];
+    },
     memory,
     conclusions,
     send: async (text) => {
@@ -575,6 +634,89 @@ function conversationOf(
       // exactly what compacting by hand is for not waiting for.
       emit({ type: 'transcript', threadId: kira.threadId, transcript: transcriptOf(kira) });
     },
+    runShell: async (command) => {
+      if (kira.session.isStreaming) {
+        throw new Error('Wait until Kira has finished before running a local command.');
+      }
+      if (compacting) {
+        throw new Error('Wait until Kira has finished summarising before running a local command.');
+      }
+      if (shellRunningId !== null) {
+        throw new Error('A local command is already running in this chat.');
+      }
+
+      const id = randomUUID();
+      shellRunningId = id;
+      let printed = '';
+      emit({ type: 'shell-command', threadId: kira.threadId, run: shellRunInProgress(id, command, '') });
+
+      try {
+        // pi runs it in this session's working folder with the shell this chat is
+        // configured for, streams the output, and records the result as an entry.
+        const result = await kira.session.executeBash(
+          command,
+          (chunk) => {
+            printed += chunk;
+            emit({
+              type: 'shell-command',
+              threadId: kira.threadId,
+              run: shellRunInProgress(id, command, printed),
+            });
+          },
+          { id },
+        );
+
+        emit({
+          type: 'shell-command',
+          threadId: kira.threadId,
+          run: {
+            id,
+            command,
+            output: result.output,
+            status: result.cancelled ? 'cancelled' : result.exitCode === 0 ? 'complete' : 'error',
+            exitCode: result.exitCode ?? null,
+            truncated: result.truncated,
+            fullOutputPath: result.fullOutputPath ?? null,
+          },
+        });
+
+        return id;
+      } catch (failure) {
+        // The shell could not be started at all — no executable, a folder that is
+        // gone — so the run is closed out as a failure rather than left running.
+        emit({
+          type: 'shell-command',
+          threadId: kira.threadId,
+          run: {
+            id,
+            command,
+            output: printed,
+            status: 'error',
+            exitCode: null,
+            truncated: false,
+            fullOutputPath: null,
+          },
+        });
+        throw failure;
+      } finally {
+        shellRunningId = null;
+        // A shell run makes no agent run, so nothing else carries the entry it
+        // wrote to the window — pi settles a transcript after a turn, and this is
+        // not one. A manual compaction publishes for the same reason, and this
+        // also clears a run that failed before pi recorded anything.
+        emit({ type: 'transcript', threadId: kira.threadId, transcript: transcriptOf(kira) });
+      }
+    },
+    cancelShell: (runId) => {
+      if (shellRunningId !== runId) return false;
+
+      // Aborts the command only: an AI turn is refused before a shell run starts,
+      // so there is never one here for this to cancel by mistake.
+      kira.session.abortBash();
+
+      return true;
+    },
+    shellRunning: () => shellRunningId !== null,
     switchBranch: async (messageId) => {
       // Refuse an id this chat does not hold a message at, in the same words a
       // fork does: the picker only ever sends message ids, so this is a window
@@ -1255,6 +1397,19 @@ function nearestMessage(
   return entryId === null ? null : (messageAbove.get(entryId) ?? null);
 }
 
+/** One local command while it is still running: no exit code or size yet. */
+function shellRunInProgress(id: string, command: string, output: string): ShellCommandRun {
+  return {
+    id,
+    command,
+    output,
+    status: 'running',
+    exitCode: null,
+    truncated: false,
+    fullOutputPath: null,
+  };
+}
+
 /**
  * One stored entry as a message, or nothing when it is not a turn's own words —
  * model changes, compaction summaries, thinking, tool results. An assistant
@@ -1331,6 +1486,34 @@ function messageOf(
     }
 
     return parts.length > 0 ? { id, parentId, role: 'kira', parts } : null;
+  }
+
+  if (message.role === 'bashExecution') {
+    // A command the person ran themselves. It carries no words, but it is part
+    // of what happened, and pi already holds its output and how it ended.
+    return {
+      id,
+      parentId,
+      role: 'you',
+      parts: [
+        {
+          type: 'shell',
+          run: {
+            id,
+            command: message.command,
+            output: message.output,
+            status: message.cancelled
+              ? 'cancelled'
+              : message.exitCode === 0
+                ? 'complete'
+                : 'error',
+            exitCode: message.exitCode ?? null,
+            truncated: message.truncated,
+            fullOutputPath: message.fullOutputPath ?? null,
+          },
+        },
+      ],
+    };
   }
 
   return null;

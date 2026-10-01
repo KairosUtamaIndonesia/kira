@@ -108,6 +108,7 @@ type ShownRun = Omit<ToolRun, 'durationMs'> & { durationMs: 'timed' | null };
 /** One part as a case reads it. */
 type ShownPart =
   | { type: 'text'; text: string }
+  | { type: 'shell'; run: Extract<ChatPart, { type: 'shell' }>['run'] }
   | { type: 'work'; reasoning: string | null; durationMs: 'timed' | null; calls: ShownRun[] }
   | { type: 'glossary'; change: Extract<ChatPart, { type: 'glossary' }>['change'] }
   | {
@@ -227,6 +228,35 @@ const reply =
   };
 
 /**
+ * The person ran a command themselves, which pi stores as a message of its own:
+ * the command, what it printed, and how it ended. Written here rather than run,
+ * so the transcript can be read without a shell.
+ */
+const bashed =
+  (
+    command: string,
+    result: {
+      output: string;
+      exitCode?: number;
+      cancelled?: boolean;
+      truncated?: boolean;
+      fullOutputPath?: string;
+    },
+  ): Step =>
+  (thread: PiThread): void => {
+    thread.sessionManager.appendMessage({
+      role: 'bashExecution',
+      command,
+      output: result.output,
+      exitCode: result.exitCode,
+      cancelled: result.cancelled ?? false,
+      truncated: result.truncated ?? false,
+      ...(result.fullOutputPath === undefined ? {} : { fullOutputPath: result.fullOutputPath }),
+      timestamp: 4,
+    });
+  };
+
+/**
  * pi summarises the chat so far, writing an entry of its own between the
  * messages. That is what makes a compaction a boundary in the transcript rather
  * than something anybody said: it is an entry nobody wrote, sitting between two
@@ -301,6 +331,7 @@ function shown(part: ChatPart): ShownPart {
   if (part.type === 'text') return part;
   if (part.type === 'compaction') return { ...part, at: 'recorded' };
   if (part.type === 'glossary') return part;
+  if (part.type === 'shell') return { ...part, run: { ...part.run, id: 'recorded' } };
 
   return {
     ...part,
@@ -343,6 +374,7 @@ function lineOf(part: ChatPart): string {
   if (part.type === 'text') return part.text;
   if (part.type === 'compaction') return `[summarised ${part.messages} messages]`;
   if (part.type === 'glossary') return `[glossary ${part.change.term}]`;
+  if (part.type === 'shell') return `!${part.run.command}: ${part.run.status}`;
 
   return part.calls.map((call) => `${call.name} ${call.target ?? ''}`.trim()).join(', ');
 }
@@ -985,6 +1017,97 @@ const TRANSCRIPT_CASES = [
               reasoning: 'I should check the file first.',
               durationMs: 'timed',
               calls: [made('read', 'notes.md', 'done')],
+            },
+          ],
+        },
+      ],
+      head: 0,
+    },
+  },
+  {
+    name: 'a command the person ran is in the transcript with what it printed',
+    steps: [bashed('printf hi', { output: 'hi', exitCode: 0 })],
+    want: {
+      trailing: [],
+      messages: [
+        {
+          parent: null,
+          role: 'you',
+          parts: [
+            {
+              type: 'shell',
+              run: {
+                id: 'recorded',
+                command: 'printf hi',
+                output: 'hi',
+                status: 'complete',
+                exitCode: 0,
+                truncated: false,
+                fullOutputPath: null,
+              },
+            },
+          ],
+        },
+      ],
+      head: 0,
+    },
+  },
+  {
+    name: 'a command that failed is in the transcript, with its exit code',
+    steps: [bashed('exit 3', { output: 'boom', exitCode: 3 })],
+    want: {
+      trailing: [],
+      messages: [
+        {
+          parent: null,
+          role: 'you',
+          parts: [
+            {
+              type: 'shell',
+              run: {
+                id: 'recorded',
+                command: 'exit 3',
+                output: 'boom',
+                status: 'error',
+                exitCode: 3,
+                truncated: false,
+                fullOutputPath: null,
+              },
+            },
+          ],
+        },
+      ],
+      head: 0,
+    },
+  },
+  {
+    name: 'a cancelled command says it was stopped, and carries that pi truncated the output',
+    steps: [
+      bashed('yes', {
+        output: 'y'.repeat(20),
+        cancelled: true,
+        truncated: true,
+        fullOutputPath: '/tmp/full-output.txt',
+      }),
+    ],
+    want: {
+      trailing: [],
+      messages: [
+        {
+          parent: null,
+          role: 'you',
+          parts: [
+            {
+              type: 'shell',
+              run: {
+                id: 'recorded',
+                command: 'yes',
+                output: 'y'.repeat(20),
+                status: 'cancelled',
+                exitCode: null,
+                truncated: true,
+                fullOutputPath: '/tmp/full-output.txt',
+              },
             },
           ],
         },

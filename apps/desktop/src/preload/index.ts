@@ -84,6 +84,8 @@ const bridge: KiraBridge = {
   cancelQuestionnaire: (threadId, requestId) =>
     ask<null>(CHAT_CHANNELS.questionnaireCancel, threadId, requestId),
   sendMessage: (text) => ask<null>(CHAT_CHANNELS.send, text),
+  runShellCommand: (chatId, command) => ask<string>(CHAT_CHANNELS.runShell, chatId, command),
+  cancelShellCommand: (chatId, runId) => ask<null>(CHAT_CHANNELS.cancelShell, chatId, runId),
 
   queueMessage: (text, lane) => ask<null>(CHAT_CHANNELS.queue, text, lane),
 

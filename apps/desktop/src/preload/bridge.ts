@@ -200,6 +200,7 @@ export interface ToolRun {
  */
 export type ChatPart =
   | { type: 'text'; text: string }
+  | { type: 'shell'; run: ShellCommandRun }
   | {
       type: 'work';
       /** What she thought before acting, if she said anything. */
@@ -263,6 +264,26 @@ export interface ChatMessage {
   parentId: string | null;
   role: 'you' | 'kira';
   parts: ChatPart[];
+}
+
+/** A command the active Pi session can invoke, or a skill it can load. */
+export interface ChatCommand {
+  id: string;
+  label: string;
+  description: string;
+  invocation: string;
+  category: 'Commands' | 'Skills';
+}
+
+/** One user-run local command and the output Pi recorded for it. */
+export interface ShellCommandRun {
+  id: string;
+  command: string;
+  output: string;
+  status: 'running' | 'complete' | 'cancelled' | 'error';
+  exitCode: number | null;
+  truncated: boolean;
+  fullOutputPath: string | null;
 }
 
 /**
@@ -477,6 +498,8 @@ export interface ChatState {
   shaping?: ShapingState;
   /** A questionnaire Kira is waiting for this chat's person to answer. */
   questionnaire?: QuestionnaireRequest | null;
+  /** Commands and skills supported by the current chat's active session. */
+  commands?: ChatCommand[];
 }
 
 /** One choice Kira offers in a questionnaire. */
@@ -551,6 +574,7 @@ export type ChatEvent =
     }
   | { type: 'transcript'; threadId: string; transcript: ChatTranscript }
   | { type: 'progress'; threadId: string; transcript: ChatTranscript; workTicketIds?: string[] }
+  | { type: 'shell-command'; threadId: string; run: ShellCommandRun }
   /**
    * The first words of a turn in this chat: it is being written in.
    *
@@ -582,6 +606,8 @@ export const CHAT_CHANNELS = {
   questionnaireAnswer: 'chat:questionnaire-answer',
   questionnaireCancel: 'chat:questionnaire-cancel',
   send: 'chat:send',
+  runShell: 'chat:run-shell',
+  cancelShell: 'chat:cancel-shell',
   stop: 'chat:stop',
   compact: 'chat:compact',
   queue: 'chat:queue',
@@ -1182,6 +1208,10 @@ export interface KiraBridge {
    * which may be long after the window has moved to another chat.
    */
   sendMessage(text: string): Promise<Result<null>>;
+  /** Run a local command in the named chat's workspace, without starting a model turn. */
+  runShellCommand(chatId: string, command: string): Promise<Result<string>>;
+  /** Stop one user-run local command without stopping an AI turn. */
+  cancelShellCommand(chatId: string, runId: string): Promise<Result<null>>;
   /**
    * Stop the reply being written in the current chat, and wait for the turn to
    * end. What Kira has already written stays in the conversation, and so do the
