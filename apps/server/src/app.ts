@@ -11,6 +11,7 @@ import { keyHolder } from './keys';
 import { createMemory } from './memory';
 import { createDecisions } from './decisions';
 import { createGlossary } from './glossary';
+import { createSkills } from './skills';
 import { createPool } from './pool';
 import { REFUSAL, refusal } from './refusals';
 import { createTickets } from './tickets';
@@ -144,6 +145,7 @@ export function createApp({
       .use(createMemory({ auth, config, database }))
       .use(createDecisions({ auth, database }))
       .use(createGlossary({ auth, database }))
+      .use(createSkills({ auth, database }))
       .use(createTickets({ auth, database }))
       .use(createComments({ auth, database }))
       .use(createGit({ auth, config, database }))

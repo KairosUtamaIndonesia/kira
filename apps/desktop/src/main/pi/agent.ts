@@ -10,6 +10,7 @@ import type { Tracker } from "../tracker.ts";
 import type { McpManager } from "../mcp/servers.ts";
 import type { Questionnaires } from "../questionnaires.ts";
 import { kiraExtension } from "./extension/factory.ts";
+import { materializeProjectSkills, type ProjectSkill } from "./projectSkills.ts";
 import { bundledSkillsPath, withoutUserAgentsSkills } from "./resources.ts";
 import type { Models } from "./models.ts";
 import {
@@ -174,6 +175,14 @@ async function boot(
     await prepareWorkspace?.(workspaceId);
   }
 
+  // A project's skills reach pi as files, so they are written before the session
+  // is built rather than after: pi's resource loader scans the directory once,
+  // when it is constructed.
+  const projectSkillsDir = materializeProjectSkills(
+    thread.cwd,
+    await projectSkillsFor(tracker, workspaceId),
+  );
+
   let cleanupMcpSubscription: (() => void) | undefined;
   let session: AgentSession | undefined;
   try {
@@ -181,7 +190,10 @@ async function boot(
       cwd: thread.cwd,
       modelRuntime: choice.runtime,
       resourceLoaderOptions: {
-        additionalSkillPaths: [bundledSkillsPath()],
+        additionalSkillPaths: [
+          bundledSkillsPath(),
+          ...(projectSkillsDir === null ? [] : [projectSkillsDir]),
+        ],
         skillsOverride: withoutUserAgentsSkills,
         extensionFactories: [
           kiraExtension({
@@ -244,4 +256,24 @@ async function boot(
       activeSession.dispose();
     },
   };
+}
+
+/**
+ * The skills the chat's project works by, or none.
+ *
+ * Every way this can fail means the same thing to a chat — a folder that works
+ * no project, nobody signed in, a server that cannot be reached — and none of
+ * them is a reason to lose the chat. A project with no skills is an ordinary
+ * project, so absence is answered as absence rather than as an error.
+ */
+async function projectSkillsFor(
+  tracker: Tracker | undefined,
+  workspaceId: string | null,
+): Promise<ProjectSkill[]> {
+  if (tracker?.skills === undefined || workspaceId === null) return [];
+  try {
+    return await tracker.skills(workspaceId);
+  } catch {
+    return [];
+  }
 }

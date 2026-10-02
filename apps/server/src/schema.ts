@@ -712,6 +712,65 @@ export const ticketActivity = pgTable(
 );
 
 /**
+ * A method a project works by, held beside its tickets rather than in a folder
+ * (docs/adr/0027-project-skills-live-in-the-store.md).
+ *
+ * `name` is the slug pi invokes the skill by, so it is constrained to what pi
+ * accepts — lowercase letters, digits and single hyphens — and unique per
+ * project, which is what makes it the name every other project row can state.
+ * The body is the Markdown that becomes instructions, and nothing here parses
+ * or validates it.
+ */
+export const skill = pgTable(
+  'skill',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('projectId')
+      .notNull()
+      .references(() => project.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    /** Required, because pi does not load a skill that has none. */
+    description: text('description').notNull(),
+    body: text('body').notNull(),
+    authorId: text('authorId').references(() => user.id, { onDelete: 'set null' }),
+    createdAt: timestamp('createdAt', { withTimezone: true })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: timestamp('updatedAt', { withTimezone: true })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    uniqueIndex('skill_project_name_key').on(table.projectId, table.name),
+    index('skill_by_project').on(table.projectId, table.updatedAt),
+  ],
+);
+
+/**
+ * A reference file a skill ships beside its body: a checklist, a template, a
+ * script. Paths are relative to the skill's own directory and unique within it,
+ * so an edit can address one file without rewriting the set.
+ */
+export const skillFile = pgTable(
+  'skill_file',
+  {
+    id: text('id').primaryKey(),
+    skillId: text('skillId')
+      .notNull()
+      .references(() => skill.id, { onDelete: 'cascade' }),
+    path: text('path').notNull(),
+    content: text('content').notNull(),
+    createdAt: timestamp('createdAt', { withTimezone: true })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: timestamp('updatedAt', { withTimezone: true })
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [uniqueIndex('skill_file_skill_path_key').on(table.skillId, table.path)],
+);
+
+/**
  * Everything, under the names Better Auth asks for. Its adapter looks up a
  * model by these keys and a field by the key inside it, so the export names are
  * part of the contract rather than a matter of taste.
@@ -734,6 +793,8 @@ export const schema = {
   pullRequestCheck,
   repository,
   outcome,
+  skill,
+  skillFile,
   glossaryEntry,
   glossaryHistory,
   gate,

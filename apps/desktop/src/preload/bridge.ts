@@ -701,6 +701,25 @@ export interface GlossaryHistory {
   changedAt: string;
 }
 
+/** A file that travels beside a skill's body, at a path relative to it. */
+export interface ProjectSkillFile {
+  path: string;
+  content: string;
+}
+
+/** A method a project works by (docs/adr/0027-project-skills-live-in-the-store.md). */
+export interface ProjectSkill {
+  id: string;
+  projectId: string;
+  name: string;
+  description: string;
+  body: string;
+  files: ProjectSkillFile[];
+  author: { id: string; name: string } | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** The current project term, with every version that led to it. */
 export interface GlossaryEntry {
   id: string;

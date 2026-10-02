@@ -29,6 +29,7 @@ import type {
   TicketComment,
   DecisionProposal,
   ProjectDecision,
+  ProjectSkill,
   Repository,
   RepositoryInput,
   TicketPullRequest,
@@ -72,6 +73,8 @@ export interface TrackerWire {
   queue(key: string, projectId: string): Promise<TrackerAnswer<TicketQueue>>;
   /** Project glossary entries, including immutable history for each term. */
   glossary?(key: string, projectId: string): Promise<TrackerAnswer<GlossaryEntry[]>>;
+  /** The methods a project works by, as the server holds them. */
+  skills?(key: string, projectId: string): Promise<TrackerAnswer<ProjectSkill[]>>;
   /** Add or sharpen a term without a person approving each edit. */
   updateGlossary?(
     key: string,
@@ -213,6 +216,8 @@ export interface Tracker {
       decisionProposal?: OutcomeProposal['decisionProposal'];
     },
   ): Promise<Outcome>;
+  /** A project's skills, as the methods it works by. */
+  skills?(workspaceId: string): Promise<ProjectSkill[]>;
   glossary?(workspaceId: string): Promise<GlossaryEntry[]>;
   /** Add or sharpen a project term from a Kira chat. */
   updateGlossary?(workspaceId: string, edit: GlossaryEdit): Promise<GlossaryEntry>;
@@ -365,6 +370,14 @@ export function trackerFor({
       const projectId = projectIn(workspaceId);
 
       return await asked(() => wire.glossary!(held, projectId));
+    },
+
+    async skills(workspaceId) {
+      if (wire.skills === undefined) return [];
+      const held = await key();
+      const projectId = projectIn(workspaceId);
+
+      return await asked(() => wire.skills!(held, projectId));
     },
 
     async decisions(workspaceId) {

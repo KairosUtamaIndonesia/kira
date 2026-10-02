@@ -21,6 +21,7 @@ import {
   type Outcome,
   type OutcomeProposal,
   type ProjectDecision,
+  type ProjectSkill,
   type BreakdownResult,
   TICKET_KINDS,
   TICKET_STATUSES,
@@ -281,6 +282,12 @@ export function kiraFor({ server, scheme }: { server: string; scheme: string }):
       asked(
         () => kira.api.projects({ ref: projectId }).glossary.get({ headers: bearerFor(key) }),
         (data) => asGlossaryList(data),
+      ),
+
+    skills: async (key, projectId) =>
+      asked(
+        () => kira.api.projects({ ref: projectId }).skills.get({ headers: bearerFor(key) }),
+        (data) => asSkillsList(data),
       ),
 
     updateGlossary: async (key, projectId, edit) =>
@@ -765,6 +772,51 @@ function asOutcome(body: unknown): Outcome | null {
     author: held.author as Outcome['author'],
     sourceChatId: held.sourceChatId as string | null,
     createdAt,
+  };
+}
+
+function asSkillsList(body: unknown): ProjectSkill[] | null {
+  const entries = (body as { skills?: unknown[] })?.skills;
+  if (!Array.isArray(entries)) return null;
+
+  const read = entries.map(asSkill);
+  return read.some((skill) => skill === null) ? null : (read as ProjectSkill[]);
+}
+
+/**
+ * A skill the server answered with, or null when this build does not understand
+ * it.
+ *
+ * Read strictly rather than cast, like the other answers: a skill this build
+ * cannot make sense of would otherwise reach pi as a directory with a name and
+ * no description, which pi silently declines to load.
+ */
+function asSkill(body: unknown): ProjectSkill | null {
+  const held = body as Partial<ProjectSkill> | null;
+  if (
+    typeof held?.id !== 'string' ||
+    typeof held.projectId !== 'string' ||
+    typeof held.name !== 'string' ||
+    typeof held.description !== 'string' ||
+    typeof held.body !== 'string' ||
+    !Array.isArray(held.files) ||
+    !held.files.every(
+      (file) => typeof file?.path === 'string' && typeof file.content === 'string',
+    )
+  ) {
+    return null;
+  }
+
+  return {
+    id: held.id,
+    projectId: held.projectId,
+    name: held.name,
+    description: held.description,
+    body: held.body,
+    files: held.files.map((file) => ({ path: file.path, content: file.content })),
+    author: (held.author ?? null) as ProjectSkill['author'],
+    createdAt: String(held.createdAt ?? ''),
+    updatedAt: String(held.updatedAt ?? ''),
   };
 }
 

@@ -169,6 +169,13 @@
       "when": 1790873523753,
       "tag": "0023_chief_frank_castle",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1790913049575,
+      "tag": "0024_abandoned_ezekiel",
+      "breakpoints": true
     }
   ]
 }

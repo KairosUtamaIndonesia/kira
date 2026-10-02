@@ -52,7 +52,7 @@ async function shapingChat(
   chats: OpenChats;
   threadId: string;
   systemPrompts: () => string[];
-  trackerCalls: string[];
+  trackerWrites: string[];
   close: () => Promise<void>;
 }> {
   const requests: Array<{ messages: Array<{ role: string; content?: string }> }> = [];
@@ -111,7 +111,14 @@ async function shapingChat(
       requests.map(
         (request) => request.messages.find((message) => message.role === 'system')?.content ?? '',
       ),
-    trackerCalls,
+    /**
+     * What reached the tracker, less the read every chat makes when it boots.
+     *
+     * Building a session reads the chat's project skills, so a bare list of
+     * calls says a shaping chat touched the tracker when all it did was look.
+     * What these tests are about is writing.
+     */
+    trackerWrites: trackerCalls.filter((call) => call !== 'skills'),
     close: async () => {
       chats.closeAll();
       store.close();
@@ -139,7 +146,7 @@ test('a concrete idea gets an ordinary reply with no interview injected into the
     assert.doesNotMatch(prompts.join('\n'), /^Question: |Recommended answer: /m);
     assert.doesNotMatch(prompts.join('\n'), /Spec mode: planning-only/);
     assert.deepEqual(session.chats.state().shaping?.proposals, []);
-    assert.deepEqual(session.trackerCalls, []);
+    assert.deepEqual(session.trackerWrites, []);
   } finally {
     await session.close();
   }
@@ -183,7 +190,7 @@ test('a spec proposal from Kira joins the proposal list without writing to the t
         ticketId: null,
       },
     );
-    assert.deepEqual(session.trackerCalls, []);
+    assert.deepEqual(session.trackerWrites, []);
   } finally {
     await session.close();
   }
