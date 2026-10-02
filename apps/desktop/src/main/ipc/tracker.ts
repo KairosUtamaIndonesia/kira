@@ -18,9 +18,13 @@ import {
   TICKET_STATUSES,
   TRACKER_CHANNELS,
   type GlossaryEntry,
+  type ProjectSkill,
+  type ProjectSkillFile,
   type Repository,
   type RepositoryInput,
   type Result,
+  type SkillChange,
+  type SkillDraft,
   type Ticket,
   type TicketChange,
   type TicketComment,
@@ -70,6 +74,14 @@ export interface TrackerDeps {
   attachRepository(projectId: string, input: RepositoryInput): Promise<Repository>;
   /** Take a repository off a project. */
   detachRepository(projectId: string, id: string): Promise<null>;
+  /** The methods a project works by. */
+  skills(projectId: string): Promise<ProjectSkill[]>;
+  /** Write a skill the project works by. */
+  writeSkill(projectId: string, draft: SkillDraft): Promise<ProjectSkill>;
+  /** Change a skill, or the files that travel with it. */
+  changeSkill(projectId: string, skillId: string, change: SkillChange): Promise<ProjectSkill>;
+  /** Delete a skill and the files that travel with it. */
+  removeSkill(projectId: string, skillId: string): Promise<null>;
   /** Restore a glossary entry only if its visible version still matches. */
   undoGlossary?(
     workspaceId: string,
@@ -98,6 +110,14 @@ export interface TrackerHandlers {
   repositories(projectId: unknown): Promise<Result<Repository[]>>;
   attachRepository(projectId: unknown, input: unknown): Promise<Result<Repository>>;
   detachRepository(projectId: unknown, id: unknown): Promise<Result<null>>;
+  skills(projectId: unknown): Promise<Result<ProjectSkill[]>>;
+  writeSkill(projectId: unknown, draft: unknown): Promise<Result<ProjectSkill>>;
+  changeSkill(
+    projectId: unknown,
+    skillId: unknown,
+    change: unknown,
+  ): Promise<Result<ProjectSkill>>;
+  removeSkill(projectId: unknown, skillId: unknown): Promise<Result<null>>;
   undoGlossary(
     workspaceId: unknown,
     entryId: unknown,
@@ -125,6 +145,10 @@ export function trackerHandlers({
   repositories,
   attachRepository,
   detachRepository,
+  skills,
+  writeSkill,
+  changeSkill,
+  removeSkill,
   undoGlossary,
 }: TrackerDeps): TrackerHandlers & QuestionTrackerHandlers {
   return {
@@ -282,6 +306,54 @@ export function trackerHandlers({
       }
 
       return envelope(() => detachRepository(projectId, id));
+    },
+
+    skills: (projectId) => {
+      if (!isId(projectId)) {
+        return Promise.resolve({ ok: false, error: 'Skills are read for a project.' });
+      }
+
+      return envelope(() => skills(projectId));
+    },
+
+    writeSkill: (projectId, draft) => {
+      if (!isId(projectId)) {
+        return Promise.resolve({ ok: false, error: 'A skill is written in a project.' });
+      }
+
+      const asked = skillDraftIn(draft);
+      if (asked === null) {
+        return Promise.resolve({ ok: false, error: 'That is not a skill to write.' });
+      }
+
+      return envelope(() => writeSkill(projectId, asked));
+    },
+
+    changeSkill: (projectId, skillId, change) => {
+      if (!isId(projectId)) {
+        return Promise.resolve({ ok: false, error: 'A skill is changed in a project.' });
+      }
+      if (!isId(skillId)) {
+        return Promise.resolve({ ok: false, error: 'A skill needs an id to be changed.' });
+      }
+
+      const asked = skillChangeIn(change);
+      if (asked === null) {
+        return Promise.resolve({ ok: false, error: 'That is not a change to a skill.' });
+      }
+
+      return envelope(() => changeSkill(projectId, skillId, asked));
+    },
+
+    removeSkill: (projectId, skillId) => {
+      if (!isId(projectId)) {
+        return Promise.resolve({ ok: false, error: 'A skill is removed from a project.' });
+      }
+      if (!isId(skillId)) {
+        return Promise.resolve({ ok: false, error: 'A skill needs an id to be removed.' });
+      }
+
+      return envelope(() => removeSkill(projectId, skillId));
     },
 
     undoGlossary: (workspaceId, entryId, version, chatId) => {
@@ -444,6 +516,71 @@ function criteriaIn(value: unknown): string[] | null {
 const REPOSITORY_PROVIDERS = ['github', 'forgejo', 'gitea', 'gitlab'];
 
 /** A repository being attached, or null when it is not one. */
+function skillDraftIn(value: unknown): SkillDraft | null {
+  if (typeof value !== 'object' || value === null) return null;
+
+  const held = value as { name?: unknown; description?: unknown; body?: unknown; files?: unknown };
+  if (typeof held.name !== 'string' || held.name.trim() === '') return null;
+  if (typeof held.description !== 'string' || held.description.trim() === '') return null;
+  if (typeof held.body !== 'string') return null;
+
+  const files = skillFilesIn(held.files);
+  if (files === null) return null;
+
+  return {
+    name: held.name.trim(),
+    description: held.description.trim(),
+    body: held.body,
+    ...(files === undefined ? {} : { files }),
+  };
+}
+
+/** A change to a skill, or null when nothing about it could be changed. */
+function skillChangeIn(value: unknown): SkillChange | null {
+  if (typeof value !== 'object' || value === null) return null;
+
+  const held = value as { name?: unknown; description?: unknown; body?: unknown; files?: unknown };
+  const change: SkillChange = {};
+
+  if (held.name !== undefined) {
+    if (typeof held.name !== 'string' || held.name.trim() === '') return null;
+    change.name = held.name.trim();
+  }
+  if (held.description !== undefined) {
+    if (typeof held.description !== 'string' || held.description.trim() === '') return null;
+    change.description = held.description.trim();
+  }
+  if (held.body !== undefined) {
+    if (typeof held.body !== 'string') return null;
+    change.body = held.body;
+  }
+  if (held.files !== undefined) {
+    const files = skillFilesIn(held.files);
+    if (files === null) return null;
+    change.files = files;
+  }
+
+  return change;
+}
+
+/** Files as a skill carries them: undefined when none were sent, null when malformed. */
+function skillFilesIn(value: unknown): ProjectSkillFile[] | undefined | null {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) return null;
+
+  const files: ProjectSkillFile[] = [];
+  for (const entry of value) {
+    if (typeof entry !== 'object' || entry === null) return null;
+    const held = entry as { path?: unknown; content?: unknown };
+    if (typeof held.path !== 'string' || held.path.trim() === '') return null;
+    if (typeof held.content !== 'string') return null;
+
+    files.push({ path: held.path.trim(), content: held.content });
+  }
+
+  return files;
+}
+
 function repositoryIn(value: unknown): RepositoryInput | null {
   if (typeof value !== 'object' || value === null) return null;
 

@@ -32,6 +32,8 @@ import type {
   ProjectSkill,
   Repository,
   RepositoryInput,
+  SkillChange,
+  SkillDraft,
   TicketPullRequest,
   TicketChange,
   TicketDraft,
@@ -171,6 +173,17 @@ export interface TrackerWire {
   ): Promise<TrackerAnswer<Repository>>;
   /** Take a repository off a project. */
   detachRepository(key: string, projectId: string, id: string): Promise<TrackerAnswer<true>>;
+  /** Write a skill the project works by, refused when its name is taken. */
+  writeSkill?(key: string, projectId: string, draft: SkillDraft): Promise<TrackerAnswer<ProjectSkill>>;
+  /** Change a skill, or the files that travel with it. */
+  changeSkill?(
+    key: string,
+    projectId: string,
+    skillId: string,
+    change: SkillChange,
+  ): Promise<TrackerAnswer<ProjectSkill>>;
+  /** Delete a skill and the files that travel with it. */
+  removeSkill?(key: string, projectId: string, skillId: string): Promise<TrackerAnswer<true>>;
   /** The Git hosts this server is connected to. */
   connections(key: string): Promise<TrackerAnswer<GitConnection[]>>;
   /** Connect a Git host; its webhook secret is answered once. */
@@ -218,6 +231,12 @@ export interface Tracker {
   ): Promise<Outcome>;
   /** A project's skills, as the methods it works by. */
   skills?(workspaceId: string): Promise<ProjectSkill[]>;
+  /** Write a skill the project works by, refused when its name is taken. */
+  writeSkill?(workspaceId: string, draft: SkillDraft): Promise<ProjectSkill>;
+  /** Change a skill, or the files that travel with it. */
+  changeSkill?(workspaceId: string, skillId: string, change: SkillChange): Promise<ProjectSkill>;
+  /** Delete a skill and the files that travel with it. */
+  removeSkill?(workspaceId: string, skillId: string): Promise<null>;
   glossary?(workspaceId: string): Promise<GlossaryEntry[]>;
   /** Add or sharpen a project term from a Kira chat. */
   updateGlossary?(workspaceId: string, edit: GlossaryEdit): Promise<GlossaryEntry>;
@@ -378,6 +397,31 @@ export function trackerFor({
       const projectId = projectIn(workspaceId);
 
       return await asked(() => wire.skills!(held, projectId));
+    },
+
+    async writeSkill(workspaceId, draft) {
+      if (wire.writeSkill === undefined) throw new Error('Writing skills is unavailable.');
+      const held = await key();
+      const projectId = projectIn(workspaceId);
+
+      return await asked(() => wire.writeSkill!(held, projectId, draft));
+    },
+
+    async changeSkill(workspaceId, skillId, change) {
+      if (wire.changeSkill === undefined) throw new Error('Changing skills is unavailable.');
+      const held = await key();
+      const projectId = projectIn(workspaceId);
+
+      return await asked(() => wire.changeSkill!(held, projectId, skillId, change));
+    },
+
+    async removeSkill(workspaceId, skillId) {
+      if (wire.removeSkill === undefined) throw new Error('Removing skills is unavailable.');
+      const held = await key();
+      const projectId = projectIn(workspaceId);
+
+      await asked(() => wire.removeSkill!(held, projectId, skillId));
+      return null;
     },
 
     async decisions(workspaceId) {

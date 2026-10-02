@@ -215,6 +215,11 @@ export type ChatPart =
       change: GlossaryChangeNote;
     }
   | {
+      type: 'skill';
+      /** The server-owned write this faint note can take back. */
+      change: SkillChangeNote;
+    }
+  | {
       /**
        * A boundary: everything above it was summarised into `summary`, and what
        * follows is what pi kept of the window.
@@ -664,6 +669,10 @@ export const TRACKER_CHANNELS = {
   attachRepository: 'tracker:repository-attach',
   detachRepository: 'tracker:repository-detach',
   undoGlossary: 'tracker:glossary:undo',
+  skills: 'tracker:skills',
+  writeSkill: 'tracker:skill-write',
+  changeSkill: 'tracker:skill-change',
+  removeSkill: 'tracker:skill-remove',
 } as const;
 
 /**
@@ -716,8 +725,44 @@ export interface ProjectSkill {
   body: string;
   files: ProjectSkillFile[];
   author: { id: string; name: string } | null;
+  /** The chat that wrote it, when Kira wrote it rather than a person. */
+  chatId: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** A skill as a person or Kira writes one. */
+export interface SkillDraft {
+  name: string;
+  description: string;
+  body: string;
+  files?: ProjectSkillFile[];
+  /** The chat writing it, when Kira is. A person in the Work surface writes none. */
+  chatId?: string;
+}
+
+/** A change to a skill: what is named is replaced, what is left out is kept. */
+export interface SkillChange {
+  name?: string;
+  description?: string;
+  body?: string;
+  files?: ProjectSkillFile[];
+}
+
+/**
+ * A skill Kira wrote, as the note the transcript offers to take back.
+ *
+ * `wrote` is what keeps the note honest. A skill she created can be deleted from
+ * the note; one she changed cannot, because deleting it would take the whole
+ * skill rather than the change — so a change is corrected in the Work surface
+ * instead (docs/adr/0027).
+ */
+export interface SkillChangeNote {
+  projectId: string;
+  chatId: string;
+  skillId: string;
+  name: string;
+  wrote: 'created' | 'changed';
 }
 
 /** The current project term, with every version that led to it. */
@@ -1502,6 +1547,14 @@ export interface KiraBridge {
   attachRepository(projectId: string, input: RepositoryInput): Promise<Result<Repository>>;
   /** Take a repository off a project. */
   detachRepository(projectId: string, id: string): Promise<Result<null>>;
+  /** The methods a project works by. */
+  loadSkills(projectId: string): Promise<Result<ProjectSkill[]>>;
+  /** Write a skill the project works by, refused when its name is taken. */
+  writeSkill(projectId: string, draft: SkillDraft): Promise<Result<ProjectSkill>>;
+  /** Change a skill, or the files that travel with it. */
+  changeSkill(projectId: string, skillId: string, change: SkillChange): Promise<Result<ProjectSkill>>;
+  /** Delete a skill and the files that travel with it. */
+  removeSkill(projectId: string, skillId: string): Promise<Result<null>>;
   /** The Git hosts this server is connected to. */
   loadGitConnections(): Promise<Result<GitConnection[]>>;
   /** Connect a Git host with a token; its webhook secret comes back once. */

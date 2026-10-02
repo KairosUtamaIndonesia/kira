@@ -46,6 +46,7 @@ export const copy = {
     newTicket: 'New ticket',
     startChat: (n: number) => `Start chat with ${count(n, 'ticket')}`,
     repositories: 'Repositories',
+    skills: 'Skills',
   },
 
   /* ── A project's repositories, where its pull requests come from ──────── */
@@ -65,6 +66,34 @@ export const copy = {
     attach: 'Attach repository',
     attaching: 'Attaching',
     defaultBranch: (branch: string) => `default branch ${branch}`,
+  },
+
+  /* ── A project's skills, the methods its work is done by ──────────────── */
+  skills: {
+    title: 'Skills',
+    subtitle: (project: string) => `How ${project}’s work is done`,
+    empty:
+      'No skills yet. A skill is instructions every chat in this project can use describing how something is done.',
+    loading: 'Loading skills',
+    failed: 'Couldn’t load skills.',
+    edit: (name: string) => `Edit ${name}`,
+    remove: (name: string) => `Delete ${name}`,
+    fileName: 'SKILL.md',
+    name: 'Name',
+    namePlaceholder: 'review-checklist',
+    description: 'Description',
+    descriptionPlaceholder: 'What this skill is for, in one line.',
+    body: 'Instructions',
+    bodyPlaceholder: 'When this applies, what to check, and what to leave behind.',
+    write: 'Write skill',
+    save: 'Save skill',
+    cancel: 'Cancel',
+    /** What a skill's name has to be for Kira to be able to invoke it. */
+    nameHint:
+      'Lowercase letters, digits and single hyphens — this is the name Kira invokes the skill by.',
+    fromChat: 'Kira wrote this in a chat',
+    /* What the server says when it will not take the skill as written. */
+    refused: 'That skill was not saved.',
   },
 
   /* ── Statuses (the board's lanes and the List's groups) ───────────────── */

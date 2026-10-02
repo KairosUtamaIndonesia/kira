@@ -18,6 +18,7 @@ import type {
   ChatConclusion,
   ChatEvent,
   GlossaryChangeNote,
+  SkillChangeNote,
   ChatCommand,
   ChatMemory,
   ChatMessage,
@@ -1101,6 +1102,7 @@ function answersOf(entries: readonly FileEntry[]): Map<string, ToolAnswer> {
     answers.set(callId, {
       isError,
       glossaryChange: glossaryChangeIn(details),
+      skillChange: skillChangeIn(details),
       at: entry.timestamp,
       // A tool that changed a file returns a receipt naming the edit, and pi's
       // diff of it in the details beside that; the diff is the one a reader
@@ -1124,6 +1126,8 @@ interface ToolAnswer {
   isError: boolean;
   /** A server-owned glossary edit that the chat may offer to undo. */
   glossaryChange: GlossaryChangeNote | null;
+  /** A skill Kira wrote, which the chat may offer to take back. */
+  skillChange: SkillChangeNote | null;
   /** When the result was stored, which is what makes a call's duration. */
   at: string;
   /** What the tool returned: its output, or the change it made. */
@@ -1371,6 +1375,21 @@ function glossaryChangeIn(details: unknown): GlossaryChangeNote | null {
   return held as GlossaryChangeNote;
 }
 
+function skillChangeIn(details: unknown): SkillChangeNote | null {
+  if (typeof details !== 'object' || details === null) return null;
+  const held = details as Partial<SkillChangeNote>;
+  if (
+    typeof held.projectId !== 'string' ||
+    typeof held.chatId !== 'string' ||
+    typeof held.skillId !== 'string' ||
+    typeof held.name !== 'string' ||
+    (held.wrote !== 'created' && held.wrote !== 'changed')
+  ) {
+    return null;
+  }
+  return held as SkillChangeNote;
+}
+
 /** How many lines a diff added and removed, counted from pi's own diff of them. */
 function countChanges(diff: string): ToolAnswer['changes'] {
   let additions = 0;
@@ -1482,6 +1501,10 @@ function messageOf(
 
       if (answer?.glossaryChange !== null && answer?.glossaryChange !== undefined) {
         parts.push({ type: 'glossary', change: answer.glossaryChange });
+      }
+
+      if (answer?.skillChange !== null && answer?.skillChange !== undefined) {
+        parts.push({ type: 'skill', change: answer.skillChange });
       }
     }
 

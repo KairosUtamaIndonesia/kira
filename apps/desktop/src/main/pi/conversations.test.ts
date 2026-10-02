@@ -111,6 +111,7 @@ type ShownPart =
   | { type: 'shell'; run: Extract<ChatPart, { type: 'shell' }>['run'] }
   | { type: 'work'; reasoning: string | null; durationMs: 'timed' | null; calls: ShownRun[] }
   | { type: 'glossary'; change: Extract<ChatPart, { type: 'glossary' }>['change'] }
+  | { type: 'skill'; change: Extract<ChatPart, { type: 'skill' }>['change'] }
   | {
       type: 'compaction';
       /** pi stamps this when it writes the entry, so it is recorded rather than asserted. */
@@ -331,6 +332,7 @@ function shown(part: ChatPart): ShownPart {
   if (part.type === 'text') return part;
   if (part.type === 'compaction') return { ...part, at: 'recorded' };
   if (part.type === 'glossary') return part;
+  if (part.type === 'skill') return part;
   if (part.type === 'shell') return { ...part, run: { ...part.run, id: 'recorded' } };
 
   return {
@@ -374,6 +376,7 @@ function lineOf(part: ChatPart): string {
   if (part.type === 'text') return part.text;
   if (part.type === 'compaction') return `[summarised ${part.messages} messages]`;
   if (part.type === 'glossary') return `[glossary ${part.change.term}]`;
+  if (part.type === 'skill') return `[skill ${part.change.wrote} ${part.change.name}]`;
   if (part.type === 'shell') return `!${part.run.command}: ${part.run.status}`;
 
   return part.calls.map((call) => `${call.name} ${call.target ?? ''}`.trim()).join(', ');

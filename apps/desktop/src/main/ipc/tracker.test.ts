@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import {
   TICKET_KINDS,
+  type ProjectSkill,
   type Repository,
   type Ticket,
   type TicketComment,
@@ -95,6 +96,19 @@ const repository: Repository = {
   defaultBranch: 'main',
 };
 
+const skill: ProjectSkill = {
+  id: 'skill-1',
+  projectId: 'kira-project',
+  name: 'review-checklist',
+  description: 'What every review must check.',
+  body: '# Review\n',
+  files: [],
+  author: null,
+  chatId: null,
+  createdAt: '2026-10-02T00:00:00.000Z',
+  updatedAt: '2026-10-02T00:00:00.000Z',
+};
+
 /** Deps that record what they were asked to do; `overrides` replace one of them. */
 function deps(calls: string[], overrides: Partial<TrackerDeps> = {}): TrackerDeps {
   return {
@@ -148,6 +162,22 @@ function deps(calls: string[], overrides: Partial<TrackerDeps> = {}): TrackerDep
     },
     detachRepository: async (projectId, id) => {
       calls.push(`detachRepository ${projectId} ${id}`);
+      return null;
+    },
+    skills: async (projectId) => {
+      calls.push(`skills ${projectId}`);
+      return [skill];
+    },
+    writeSkill: async (projectId, draft) => {
+      calls.push(`writeSkill ${projectId} ${draft.name}`);
+      return { ...skill, ...draft, chatId: null, files: [] };
+    },
+    changeSkill: async (projectId, skillId, change) => {
+      calls.push(`changeSkill ${projectId} ${skillId} ${JSON.stringify(change)}`);
+      return skill;
+    },
+    removeSkill: async (projectId, skillId) => {
+      calls.push(`removeSkill ${projectId} ${skillId}`);
       return null;
     },
     ...overrides,
@@ -555,6 +585,82 @@ test('repositories reads, attaches, and detaches, with the host checked', async 
     error: 'Pull requests are read for a ticket.',
   });
 });
+
+test('skills read, write, change and remove, with the shape checked', async () => {
+  const calls: string[] = [];
+  const handlers = trackerHandlers(deps(calls));
+
+  assert.deepEqual(await handlers.skills('kira-project'), { ok: true, value: [skill] });
+  assert.deepEqual(
+    await handlers.writeSkill('kira-project', {
+      name: 'style-check',
+      description: 'How this project reviews style.',
+      body: '# Style\n',
+    }),
+    {
+      ok: true,
+      value: {
+        ...skill,
+        name: 'style-check',
+        description: 'How this project reviews style.',
+        body: '# Style\n',
+        chatId: null,
+        files: [],
+      },
+    },
+  );
+  assert.deepEqual(await handlers.changeSkill('kira-project', 'skill-1', { body: '# New\n' }), {
+    ok: true,
+    value: skill,
+  });
+  assert.deepEqual(await handlers.removeSkill('kira-project', 'skill-1'), {
+    ok: true,
+    value: null,
+  });
+  assert.deepEqual(calls, [
+    'skills kira-project',
+    'writeSkill kira-project style-check',
+    'changeSkill kira-project skill-1 {"body":"# New\\n"}',
+    'removeSkill kira-project skill-1',
+  ]);
+
+  assert.deepEqual(await handlers.skills(''), {
+    ok: false,
+    error: 'Skills are read for a project.',
+  });
+  assert.deepEqual(await handlers.writeSkill('kira-project', { name: '', description: 'x', body: '' }), {
+    ok: false,
+    error: 'That is not a skill to write.',
+  });
+  // A skill with no description does not load in pi at all, so it is not a skill
+  // to write here either.
+  assert.deepEqual(
+    await handlers.writeSkill('kira-project', { name: 'style-check', description: '  ', body: '' }),
+    { ok: false, error: 'That is not a skill to write.' },
+  );
+  assert.deepEqual(
+    await handlers.writeSkill('kira-project', {
+      name: 'style-check',
+      description: 'x',
+      body: '',
+      files: [{ path: 7, content: '' }],
+    }),
+    { ok: false, error: 'That is not a skill to write.' },
+  );
+  assert.deepEqual(await handlers.changeSkill('kira-project', '', { body: 'x' }), {
+    ok: false,
+    error: 'A skill needs an id to be changed.',
+  });
+  assert.deepEqual(await handlers.changeSkill('kira-project', 'skill-1', { name: '  ' }), {
+    ok: false,
+    error: 'That is not a change to a skill.',
+  });
+  assert.deepEqual(await handlers.removeSkill('kira-project', ''), {
+    ok: false,
+    error: 'A skill needs an id to be removed.',
+  });
+});
+
 
 for (const testCase of CASES) {
   test(testCase.name, async () => {

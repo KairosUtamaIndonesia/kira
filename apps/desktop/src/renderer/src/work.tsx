@@ -77,6 +77,7 @@ import {
   FlaskConical,
   FolderOpen,
   GitBranch,
+  BookOpen,
   GripVertical,
   Map as MapIcon,
   Maximize2,
@@ -125,6 +126,7 @@ import { Blockers } from './workBlockers.tsx';
 import { PullRequests } from './workPullRequests.tsx';
 import { Timeline } from './workTimeline.tsx';
 import { RepositoriesDialog } from './workRepositories.tsx';
+import { SkillsDialog } from './workSkills.tsx';
 import { NewTicketDialog, oneLine } from './workNewTicket.tsx';
 import { FilterBar, FilterToolbar } from './workFilters.tsx';
 import { copy } from './workCopy.ts';
@@ -1244,6 +1246,7 @@ export function WorkSurface({
   );
   const [isWriting, setIsWriting] = useState(false);
   const [isChoosingRepositories, setIsChoosingRepositories] = useState(false);
+  const [isChoosingSkills, setIsChoosingSkills] = useState(false);
   /** What the server last refused, in its own words. */
   const toast = useToast();
   const [refusal, setRefusal] = useState<string | null>(null);
@@ -1536,6 +1539,20 @@ export function WorkSurface({
             isDisabled={queue === null}
           />
           <Button
+            label={copy.header.skills}
+            icon={<Icon icon={BookOpen} size="sm" />}
+            variant="secondary"
+            size="sm"
+            isDisabled={queue === null}
+            onClick={() => {
+              setOpenId(null);
+              setIsFull(false);
+              setIsWriting(false);
+              setRefusal(null);
+              setIsChoosingSkills(true);
+            }}
+          />
+          <Button
             label={copy.header.repositories}
             icon={<Icon icon={GitBranch} size="sm" />}
             variant="secondary"
@@ -1606,6 +1623,14 @@ export function WorkSurface({
           projectId={queue.project.id}
           projectName={queue.project.name}
           onClose={() => setIsChoosingRepositories(false)}
+        />
+      )}
+
+      {isChoosingSkills && queue !== null && (
+        <SkillsDialog
+          projectId={queue.project.id}
+          projectName={queue.project.name}
+          onClose={() => setIsChoosingSkills(false)}
         />
       )}
 

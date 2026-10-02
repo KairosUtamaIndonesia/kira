@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { Check } from 'typebox/value';
-import type { GlossaryEntry, Ticket, TicketQueue, TicketStatus } from '../../../preload/bridge.ts';
+import type { GlossaryEntry, ProjectSkill, Ticket, TicketQueue, TicketStatus } from '../../../preload/bridge.ts';
 import { ThreadStore } from '../../db/threads.ts';
 import { createThread } from '../storage.ts';
 import {
@@ -41,6 +41,19 @@ const ticket = (status: TicketStatus): Ticket => ({
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
 });
+
+const reviewSkill: ProjectSkill = {
+  id: 'skill-1',
+  projectId: 'project-1',
+  name: 'review-checklist',
+  description: 'What every review must check.',
+  body: '# Review\n',
+  files: [],
+  author: null,
+  chatId: null,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+};
 
 test('tracker tools expose ticket operations and person-owned publication controls', async () => {
   const path = join(mkdtempSync(join(tmpdir(), 'kira-tracker-tool-store-')), 'threads.db');
@@ -91,6 +104,15 @@ test('tracker tools expose ticket operations and person-owned publication contro
       ...current,
       body: change.body ?? current.body,
     }),
+    skills: async () => [reviewSkill],
+    writeSkill: async (workspaceId: string, draft: { name: string; chatId?: string }) => {
+      calls.push(`writeSkill:${workspaceId}:${draft.name}:${draft.chatId ?? ''}`);
+      return { ...reviewSkill, ...draft, chatId: draft.chatId ?? null };
+    },
+    changeSkill: async (workspaceId: string, skillId: string, change: { body?: string }) => {
+      calls.push(`changeSkill:${workspaceId}:${skillId}`);
+      return { ...reviewSkill, ...change };
+    },
   };
 
   const tools = trackerTools(store, threadRecord.threadId, tracker as never);
@@ -101,6 +123,9 @@ test('tracker tools expose ticket operations and person-owned publication contro
     'tracker_read_glossary',
     'tracker_read_decisions',
     'tracker_update_glossary',
+    'tracker_read_skills',
+    'tracker_create_skill',
+    'tracker_change_skill',
     'tracker_create_ticket',
     'tracker_update_ticket',
     'tracker_comment',
@@ -128,7 +153,7 @@ test('tracker tools expose ticket operations and person-owned publication contro
     version: 2,
     term: 'ticket',
   });
-  await tools[6]!.execute(
+  await tools[9]!.execute(
     'call-3',
     { ref: current.name, body: 'Updated' },
     undefined,
@@ -140,6 +165,87 @@ test('tracker tools expose ticket operations and person-owned publication contro
     `update:${workspace.id}:ticket:${threadRecord.threadId}`,
     `read:${current.name}`,
   ]);
+  store.close();
+});
+
+test('a skill Kira writes is stamped with this chat and offers no delete tool', async () => {
+  const store = new ThreadStore(
+    join(mkdtempSync(join(tmpdir(), 'kira-tracker-skill-store-')), 'threads.db'),
+  );
+  const workspace = store.rememberWorkspace(
+    mkdtempSync(join(tmpdir(), 'kira-tracker-skill-space-')),
+  );
+  const thread = createThread(store, workspace.folder, { workspaceId: workspace.id });
+  store.joinWorkspace(workspace.id, 'project-1');
+  const calls: string[] = [];
+  const tools = trackerTools(store, thread.threadId, {
+    queue: async () => ({}) as TicketQueue,
+    readTicket: async () => ticket('draft'),
+    currentUserId: async () => 'ada',
+    skills: async () => [reviewSkill],
+    writeSkill: async (workspaceId: string, draft: { name: string; chatId?: string }) => {
+      calls.push(`write:${workspaceId}:${draft.name}:${draft.chatId ?? ''}`);
+      return { ...reviewSkill, ...draft, chatId: draft.chatId ?? null };
+    },
+    changeSkill: async (workspaceId: string, skillId: string) => {
+      calls.push(`change:${workspaceId}:${skillId}`);
+      return { ...reviewSkill, body: '# Rewritten\n' };
+    },
+  } as never);
+  const byName = (name: string) => tools.find((tool) => tool.name === name)!;
+
+  const read = await byName('tracker_read_skills').execute(
+    'call-1',
+    {},
+    undefined,
+    undefined,
+    {} as never,
+  );
+  assert.deepEqual(read.content, [{ type: 'text', text: JSON.stringify([reviewSkill]) }]);
+
+  const created = await byName('tracker_create_skill').execute(
+    'call-2',
+    { name: 'style-check', description: 'How this project reviews style.', body: '# Style\n' },
+    undefined,
+    undefined,
+    {} as never,
+  );
+  // The note carries the project and the chat rather than the workspace, because
+  // taking the skill back is an act on the project it belongs to.
+  assert.deepEqual(created.details, {
+    projectId: reviewSkill.projectId,
+    chatId: thread.threadId,
+    skillId: reviewSkill.id,
+    name: 'style-check',
+    wrote: 'created',
+  });
+  assert.deepEqual(calls, [
+    `write:${workspace.id}:style-check:${thread.threadId}`,
+  ]);
+
+  // A change names the skill the way a person would and is addressed by its id.
+  const changed = await byName('tracker_change_skill').execute(
+    'call-3',
+    { name: 'review-checklist', body: '# Rewritten\n' },
+    undefined,
+    undefined,
+    {} as never,
+  );
+  assert.equal((changed.details as { wrote: string }).wrote, 'changed');
+  assert.deepEqual(calls.at(-1), `change:${workspace.id}:${reviewSkill.id}`);
+
+  // Naming a skill the project does not have says so rather than changing nothing.
+  await assert.rejects(
+    byName('tracker_change_skill').execute(
+      'call-4',
+      { name: 'no-such-skill', body: 'x' },
+      undefined,
+      undefined,
+      {} as never,
+    ),
+    /no skill named no-such-skill/,
+  );
+  assert.ok(!tools.some((tool) => /delete/i.test(tool.name)));
   store.close();
 });
 
@@ -166,7 +272,7 @@ test('creating a ticket links it to this chat and exposes no delete tool', async
     change: async () => ticket('draft'),
   } as never);
 
-  const answer = await tools[5]!.execute(
+  const answer = await tools[8]!.execute(
     'call-create',
     { kind: 'spec', title: 'A spec', body: 'Build it', criteria: ['It works'] },
     undefined,
@@ -648,10 +754,10 @@ test('project ticket status updates allow only Running and Needs review', async 
       } as never);
 
       const parameters = { ref: current.name, ...item.edit };
-      assert.equal(Check(tools[6]!.parameters, parameters), item.schemaValid, item.status);
+      assert.equal(Check(tools[9]!.parameters, parameters), item.schemaValid, item.status);
 
       const call = () =>
-        tools[6]!.execute('call-status', parameters, undefined, undefined, {} as never);
+        tools[9]!.execute('call-status', parameters, undefined, undefined, {} as never);
 
       if (item.allowed) {
         await call();

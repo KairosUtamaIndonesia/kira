@@ -48,6 +48,8 @@ const SKILL = t.Object({
   body: t.String(),
   files: t.Array(FILE),
   author: AUTHOR,
+  /** The chat that wrote it, when Kira wrote it rather than a person. */
+  chatId: t.Union([t.String(), t.Null()]),
   createdAt: t.String(),
   updatedAt: t.String(),
 });
@@ -172,6 +174,9 @@ export function createSkills({ auth, database }: { auth: Auth; database: Databas
           description: input.description,
           body: input.body,
           authorId: held.user.id,
+          // Provenance rather than content: a person authoring in the Work
+          // surface writes from no chat, and Kira writes from the one she is in.
+          chatId: body.chatId?.trim() ? body.chatId.trim() : null,
         };
 
         try {
@@ -196,6 +201,7 @@ export function createSkills({ auth, database }: { auth: Auth; database: Databas
           description: t.String(),
           body: t.String(),
           files: t.Optional(t.Array(FILE)),
+          chatId: t.Optional(t.String()),
         }),
         response: { 200: ONE, 400: REFUSAL, 401: REFUSAL, 404: REFUSAL, 409: REFUSAL },
         detail: { summary: 'Write a skill a project works by' },
@@ -353,6 +359,7 @@ async function asSkills(database: Database, rows: (typeof skill.$inferSelect)[])
     body: row.body,
     files: (bySkill.get(row.id) ?? []).map((file) => ({ path: file.path, content: file.content })),
     author: row.authorId === null ? null : (authors.get(row.authorId) ?? null),
+    chatId: row.chatId,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   }));

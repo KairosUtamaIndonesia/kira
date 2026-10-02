@@ -733,6 +733,15 @@ export const skill = pgTable(
     description: text('description').notNull(),
     body: text('body').notNull(),
     authorId: text('authorId').references(() => user.id, { onDelete: 'set null' }),
+    /**
+     * The chat that wrote it, when Kira wrote it.
+     *
+     * A person authoring in the Work surface writes from no chat, so this is
+     * null there. It is kept because a Kira-authored skill's reasoning lives in
+     * the chat that wrote it and nowhere else — the author says who, and this
+     * says why (docs/adr/0027).
+     */
+    chatId: text('chatId'),
     createdAt: timestamp('createdAt', { withTimezone: true })
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),

@@ -2,10 +2,11 @@
 
 Date: 2026-10-02
 
-Amends ADR 0022 ("a project cannot change the bundled skills in the first
-version") and answers ADR 0001's revisit condition for skills specifically:
-importing a skill over the network stays out of scope until the write-approval
-question is answered.
+Amended: 2026-10-02 — Kira authors a skill directly, and a person authors one
+in the Work surface. Amends ADR 0022 ("a project cannot change the bundled
+skills in the first version") and answers ADR 0001's revisit condition for
+skills specifically: importing a skill over the network stays out of scope until
+the write-approval question is answered.
 
 ## Context
 
@@ -36,6 +37,10 @@ junction when a skill is attached to an agent. Its documentation states plainly
 what it does not do — imported skills "may contain scripts, commands, or unsafe
 instructions" and "Multica does not review, sign, or sandbox them". That
 warning costs Multica little, because it has no filesystem boundary to lose.
+Kira states in ADR 0001 that the working folder "protects nothing". Bringing
+remote instructions inside that boundary would spend the one thing that
+decision leans on.
+
 ## Decision
 
 **A project holds its own skills.** A skill is a name, a description, a body,
@@ -73,9 +78,37 @@ directory is Kira's own, named for the project's skills and outside the
 person's `.agents/skills`, so a chat keeps working in a folder whose contents
 Kira does not own, and a stale copy left behind by a removed skill is Kira's to
 clear rather than the person's to tidy.
-Kira states in ADR 0001 that the working folder "protects nothing". Bringing
-remote instructions inside that boundary would spend the one thing that
-decision leans on.
+**Both a person and Kira may write one, and they are the same write.** A person
+authors a skill in the Work surface, beside the project's repositories — both
+answer "what is this project made of" — and Kira authors one through a tracker
+tool. Neither waits for the other's approval, which puts skills with the
+Glossary rather than with the Decisions.
+
+That choice has a shape worth stating, because it spends something ADR 0022
+relied on. ADR 0022 justifies letting the model choose its own skill on the
+grounds that "no skill can publish anything", so an approval could not be
+skipped. A skill Kira writes *is* a publication, so that sentence stops being
+true the moment this lands.
+
+What replaces it is not approval but **attributability and reversibility**, and
+they are worth more here than approval would be:
+
+- A skill Kira writes reaches her in a later chat, not this one. She can already
+  run `bash` and write files in the folder now (ADR 0001), so a skill grants no
+  reach she did not have; what it adds is *persistence*. The risk is instructions
+  that outlive the chat that wrote them, not instructions that run once.
+- So the guard is that they are seen and can be unmade: the write is a change
+  note in the transcript the person is reading, the server records the author
+  and the chat, and a person can delete the skill — which takes it out of every
+  later chat, because a chat's skills are written fresh from the store each time
+  it starts.
+- A skill is also editable by a person after Kira writes it, so a wrong one is
+  corrected rather than only removed.
+
+**Import is still not in this version**, and this amendment does not change
+that. Authorship is local: a person in the Work surface, or Kira in a chat,
+both on a machine signed in to Kira. ADR 0001's revisit condition turns on
+instructions arriving from *somewhere else*, which none of this does.
 
 ## Considered options
 

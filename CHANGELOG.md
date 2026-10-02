@@ -10,6 +10,8 @@
 
 - A project can hold its own skills. A skill is a name, a description, the instructions it works by, and any reference files that travel with it; Kira writes them into the folder a chat works in, so every chat in the project can use them beside the workflow skills she ships with. See [ADR 0027](docs/adr/0027-project-skills-live-in-the-store.md).
 
+- Kira can write and change a project's skills herself, and a person can write one in **Work → Skills** beside the project's repositories. A skill Kira writes is noted in the chat it was written from, with a Delete offered where she created it rather than changed it.
+
 - A ticket is corrected where it is read: its title, its description, and the checks it is done when are edited in place and saved when you leave the field, instead of through a separate edit form. A new check is a blank row that says nothing until you type in it, and removing one is offered on the row itself.
 
 - The composer's four leading characters are live: `@` searches this chat's workspace files and inserts a readable path reference, `/` lists the commands and skills the chat's session supports, `#` expands a shared Magic Prompt into the draft, and a leading `!` runs the rest of the draft as a local command. The composer's placeholder names all four. See [the composer guide](docs/composer.md).

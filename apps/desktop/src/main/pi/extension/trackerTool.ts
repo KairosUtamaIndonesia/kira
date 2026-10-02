@@ -11,6 +11,9 @@ import {
   type BreakdownSlice,
   type GlossaryChangeNote,
   type GlossaryEdit,
+  type SkillChange,
+  type SkillChangeNote,
+  type SkillDraft,
   type TicketChange,
   type TicketDraft,
   type TicketStatus,
@@ -58,6 +61,45 @@ const GLOSSARY = Type.Object({
   term: Type.String({ minLength: 1 }),
   meaning: Type.String({ minLength: 1 }),
   wordsToAvoid: Type.Array(Type.String()),
+});
+const SKILL = Type.Object({
+  name: Type.String({
+    minLength: 1,
+    maxLength: 64,
+    description:
+      'The name the skill is invoked by: lowercase letters, digits and single hyphens, like "review-checklist".',
+  }),
+  description: Type.String({
+    minLength: 1,
+    maxLength: 1024,
+    description:
+      'The one line Kira is offered the skill with. A skill with no description does not load at all.',
+  }),
+  body: Type.String({
+    minLength: 1,
+    description: 'The instructions, as Markdown: when it applies, what to do, what to leave behind.',
+  }),
+  files: Type.Optional(
+    Type.Array(
+      Type.Object({
+        path: Type.String({ minLength: 1 }),
+        content: Type.String(),
+      }),
+    ),
+  ),
+});
+const SKILL_EDIT = Type.Object({
+  name: Type.String({ minLength: 1, description: 'The name of the skill to change.' }),
+  description: Type.Optional(Type.String({ minLength: 1, maxLength: 1024 })),
+  body: Type.Optional(Type.String({ minLength: 1 })),
+  files: Type.Optional(
+    Type.Array(
+      Type.Object({
+        path: Type.String({ minLength: 1 }),
+        content: Type.String(),
+      }),
+    ),
+  ),
 });
 const SPEC_PROPOSAL = Type.Object({
   problem: Type.String({ minLength: 1 }),
@@ -249,6 +291,75 @@ export function trackerTools(
           term: entry.term,
         };
         return textResult(entry, change);
+      },
+    }),
+    tool({
+      name: 'tracker_read_skills',
+      label: 'Read project skills',
+      description:
+        'Read the methods this project works by: each skill name, its description, its instructions and the files that travel with it.',
+      promptSnippet: 'Read the project’s skills before writing or changing one.',
+      parameters: EMPTY,
+      async execute() {
+        return textResult((await tracker.skills?.(workspace())) ?? []);
+      },
+    }),
+    tool({
+      name: 'tracker_create_skill',
+      label: 'Write a project skill',
+      description:
+        'Write a skill this project works by, so later chats in this project can use it. Use this when the person asks you to remember a method. The server records the author and this chat, and the person can delete it. The name is refused if the project already has a skill by it — read the skills first and change that one instead.',
+      promptSnippet:
+        'Write a project skill when the person asks you to remember how this project does something.',
+      parameters: SKILL,
+      async execute(params) {
+        if (tracker.writeSkill === undefined) {
+          throw new Error('Writing project skills is unavailable.');
+        }
+        const draft = params as unknown as SkillDraft;
+        const workspaceId = workspace();
+        const skill = await tracker.writeSkill(workspaceId, { ...draft, chatId: threadId });
+        const change: SkillChangeNote = {
+          projectId: skill.projectId,
+          chatId: threadId,
+          skillId: skill.id,
+          name: skill.name,
+          wrote: 'created',
+        };
+        return textResult(skill, change);
+      },
+    }),
+    tool({
+      name: 'tracker_change_skill',
+      label: 'Change a project skill',
+      description:
+        'Change a skill this project already works by, named by its skill name. Anything left out is kept, and the files are replaced as a whole when given. The server records the author and this chat.',
+      promptSnippet: 'Change a project skill when the person asks, naming it as the skills list does.',
+      parameters: SKILL_EDIT,
+      async execute(params) {
+        if (tracker.skills === undefined || tracker.changeSkill === undefined) {
+          throw new Error('Changing project skills is unavailable.');
+        }
+        const { name, ...change } = params as unknown as { name: string } & SkillChange;
+        const workspaceId = workspace();
+        // Resolved here rather than by the server, which addresses a skill by id:
+        // the model names a skill the way a person does, and this is the one place
+        // that turns that name into the row it is.
+        const existing = (await tracker.skills(workspaceId)).find((skill) => skill.name === name);
+        if (existing === undefined) {
+          throw new Error(
+            `This project has no skill named ${name}. Read the skills to see what it has.`,
+          );
+        }
+        const skill = await tracker.changeSkill(workspaceId, existing.id, change);
+        const note: SkillChangeNote = {
+          projectId: skill.projectId,
+          chatId: threadId,
+          skillId: skill.id,
+          name: skill.name,
+          wrote: 'changed',
+        };
+        return textResult(skill, note);
       },
     }),
     tool({

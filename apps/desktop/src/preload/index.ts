@@ -32,6 +32,7 @@ import {
   type McpToolSelection,
   type ModelOption,
   type ProjectSummary,
+  type ProjectSkill,
   type Repository,
   type Ticket,
   type TicketComment,
@@ -160,6 +161,16 @@ const bridge: KiraBridge = {
     ask<Repository>(TRACKER_CHANNELS.attachRepository, projectId, input),
 
   detachRepository: (projectId, id) => ask<null>(TRACKER_CHANNELS.detachRepository, projectId, id),
+
+  loadSkills: (projectId) => ask<ProjectSkill[]>(TRACKER_CHANNELS.skills, projectId),
+
+  writeSkill: (projectId, draft) => ask<ProjectSkill>(TRACKER_CHANNELS.writeSkill, projectId, draft),
+
+  changeSkill: (projectId, skillId, change) =>
+    ask<ProjectSkill>(TRACKER_CHANNELS.changeSkill, projectId, skillId, change),
+
+  removeSkill: (projectId, skillId) =>
+    ask<null>(TRACKER_CHANNELS.removeSkill, projectId, skillId),
 
   loadGitConnections: () => ask<GitConnection[]>(GIT_CHANNELS.connections),
 

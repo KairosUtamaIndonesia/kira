@@ -72,6 +72,7 @@ import type {
   ChatMode,
   ChatMemory,
   GlossaryChangeNote,
+  SkillChangeNote,
   ChatPart,
   ChatState,
   ChatSummary,
@@ -2042,6 +2043,8 @@ function MessageBody({
           <Fragment key={index}>{isKira ? <Markdown>{part.text}</Markdown> : part.text}</Fragment>
         ) : part.type === 'glossary' ? (
           <GlossaryNote key={index} change={part.change} />
+        ) : part.type === 'skill' ? (
+          <SkillNote key={index} change={part.change} />
         ) : part.type === 'shell' ? (
           <ShellCommandTranscript
             key={part.run.id}
@@ -2139,6 +2142,36 @@ function GlossaryNote({ change }: { change: GlossaryChangeNote }) {
       {state === 'undone' && 'Undone.'}
       {state === 'stale' && 'This change is no longer current.'}
       {state === 'error' && 'Undo could not be applied.'}
+    </Text>
+  );
+}
+
+/**
+ * A quiet, reversible server note for a skill Kira wrote.
+ *
+ * Only a skill she created is offered back: deleting a skill she *changed* would
+ * take the whole skill rather than the change, so that one is corrected in the
+ * Work surface instead (docs/adr/0027).
+ */
+function SkillNote({ change }: { change: SkillChangeNote }) {
+  const [state, setState] = useState<'ready' | 'working' | 'removed' | 'error'>('ready');
+
+  const remove = async (): Promise<void> => {
+    setState('working');
+    const result = await window.kira.removeSkill(change.projectId, change.skillId);
+    setState(result.ok ? 'removed' : 'error');
+  };
+
+  return (
+    <Text type="supporting" color="secondary">
+      {change.wrote === 'created' ? 'Skill written: ' : 'Skill changed: '}
+      <strong>{change.name}</strong>{' '}
+      {change.wrote === 'created' && state === 'ready' && (
+        <Button label="Delete" size="sm" variant="ghost" onClick={() => void remove()} />
+      )}
+      {state === 'working' && 'Removing…'}
+      {state === 'removed' && 'Removed.'}
+      {state === 'error' && 'That skill could not be removed.'}
     </Text>
   );
 }

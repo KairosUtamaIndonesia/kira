@@ -290,6 +290,32 @@ export function kiraFor({ server, scheme }: { server: string; scheme: string }):
         (data) => asSkillsList(data),
       ),
 
+    writeSkill: async (key, projectId, draft) =>
+      asked(
+        () => kira.api.projects({ ref: projectId }).skills.post(draft, { headers: bearerFor(key) }),
+        (data) => asSkill((data as { skill: unknown }).skill),
+      ),
+
+    changeSkill: async (key, projectId, skillId, change) =>
+      asked(
+        () =>
+          kira.api
+            .projects({ ref: projectId })
+            .skills({ skillId })
+            .patch(change, { headers: bearerFor(key) }),
+        (data) => asSkill((data as { skill: unknown }).skill),
+      ),
+
+    removeSkill: async (key, projectId, skillId) =>
+      asked(
+        () =>
+          kira.api
+            .projects({ ref: projectId })
+            .skills({ skillId })
+            .delete(undefined, { headers: bearerFor(key) }),
+        () => true,
+      ),
+
     updateGlossary: async (key, projectId, edit) =>
       asked(
         () =>
@@ -815,6 +841,7 @@ function asSkill(body: unknown): ProjectSkill | null {
     body: held.body,
     files: held.files.map((file) => ({ path: file.path, content: file.content })),
     author: (held.author ?? null) as ProjectSkill['author'],
+    chatId: typeof held.chatId === 'string' ? held.chatId : null,
     createdAt: String(held.createdAt ?? ''),
     updatedAt: String(held.updatedAt ?? ''),
   };

@@ -286,6 +286,10 @@ function registerTrackerChannels(): void {
     repositories: (projectId) => tracker.repositories(projectId),
     attachRepository: (projectId, input) => tracker.attachRepository(projectId, input),
     detachRepository: (projectId, id) => tracker.detachRepository(projectId, id),
+    skills: (projectId) => tracker.skills!(projectId),
+    writeSkill: (projectId, draft) => tracker.writeSkill!(projectId, draft),
+    changeSkill: (projectId, skillId, change) => tracker.changeSkill!(projectId, skillId, change),
+    removeSkill: (projectId, skillId) => tracker.removeSkill!(projectId, skillId),
     undoGlossary: (workspaceId, entryId, version, chatId) =>
       tracker.undoGlossary!(workspaceId, entryId, version, chatId),
   });
@@ -338,6 +342,21 @@ function registerTrackerChannels(): void {
     TRACKER_CHANNELS.undoGlossary,
     (_event, workspaceId: unknown, entryId: unknown, version: unknown, chatId: unknown) =>
       handlers.undoGlossary(workspaceId, entryId, version, chatId),
+  );
+  ipcMain.handle(TRACKER_CHANNELS.skills, (_event, projectId: unknown) =>
+    handlers.skills(projectId),
+  );
+  ipcMain.handle(TRACKER_CHANNELS.writeSkill, (_event, projectId: unknown, draft: unknown) =>
+    handlers.writeSkill(projectId, draft),
+  );
+  ipcMain.handle(
+    TRACKER_CHANNELS.changeSkill,
+    (_event, projectId: unknown, skillId: unknown, change: unknown) =>
+      handlers.changeSkill(projectId, skillId, change),
+  );
+  ipcMain.handle(
+    TRACKER_CHANNELS.removeSkill,
+    (_event, projectId: unknown, skillId: unknown) => handlers.removeSkill(projectId, skillId),
   );
 }
 

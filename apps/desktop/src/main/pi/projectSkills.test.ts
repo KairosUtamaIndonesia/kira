@@ -22,6 +22,7 @@ const REVIEW: ProjectSkill = {
   body: '# Review checklist\n\nRead the change, then read the tests.\n',
   files: [],
   author: null,
+  chatId: null,
   createdAt: '2026-10-02T00:00:00.000Z',
   updatedAt: '2026-10-02T00:00:00.000Z',
 };
