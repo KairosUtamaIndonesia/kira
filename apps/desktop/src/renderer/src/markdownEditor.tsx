@@ -92,12 +92,20 @@ export function MarkdownEditor({
   placeholder,
   initial = '',
   onChange,
+  revealToolbarOnFocus = false,
 }: {
   label: string;
   placeholder: string;
   /** Read once, when the editor is made; the editor owns the text after that. */
   initial?: string;
   onChange: (markdown: string) => void;
+  /**
+   * Hold the toolbar back until the editor is being written in. A surface that is read more
+   * often than it is written — a ticket's description — keeps the toolbar's room, so nothing
+   * moves when it appears, but shows it only while the editor has the focus. Tabbing into the
+   * toolbar itself counts as focus, so none of its buttons is ever focusable while unseen.
+   */
+  revealToolbarOnFocus?: boolean;
 }) {
   const editor = useEditor({
     extensions: [
@@ -122,7 +130,7 @@ export function MarkdownEditor({
   });
 
   return (
-    <div {...stylex.props(styles.frame)}>
+    <div {...stylex.props(styles.frame, revealToolbarOnFocus && styles.readMoreThanWritten)}>
       {editor !== null && <Toolbar editor={editor} />}
       <EditorContent editor={editor} />
     </div>
@@ -249,7 +257,16 @@ const styles = stylex.create({
     gap: spacingVars['--spacing-2'],
     paddingBlockStart: spacingVars['--spacing-1'],
   },
+  /**
+   * For a surface that is read more than written: the toolbar is invisible until the editor
+   * has the focus, but keeps its room, so an editor that is being read does not shift under
+   * the pointer when the toolbar appears.
+   */
+  readMoreThanWritten: {
+    '--toolbar-visibility': { default: 'hidden', ':focus-within': 'visible' },
+  },
   toolbar: {
+    visibility: 'var(--toolbar-visibility, visible)',
     display: 'flex',
     alignItems: 'center',
     gap: 2,

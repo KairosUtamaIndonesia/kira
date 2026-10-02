@@ -265,8 +265,11 @@ export function TicketFields({
   );
 }
 
-/** A title or a check is one line of meaning that wraps: Enter does not break it. */
-function oneLine(event: KeyboardEvent<HTMLTextAreaElement>): void {
+/**
+ * A title or a check is one line of meaning that wraps: Enter does not break it. Shared with
+ * the ticket's own fields, which are one-line fields of the same two kinds.
+ */
+export function oneLine(event: KeyboardEvent<HTMLTextAreaElement>): void {
   if (event.key === 'Enter' && !event.metaKey && !event.ctrlKey) event.preventDefault();
 }
 

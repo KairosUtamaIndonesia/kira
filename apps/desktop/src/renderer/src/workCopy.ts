@@ -203,8 +203,6 @@ export const copy = {
   /* ── Ticket actions and menus ─────────────────────────────────────────── */
   actions: {
     cancel: 'Cancel',
-    save: 'Save',
-    edit: 'Edit',
     close: 'Close',
     backToWork: 'Back to Work',
     openFullView: 'Open the full view',
@@ -217,11 +215,8 @@ export const copy = {
     crumb: (status: string, name: string) => `${status} / ${name}`,
     about: 'About',
     openPullRequest: 'Open pull request',
-    noDescription: 'No description yet. Edit the ticket to add one.',
     doneWhen: 'Done when',
     checks: (n: number) => count(n, 'check'),
-    noChecks: 'No checks yet. Add one before making this ticket Ready.',
-    emptyCheck: '(empty check)',
     outcomesSoFar: 'Outcomes so far',
     moreDetails: 'More ticket details',
     moreDetailsNote: 'Blockers, linked chats, and dates',
@@ -339,7 +334,7 @@ export const copy = {
     nothingWaits: (name: string) => `No other ticket waits on ${name}.`,
   },
 
-  /* ── New ticket and Edit ──────────────────────────────────────────────── */
+  /* ── New ticket: the words of a ticket nobody has written yet ─────────── */
   editor: {
     newTitle: 'New ticket',
     newSubtitle: 'It starts as a draft. Make it ready when it’s clear enough for someone to start.',

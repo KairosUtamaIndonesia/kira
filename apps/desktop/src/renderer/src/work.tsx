@@ -28,7 +28,6 @@ import { IconButton } from '@astryxdesign/core/IconButton';
 import { Item } from '@astryxdesign/core/Item';
 import { edgeCompSlot } from '@astryxdesign/core/Layout';
 import { List } from '@astryxdesign/core/List';
-import { Markdown } from '@astryxdesign/core/Markdown';
 import { MoreMenu } from '@astryxdesign/core/MoreMenu';
 import { Selector } from '@astryxdesign/core/Selector';
 import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl';
@@ -122,13 +121,15 @@ import type {
   WorkspaceSummary,
 } from '../../preload/bridge.ts';
 import { TICKET_PRIORITIES, TICKET_STATUSES } from '../../preload/bridge.ts';
+import { MarkdownEditor } from './markdownEditor.tsx';
 import { Blockers } from './workBlockers.tsx';
 import { PullRequests } from './workPullRequests.tsx';
 import { Timeline } from './workTimeline.tsx';
 import { RepositoriesDialog } from './workRepositories.tsx';
-import { NewTicketDialog, TicketFields } from './workNewTicket.tsx';
+import { NewTicketDialog, oneLine } from './workNewTicket.tsx';
 import { FilterBar, FilterToolbar } from './workFilters.tsx';
 import { copy } from './workCopy.ts';
+import { bodyChange, checksChange, titleChange } from './workChanges.ts';
 
 /** Two readings of the same issues. */
 type View = 'board' | 'list';
@@ -173,6 +174,25 @@ const KINDS: TicketKind[] = [
 ];
 
 /* ── The surface's own arrangement ──────────────────────────────────────── */
+
+/**
+ * A ticket's one-line fields — its title, and each of its checks — are typed in where the words
+ * are read, so they are drawn as the words themselves: no box, no border, no fill, growing as
+ * they wrap. A focus ring is the only thing that says they can be written in.
+ */
+const bareField = {
+  fieldSizing: 'content',
+  resize: 'none',
+  width: '100%',
+  padding: 0,
+  margin: 0,
+  borderWidth: 0,
+  outline: 'none',
+  backgroundColor: 'transparent',
+  color: colorVars['--color-text-primary'],
+  fontFamily: 'inherit',
+  overflowWrap: 'anywhere',
+} as const;
 
 const styles = stylex.create({
   root: {
@@ -1016,15 +1036,14 @@ const styles = stylex.create({
     flexWrap: 'wrap',
     gap: spacingVars['--spacing-2'],
   },
+  /** The ticket's title, held to the heading's own look so typing in it changes nothing. */
   ticketTitle: {
-    marginBlock: 0,
-    color: colorVars['--color-text-primary'],
-    fontFamily: 'inherit',
+    ...bareField,
     fontSize: '1.375rem',
     fontWeight: 600,
     letterSpacing: '-0.025em',
     lineHeight: 1.25,
-    overflowWrap: 'anywhere',
+    '::placeholder': { color: colorVars['--color-text-secondary'] },
   },
   pullRequestLink: {
     alignSelf: 'flex-start',
@@ -1055,6 +1074,8 @@ const styles = stylex.create({
     listStyle: 'none',
   },
   ticketCriterion: {
+    // Removing a check is offered on the row a person is pointing at, or typing in.
+    '--row-reveal': { default: '0', ':hover': '1', ':focus-within': '1' },
     display: 'flex',
     alignItems: 'flex-start',
     gap: spacingVars['--spacing-3'],
@@ -1069,11 +1090,18 @@ const styles = stylex.create({
     marginBlockStart: 2,
     color: colorVars['--color-icon-accent'],
   },
-  ticketCriterionText: {
+  /** One check, typed in the row it is read in. */
+  checkInput: {
+    ...bareField,
     flex: 1,
     minWidth: 0,
+    fontSize: textSizeVars['--font-size-base'],
     lineHeight: 1.5,
+    '::placeholder': { color: colorVars['--color-text-secondary'] },
   },
+  checkRemove: { display: 'inline-flex', opacity: 'var(--row-reveal)' },
+  /** A ghost button under the checks: its glyph lines up with the check text above it. */
+  checkAdd: { display: 'flex', marginInlineStart: `calc(-1 * ${spacingVars['--spacing-3']})` },
   ticketDetails: {
     borderBlockStartWidth: borderVars['--border-width'],
     borderBlockStartStyle: 'solid',
@@ -1141,18 +1169,6 @@ const styles = stylex.create({
     flex: 1,
     minWidth: 0,
   },
-  formFields: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: spacingVars['--spacing-3'],
-    maxWidth: 640,
-  },
-  actions: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: spacingVars['--spacing-2'],
-  },
-
   /* What a folder that works no project is offered. */
   join: {
     display: 'flex',
@@ -1460,7 +1476,6 @@ export function WorkSurface({
         onLeave={closePanel}
         onOpen={openTicket}
         onOpenChat={onOpenChat}
-        onRefuse={setRefusal}
         onWrite={(change) => wrote(() => window.kira.changeTicket(open.id, change))}
         onGate={(gatedBy) => wrote(() => window.kira.gateTicket(open.id, gatedBy))}
         onUngate={(gatedBy) => wrote(() => window.kira.ungateTicket(open.id, gatedBy))}
@@ -2941,7 +2956,6 @@ function TicketReading({
   onLeave,
   onOpen,
   onOpenChat,
-  onRefuse,
   onWrite,
   onGate,
   onUngate,
@@ -2957,7 +2971,6 @@ function TicketReading({
   onLeave: () => void;
   onOpen: (id: string) => void;
   onOpenChat: (chatId: string) => void;
-  onRefuse: (message: string | null) => void;
   onWrite: (change: TicketChange) => Promise<Ticket | null>;
   onGate: (blockedBy: string) => Promise<Ticket | null>;
   onUngate: (blockedBy: string) => Promise<Ticket | null>;
@@ -2968,16 +2981,64 @@ function TicketReading({
   /** The signed-in person, when the window knows their id, for Assignee. */
   me?: { id: string; name: string } | null;
 }) {
-  const [isEditing, setIsEditing] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
-  const hasDescription = ticket.body.trim().length > 0;
   const pullRequestUrl = ticket.pullRequestUrl;
+  /**
+   * What the ticket's typed fields hold while a person is in them: its title, its description,
+   * and its checks. The server's words are the truth, and these are what they start from and
+   * what they are put back to after a refusal, so the pane never keeps a change the server
+   * didn't take. Nothing else is held: a keystroke is only ever in the field that has it.
+   */
+  const [draft, setDraft] = useState({
+    title: ticket.title,
+    body: ticket.body,
+    criteria: ticket.criteria,
+  });
+  /**
+   * The server's words when this draft was taken. A read that answers with something different
+   * — another person renaming the ticket, Kira rewriting its description, the drawer opening a
+   * different ticket — puts the fields back to what the server says. A read that answers with
+   * the same words changes nothing, so a re-read never throws away what is being typed.
+   */
+  const serverWords = JSON.stringify([ticket.title, ticket.body, ticket.criteria]);
+  const [words, setWords] = useState(serverWords);
+  if (words !== serverWords) {
+    setWords(serverWords);
+    setDraft({ title: ticket.title, body: ticket.body, criteria: ticket.criteria });
+  }
+  const checks = draft.criteria.filter((line) => line.trim() !== '').length;
 
   async function run(act: () => Promise<unknown>): Promise<void> {
     setIsBusy(true);
     await act();
     setIsBusy(false);
+  }
+
+  /**
+   * A typed field commits when a person leaves it, and only when it says something the server
+   * doesn't already hold. The write re-reads the queue on the way back, so the server's answer
+   * is what the pane shows; a refusal leaves the stored words as they were and says why.
+   */
+  async function save(change: TicketChange | null): Promise<void> {
+    if (change === null || isBusy) return;
+    await run(async () => {
+      const saved = await onWrite(change);
+      if (saved === null) {
+        setDraft({ title: ticket.title, body: ticket.body, criteria: ticket.criteria });
+      }
+    });
+  }
+
+  /** A new check is a blank row: it says nothing until it is typed in, and is dropped until then. */
+  function addCheck(): void {
+    setDraft((held) => ({ ...held, criteria: [...held.criteria, ''] }));
+  }
+
+  function removeCheck(at: number): void {
+    const criteria = draft.criteria.filter((_each, index) => index !== at);
+    setDraft((held) => ({ ...held, criteria }));
+    void save(checksChange(ticket.criteria, criteria));
   }
 
   const readFacts: { label: string; value: string }[] = [
@@ -3121,140 +3182,167 @@ function TicketReading({
             </span>
             <TicketState ticket={ticket} />
           </div>
-          {!isEditing && (
-            <h2 {...stylex.props(styles.ticketTitle)}>{ticket.title || copy.untitled}</h2>
-          )}
+          <textarea
+            rows={1}
+            aria-label={copy.editor.titleLabel}
+            placeholder={copy.editor.titlePlaceholder}
+            value={draft.title}
+            onChange={(event) => setDraft((held) => ({ ...held, title: event.target.value }))}
+            onBlur={() => void save(titleChange(ticket.title, draft.title))}
+            onKeyDown={oneLine}
+            {...stylex.props(styles.ticketTitle)}
+          />
         </div>
       }
       foot={
-        isEditing ? undefined : (
-          <>
-            <span {...stylex.props(styles.footTail, placement === 'full' && EDGE_TEXT_BUTTON)}>
-              <Button
-                label={copy.actions.edit}
-                size="sm"
-                variant="ghost"
-                isDisabled={isBusy}
-                onClick={() => {
-                  setIsEditing(true);
-                  onRefuse(null);
-                }}
-              />
-              <span {...stylex.props(styles.edgeEndIconSm)}>
-                <MoreMenu
-                  label={copy.actions.more}
-                  size="sm"
-                  alignment="end"
-                  placement={placement === 'full' ? 'below' : 'above'}
-                  isDisabled={isBusy}
-                  items={statusActions}
-                />
-              </span>
-            </span>
-          </>
-        )
+        <span {...stylex.props(styles.footTail, placement === 'full' && EDGE_TEXT_BUTTON)}>
+          <span {...stylex.props(styles.edgeEndIconSm)}>
+            <MoreMenu
+              label={copy.actions.more}
+              size="sm"
+              alignment="end"
+              placement={placement === 'full' ? 'below' : 'above'}
+              isDisabled={isBusy}
+              items={statusActions}
+            />
+          </span>
+        </span>
       }
     >
-      {isEditing ? (
-        <TicketEdit
+      {pullRequestUrl !== null && (
+        <a
+          href={pullRequestUrl}
+          {...stylex.props(styles.pullRequestLink)}
+          onClick={(event) => {
+            event.preventDefault();
+            openLink(pullRequestUrl);
+          }}
+        >
+          {copy.ticket.openPullRequest}
+        </a>
+      )}
+      <PullRequests key={ticket.id} ticketId={ticket.id} />
+      <section {...stylex.props(styles.section)}>
+        <Text type="label" weight="medium">
+          {copy.ticket.about}
+        </Text>
+        {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
+        <div onBlur={() => void save(bodyChange(ticket.body, draft.body))}>
+          <MarkdownEditor
+            key={words}
+            label={copy.ticket.about}
+            initial={ticket.body}
+            placeholder={copy.editor.aboutPlaceholder}
+            revealToolbarOnFocus
+            onChange={(markdown) => setDraft((held) => ({ ...held, body: markdown }))}
+          />
+        </div>
+      </section>
+      <section {...stylex.props(styles.section)}>
+        <div {...stylex.props(styles.ticketSectionHeading)}>
+          <Text type="label" weight="medium">
+            {copy.ticket.doneWhen}
+          </Text>
+          {checks > 0 && (
+            <Text type="supporting" color="secondary">
+              {copy.ticket.checks(checks)}
+            </Text>
+          )}
+        </div>
+        {draft.criteria.length > 0 && (
+          <ul {...stylex.props(styles.ticketCriteria)}>
+            {draft.criteria.map((line, at) => (
+              <li key={at} {...stylex.props(styles.ticketCriterion)}>
+                <Icon icon={CircleDashed} size="sm" {...stylex.props(styles.ticketCriterionIcon)} />
+                <textarea
+                  rows={1}
+                  aria-label={copy.editor.checkLabel(at + 1)}
+                  placeholder={copy.editor.checkPlaceholder}
+                  value={line}
+                  onChange={(event) =>
+                    setDraft((held) => ({
+                      ...held,
+                      criteria: held.criteria.map((each, index) =>
+                        index === at ? event.target.value : each,
+                      ),
+                    }))
+                  }
+                  onBlur={() => void save(checksChange(ticket.criteria, draft.criteria))}
+                  onKeyDown={oneLine}
+                  {...stylex.props(styles.checkInput)}
+                />
+                <span {...stylex.props(styles.checkRemove)}>
+                  <IconButton
+                    label={copy.editor.removeCheck(at + 1)}
+                    icon={<Icon icon={X} size="sm" />}
+                    variant="ghost"
+                    size="sm"
+                    isDisabled={isBusy}
+                    onClick={() => removeCheck(at)}
+                  />
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <span {...stylex.props(styles.checkAdd)}>
+          <Button
+            label={copy.editor.addCheck}
+            icon={<Icon icon={Plus} size="sm" />}
+            size="sm"
+            variant="ghost"
+            isDisabled={isBusy}
+            onClick={addCheck}
+          />
+        </span>
+      </section>
+      {ticket.kind === 'map' && (ticket.decisionsSoFar?.length ?? 0) > 0 && (
+        <section {...stylex.props(styles.section)}>
+          <Text type="label" weight="medium">
+            {copy.ticket.outcomesSoFar}
+          </Text>
+          <ul {...stylex.props(styles.lines)}>
+            {ticket.decisionsSoFar?.map((outcome) => (
+              <li key={outcome.id} {...stylex.props(styles.line)}>
+                <Icon icon={CircleCheck} size="sm" />
+                <Text type="supporting">{outcome.answer}</Text>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {placement === 'full' ? (
+        <Blockers
           ticket={ticket}
-          isBusy={isBusy}
-          onCancel={() => setIsEditing(false)}
-          onSave={(change) =>
-            void run(async () => {
-              const saved = await onWrite(change);
-              if (saved !== null) setIsEditing(false);
-            })
-          }
+          tickets={tickets}
+          onOpen={onOpen}
+          onGate={onGate}
+          onUngate={onUngate}
         />
       ) : (
-        <>
-          {pullRequestUrl !== null && (
-            <a
-              href={pullRequestUrl}
-              {...stylex.props(styles.pullRequestLink)}
-              onClick={(event) => {
-                event.preventDefault();
-                openLink(pullRequestUrl);
-              }}
-            >
-              {copy.ticket.openPullRequest}
-            </a>
-          )}
-          <PullRequests key={ticket.id} ticketId={ticket.id} />
-          <section {...stylex.props(styles.section)}>
-            <Text type="label" weight="medium">
-              {copy.ticket.about}
-            </Text>
-            {hasDescription ? (
-              <Markdown
-                density="compact"
-                headingLevelStart={4}
-                contentWidth="100%"
-                onLinkClick={openLink}
-              >
-                {ticket.body}
-              </Markdown>
-            ) : (
-              <Text type="supporting" color="secondary">
-                {copy.ticket.noDescription}
-              </Text>
-            )}
-          </section>
-          <section {...stylex.props(styles.section)}>
-            <div {...stylex.props(styles.ticketSectionHeading)}>
+        <details
+          {...stylex.props(styles.ticketDetails)}
+          onToggle={(event) => setDetailsOpen(event.currentTarget.open)}
+        >
+          <summary {...stylex.props(styles.ticketDetailsSummary)}>
+            <span {...stylex.props(styles.ticketDetailsSummaryText)}>
               <Text type="label" weight="medium">
-                {copy.ticket.doneWhen}
+                {copy.ticket.moreDetails}
               </Text>
-              {ticket.criteria.length > 0 && (
-                <Text type="supporting" color="secondary">
-                  {copy.ticket.checks(ticket.criteria.length)}
-                </Text>
+              <Text type="supporting" color="secondary">
+                {copy.ticket.moreDetailsNote}
+              </Text>
+            </span>
+            <span
+              {...stylex.props(
+                styles.ticketDetailsChevron,
+                detailsOpen && styles.ticketDetailsChevronOpen,
               )}
-            </div>
-            {ticket.criteria.length === 0 ? (
-              <Text type="supporting" color="secondary">
-                {copy.ticket.noChecks}
-              </Text>
-            ) : (
-              <ul {...stylex.props(styles.ticketCriteria)}>
-                {ticket.criteria.map((line, at) => (
-                  <li key={`${at}-${line}`} {...stylex.props(styles.ticketCriterion)}>
-                    <Icon
-                      icon={CircleDashed}
-                      size="sm"
-                      {...stylex.props(styles.ticketCriterionIcon)}
-                    />
-                    <Text type="body" {...stylex.props(styles.ticketCriterionText)}>
-                      {line === '' ? (
-                        copy.ticket.emptyCheck
-                      ) : (
-                        <Markdown display="inline" onLinkClick={openLink}>
-                          {line}
-                        </Markdown>
-                      )}
-                    </Text>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-          {ticket.kind === 'map' && (ticket.decisionsSoFar?.length ?? 0) > 0 && (
-            <section {...stylex.props(styles.section)}>
-              <Text type="label" weight="medium">
-                {copy.ticket.outcomesSoFar}
-              </Text>
-              <ul {...stylex.props(styles.lines)}>
-                {ticket.decisionsSoFar?.map((outcome) => (
-                  <li key={outcome.id} {...stylex.props(styles.line)}>
-                    <Icon icon={CircleCheck} size="sm" />
-                    <Text type="supporting">{outcome.answer}</Text>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-          {placement === 'full' ? (
+            >
+              <Icon icon={ChevronDown} size="sm" />
+            </span>
+          </summary>
+          <div {...stylex.props(styles.ticketDetailsContent)}>
             <Blockers
               ticket={ticket}
               tickets={tickets}
@@ -3262,116 +3350,29 @@ function TicketReading({
               onGate={onGate}
               onUngate={onUngate}
             />
-          ) : (
-            <details
-              {...stylex.props(styles.ticketDetails)}
-              onToggle={(event) => setDetailsOpen(event.currentTarget.open)}
-            >
-              <summary {...stylex.props(styles.ticketDetailsSummary)}>
-                <span {...stylex.props(styles.ticketDetailsSummaryText)}>
-                  <Text type="label" weight="medium">
-                    {copy.ticket.moreDetails}
-                  </Text>
-                  <Text type="supporting" color="secondary">
-                    {copy.ticket.moreDetailsNote}
-                  </Text>
-                </span>
-                <span
-                  {...stylex.props(
-                    styles.ticketDetailsChevron,
-                    detailsOpen && styles.ticketDetailsChevronOpen,
-                  )}
-                >
-                  <Icon icon={ChevronDown} size="sm" />
-                </span>
-              </summary>
-              <div {...stylex.props(styles.ticketDetailsContent)}>
-                <Blockers
-                  ticket={ticket}
-                  tickets={tickets}
-                  onOpen={onOpen}
-                  onGate={onGate}
-                  onUngate={onUngate}
-                />
-                <section {...stylex.props(styles.section)}>
-                  <Text type="label" weight="medium">
-                    {copy.ticket.datesHeading}
-                  </Text>
-                  <Text type="supporting" color="secondary">
-                    {copy.ticket.dates(when(ticket.createdAt), when(ticket.updatedAt))}
-                  </Text>
-                </section>
-                {linkedChats.map((chat) => (
-                  <Button
-                    key={chat.id}
-                    label={copy.ticket.openChat(chat.title)}
-                    icon={<Icon icon={MessageSquare} size="sm" />}
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => onOpenChat(chat.id)}
-                  />
-                ))}
-              </div>
-            </details>
-          )}
-          <Timeline key={ticket.id} ticket={ticket} />
-        </>
+            <section {...stylex.props(styles.section)}>
+              <Text type="label" weight="medium">
+                {copy.ticket.datesHeading}
+              </Text>
+              <Text type="supporting" color="secondary">
+                {copy.ticket.dates(when(ticket.createdAt), when(ticket.updatedAt))}
+              </Text>
+            </section>
+            {linkedChats.map((chat) => (
+              <Button
+                key={chat.id}
+                label={copy.ticket.openChat(chat.title)}
+                icon={<Icon icon={MessageSquare} size="sm" />}
+                size="sm"
+                variant="ghost"
+                onClick={() => onOpenChat(chat.id)}
+              />
+            ))}
+          </div>
+        </details>
       )}
+      <Timeline key={ticket.id} ticket={ticket} />
     </TicketPanel>
-  );
-}
-
-function TicketEdit({
-  ticket,
-  isBusy,
-  onSave,
-  onCancel,
-}: {
-  ticket: Ticket;
-  isBusy: boolean;
-  onSave: (change: { title: string; body: string; criteria: string[] }) => void;
-  onCancel: () => void;
-}) {
-  const [title, setTitle] = useState(ticket.title);
-  const [body, setBody] = useState(ticket.body);
-  const [criteria, setCriteria] = useState<string[]>(
-    ticket.criteria.length === 0 ? [''] : ticket.criteria,
-  );
-  const save = (): void => {
-    if (!isBusy) onSave({ title, body, criteria: criteria.filter((each) => each.trim() !== '') });
-  };
-
-  return (
-    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
-    <div
-      {...stylex.props(styles.formFields)}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-          event.preventDefault();
-          save();
-        }
-      }}
-    >
-      <TicketFields
-        title={title}
-        setTitle={setTitle}
-        initialBody={ticket.body}
-        setBody={setBody}
-        criteria={criteria}
-        setCriteria={setCriteria}
-        focusTitle
-      />
-      <div {...stylex.props(styles.actions)}>
-        <Button
-          label={copy.actions.save}
-          size="sm"
-          variant="primary"
-          isDisabled={isBusy}
-          onClick={save}
-        />
-        <Button label={copy.actions.cancel} size="sm" variant="ghost" onClick={onCancel} />
-      </div>
-    </div>
   );
 }
 
