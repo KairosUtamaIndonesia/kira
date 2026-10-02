@@ -101,9 +101,9 @@ export function MarkdownEditor({
   onChange: (markdown: string) => void;
   /**
    * Hold the toolbar back until the editor is being written in. A surface that is read more
-   * often than it is written — a ticket's description — keeps the toolbar's room, so nothing
-   * moves when it appears, but shows it only while the editor has the focus. Tabbing into the
-   * toolbar itself counts as focus, so none of its buttons is ever focusable while unseen.
+   * often than it is written — a ticket's description — doesn't reserve the toolbar's room
+   * until it has focus, keeping the read view compact. Tabbing into the toolbar counts as
+   * focus, so none of its buttons is focusable while unseen.
    */
   revealToolbarOnFocus?: boolean;
 }) {
@@ -257,17 +257,15 @@ const styles = stylex.create({
     gap: spacingVars['--spacing-2'],
     paddingBlockStart: spacingVars['--spacing-1'],
   },
-  /**
-   * For a surface that is read more than written: the toolbar is invisible until the editor
-   * has the focus, but keeps its room, so an editor that is being read does not shift under
-   * the pointer when the toolbar appears.
-   */
+  /** For the compact read view, show the toolbar only while the editor has focus. */
   readMoreThanWritten: {
-    '--toolbar-visibility': { default: 'hidden', ':focus-within': 'visible' },
+    '--toolbar-display': { default: 'none', ':focus-within': 'flex' },
+    ':global(.rich-editor)': {
+      minHeight: '1.5em',
+    },
   },
   toolbar: {
-    visibility: 'var(--toolbar-visibility, visible)',
-    display: 'flex',
+    display: 'var(--toolbar-display, flex)',
     alignItems: 'center',
     gap: 2,
     paddingBlockEnd: spacingVars['--spacing-2'],
