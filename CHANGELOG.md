@@ -14,7 +14,7 @@
 
 - Magic Prompts are reusable text shared across every project on this installation: save them in **Settings → Magic Prompts**, search them after `#`, and edit the expanded text before sending. Choosing one never sends it for you.
 
-- A leading `!` in the composer runs a local command in the chat's working folder without starting an AI turn. The output streams while it runs and is kept in the chat as context Kira can read, with a Run action, a Cancel command action, and no model call or allowance spend. One command runs per chat at a time.
+- A leading `!` in the composer runs a local command in the chat's working folder without starting an AI turn. The output streams while it runs and is kept in the chat as context Kira can read, with a Run action, a Cancel command action, and no model call or allowance spend. Finished commands appear inline on the transcript surface, with output collapsed under the command and status. One command runs per chat at a time.
 
 - The chat rail shows how long Kira has been working in each running chat, ticking once a second in the status dot's blue. Workspace headings no longer show chat counts.
 

@@ -908,11 +908,6 @@
   margin-inline: auto;
 }
 
-/* Keep the development-only variant picker clear of the composer. */
-.shell-prototype-footer {
-  padding-block-end: calc(var(--spacing-3) + 3.5rem);
-}
-
 /*
  * Words waiting to be read, stacked above the composer they were written in.
  * They are the composer's own state — pi reads them when the turn reaches them

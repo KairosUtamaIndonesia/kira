@@ -13,7 +13,7 @@ import {
   useSideNavCollapse,
 } from '@astryxdesign/core/SideNav';
 import { Text } from '@astryxdesign/core/Text';
-import { colorVars, radiusVars, spacingVars } from '@astryxdesign/core/theme/tokens.stylex';
+import { borderVars, colorVars, spacingVars } from '@astryxdesign/core/theme/tokens.stylex';
 import { useClipboard } from '@astryxdesign/core/hooks';
 import { useToast } from '@astryxdesign/core/Toast';
 import * as stylex from '@stylexjs/stylex';
@@ -103,14 +103,6 @@ import { MoveToProject } from './moveToProject.tsx';
 import { needsProject } from './moveToProject.ts';
 import { AccountMenu, ChatRail } from './chatRail.tsx';
 import { approvedSpecTicket } from './specPane';
-import {
-  initialShellPrototypeVariant,
-  ShellCommandPrototypeComposer,
-  ShellCommandPrototypeTranscript,
-  ShellPrototypeBar,
-  writeShellPrototypeVariant,
-  type ShellPrototypeVariant,
-} from './shellCommandPrototype';
 
 /**
  * Ids for the two messages the window holds before the database does: the
@@ -1621,13 +1613,6 @@ function ChatPane({
   ) => Promise<string | null>;
   onCancelQuestionnaire: (threadId: string, requestId: string) => Promise<string | null>;
 }) {
-  const [shellPrototypeVariant, setShellPrototypeVariant] = useState(initialShellPrototypeVariant);
-  const [shellPrototypeDraft, setShellPrototypeDraft] = useState('pwd');
-  const [shellPrototypePreview, setShellPrototypePreview] = useState<string | null>(null);
-  const selectShellPrototypeVariant = (variant: ShellPrototypeVariant): void => {
-    writeShellPrototypeVariant(variant);
-    setShellPrototypeVariant(variant);
-  };
   const runtime = useExternalStoreRuntime<ChatLine>({
     messageRepository: repository,
     // The runtime's adapter requires a converter of our message type even though
@@ -1674,7 +1659,6 @@ function ChatPane({
                     parts={parts}
                     isWorking={isRunning && message.isLast}
                     isEditing={message.composer.isEditing}
-                    shellPrototypeVariant={import.meta.env.DEV ? shellPrototypeVariant : null}
                     showsActions={showsActions && !parts.some((part) => part.type === 'shell')}
                     onFork={onFork}
                   />
@@ -1695,24 +1679,8 @@ function ChatPane({
           </div>
         </ThreadPrimitive.Viewport>
 
-        <ThreadPrimitive.ViewportFooter
-          className={import.meta.env.DEV ? 'thread-footer shell-prototype-footer' : 'thread-footer'}
-        >
-          {import.meta.env.DEV ? (
-            <ShellCommandPrototypeComposer
-              variant={shellPrototypeVariant}
-              draft={shellPrototypeDraft}
-              onDraftChange={(draft) => {
-                setShellPrototypeDraft(draft);
-                setShellPrototypePreview(null);
-              }}
-              preview={shellPrototypePreview}
-              onPreview={() => setShellPrototypePreview(
-                `Preview only — !${shellPrototypeDraft.replace(/^!/, '')} was not run.`,
-              )}
-            />
-          ) : (
-            <Composer
+        <ThreadPrimitive.ViewportFooter className="thread-footer">
+          <Composer
               chatId={chatId}
               commands={commands}
               shellRuns={shellRuns}
@@ -1738,15 +1706,8 @@ function ChatPane({
               onOpenWorkTicket={onOpenWorkTicket}
               onLinkWorkTicket={onLinkWorkTicket}
               onRemoveWorkTicket={onRemoveWorkTicket}
-            />
-          )}
-        </ThreadPrimitive.ViewportFooter>
-        {import.meta.env.DEV ? (
-          <ShellPrototypeBar
-            variant={shellPrototypeVariant}
-            onChange={selectShellPrototypeVariant}
           />
-        ) : null}
+        </ThreadPrimitive.ViewportFooter>
       </ThreadPrimitive.Root>
     </AssistantRuntimeProvider>
   );
@@ -1814,7 +1775,6 @@ function Line({
   isWorking,
   parts,
   isEditing,
-  shellPrototypeVariant,
   showsActions,
   onFork,
 }: {
@@ -1824,7 +1784,6 @@ function Line({
   isWorking: boolean;
   parts: readonly ChatPart[];
   isEditing: boolean;
-  shellPrototypeVariant: ShellPrototypeVariant | null;
   /** Whether this message is where its turn's branch picker and actions go. */
   showsActions: boolean;
   onFork: (messageId: string) => Promise<void>;
@@ -1832,6 +1791,7 @@ function Line({
   // A boundary is not something anybody said, so it does not go in the bubble:
   // it stands across the column, above the message it hands over to.
   const said = saidIn(parts);
+  const isLocalCommand = !isKira && said.length > 0 && said.every((part) => part.type === 'shell');
   const messageText = textOf(said);
   const { copy, isCopied } = useClipboard({ announce: 'Message copied' });
 
@@ -1851,29 +1811,16 @@ function Line({
       {boundariesIn(parts)}
 
       {said.length > 0 && (
-        <ChatMessage sender={isKira ? 'assistant' : 'user'}>
-          {/*
-           * Kira's answer is flat: `ghost` is Astryx's name for "no background,
-           * keep the text column", and the width replaces the default
-           * `max(80%, 280px)` cap so prose, lists and code blocks get the pane.
-           * A question keeps its bubble — it is a thing you said, sitting on the
-           * right, not a document to read. Padding is the bubble's either way,
-           * which is what keeps words off the pane's edge.
-           */}
-          <ChatMessageBubble
-            variant={isKira ? 'ghost' : 'filled'}
-            width={isKira || (shellPrototypeVariant !== null && said.some((part) => part.type === 'shell'))
-              ? '100%'
-              : undefined}
-          >
-            <MessageBody
-              parts={said}
-              isKira={isKira}
-              isWorking={isWorking}
-              shellPrototypeVariant={shellPrototypeVariant}
-            />
-          </ChatMessageBubble>
-        </ChatMessage>
+        isLocalCommand ? (
+          <MessageBody parts={said} isKira={false} isWorking={isWorking} />
+        ) : (
+          <ChatMessage sender={isKira ? 'assistant' : 'user'}>
+            {/* Kira's answer is flat and fills the reading column; a question keeps its bubble. */}
+            <ChatMessageBubble variant={isKira ? 'ghost' : 'filled'} width={isKira ? '100%' : undefined}>
+              <MessageBody parts={said} isKira={isKira} isWorking={isWorking} />
+            </ChatMessageBubble>
+          </ChatMessage>
+        )
       )}
 
       {showsActions && (
@@ -2081,12 +2028,10 @@ function MessageBody({
   parts,
   isKira,
   isWorking,
-  shellPrototypeVariant,
 }: {
   parts: readonly SaidPart[];
   isKira: boolean;
   isWorking: boolean;
-  shellPrototypeVariant: ShellPrototypeVariant | null;
 }) {
   return (
     <>
@@ -2101,7 +2046,6 @@ function MessageBody({
           <ShellCommandTranscript
             key={part.run.id}
             run={part.run}
-            prototypeVariant={shellPrototypeVariant}
           />
         ) : (
           <Work key={index} part={part} isWorking={isWorking} />
@@ -2113,58 +2057,58 @@ function MessageBody({
 
 function ShellCommandTranscript({
   run,
-  prototypeVariant,
 }: {
   run: ShellCommandRun;
-  prototypeVariant: ShellPrototypeVariant | null;
 }) {
-  const status =
-    run.status === 'cancelled'
-      ? 'Cancelled'
-      : run.status === 'error'
-        ? `Failed${run.exitCode === null ? '' : ` · exit code ${run.exitCode}`}`
-        : `Finished${run.exitCode === null ? '' : ` · exit code ${run.exitCode}`}`;
-
-  if (prototypeVariant !== null) {
-    return <ShellCommandPrototypeTranscript run={run} variant={prototypeVariant} />;
-  }
+  const status = run.status === 'running'
+    ? 'Running'
+    : run.status === 'cancelled'
+    ? 'Cancelled'
+    : run.status === 'error'
+      ? `Failed${run.exitCode === null ? '' : ` · exit code ${run.exitCode}`}`
+      : `Finished${run.exitCode === null ? '' : ` · exit code ${run.exitCode}`}`;
 
   return (
-    <div {...stylex.props(shellStyles.command)}>
-      <Text weight="medium" size="sm">
-        You ran locally: !{run.command}
-      </Text>
-      {run.output === '' ? null : <pre {...stylex.props(shellStyles.output)}>{run.output}</pre>}
-      <Text color="secondary" size="sm">
-        {status}
-        {run.truncated ? ' · output truncated' : ''}
-      </Text>
-      {run.fullOutputPath === null ? null : (
+    <details {...stylex.props(shellStyles.inlineResult)}>
+      <summary {...stylex.props(shellStyles.inlineSummary)}>
+        <code>! {run.command}</code>
         <Text color="secondary" size="sm">
-          Full output: {run.fullOutputPath}
+          {status}{run.truncated ? ' · output truncated' : ''}
         </Text>
+      </summary>
+      <pre {...stylex.props(shellStyles.inlineOutput)}>{run.output || 'No output'}</pre>
+      {run.fullOutputPath === null ? null : (
+        <Text color="secondary" size="sm">Full output: {run.fullOutputPath}</Text>
       )}
-    </div>
+    </details>
   );
 }
 
 const shellStyles = stylex.create({
-  command: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: spacingVars['--spacing-2'],
-    minWidth: 0,
+  inlineResult: {
+    width: '100%',
+    borderBlockWidth: borderVars['--border-width'],
+    borderBlockStyle: 'solid',
+    borderBlockColor: colorVars['--color-border'],
+    color: colorVars['--color-text-primary'],
+    fontFamily: 'var(--font-family-code)',
+    fontSize: '0.875rem',
   },
-  output: {
-    maxHeight: '16rem',
+  inlineSummary: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacingVars['--spacing-2'],
+    paddingBlock: spacingVars['--spacing-2'],
+    cursor: 'pointer',
+    listStyle: 'none',
+  },
+  inlineOutput: {
+    maxHeight: '10rem',
     overflow: 'auto',
     margin: 0,
     padding: spacingVars['--spacing-2'],
-    borderRadius: radiusVars['--radius-element'],
     backgroundColor: colorVars['--color-background-muted'],
-    color: colorVars['--color-text-primary'],
-    fontFamily: 'var(--font-family-code)',
-    fontSize: '0.75rem',
     whiteSpace: 'pre-wrap',
     overflowWrap: 'anywhere',
   },
