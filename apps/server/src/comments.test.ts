@@ -255,6 +255,32 @@ describe('activity', () => {
     expect(actions).toEqual(['created', 'blocker_added', 'blocker_removed']);
   });
 
+  test('records a change to a ticket’s checks, and only when they change', async () => {
+    const { app, key } = await signedIn();
+    const project = await makeProject(app, key);
+    const made = await makeTicket(app, key, project.id, { criteria: ['one'] });
+
+    const patched = await send(
+      app,
+      `/api/tickets/${made.id}`,
+      json('PATCH', key, { criteria: ['one', 'two'] }),
+    );
+    expect(patched.status).toBe(200);
+
+    const changed = (await timeline(app, key, made.id)).filter(
+      (each) => each.action === 'checks_changed',
+    );
+    expect(changed).toHaveLength(1);
+    expect(changed[0]!.details).toEqual({ from: ['one'], to: ['one', 'two'] });
+
+    // Writing the same checks again is not a change, so it records nothing.
+    await send(app, `/api/tickets/${made.id}`, json('PATCH', key, { criteria: ['one', 'two'] }));
+    const again = (await timeline(app, key, made.id)).filter(
+      (each) => each.action === 'checks_changed',
+    );
+    expect(again).toHaveLength(1);
+  });
+
   test('caps the timeline to the newest entries when asked', async () => {
     const { app, key } = await signedIn();
     const project = await makeProject(app, key);

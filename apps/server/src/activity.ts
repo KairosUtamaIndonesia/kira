@@ -19,6 +19,7 @@ export type ActivityAction =
   | 'assignee_changed'
   | 'title_changed'
   | 'body_updated'
+  | 'checks_changed'
   | 'blocker_added'
   | 'blocker_removed'
   | 'pull_request_linked'

@@ -1420,6 +1420,9 @@ async function changesTo(
   if (after.body !== before.body) {
     changes.push(entry('body_updated', {}));
   }
+  if (!sameChecks(after.criteria, before.criteria)) {
+    changes.push(entry('checks_changed', { from: before.criteria, to: after.criteria }));
+  }
   if (after.assigneeId !== before.assigneeId) {
     const [was, now] = await Promise.all([
       personOf(database, before.assigneeId),
@@ -1429,6 +1432,11 @@ async function changesTo(
   }
 
   return changes;
+}
+
+/** Whether two check lists say the same thing, order included. */
+function sameChecks(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((line, at) => line === right[at]);
 }
 
 interface Planning {
