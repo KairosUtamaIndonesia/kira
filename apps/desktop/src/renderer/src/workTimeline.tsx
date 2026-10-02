@@ -65,6 +65,8 @@ function describe(entry: Extract<TimelineEntry, { type: 'activity' }>): string {
       return copy.activity.title_changed;
     case 'body_updated':
       return copy.activity.body_updated;
+    case 'checks_changed':
+      return copy.activity.checks_changed;
     case 'blocker_added':
       return copy.activity.blocker_added(blockerName(details.blocker));
     case 'blocker_removed':
@@ -94,7 +96,7 @@ function statusWord(status: string): string {
 function activityIcon(action: string) {
   if (action === 'pull_request_merged' || action === 'pull_request_linked') return GitPullRequest;
   if (action === 'created' || action === 'outcome_recorded') return CircleCheck;
-  if (action === 'body_updated' || action === 'title_changed') return Pencil;
+  if (action === 'body_updated' || action === 'title_changed' || action === 'checks_changed') return Pencil;
 
   return MessageSquare;
 }

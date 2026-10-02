@@ -262,6 +262,7 @@ export const copy = {
       to === null ? 'unassigned this ticket' : `assigned this to ${to}`,
     title_changed: 'changed the title',
     body_updated: 'changed the description',
+    checks_changed: 'changed the checks',
     blocker_added: (name: string) => `added ${name} as a blocker`,
     blocker_removed: (name: string) => `removed ${name} as a blocker`,
     pull_request_linked: 'linked a pull request',
