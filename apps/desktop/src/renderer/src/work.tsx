@@ -847,7 +847,7 @@ const styles = stylex.create({
   fullScroll: { flex: 1, minHeight: 0, overflowY: 'auto' },
   fullGrid: {
     display: 'grid',
-    gridTemplateColumns: 'minmax(0, 1fr) 300px',
+    gridTemplateColumns: 'minmax(0, 1fr) 360px',
     alignItems: 'start',
     gap: spacingVars['--spacing-8'],
     maxWidth: 1180,
