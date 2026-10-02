@@ -1613,6 +1613,7 @@ function ChatPane({
   ) => Promise<string | null>;
   onCancelQuestionnaire: (threadId: string, requestId: string) => Promise<string | null>;
 }) {
+  const [shellUiPrototype, setShellUiPrototype] = useState(false);
   const runtime = useExternalStoreRuntime<ChatLine>({
     messageRepository: repository,
     // The runtime's adapter requires a converter of our message type even though
@@ -1659,6 +1660,7 @@ function ChatPane({
                     parts={parts}
                     isWorking={isRunning && message.isLast}
                     isEditing={message.composer.isEditing}
+                    shellUiPrototype={shellUiPrototype}
                     showsActions={showsActions && !parts.some((part) => part.type === 'shell')}
                     onFork={onFork}
                   />
@@ -1684,6 +1686,8 @@ function ChatPane({
             chatId={chatId}
             commands={commands}
             shellRuns={shellRuns}
+            shellUiPrototype={shellUiPrototype}
+            onShellUiPrototypeChange={setShellUiPrototype}
             onOpenMagicPrompts={onOpenMagicPrompts}
             placeholder="@ for files · / for commands and skills · ! for a local command · # for Magic Prompts"
             error={error}
@@ -1775,6 +1779,7 @@ function Line({
   isWorking,
   parts,
   isEditing,
+  shellUiPrototype,
   showsActions,
   onFork,
 }: {
@@ -1784,6 +1789,7 @@ function Line({
   isWorking: boolean;
   parts: readonly ChatPart[];
   isEditing: boolean;
+  shellUiPrototype: boolean;
   /** Whether this message is where its turn's branch picker and actions go. */
   showsActions: boolean;
   onFork: (messageId: string) => Promise<void>;
@@ -1821,9 +1827,16 @@ function Line({
            */}
           <ChatMessageBubble
             variant={isKira ? 'ghost' : 'filled'}
-            width={isKira ? '100%' : undefined}
+            width={isKira || (shellUiPrototype && said.some((part) => part.type === 'shell'))
+              ? '100%'
+              : undefined}
           >
-            <MessageBody parts={said} isKira={isKira} isWorking={isWorking} />
+            <MessageBody
+              parts={said}
+              isKira={isKira}
+              isWorking={isWorking}
+              shellUiPrototype={shellUiPrototype}
+            />
           </ChatMessageBubble>
         </ChatMessage>
       )}
@@ -2033,10 +2046,12 @@ function MessageBody({
   parts,
   isKira,
   isWorking,
+  shellUiPrototype,
 }: {
   parts: readonly SaidPart[];
   isKira: boolean;
   isWorking: boolean;
+  shellUiPrototype: boolean;
 }) {
   return (
     <>
@@ -2048,7 +2063,11 @@ function MessageBody({
         ) : part.type === 'glossary' ? (
           <GlossaryNote key={index} change={part.change} />
         ) : part.type === 'shell' ? (
-          <ShellCommandTranscript key={part.run.id} run={part.run} />
+          <ShellCommandTranscript
+            key={part.run.id}
+            run={part.run}
+            prototype={shellUiPrototype}
+          />
         ) : (
           <Work key={index} part={part} isWorking={isWorking} />
         ),
@@ -2057,13 +2076,45 @@ function MessageBody({
   );
 }
 
-function ShellCommandTranscript({ run }: { run: ShellCommandRun }) {
+function ShellCommandTranscript({
+  run,
+  prototype,
+}: {
+  run: ShellCommandRun;
+  prototype: boolean;
+}) {
   const status =
     run.status === 'cancelled'
       ? 'Cancelled'
       : run.status === 'error'
         ? `Failed${run.exitCode === null ? '' : ` · exit code ${run.exitCode}`}`
         : `Finished${run.exitCode === null ? '' : ` · exit code ${run.exitCode}`}`;
+
+  if (prototype) {
+    return (
+      <section {...stylex.props(shellStyles.prototypeCommand)} aria-label="Local command">
+        <header {...stylex.props(shellStyles.prototypeCommandHead)}>
+          <span {...stylex.props(shellStyles.prototypeCommandLabel)}>
+            <Icon icon={Terminal} size="sm" />
+            <Text weight="medium" size="sm">Local command</Text>
+          </span>
+          <Text color="secondary" size="sm">
+            {status}{run.truncated ? ' · output truncated' : ''}
+          </Text>
+        </header>
+        <div {...stylex.props(shellStyles.prototypeCommandLine)}>
+          <span aria-hidden="true">!</span>
+          <code>{run.command}</code>
+        </div>
+        {run.output === '' ? null : (
+          <pre {...stylex.props(shellStyles.prototypeOutput)}>{run.output}</pre>
+        )}
+        {run.fullOutputPath === null ? null : (
+          <Text color="secondary" size="sm">Full output: {run.fullOutputPath}</Text>
+        )}
+      </section>
+    );
+  }
 
   return (
     <div {...stylex.props(shellStyles.command)}>
@@ -2092,6 +2143,58 @@ const shellStyles = stylex.create({
     minWidth: 0,
   },
   output: {
+    maxHeight: '16rem',
+    overflow: 'auto',
+    margin: 0,
+    padding: spacingVars['--spacing-2'],
+    borderRadius: radiusVars['--radius-element'],
+    backgroundColor: colorVars['--color-background-muted'],
+    color: colorVars['--color-text-primary'],
+    fontFamily: 'var(--font-family-code)',
+    fontSize: '0.75rem',
+    whiteSpace: 'pre-wrap',
+    overflowWrap: 'anywhere',
+  },
+  prototypeCommand: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: spacingVars['--spacing-2'],
+    width: '100%',
+    minWidth: 0,
+    padding: spacingVars['--spacing-3'],
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: colorVars['--color-border'],
+    borderRadius: radiusVars['--radius-container'],
+    backgroundColor: colorVars['--color-background-surface'],
+  },
+  prototypeCommandHead: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacingVars['--spacing-3'],
+    minWidth: 0,
+  },
+  prototypeCommandLabel: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: spacingVars['--spacing-2'],
+    minWidth: 0,
+  },
+  prototypeCommandLine: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: spacingVars['--spacing-2'],
+    minWidth: 0,
+    padding: spacingVars['--spacing-2'],
+    borderRadius: radiusVars['--radius-element'],
+    backgroundColor: colorVars['--color-background-muted'],
+    color: colorVars['--color-text-primary'],
+    fontFamily: 'var(--font-family-code)',
+    fontSize: '0.875rem',
+    overflowWrap: 'anywhere',
+  },
+  prototypeOutput: {
     maxHeight: '16rem',
     overflow: 'auto',
     margin: 0,
