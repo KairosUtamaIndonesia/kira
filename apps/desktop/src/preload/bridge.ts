@@ -1005,6 +1005,11 @@ export const FILE_CHANNELS = {
  * crosses this seam, so there is nothing here for one to leak through.
  */
 export interface AuthUser {
+  /**
+   * The person's server id, when the answer carried one. Older keys and stored
+   * sessions may not, so a window offers to assign a ticket only when it is here.
+   */
+  id?: string;
   name: string;
   email: string;
 }

@@ -21,6 +21,7 @@
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { Divider } from '@astryxdesign/core/Divider';
+import { DropdownMenu } from '@astryxdesign/core/DropdownMenu';
 import { EmptyState } from '@astryxdesign/core/EmptyState';
 import { Icon } from '@astryxdesign/core/Icon';
 import { IconButton } from '@astryxdesign/core/IconButton';
@@ -69,6 +70,7 @@ import {
   ArrowLeft,
   ArrowUp,
   Bug,
+  Check,
   ChevronDown,
   CircleCheck,
   CircleDashed,
@@ -119,6 +121,7 @@ import type {
   TicketStatus,
   WorkspaceSummary,
 } from '../../preload/bridge.ts';
+import { TICKET_PRIORITIES, TICKET_STATUSES } from '../../preload/bridge.ts';
 import { Blockers } from './workBlockers.tsx';
 import { PullRequests } from './workPullRequests.tsx';
 import { Timeline } from './workTimeline.tsx';
@@ -874,14 +877,24 @@ const styles = stylex.create({
   fullFact: {
     display: 'grid',
     gridTemplateColumns: '96px minmax(0, 1fr)',
-    alignItems: 'baseline',
+    alignItems: 'center',
     gap: spacingVars['--spacing-2'],
   },
   fullFactLabel: {
     fontSize: textSizeVars['--font-size-sm'],
     color: colorVars['--color-text-secondary'],
   },
-  fullFactValue: { margin: 0, fontSize: textSizeVars['--font-size-sm'], overflowWrap: 'anywhere' },
+  fullFactValue: {
+    display: 'flex',
+    alignItems: 'center',
+    margin: 0,
+    fontSize: textSizeVars['--font-size-sm'],
+    overflowWrap: 'anywhere',
+  },
+  /** A property's value button sits flush with the column, like the plain values do. */
+  factButton: {
+    marginInlineStart: `calc(-1 * ${spacingVars['--spacing-2']})`,
+  },
   fullGroup: {
     display: 'flex',
     flexDirection: 'column',
@@ -1417,6 +1430,10 @@ export function WorkSurface({
   const visibleStatuses = STATUSES;
   const readyCanReorder = canReorderReady(display);
   const open = tickets.find((each) => each.id === openId) ?? null;
+  const me =
+    auth?.signedIn === true && typeof auth.user.id === 'string'
+      ? { id: auth.user.id, name: auth.user.name }
+      : null;
   const placement = 'beside';
   const closePanel = (): void => {
     setIsFull(false);
@@ -1438,6 +1455,7 @@ export function WorkSurface({
         onCollapse={() => setIsFull(false)}
         linkedChats={chatSummaries.filter((chat) => chat.workTicketIds.includes(open.id))}
         tickets={tickets}
+        me={me}
         refusal={refusal}
         onLeave={closePanel}
         onOpen={openTicket}
@@ -2905,6 +2923,16 @@ function TicketPanel({
   );
 }
 
+/** One labelled property row in the ticket's aside. */
+function PropertyRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div {...stylex.props(styles.fullFact)}>
+      <dt {...stylex.props(styles.fullFactLabel)}>{label}</dt>
+      <dd {...stylex.props(styles.fullFactValue)}>{children}</dd>
+    </div>
+  );
+}
+
 /** One ticket in full, with everything that can be done to it. */
 function TicketReading({
   ticket,
@@ -2921,6 +2949,7 @@ function TicketReading({
   onCollapse,
   linkedChats = [],
   tickets = [],
+  me = null,
 }: {
   ticket: Ticket;
   placement: Placement;
@@ -2936,6 +2965,8 @@ function TicketReading({
   onCollapse?: () => void;
   linkedChats?: ChatSummary[];
   tickets?: Ticket[];
+  /** The signed-in person, when the window knows their id, for Assignee. */
+  me?: { id: string; name: string } | null;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -2949,24 +2980,89 @@ function TicketReading({
     setIsBusy(false);
   }
 
-  const facts: { label: string; value: string }[] = [
-    { label: copy.facts.status, value: copy.statusWord[statusOf(ticket)] },
+  const readFacts: { label: string; value: string }[] = [
     { label: copy.facts.kind, value: ticket.kind },
-    { label: copy.facts.assignee, value: ticket.assignee?.name ?? copy.facts.nobody },
     { label: copy.facts.createdBy, value: ticket.author?.name ?? copy.none },
-    { label: copy.facts.priority, value: ticket.priority },
     { label: copy.facts.created, value: when(ticket.createdAt) },
     { label: copy.facts.updated, value: when(ticket.updatedAt) },
+  ];
+  const statusChoices = TICKET_STATUSES.map((status) => ({
+    label: copy.statuses[status].label,
+    description: copy.statuses[status].note,
+    endContent: status === ticket.status ? <Icon icon={Check} size="sm" /> : undefined,
+    onClick: () => void run(() => onWrite({ status })),
+  }));
+  const priorityChoices = TICKET_PRIORITIES.map((priority) => ({
+    label: copy.priorities[priority],
+    endContent: priority === ticket.priority ? <Icon icon={Check} size="sm" /> : undefined,
+    onClick: () => void run(() => onWrite({ priority })),
+  }));
+  const assigneeChoices = [
+    ...(me === null
+      ? []
+      : [
+          {
+            label: copy.facts.assignToMe,
+            endContent: ticket.assignee?.id === me.id ? <Icon icon={Check} size="sm" /> : undefined,
+            onClick: () => void run(() => onWrite({ assigneeId: me.id })),
+          },
+        ]),
+    {
+      label: copy.facts.unassign,
+      endContent: ticket.assignee === null ? <Icon icon={Check} size="sm" /> : undefined,
+      onClick: () => void run(() => onWrite({ assigneeId: null })),
+    },
   ];
   const aside =
     placement === 'full' ? (
       <>
         <dl {...stylex.props(styles.fullFacts)}>
-          {facts.map((fact) => (
-            <div key={fact.label} {...stylex.props(styles.fullFact)}>
-              <dt {...stylex.props(styles.fullFactLabel)}>{fact.label}</dt>
-              <dd {...stylex.props(styles.fullFactValue)}>{fact.value}</dd>
-            </div>
+          <PropertyRow label={copy.facts.status}>
+            <DropdownMenu
+              button={{
+                label: copy.statusWord[statusOf(ticket)],
+                size: 'sm',
+                variant: 'ghost',
+                isDisabled: isBusy,
+                xstyle: styles.factButton,
+              }}
+              items={statusChoices}
+            />
+          </PropertyRow>
+          <PropertyRow label={copy.facts.priority}>
+            <DropdownMenu
+              button={{
+                label: copy.priorities[ticket.priority],
+                size: 'sm',
+                variant: 'ghost',
+                isDisabled: isBusy,
+                xstyle: styles.factButton,
+              }}
+              items={priorityChoices}
+            />
+          </PropertyRow>
+          <PropertyRow label={copy.facts.assignee}>
+            {me === null ? (
+              <span {...stylex.props(styles.fullFactValue)}>
+                {ticket.assignee?.name ?? copy.facts.nobody}
+              </span>
+            ) : (
+              <DropdownMenu
+                button={{
+                  label: ticket.assignee?.name ?? copy.facts.nobody,
+                  size: 'sm',
+                  variant: 'ghost',
+                  isDisabled: isBusy,
+                  xstyle: styles.factButton,
+                }}
+                items={assigneeChoices}
+              />
+            )}
+          </PropertyRow>
+          {readFacts.map((fact) => (
+            <PropertyRow key={fact.label} label={fact.label}>
+              <span {...stylex.props(styles.fullFactValue)}>{fact.value}</span>
+            </PropertyRow>
           ))}
         </dl>
         <section {...stylex.props(styles.fullGroup)}>

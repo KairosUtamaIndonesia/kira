@@ -284,6 +284,17 @@ export const copy = {
     created: 'Created',
     updated: 'Updated',
     nobody: 'Nobody',
+    assignToMe: 'Assign to me',
+    unassign: 'Unassign',
+  },
+
+  /** One priority as a word, for the properties a ticket can be changed through. */
+  priorities: {
+    urgent: 'Urgent',
+    high: 'High',
+    medium: 'Medium',
+    low: 'Low',
+    none: 'None',
   },
 
   time: {
