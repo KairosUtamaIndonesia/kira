@@ -19,7 +19,7 @@ import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
 import { Elysia, t } from 'elysia';
 import { type ActivityEntry, recordActivity } from './activity';
 import type { Auth } from './auth';
-import type { Database } from './database';
+import { postgresCode, type Database } from './database';
 import { keyHolder, type HeldUser } from './keys';
 import { refusal, REFUSAL } from './refusals';
 import { messages } from './messages';
@@ -1754,20 +1754,6 @@ function isHttpsUrl(value: string): boolean {
   } catch {
     return false;
   }
-}
-
-/** The code Postgres refused with, however many wrappers it arrived in. */
-function postgresCode(error: unknown): string | null {
-  let at: unknown = error;
-
-  for (let depth = 0; depth < 5 && at !== undefined && at !== null; depth += 1) {
-    const code = (at as { code?: unknown }).code;
-    if (typeof code === 'string') return code;
-
-    at = (at as { cause?: unknown }).cause;
-  }
-
-  return null;
 }
 
 function isOneOf<T extends string>(allowed: readonly T[], value: string): value is T {

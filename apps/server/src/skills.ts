@@ -20,7 +20,7 @@ import { randomUUID } from 'node:crypto';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { Elysia, t } from 'elysia';
 import type { Auth } from './auth';
-import type { Database } from './database';
+import { postgresCode, type Database } from './database';
 import { keyHolder, type HeldUser } from './keys';
 import { REFUSAL, refusal } from './refusals';
 import { project, skill, skillFile, user } from './schema';
@@ -108,24 +108,6 @@ function referencePath(path: string): string | null {
   if (cleaned.split('/').some((segment) => segment === '' || segment === '..')) return null;
   if (cleaned.toLowerCase() === BODY_FILENAME.toLowerCase()) return null;
   return cleaned;
-}
-
-/**
- * The Postgres error code behind a failed query.
- *
- * Drizzle raises its own error and keeps the driver's on `cause`, so the code a
- * unique violation carries (`23505`) is one or two links down rather than on the
- * error that reaches here.
- */
-function postgresCode(error: unknown): string | undefined {
-  let current: unknown = error;
-  for (let depth = 0; depth < 5; depth += 1) {
-    if (typeof current !== 'object' || current === null) return undefined;
-    const code = (current as { code?: unknown }).code;
-    if (typeof code === 'string') return code;
-    current = (current as { cause?: unknown }).cause;
-  }
-  return undefined;
 }
 
 type Asking = { readonly refused: ReturnType<typeof refusal> } | { readonly user: HeldUser };

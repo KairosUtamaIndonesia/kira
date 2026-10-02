@@ -17,7 +17,7 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { Elysia, t } from 'elysia';
 import type { Auth } from './auth';
 import type { Config } from './config';
-import type { Database } from './database';
+import { postgresCode, type Database } from './database';
 import { recordActivity } from './activity';
 import { keyHolder, type HeldUser } from './keys';
 import { refusal, REFUSAL } from './refusals';
@@ -1345,17 +1345,4 @@ async function asking(auth: Auth, request: Request): Promise<Asking> {
   if ('refusal' in held) return { refused: refusal(held.refusal.code, held.refusal.message) };
 
   return { user: held.user };
-}
-
-function postgresCode(error: unknown): string | null {
-  let at: unknown = error;
-
-  for (let depth = 0; depth < 5 && at !== undefined && at !== null; depth += 1) {
-    const code = (at as { code?: unknown }).code;
-    if (typeof code === 'string') return code;
-
-    at = (at as { cause?: unknown }).cause;
-  }
-
-  return null;
 }

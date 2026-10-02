@@ -220,4 +220,27 @@ describe('tickets', () => {
     expect(cycle.status).toBe(400);
     expect((await cycle.json()).error.code).toBe('GATE_CIRCLE');
   });
+
+  test('a prefix is one project’s, refused in its own words rather than as a failure', async () => {
+    const { app, key } = await signedIn();
+    await makeProject(app, key);
+
+    // Uppercased before it is judged, so a lowercase spelling of a taken prefix
+    // is the same refusal rather than a second project called `fnd`.
+    const taken = await send(app, '/api/projects', json('POST', key, { name: 'Other', prefix: 'fnd' }));
+
+    expect(taken.status).toBe(409);
+    expect((await taken.json()).error.code).toBe('PREFIX_TAKEN');
+  });
+
+  test('a prefix that is not a prefix is refused before a row is written', async () => {
+    const { app, key } = await signedIn();
+
+    for (const prefix of ['', 'F', 'TOOLONGPREFIX', '1ND']) {
+      const refused = await send(app, '/api/projects', json('POST', key, { name: 'Kira', prefix }));
+
+      expect(refused.status).toBe(400);
+      expect((await refused.json()).error.code).toBe('PREFIX_INVALID');
+    }
+  });
 });

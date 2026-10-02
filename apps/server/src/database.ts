@@ -42,3 +42,29 @@ export function openDatabase(url: string) {
 export async function migrate(database: Database): Promise<void> {
   await applyMigrations(database, { migrationsFolder: MIGRATIONS });
 }
+
+/**
+ * The code Postgres refused with, however many wrappers it arrived in.
+ *
+ * Drizzle raises its own error and keeps the driver's on `cause`, so the `23505`
+ * a unique violation carries is a link or two down rather than on the error that
+ * reaches a caller. Reading `.code` off the error itself finds nothing, and a
+ * taken name or prefix is then answered as a 500 instead of the refusal the
+ * server meant — which is why this walks the chain rather than checking once.
+ *
+ * It is here rather than in each route because every route that inserts into a
+ * table with a unique constraint needs the same answer: tickets and Git
+ * connections and skills all tell a conflict from a failure the same way.
+ */
+export function postgresCode(error: unknown): string | null {
+  let at: unknown = error;
+
+  for (let depth = 0; depth < 5 && at !== undefined && at !== null; depth += 1) {
+    const code = (at as { code?: unknown }).code;
+    if (typeof code === 'string') return code;
+
+    at = (at as { cause?: unknown }).cause;
+  }
+
+  return null;
+}

@@ -83,6 +83,26 @@ The server creates its own tables at boot. Tests do not touch this database's ta
 theirs in a database of their own called `kira_test` on the same instance, which each boot
 empties and migrates again, so what one test leaves behind cannot be seen by another.
 
+### When the suite says "too many clients already"
+
+The instance takes **100 connections** (`max_connections`), and a test run opens a pool that
+`closeDatabases` closes when it finishes. A run that is *killed* — a timeout, a Ctrl-C, two
+suites started at once — never gets there, and its connections stay idle on the instance. Enough
+of those and the next run cannot connect at all: every failure reads `53300` / "sorry, too many
+clients already", which looks like broken code and is not. Check how many are held, then drop
+them:
+
+```sh
+docker compose exec -T postgres psql -U kira -d kira \
+  -c "select count(*) from pg_stat_activity where datname = 'kira';" \
+  -c "select count(pg_terminate_backend(pid)) from pg_stat_activity where pid <> pg_backend_pid();"
+```
+
+Terminating drops every connection on the instance, including a `dev:server` that is running;
+each reconnects on its next query, so this is recovery rather than damage. Two things keep it
+from happening: run the server and desktop suites **one at a time** rather than in parallel, and
+prefer a command with a generous timeout over one that will be cut off part-way.
+
 ### Changing the schema
 
 Every table in the database is described in `apps/server/src/schema.ts` — Better Auth's five,
