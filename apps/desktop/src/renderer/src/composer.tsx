@@ -85,8 +85,6 @@ export function Composer({
   chatId,
   commands = [],
   shellRuns = [],
-  shellUiPrototype = false,
-  onShellUiPrototypeChange,
   onOpenMagicPrompts,
   placeholder,
   error,
@@ -114,8 +112,6 @@ export function Composer({
   chatId: string;
   commands?: ChatCommand[];
   shellRuns?: ShellCommandRun[];
-  shellUiPrototype?: boolean;
-  onShellUiPrototypeChange?: (enabled: boolean) => void;
   onOpenMagicPrompts?: () => void;
   placeholder: string;
   error?: string | null;
@@ -394,7 +390,7 @@ export function Composer({
       usage === null && chatUsage === null ? undefined : (
         <ContextGauge usage={usage} chatUsage={chatUsage} />
       )
-    ) : isShellDraft && shellUiPrototype ? undefined : (
+    ) : (
       <div className="composer-send-actions">
         {usage === null && chatUsage === null ? null : (
           <ContextGauge usage={usage} chatUsage={chatUsage} />
@@ -446,13 +442,6 @@ export function Composer({
     onStop: () => aui.composer.cancel(),
     input: (
       <div {...stylex.props(styles.composerInputContent)}>
-        {isShellDraft && shellUiPrototype ? (
-          <div {...stylex.props(styles.shellDraftContext)}>
-            <Icon icon={Terminal} size="sm" color="secondary" />
-            <Text weight="medium" size="sm">Local command</Text>
-            <Text color="secondary" size="sm">Runs in this chat’s workspace</Text>
-          </div>
-        ) : null}
         {attachedTicketRows.length > 0 && (
           <div {...stylex.props(styles.workTicketAttachments)}>{attachedTicketRows}</div>
         )}
@@ -484,7 +473,7 @@ export function Composer({
       <Button
         label="Run"
         icon={<Icon icon={Terminal} size="sm" />}
-        isIconOnly={!shellUiPrototype}
+        isIconOnly
         isDisabled={!canSend || isRunning}
         onClick={() => sendDraft(text)}
       />
@@ -505,25 +494,6 @@ export function Composer({
     />
   ) : (
     <div className="composer-stack">
-      {import.meta.env.DEV && onShellUiPrototypeChange ? (
-        <div {...stylex.props(styles.shellPrototypeSwitch)} role="group" aria-label="Local command UI prototype">
-          <Text color="secondary" size="sm">Local command UI</Text>
-          <Button
-            label="Current"
-            size="sm"
-            variant={shellUiPrototype ? 'ghost' : 'secondary'}
-            aria-pressed={!shellUiPrototype}
-            onClick={() => onShellUiPrototypeChange(false)}
-          />
-          <Button
-            label="Prototype"
-            size="sm"
-            variant={shellUiPrototype ? 'secondary' : 'ghost'}
-            aria-pressed={shellUiPrototype}
-            onClick={() => onShellUiPrototypeChange(true)}
-          />
-        </div>
-      ) : null}
       {queued.length > 0 && (
         <div className="waiting" aria-label="Waiting to be read">
           {queued.map((line, index) => (
@@ -571,7 +541,6 @@ export function Composer({
           )
         }
         footerActions={
-          shellUiPrototype && isShellDraft ? null : (
           <div {...stylex.props(styles.footerActions)}>
             <DropdownMenu
               placement="above"
@@ -592,7 +561,6 @@ export function Composer({
             />
             {pickerFor(models, modelId, onChoose, isRunning)}
           </div>
-          )
         }
       />
       <Dialog
@@ -812,19 +780,6 @@ const styles = stylex.create({
     flexDirection: 'column',
     gap: spacingVars['--spacing-2'],
     minWidth: 0,
-  },
-  shellPrototypeSwitch: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: spacingVars['--spacing-1'],
-  },
-  shellDraftContext: {
-    display: 'flex',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: spacingVars['--spacing-2'],
-    paddingInline: spacingVars['--spacing-2'],
   },
   shellActivity: {
     display: 'flex',

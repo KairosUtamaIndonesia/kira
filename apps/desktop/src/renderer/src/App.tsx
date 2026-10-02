@@ -103,6 +103,14 @@ import { MoveToProject } from './moveToProject.tsx';
 import { needsProject } from './moveToProject.ts';
 import { AccountMenu, ChatRail } from './chatRail.tsx';
 import { approvedSpecTicket } from './specPane';
+import {
+  initialShellPrototypeVariant,
+  ShellCommandPrototypeComposer,
+  ShellCommandPrototypeTranscript,
+  ShellPrototypeBar,
+  writeShellPrototypeVariant,
+  type ShellPrototypeVariant,
+} from './shellCommandPrototype';
 
 /**
  * Ids for the two messages the window holds before the database does: the
@@ -1613,7 +1621,13 @@ function ChatPane({
   ) => Promise<string | null>;
   onCancelQuestionnaire: (threadId: string, requestId: string) => Promise<string | null>;
 }) {
-  const [shellUiPrototype, setShellUiPrototype] = useState(false);
+  const [shellPrototypeVariant, setShellPrototypeVariant] = useState(initialShellPrototypeVariant);
+  const [shellPrototypeDraft, setShellPrototypeDraft] = useState('pwd');
+  const [shellPrototypePreview, setShellPrototypePreview] = useState<string | null>(null);
+  const selectShellPrototypeVariant = (variant: ShellPrototypeVariant): void => {
+    writeShellPrototypeVariant(variant);
+    setShellPrototypeVariant(variant);
+  };
   const runtime = useExternalStoreRuntime<ChatLine>({
     messageRepository: repository,
     // The runtime's adapter requires a converter of our message type even though
@@ -1660,7 +1674,7 @@ function ChatPane({
                     parts={parts}
                     isWorking={isRunning && message.isLast}
                     isEditing={message.composer.isEditing}
-                    shellUiPrototype={shellUiPrototype}
+                    shellPrototypeVariant={import.meta.env.DEV ? shellPrototypeVariant : null}
                     showsActions={showsActions && !parts.some((part) => part.type === 'shell')}
                     onFork={onFork}
                   />
@@ -1681,37 +1695,58 @@ function ChatPane({
           </div>
         </ThreadPrimitive.Viewport>
 
-        <ThreadPrimitive.ViewportFooter className="thread-footer">
-          <Composer
-            chatId={chatId}
-            commands={commands}
-            shellRuns={shellRuns}
-            shellUiPrototype={shellUiPrototype}
-            onShellUiPrototypeChange={setShellUiPrototype}
-            onOpenMagicPrompts={onOpenMagicPrompts}
-            placeholder="@ for files · / for commands and skills · ! for a local command · # for Magic Prompts"
-            error={error}
-            usage={usage}
-            chatUsage={chatUsage}
-            models={models}
-            modelId={modelId}
-            onChoose={(chosen) => void onChooseModel(chosen)}
-            mode={mode}
-            onChooseMode={(chosen) => void onChooseChatMode(chosen)}
-            queued={queued}
-            restored={restored}
-            onTakeBack={onTakeBack}
-            onRestored={onRestored}
-            browserElements={browserElements}
-            onBrowserElementsChange={onBrowserElementsChange}
-            attachedTicketIds={attachedTicketIds}
-            workTicketDetails={workTicketDetails}
-            linkableWorkTickets={linkableWorkTickets}
-            onOpenWorkTicket={onOpenWorkTicket}
-            onLinkWorkTicket={onLinkWorkTicket}
-            onRemoveWorkTicket={onRemoveWorkTicket}
-          />
+        <ThreadPrimitive.ViewportFooter
+          className={import.meta.env.DEV ? 'thread-footer shell-prototype-footer' : 'thread-footer'}
+        >
+          {import.meta.env.DEV ? (
+            <ShellCommandPrototypeComposer
+              variant={shellPrototypeVariant}
+              draft={shellPrototypeDraft}
+              onDraftChange={(draft) => {
+                setShellPrototypeDraft(draft);
+                setShellPrototypePreview(null);
+              }}
+              preview={shellPrototypePreview}
+              onPreview={() => setShellPrototypePreview(
+                `Preview only — !${shellPrototypeDraft.replace(/^!/, '')} was not run.`,
+              )}
+            />
+          ) : (
+            <Composer
+              chatId={chatId}
+              commands={commands}
+              shellRuns={shellRuns}
+              onOpenMagicPrompts={onOpenMagicPrompts}
+              placeholder="@ for files · / for commands and skills · ! for a local command · # for Magic Prompts"
+              error={error}
+              usage={usage}
+              chatUsage={chatUsage}
+              models={models}
+              modelId={modelId}
+              onChoose={(chosen) => void onChooseModel(chosen)}
+              mode={mode}
+              onChooseMode={(chosen) => void onChooseChatMode(chosen)}
+              queued={queued}
+              restored={restored}
+              onTakeBack={onTakeBack}
+              onRestored={onRestored}
+              browserElements={browserElements}
+              onBrowserElementsChange={onBrowserElementsChange}
+              attachedTicketIds={attachedTicketIds}
+              workTicketDetails={workTicketDetails}
+              linkableWorkTickets={linkableWorkTickets}
+              onOpenWorkTicket={onOpenWorkTicket}
+              onLinkWorkTicket={onLinkWorkTicket}
+              onRemoveWorkTicket={onRemoveWorkTicket}
+            />
+          )}
         </ThreadPrimitive.ViewportFooter>
+        {import.meta.env.DEV ? (
+          <ShellPrototypeBar
+            variant={shellPrototypeVariant}
+            onChange={selectShellPrototypeVariant}
+          />
+        ) : null}
       </ThreadPrimitive.Root>
     </AssistantRuntimeProvider>
   );
@@ -1779,7 +1814,7 @@ function Line({
   isWorking,
   parts,
   isEditing,
-  shellUiPrototype,
+  shellPrototypeVariant,
   showsActions,
   onFork,
 }: {
@@ -1789,7 +1824,7 @@ function Line({
   isWorking: boolean;
   parts: readonly ChatPart[];
   isEditing: boolean;
-  shellUiPrototype: boolean;
+  shellPrototypeVariant: ShellPrototypeVariant | null;
   /** Whether this message is where its turn's branch picker and actions go. */
   showsActions: boolean;
   onFork: (messageId: string) => Promise<void>;
@@ -1827,7 +1862,7 @@ function Line({
            */}
           <ChatMessageBubble
             variant={isKira ? 'ghost' : 'filled'}
-            width={isKira || (shellUiPrototype && said.some((part) => part.type === 'shell'))
+            width={isKira || (shellPrototypeVariant !== null && said.some((part) => part.type === 'shell'))
               ? '100%'
               : undefined}
           >
@@ -1835,7 +1870,7 @@ function Line({
               parts={said}
               isKira={isKira}
               isWorking={isWorking}
-              shellUiPrototype={shellUiPrototype}
+              shellPrototypeVariant={shellPrototypeVariant}
             />
           </ChatMessageBubble>
         </ChatMessage>
@@ -2046,12 +2081,12 @@ function MessageBody({
   parts,
   isKira,
   isWorking,
-  shellUiPrototype,
+  shellPrototypeVariant,
 }: {
   parts: readonly SaidPart[];
   isKira: boolean;
   isWorking: boolean;
-  shellUiPrototype: boolean;
+  shellPrototypeVariant: ShellPrototypeVariant | null;
 }) {
   return (
     <>
@@ -2066,7 +2101,7 @@ function MessageBody({
           <ShellCommandTranscript
             key={part.run.id}
             run={part.run}
-            prototype={shellUiPrototype}
+            prototypeVariant={shellPrototypeVariant}
           />
         ) : (
           <Work key={index} part={part} isWorking={isWorking} />
@@ -2078,10 +2113,10 @@ function MessageBody({
 
 function ShellCommandTranscript({
   run,
-  prototype,
+  prototypeVariant,
 }: {
   run: ShellCommandRun;
-  prototype: boolean;
+  prototypeVariant: ShellPrototypeVariant | null;
 }) {
   const status =
     run.status === 'cancelled'
@@ -2090,30 +2125,8 @@ function ShellCommandTranscript({
         ? `Failed${run.exitCode === null ? '' : ` · exit code ${run.exitCode}`}`
         : `Finished${run.exitCode === null ? '' : ` · exit code ${run.exitCode}`}`;
 
-  if (prototype) {
-    return (
-      <section {...stylex.props(shellStyles.prototypeCommand)} aria-label="Local command">
-        <header {...stylex.props(shellStyles.prototypeCommandHead)}>
-          <span {...stylex.props(shellStyles.prototypeCommandLabel)}>
-            <Icon icon={Terminal} size="sm" />
-            <Text weight="medium" size="sm">Local command</Text>
-          </span>
-          <Text color="secondary" size="sm">
-            {status}{run.truncated ? ' · output truncated' : ''}
-          </Text>
-        </header>
-        <div {...stylex.props(shellStyles.prototypeCommandLine)}>
-          <span aria-hidden="true">!</span>
-          <code>{run.command}</code>
-        </div>
-        {run.output === '' ? null : (
-          <pre {...stylex.props(shellStyles.prototypeOutput)}>{run.output}</pre>
-        )}
-        {run.fullOutputPath === null ? null : (
-          <Text color="secondary" size="sm">Full output: {run.fullOutputPath}</Text>
-        )}
-      </section>
-    );
+  if (prototypeVariant !== null) {
+    return <ShellCommandPrototypeTranscript run={run} variant={prototypeVariant} />;
   }
 
   return (
@@ -2143,58 +2156,6 @@ const shellStyles = stylex.create({
     minWidth: 0,
   },
   output: {
-    maxHeight: '16rem',
-    overflow: 'auto',
-    margin: 0,
-    padding: spacingVars['--spacing-2'],
-    borderRadius: radiusVars['--radius-element'],
-    backgroundColor: colorVars['--color-background-muted'],
-    color: colorVars['--color-text-primary'],
-    fontFamily: 'var(--font-family-code)',
-    fontSize: '0.75rem',
-    whiteSpace: 'pre-wrap',
-    overflowWrap: 'anywhere',
-  },
-  prototypeCommand: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: spacingVars['--spacing-2'],
-    width: '100%',
-    minWidth: 0,
-    padding: spacingVars['--spacing-3'],
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: colorVars['--color-border'],
-    borderRadius: radiusVars['--radius-container'],
-    backgroundColor: colorVars['--color-background-surface'],
-  },
-  prototypeCommandHead: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacingVars['--spacing-3'],
-    minWidth: 0,
-  },
-  prototypeCommandLabel: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: spacingVars['--spacing-2'],
-    minWidth: 0,
-  },
-  prototypeCommandLine: {
-    display: 'flex',
-    alignItems: 'baseline',
-    gap: spacingVars['--spacing-2'],
-    minWidth: 0,
-    padding: spacingVars['--spacing-2'],
-    borderRadius: radiusVars['--radius-element'],
-    backgroundColor: colorVars['--color-background-muted'],
-    color: colorVars['--color-text-primary'],
-    fontFamily: 'var(--font-family-code)',
-    fontSize: '0.875rem',
-    overflowWrap: 'anywhere',
-  },
-  prototypeOutput: {
     maxHeight: '16rem',
     overflow: 'auto',
     margin: 0,
