@@ -28,7 +28,6 @@ import { IconButton } from '@astryxdesign/core/IconButton';
 import { Item } from '@astryxdesign/core/Item';
 import { edgeCompSlot } from '@astryxdesign/core/Layout';
 import { List } from '@astryxdesign/core/List';
-import { MoreMenu } from '@astryxdesign/core/MoreMenu';
 import { Selector } from '@astryxdesign/core/Selector';
 import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl';
 import { Skeleton } from '@astryxdesign/core/Skeleton';
@@ -819,11 +818,6 @@ const styles = stylex.create({
   edgeEndIcon: {
     display: 'inline-flex',
     marginInlineEnd: `calc((${sizeVars['--size-element-md']} - 16px) / -2)`,
-  },
-  footTail: { display: 'inline-flex', alignItems: 'center', gap: spacingVars['--spacing-1'] },
-  edgeEndIconSm: {
-    display: 'inline-flex',
-    marginInlineEnd: `calc((${sizeVars['--size-element-sm']} - 16px) / -2)`,
   },
   panelHeadBar: {
     display: 'flex',
@@ -3154,15 +3148,6 @@ function TicketReading({
       </>
     ) : undefined;
 
-  const statusActions = [
-    ...(['draft', 'ready', 'running', 'needs-review', 'done', 'wont-do'] as const)
-      .filter((status) => status !== ticket.status)
-      .map((status) => ({
-        label: copy.statuses[status].label,
-        onClick: () => void run(() => onWrite({ status })),
-      })),
-  ];
-
   return (
     <TicketPanel
       placement={placement}
@@ -3193,20 +3178,6 @@ function TicketReading({
             {...stylex.props(styles.ticketTitle)}
           />
         </div>
-      }
-      foot={
-        <span {...stylex.props(styles.footTail, placement === 'full' && EDGE_TEXT_BUTTON)}>
-          <span {...stylex.props(styles.edgeEndIconSm)}>
-            <MoreMenu
-              label={copy.actions.more}
-              size="sm"
-              alignment="end"
-              placement={placement === 'full' ? 'below' : 'above'}
-              isDisabled={isBusy}
-              items={statusActions}
-            />
-          </span>
-        </span>
       }
     >
       {pullRequestUrl !== null && (

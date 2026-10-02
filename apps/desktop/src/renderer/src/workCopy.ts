@@ -206,7 +206,6 @@ export const copy = {
     close: 'Close',
     backToWork: 'Back to Work',
     openFullView: 'Open the full view',
-    more: 'More ticket actions',
   },
 
   /* ── The ticket: header, sections, facts ──────────────────────────────── */
