@@ -48,13 +48,17 @@ export async function migrate(database: Database): Promise<void> {
  *
  * Drizzle raises its own error and keeps the driver's on `cause`, so the `23505`
  * a unique violation carries is a link or two down rather than on the error that
- * reaches a caller. Reading `.code` off the error itself finds nothing, and a
- * taken name or prefix is then answered as a 500 instead of the refusal the
- * server meant — which is why this walks the chain rather than checking once.
+ * reaches a caller. Reading `.code` off the error itself finds nothing.
  *
- * It is here rather than in each route because every route that inserts into a
- * table with a unique constraint needs the same answer: tickets and Git
- * connections and skills all tell a conflict from a failure the same way.
+ * Reaching for this is a last resort. Wherever Drizzle can express the conflict
+ * itself, it should: `.onConflictDoNothing().returning(...)` reports a taken
+ * name, a taken prefix or a drawn ticket number as an empty result, with no
+ * error to unwrap and no code to know.
+ *
+ * What remains is the one shape that has no such spelling — an **update**. A
+ * rename onto a name the project already has is an ordinary refusal, and it
+ * arrives only as the constraint's error, so this is what tells it from a real
+ * failure.
  */
 export function postgresCode(error: unknown): string | null {
   let at: unknown = error;

@@ -161,17 +161,18 @@ export function createSkills({ auth, database }: { auth: Auth; database: Databas
           chatId: body.chatId?.trim() ? body.chatId.trim() : null,
         };
 
-        try {
-          await database.transaction(async (transaction) => {
-            await transaction.insert(skill).values(made);
-            await writeFiles(transaction, made.id, input.files);
-          });
-        } catch (error) {
-          if (postgresCode(error) === '23505') {
-            return status(409, refusal('SKILL_NAME_TAKEN', takenMessage(input.name)));
-          }
-          throw error;
+        // The name is unique within the project, and the constraint is what says
+        // so: a read first would be a race between two people writing at once.
+        const [added] = await database
+          .insert(skill)
+          .values(made)
+          .onConflictDoNothing({ target: [skill.projectId, skill.name] })
+          .returning({ id: skill.id });
+        if (added === undefined) {
+          return status(409, refusal('SKILL_NAME_TAKEN', takenMessage(input.name)));
         }
+
+        await writeFiles(database, made.id, input.files);
 
         const created = await oneSkill(database, found.id, made.id);
         if (created === null) throw new Error('A skill that was just written is gone.');
@@ -209,6 +210,10 @@ export function createSkills({ auth, database }: { auth: Auth; database: Databas
         });
         if (input === null) return status(400, refusal('SKILL_INVALID', invalidMessage));
 
+        // This is the one conflict a rename cannot ask Drizzle to express:
+        // `onConflictDoNothing` belongs to an insert, and an update that lands on
+        // a taken name arrives as the constraint's error. The transaction keeps
+        // the rename and its files one edit either way.
         try {
           await database.transaction(async (transaction) => {
             await transaction

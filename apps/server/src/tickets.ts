@@ -19,7 +19,7 @@ import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
 import { Elysia, t } from 'elysia';
 import { type ActivityEntry, recordActivity } from './activity';
 import type { Auth } from './auth';
-import { postgresCode, type Database } from './database';
+import type { Database } from './database';
 import { keyHolder, type HeldUser } from './keys';
 import { refusal, REFUSAL } from './refusals';
 import { messages } from './messages';
@@ -249,13 +249,15 @@ export function createTickets({ auth, database }: { auth: Auth; database: Databa
 
         const made = { id: randomUUID(), name, prefix, authorId: held.user.id };
 
-        try {
-          await database.insert(project).values(made);
-        } catch (error) {
-          if (postgresCode(error) === '23505') {
-            return status(409, refusal('PREFIX_TAKEN', messages.prefixTaken(prefix)));
-          }
-          throw error;
+        // The prefix is the project's alone, and the constraint is what says so:
+        // reading first would be a race between two people making one at once.
+        const [added] = await database
+          .insert(project)
+          .values(made)
+          .onConflictDoNothing()
+          .returning({ id: project.id });
+        if (added === undefined) {
+          return status(409, refusal('PREFIX_TAKEN', messages.prefixTaken(prefix)));
         }
 
         return { project: asProject({ ...made, createdAt: new Date() }) };
@@ -1666,12 +1668,14 @@ async function allocate(
       updatedAt: new Date(),
     };
 
-    try {
-      await database.insert(ticket).values(row);
-      return row;
-    } catch (error) {
-      if (postgresCode(error) !== '23505') throw error;
-    }
+    // A number another ticket drew first is not an error to raise: the insert
+    // writes nothing and the loop draws again.
+    const [drawn] = await database
+      .insert(ticket)
+      .values(row)
+      .onConflictDoNothing()
+      .returning({ id: ticket.id });
+    if (drawn !== undefined) return row;
   }
 
   throw new Error('could not draw a ticket number');

@@ -17,7 +17,7 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { Elysia, t } from 'elysia';
 import type { Auth } from './auth';
 import type { Config } from './config';
-import { postgresCode, type Database } from './database';
+import type { Database } from './database';
 import { recordActivity } from './activity';
 import { keyHolder, type HeldUser } from './keys';
 import { refusal, REFUSAL } from './refusals';
@@ -690,13 +690,15 @@ export function createGit({
           webhookSecretEncrypted: seal(key, webhookSecret),
         };
 
-        try {
-          await database.insert(gitConnection).values(made);
-        } catch (error) {
-          if (postgresCode(error) === '23505') {
-            return status(409, refusal('GIT_CONNECTION_EXISTS', messages.gitConnectionExists));
-          }
-          throw error;
+        // A host is connected once, and the constraint is what says so rather
+        // than a read that two administrators could both pass.
+        const [connected] = await database
+          .insert(gitConnection)
+          .values(made)
+          .onConflictDoNothing()
+          .returning({ id: gitConnection.id });
+        if (connected === undefined) {
+          return status(409, refusal('GIT_CONNECTION_EXISTS', messages.gitConnectionExists));
         }
 
         return {
@@ -893,16 +895,18 @@ export function createGit({
           defaultBranch: body.defaultBranch?.trim() || 'main',
         };
 
-        try {
-          await database.insert(repository).values(made);
-        } catch (error) {
-          if (postgresCode(error) === '23505') {
-            return status(
-              409,
-              refusal('REPOSITORY_EXISTS', messages.repositoryExists(owner, name)),
-            );
-          }
-          throw error;
+        // A repository is on a project once, and the constraint is what says so
+        // rather than a read that two people could both pass.
+        const [attached] = await database
+          .insert(repository)
+          .values(made)
+          .onConflictDoNothing()
+          .returning({ id: repository.id });
+        if (attached === undefined) {
+          return status(
+            409,
+            refusal('REPOSITORY_EXISTS', messages.repositoryExists(owner, name)),
+          );
         }
 
         return { repository: asRepository({ ...made, createdAt: new Date() }) };
