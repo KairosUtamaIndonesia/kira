@@ -3192,7 +3192,7 @@ function TicketReading({
           {copy.ticket.openPullRequest}
         </a>
       )}
-      <PullRequests key={ticket.id} ticketId={ticket.id} />
+      <PullRequests key={`pull-requests-${ticket.id}`} ticketId={ticket.id} />
       <section {...stylex.props(styles.section)}>
         <Text type="label" weight="medium">
           {copy.ticket.about}
@@ -3342,7 +3342,7 @@ function TicketReading({
           </div>
         </details>
       )}
-      <Timeline key={ticket.id} ticket={ticket} />
+      <Timeline key={`timeline-${ticket.id}`} ticket={ticket} />
     </TicketPanel>
   );
 }
