@@ -29,6 +29,7 @@ import type {
   ChatMode,
   ChatEvent,
   ChatState,
+  ChatTranscript,
   Proposal,
   QueuedLine,
   ShapingState,
@@ -42,6 +43,7 @@ import {
   listWorkspaces,
   resumeConversation,
   startConversation,
+  subagentTranscriptIn,
 } from './conversations.ts';
 import type { Models } from './models.ts';
 import type { WorkspacePreparer } from './agent.ts';
@@ -66,6 +68,8 @@ import type { Questionnaires } from '../questionnaires.ts';
 export interface OpenChats {
   /** Everything the window draws: the list, the chat on screen, the words in flight. */
   state(): ChatState;
+  /** Read a child's own transcript without making it a conversation. */
+  subagentTranscript(parentThreadId: string, childThreadId: string): ChatTranscript;
   /** Apply a saved shell choice to every retained conversation. */
   setShellPath(path: string | undefined): Promise<void>;
   /**
@@ -330,6 +334,9 @@ export function openChats(
   function keep(conversation: Conversation): Conversation {
     open.set(conversation.threadId, conversation);
     conversation.subscribe((event) => {
+      if (event.type === 'subagents' && event.settled === true) {
+        release(conversation);
+      }
       if (event.type === 'transcript') {
         const current = shapingFor(conversation.threadId);
         // A proposal already in the list is the one it was: only one this chat has
@@ -546,6 +553,9 @@ export function openChats(
   }
 
   return {
+    subagentTranscript: (parentThreadId, childThreadId) => {
+      return subagentTranscriptIn(store, parentThreadId, childThreadId);
+    },
     state: () => {
       const conversation = shown === null ? null : current();
       const id = conversation?.threadId ?? draft?.id;
@@ -589,6 +599,7 @@ export function openChats(
         // Nothing, for a chat being composed: there is no session to have spent
         // anything or filled anything yet.
         chatUsage: conversation?.chatUsage() ?? null,
+        subagents: conversation?.subagents() ?? [],
         shaping: conversation === null ? noShaping() : shapingFor(conversation.threadId),
         commands: conversation?.commands() ?? [],
         questionnaire:

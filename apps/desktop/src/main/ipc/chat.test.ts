@@ -658,6 +658,8 @@ for (const testCase of CASES) {
     const handlers = chatHandlers(testCase.makeDeps(calls));
     const run = {
       load: () => handlers.load(),
+      subagentTranscript: () =>
+        handlers.subagentTranscript(testCase.argument, testCase.secondArgument),
       send: () => handlers.send(testCase.argument),
       runShell: () => handlers.runShell(testCase.argument, testCase.secondArgument),
       cancelShell: () => handlers.cancelShell(testCase.argument, testCase.secondArgument),

@@ -26,7 +26,15 @@ import {
   spacingVars,
 } from '@astryxdesign/core/theme/tokens.stylex';
 import { useAui, useAuiState } from '@assistant-ui/react';
-import { ChevronDown, FileText, Gauge, Plus, Terminal, Ticket as TicketIcon, X } from 'lucide-react';
+import {
+  ChevronDown,
+  FileText,
+  Gauge,
+  Plus,
+  Terminal,
+  Ticket as TicketIcon,
+  X,
+} from 'lucide-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import * as stylex from '@stylexjs/stylex';
 import type {
@@ -38,6 +46,7 @@ import type {
   QueuedLine,
   ShellCommandRun,
   Usage,
+  SubagentSummary,
 } from '../../preload/bridge';
 import type { SearchableItem, SearchSource } from '@astryxdesign/core/Typeahead';
 import { chatLines, formatTokens, warningFor } from './allowanceText';
@@ -96,6 +105,8 @@ export function Composer({
   mode = 'build',
   onChooseMode,
   queued = [],
+  subagents = [],
+  onSelectSubagent,
   restored = null,
   onTakeBack,
   onRestored,
@@ -129,6 +140,8 @@ export function Composer({
   mode?: ChatMode;
   onChooseMode?: (mode: ChatMode) => void;
   queued?: QueuedLine[];
+  subagents?: SubagentSummary[];
+  onSelectSubagent?: (id: string) => void;
   restored?: string | null;
   onTakeBack?: () => Promise<void>;
   onRestored?: () => void;
@@ -158,9 +171,10 @@ export function Composer({
   const [magicPrompts, setMagicPrompts] = useState<MagicPrompt[]>([]);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const isShellDraft = !isEditing && text.startsWith('!');
-  const shellRefusal = isShellDraft && isRunning
-    ? 'Wait until Kira has finished before running a local command.'
-    : null;
+  const shellRefusal =
+    isShellDraft && isRunning
+      ? 'Wait until Kira has finished before running a local command.'
+      : null;
 
   useMountEffect(() => {
     void window.kira.loadMagicPrompts().then((result) => {
@@ -201,7 +215,11 @@ export function Composer({
       return (
         <VStack gap={0.5}>
           <Text>{item.label}</Text>
-          {detail ? <Text color="secondary" size="sm">{detail}</Text> : null}
+          {detail ? (
+            <Text color="secondary" size="sm">
+              {detail}
+            </Text>
+          ) : null}
         </VStack>
       );
     };
@@ -313,17 +331,20 @@ export function Composer({
         aui.composer.setText(draftText);
         return;
       }
-      void window.kira.runShellCommand(chatId, submission.command).then((result) => {
-        if (!result.ok) {
+      void window.kira
+        .runShellCommand(chatId, submission.command)
+        .then((result) => {
+          if (!result.ok) {
+            aui.composer.setText(draftText);
+            setSubmissionError(result.error);
+            return;
+          }
+          aui.composer.setText('');
+        })
+        .catch((failure: unknown) => {
           aui.composer.setText(draftText);
-          setSubmissionError(result.error);
-          return;
-        }
-        aui.composer.setText('');
-      }).catch((failure: unknown) => {
-        aui.composer.setText(draftText);
-        setSubmissionError(failure instanceof Error ? failure.message : String(failure));
-      });
+          setSubmissionError(failure instanceof Error ? failure.message : String(failure));
+        });
       return;
     }
 
@@ -382,8 +403,8 @@ export function Composer({
         : shellRefusal !== null
           ? { type: 'warning', message: shellRefusal }
           : usage?.warned
-        ? { type: 'warning', message: warningFor(usage) }
-        : undefined,
+            ? { type: 'warning', message: warningFor(usage) }
+            : undefined,
     // The gauge and mode belong beside the send button: they describe what the
     // next turn will use, rather than the draft itself.
     sendActions: isEditing ? (
@@ -516,14 +537,29 @@ export function Composer({
           />
         </div>
       )}
-      {shellRuns.filter((run) => run.status === 'running').map((run) => (
-        <ShellCommandActivity
-          key={run.id}
-          chatId={chatId}
-          run={run}
-          onError={setSubmissionError}
-        />
-      ))}
+      {shellRuns
+        .filter((run) => run.status === 'running')
+        .map((run) => (
+          <ShellCommandActivity
+            key={run.id}
+            chatId={chatId}
+            run={run}
+            onError={setSubmissionError}
+          />
+        ))}
+      {subagents.length > 0 ? (
+        <fieldset className="subagent-activity" aria-label="Subagents">
+          {subagents.map((agent) => (
+            <Button
+              key={agent.id}
+              label={`${agent.title} · ${agent.state}${agent.activity ? ` · ${agent.activity}` : ''}`}
+              size="sm"
+              variant="ghost"
+              onClick={() => onSelectSubagent?.(agent.id)}
+            />
+          ))}
+        </fieldset>
+      ) : null}
       <ChatComposer
         {...composer}
         drawer={
@@ -685,7 +721,9 @@ function ShellCommandActivity({
   return (
     <section {...stylex.props(styles.shellActivity)} aria-label="Local command running">
       <div {...stylex.props(styles.shellActivityHead)}>
-        <Text weight="medium" size="sm">Running locally: !{run.command}</Text>
+        <Text weight="medium" size="sm">
+          Running locally: !{run.command}
+        </Text>
         <Button
           label="Cancel command"
           size="sm"

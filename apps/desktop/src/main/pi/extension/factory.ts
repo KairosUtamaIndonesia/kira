@@ -111,6 +111,7 @@ export function kiraExtension({
   questionnaires,
   role,
   subagents,
+  parentSubagents,
   getShellPath = () => undefined,
   registerCleanup,
 }: {
@@ -135,6 +136,8 @@ export function kiraExtension({
   role?: SubagentRole;
   /** The chat's subagent manager. Absent on a child's session, so a child cannot delegate. */
   subagents?: SubagentManager;
+  /** The owning chat's manager, present only on a child session. */
+  parentSubagents?: SubagentManager;
   /** Current executable selected for Pi's Bash tool. */
   getShellPath?: () => string | undefined;
   registerCleanup?: (cleanup: () => void) => void;
@@ -227,7 +230,18 @@ export function kiraExtension({
       pi.registerTool(outcomeProposalTool());
       pi.registerTool(breakdownProposalTool());
       if (questionnaires !== undefined) {
-        pi.registerTool(questionnaireTool(questionnaires, threadId));
+        const ownerThreadId =
+          role === undefined ? threadId : (store.getThread(threadId).parentThreadId ?? threadId);
+        pi.registerTool(
+          questionnaireTool(
+            questionnaires,
+            ownerThreadId,
+            () => {
+              parentSubagents?.activity(threadId, 'Waiting for your answer');
+            },
+            () => parentSubagents?.activity(threadId, 'Working'),
+          ),
+        );
       }
       if (subagents !== undefined) {
         pi.registerTool(subagentTool(subagents));

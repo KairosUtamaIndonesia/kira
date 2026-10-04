@@ -17,6 +17,7 @@ import {
   type AuthState,
   type ChatEvent,
   type ChatState,
+  type ChatTranscript,
   type ChatMode,
   type FolderListing,
   type GitConnection,
@@ -76,6 +77,9 @@ const bridge: KiraBridge = {
   deactivateBrowser: (chatId) => ask<null>(BROWSER_CHANNELS.deactivate, chatId),
 
   loadChat: () => ask<ChatState>(CHAT_CHANNELS.load),
+
+  readSubagentTranscript: (parentThreadId, childThreadId) =>
+    ask<ChatTranscript>(CHAT_CHANNELS.subagentTranscript, parentThreadId, childThreadId),
   setChatMode: (mode: ChatMode) => ask<null>(CHAT_CHANNELS.setMode, mode),
   setChatAttachedTicketIds: (attachedTicketIds) =>
     ask<null>(CHAT_CHANNELS.setAttachedTicketIds, attachedTicketIds),
@@ -164,13 +168,13 @@ const bridge: KiraBridge = {
 
   loadSkills: (projectId) => ask<ProjectSkill[]>(TRACKER_CHANNELS.skills, projectId),
 
-  writeSkill: (projectId, draft) => ask<ProjectSkill>(TRACKER_CHANNELS.writeSkill, projectId, draft),
+  writeSkill: (projectId, draft) =>
+    ask<ProjectSkill>(TRACKER_CHANNELS.writeSkill, projectId, draft),
 
   changeSkill: (projectId, skillId, change) =>
     ask<ProjectSkill>(TRACKER_CHANNELS.changeSkill, projectId, skillId, change),
 
-  removeSkill: (projectId, skillId) =>
-    ask<null>(TRACKER_CHANNELS.removeSkill, projectId, skillId),
+  removeSkill: (projectId, skillId) => ask<null>(TRACKER_CHANNELS.removeSkill, projectId, skillId),
 
   loadGitConnections: () => ask<GitConnection[]>(GIT_CHANNELS.connections),
 

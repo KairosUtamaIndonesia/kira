@@ -4,7 +4,12 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { ThreadStore } from '../db/threads.ts';
 import { tempDir } from '../test-support/temp.ts';
-import { subagents, type SubagentDriver, type SubagentEnding, type SubagentSummary } from './subagents.ts';
+import {
+  subagents,
+  type SubagentDriver,
+  type SubagentEnding,
+  type SubagentSummary,
+} from './subagents.ts';
 
 function storePath(): string {
   return join(tempDir('kira-subagents-'), 'threads.db');
@@ -55,7 +60,8 @@ test('a child that reports writes its outcome down and hands it back', async () 
     parentThreadId: chat.id,
     cwd: chat.cwd,
     modelId: 'served-model',
-    run: async () => driver(async () => ({ kind: 'reported', report: 'It is in session.ts, line 12.' })),
+    run: async () =>
+      driver(async () => ({ kind: 'reported', report: 'It is in session.ts, line 12.' })),
     onSettled: (summary) => settled.push(summary),
   });
 
@@ -130,8 +136,12 @@ test('a child can be steered, stopped, and resumed in its own session', async ()
   const turns: string[] = [];
   let started!: () => void;
   let finishFirst!: () => void;
-  const firstStarted = new Promise<void>((resolve) => { started = resolve; });
-  const firstTurn = new Promise<void>((resolve) => { finishFirst = resolve; });
+  const firstStarted = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const firstTurn = new Promise<void>((resolve) => {
+    finishFirst = resolve;
+  });
   const steered: string[] = [];
   const manager = subagents({
     store,
@@ -147,8 +157,12 @@ test('a child can be steered, stopped, and resumed in its own session', async ()
         }
         return { kind: 'reported', report: `finished: ${prompt}` };
       },
-      steer: async (text) => { steered.push(text); },
-      stop: async () => { finishFirst(); },
+      steer: async (text) => {
+        steered.push(text);
+      },
+      stop: async () => {
+        finishFirst();
+      },
       dispose: () => {},
     }),
   });
@@ -163,5 +177,41 @@ test('a child can be steered, stopped, and resumed in its own session', async ()
   await manager.settle();
   assert.deepEqual(turns, ['first', 'second']);
   assert.equal(store.getThread(childId).subagent?.response, 'finished: second');
+  store.close();
+});
+
+test('a chat refuses a fourth simultaneous child clearly', async () => {
+  const store = new ThreadStore(storePath());
+  const chat = store.createThread(tmpdir());
+  const completions: (() => void)[] = [];
+  const manager = subagents({
+    store,
+    parentThreadId: chat.id,
+    cwd: chat.cwd,
+    modelId: 'served-model',
+    run: async () => ({
+      turn: async () =>
+        new Promise((resolve) => {
+          completions.push(() => resolve({ kind: 'reported', report: 'done' }));
+        }),
+      steer: async () => {},
+      stop: async () => completions.shift()?.(),
+      dispose: () => {},
+    }),
+  });
+
+  for (let index = 0; index < 3; index += 1) {
+    manager.spawn({ role: 'explore', prompt: `task ${index}` });
+  }
+  assert.throws(
+    () => manager.spawn({ role: 'explore', prompt: 'one too many' }),
+    /already has 3 subagents running/,
+  );
+  await manager.stopAll();
+  await manager.settle();
+  assert.deepEqual(
+    manager.list().map((child) => child.state),
+    ['stopped', 'stopped', 'stopped'],
+  );
   store.close();
 });

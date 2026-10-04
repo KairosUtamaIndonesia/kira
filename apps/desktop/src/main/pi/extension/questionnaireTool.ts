@@ -13,7 +13,12 @@ export const ASK_USER_QUESTION_TOOL_NAME = 'ask_user_question';
 const DESCRIPTION =
   'Ask the user up to four structured questions while you work. Use this when you need a concrete decision or requirement before proceeding. Group related questions into one call. Each question needs two to four distinct options with concise labels and descriptions. Use multiSelect when choices are not mutually exclusive; option previews can compare concrete artifacts. The user can type a custom answer, add notes, submit partial answers, or cancel. Do not guess when the answer materially changes the work.';
 
-export function questionnaireTool(questionnaires: Questionnaires, threadId: string) {
+export function questionnaireTool(
+  questionnaires: Questionnaires,
+  threadId: string,
+  beforeAsk?: () => void,
+  afterAnswer?: () => void,
+) {
   return {
     name: ASK_USER_QUESTION_TOOL_NAME,
     label: 'Ask the user',
@@ -41,7 +46,9 @@ export function questionnaireTool(questionnaires: Questionnaires, threadId: stri
         };
       }
 
+      beforeAsk?.();
       const result = await questionnaires.ask(threadId, params as QuestionnaireParams, signal);
+      afterAnswer?.();
       return {
         content: [{ type: 'text', text: questionnaireResponse(result) }],
         details: result as never,

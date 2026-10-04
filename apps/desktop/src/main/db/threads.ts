@@ -1064,6 +1064,12 @@ export class ThreadStore {
   setThreadModel(threadId: string, modelId: string): void {
     this.db.prepare('UPDATE threads SET model_id = ? WHERE id = ?').run(modelId, threadId);
   }
+  /** Point a child thread at its role-specific checkout before its session boots. */
+  setThreadCwd(threadId: string, cwd: string): void {
+    this.db
+      .prepare('UPDATE threads SET cwd = ?, updated_at = ? WHERE id = ?')
+      .run(cwd, new Date().toISOString(), threadId);
+  }
   /** Remember whether this chat plans work or edits the workspace. */
   setThreadMode(threadId: string, mode: ChatMode): void {
     this.db.prepare('UPDATE threads SET mode = ? WHERE id = ?').run(mode, threadId);
@@ -1133,10 +1139,7 @@ export class ThreadStore {
     this.db.prepare('DELETE FROM magic_prompts WHERE id = ?').run(id);
   }
 
-  private assertMagicPromptLabelsAvailable(
-    draft: MagicPromptDraft,
-    exceptId?: string,
-  ): void {
+  private assertMagicPromptLabelsAvailable(draft: MagicPromptDraft, exceptId?: string): void {
     const labels = new Set([draft.name, ...draft.aliases].map(magicPromptLabel));
     for (const prompt of this.listMagicPrompts()) {
       if (prompt.id === exceptId) continue;

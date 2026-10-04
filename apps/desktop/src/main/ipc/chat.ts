@@ -22,6 +22,10 @@ export { CHAT_CHANNELS };
 export interface ChatDeps {
   /** The whole surface: chats, current chat, transcript. */
   state(): ChatState;
+  subagentTranscript?(
+    parentThreadId: string,
+    childThreadId: string,
+  ): import('../../preload/bridge.ts').ChatTranscript;
   send(text: string): Promise<void>;
   startShell?(chatId: string, command: string): Promise<string>;
   cancelShell?(chatId: string, runId: string): boolean;
@@ -56,6 +60,10 @@ export interface ChatDeps {
 
 export interface ChatHandlers {
   load(): Promise<Result<ChatState>>;
+  subagentTranscript(
+    parentThreadId: unknown,
+    childThreadId: unknown,
+  ): Promise<Result<import('../../preload/bridge.ts').ChatTranscript>>;
   send(text: unknown): Promise<Result<null>>;
   runShell(chatId: unknown, command: unknown): Promise<Result<string>>;
   cancelShell(chatId: unknown, runId: unknown): Promise<Result<null>>;
@@ -91,6 +99,7 @@ export interface ShapeChatHandlers {
 
 export function chatHandlers({
   state,
+  subagentTranscript,
   send,
   startShell,
   cancelShell,
@@ -118,6 +127,15 @@ export function chatHandlers({
 }: ChatDeps): ChatHandlers & ShapeChatHandlers {
   return {
     load: () => envelope(() => state()),
+    subagentTranscript: (parentThreadId, childThreadId) => {
+      if (!isId(parentThreadId) || !isId(childThreadId)) {
+        return Promise.resolve({ ok: false, error: 'A chat and child id are required.' });
+      }
+      if (subagentTranscript === undefined) {
+        return Promise.resolve({ ok: false, error: 'Subagent transcripts are unavailable.' });
+      }
+      return envelope(() => subagentTranscript(parentThreadId, childThreadId));
+    },
 
     setMode: (mode) => {
       if (mode !== 'build' && mode !== 'spec') {

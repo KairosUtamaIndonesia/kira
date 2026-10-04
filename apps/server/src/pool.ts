@@ -8,6 +8,9 @@ import { keyHolder } from './keys';
 import { refusal } from './refusals';
 import { OUTCOME, recordUsage, type UsageRecord } from './usage';
 
+/** Bound one person's simultaneous completions, including delegated children. */
+export const MAX_CONCURRENT_COMPLETIONS_PER_PERSON = 5;
+
 /**
  * The OpenAI-shaped seam the desktop sends model traffic through.
  *
@@ -41,6 +44,7 @@ export function createPool({
   config: Config;
   database: Database;
 }) {
+  const activeByUser = new Map<string, number>();
   return new Elysia()
     .post(
       '/v1/chat/completions',
@@ -99,6 +103,31 @@ export function createPool({
           );
         }
 
+        const active = activeByUser.get(held.user.id) ?? 0;
+        if (active >= MAX_CONCURRENT_COMPLETIONS_PER_PERSON) {
+          await recordRefusal(database, {
+            userId: held.user.id,
+            model: modelIn(asked),
+            reason: 'concurrent_limit',
+          });
+          return status(
+            429,
+            refusal(
+              'concurrent_limit',
+              `You already have ${MAX_CONCURRENT_COMPLETIONS_PER_PERSON} model requests running. Wait for one to finish before starting more work.`,
+            ),
+          );
+        }
+        activeByUser.set(held.user.id, active + 1);
+        let released = false;
+        const release = (): void => {
+          if (released) return;
+          released = true;
+          const remaining = (activeByUser.get(held.user.id) ?? 1) - 1;
+          if (remaining === 0) activeByUser.delete(held.user.id);
+          else activeByUser.set(held.user.id, remaining);
+        };
+
         let upstream: Response;
         const controller = new AbortController();
         const connectTimer = setTimeout(() => controller.abort(), COMPLETION_CONNECT_TIMEOUT_MS);
@@ -113,6 +142,7 @@ export function createPool({
             signal: controller.signal,
           });
         } catch (cause) {
+          release();
           unavailableUntil.set(config, Date.now() + POOL_RETRY_AFTER_SECONDS * 1000);
           // The pool being down is the failure Kira can actually expect, and
           // it has to arrive as something a client can report rather than as a
@@ -141,9 +171,14 @@ export function createPool({
         // record of a refusal lives in memory for a minute and nowhere else. The
         // body is read to learn why and then handed on exactly as it arrived.
         if (!upstream.ok) {
-          const said = upstream.body
-            ? await new Response(idleTimeout(upstream.body, controller)).text()
-            : '';
+          let said: string;
+          try {
+            said = upstream.body
+              ? await new Response(idleTimeout(upstream.body, controller)).text()
+              : '';
+          } finally {
+            release();
+          }
 
           await recordRefusal(database, {
             userId: held.user.id,
@@ -157,6 +192,7 @@ export function createPool({
         // A reply with nothing in it. Nothing was spent, so nothing is counted,
         // and there is no second copy of anything left running behind the reply.
         if (upstream.body === null) {
+          release();
           return new Response(null, { status: upstream.status, headers });
         }
 
@@ -170,7 +206,9 @@ export function createPool({
           userId: held.user.id,
           asked,
           streaming: contentType.includes('text/event-stream'),
-        }).catch((cause) => console.error('[kira] what a chat used was not written down:', cause));
+        })
+          .catch((cause) => console.error('[kira] what a chat used was not written down:', cause))
+          .finally(release);
 
         return new Response(toCaller, { status: upstream.status, headers });
       },

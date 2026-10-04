@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { devNull } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -8,6 +8,7 @@ import {
   branchesOf,
   changedByGit,
   hasRemote,
+  isolatedCheckout,
   insideFolder,
   listedByGit,
   splitListing,
@@ -250,6 +251,22 @@ test('what git reports as changed is joined to the folder it is asked about', as
   // Put back the way it was committed, and it is not changed any more.
   writeFileSync(join(root, 'src', 'keep.ts'), '');
   assert.deepEqual(await changedByGit(join(root, 'src')), ['added.ts']);
+});
+
+test('a write-capable child checkout has the parent snapshot without sharing later writes', async (t) => {
+  if (!gitRuns()) {
+    t.skip('git is required to create an isolated checkout');
+    return;
+  }
+  const root = committedCheckout();
+  writeFileSync(join(root, 'src', 'keep.ts'), 'parent edit\n');
+  writeFileSync(join(root, 'src', 'new.ts'), 'untracked\n');
+
+  const child = await isolatedCheckout(join(root, 'src'));
+  assert.equal(readFileSync(join(child, 'keep.ts'), 'utf8'), 'parent edit\n');
+  assert.equal(readFileSync(join(child, 'new.ts'), 'utf8'), 'untracked\n');
+  writeFileSync(join(child, 'keep.ts'), 'child edit\n');
+  assert.equal(readFileSync(join(root, 'src', 'keep.ts'), 'utf8'), 'parent edit\n');
 });
 
 test('a folder that is not a checkout is null, which is git saying nothing', async (t) => {

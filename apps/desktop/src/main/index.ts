@@ -95,6 +95,8 @@ function shellSettings(): KiraShell {
 function registerChatChannels(): void {
   const handlers = chatHandlers({
     state: () => chats.state(),
+    subagentTranscript: (parentThreadId, childThreadId) =>
+      chats.subagentTranscript(parentThreadId, childThreadId),
     send: (text) => chats.send(text),
     startShell: (chatId, command) => chats.startShell(chatId, command),
     cancelShell: (chatId, runId) => chats.cancelShell(chatId, runId),
@@ -123,6 +125,11 @@ function registerChatChannels(): void {
   });
 
   ipcMain.handle(CHAT_CHANNELS.load, () => handlers.load());
+  ipcMain.handle(CHAT_CHANNELS.subagentTranscript, (event, parentId: unknown, childId: unknown) =>
+    event.sender === mainWindow?.webContents
+      ? handlers.subagentTranscript(parentId, childId)
+      : { ok: false, error: 'This window cannot read that subagent transcript.' },
+  );
   ipcMain.handle(CHAT_CHANNELS.setMode, (_event, mode: unknown) => handlers.setMode(mode));
   ipcMain.handle(CHAT_CHANNELS.setAttachedTicketIds, (_event, attachedTicketIds: unknown) =>
     handlers.setAttachedTicketIds(attachedTicketIds),
@@ -209,6 +216,9 @@ function registerChatChannels(): void {
 
 /** What the window hears about a turn: words as they are written, then the record. */
 function pushEvent(event: ChatEvent): void {
+  if (event.type === 'subagents' && event.settled === true) {
+    void usage.refresh();
+  }
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(CHAT_CHANNELS.event, event);
   }
@@ -354,9 +364,8 @@ function registerTrackerChannels(): void {
     (_event, projectId: unknown, skillId: unknown, change: unknown) =>
       handlers.changeSkill(projectId, skillId, change),
   );
-  ipcMain.handle(
-    TRACKER_CHANNELS.removeSkill,
-    (_event, projectId: unknown, skillId: unknown) => handlers.removeSkill(projectId, skillId),
+  ipcMain.handle(TRACKER_CHANNELS.removeSkill, (_event, projectId: unknown, skillId: unknown) =>
+    handlers.removeSkill(projectId, skillId),
   );
 }
 

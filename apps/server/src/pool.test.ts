@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, test } from 'bun:test';
 import { setAllowance } from './allowance';
+import { MAX_CONCURRENT_COMPLETIONS_PER_PERSON } from './pool';
 import { startFakePool } from './test-support/fake-pool';
 import { startFakeUpstream, type UsageMode } from './test-support/fake-upstream';
 import {
@@ -93,6 +94,43 @@ describe('a chat through Kira', () => {
     expect(streamed).toContain('model=fake-model');
     expect(streamed).toContain('data: [DONE]');
 
+    await pool.stop();
+  });
+
+  test('simultaneous model requests, including child sessions, share one per-person cap', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const pool = await startFakeUpstream({ beforeCompletion: () => gate });
+    const { app, auth, database } = await boot({}, { url: pool.url, key: 'pool-key' });
+    const ada = await user(auth);
+    const key = await issue(auth, ada.id, 'workstation');
+    const pending = Array.from({ length: MAX_CONCURRENT_COMPLETIONS_PER_PERSON }, () =>
+      send(app, '/v1/chat/completions', chat(key.key)),
+    );
+    await waitFor(
+      async () => pool.requests.length === MAX_CONCURRENT_COMPLETIONS_PER_PERSON,
+      'all completion requests to reach the pool',
+    );
+
+    const refused = await send(app, '/v1/chat/completions', chat(key.key));
+    expect(refused.status).toBe(429);
+    expect(await refused.json()).toMatchObject({ error: { code: 'concurrent_limit' } });
+    expect(pool.requests).toHaveLength(MAX_CONCURRENT_COMPLETIONS_PER_PERSON);
+
+    release();
+    const responses = await Promise.all(pending);
+    expect(responses.every((response) => response.status === 200)).toBe(true);
+    await Promise.all(responses.map((response) => response.text()));
+    await waitFor(
+      async () =>
+        (await usageFor(database, ada.id)).filter((row) => row.outcome === 'ok').length === 5,
+      'five model requests to land on the allowance ledger',
+    );
+    expect(
+      (await usageFor(database, ada.id)).filter((row) => row.reason === 'concurrent_limit'),
+    ).toHaveLength(1);
     await pool.stop();
   });
 

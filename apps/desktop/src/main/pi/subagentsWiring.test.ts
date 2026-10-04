@@ -36,7 +36,9 @@ test('the delegation tool hands the task to the manager and answers with the chi
       return 'child-1';
     },
     list: () => [],
+    activity: () => {},
     stop: async () => {},
+    stopAll: async () => {},
     steer: async () => {},
     resume: async () => {},
     settle: async () => {},
@@ -47,7 +49,7 @@ test('the delegation tool hands the task to the manager and answers with the chi
   const tool = subagentTool(manager);
   const result = await tool.execute(
     'call-1',
-    { role: 'explore', task: 'Find the retry.' },
+    { action: 'spawn', role: 'explore', task: 'Find the retry.' },
     undefined,
     undefined,
     {} as never,

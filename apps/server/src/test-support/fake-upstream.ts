@@ -50,6 +50,8 @@ export interface FakeUpstreamOptions {
    * only makes the failure depend on how the client saw the close.
    */
   stopsAfter?: number;
+  /** Hold completions open until a test releases the shared gate. */
+  beforeCompletion?: () => Promise<void>;
   /** A fixed port, for a dev chain that has to be told where to look. */
   port?: number;
 }
@@ -124,6 +126,7 @@ export async function startFakeUpstream(options: FakeUpstreamOptions = {}): Prom
     }
 
     if (url.pathname.endsWith('/chat/completions')) {
+      await options.beforeCompletion?.();
       if (options.answers) {
         response.writeHead(options.answers.status, {
           'content-type': 'application/json',

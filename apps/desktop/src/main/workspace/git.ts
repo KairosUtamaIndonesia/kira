@@ -18,6 +18,51 @@
  * than by a pathspec that has to be kept in step with the folder.
  */
 import { simpleGit } from 'simple-git';
+import { randomUUID } from 'node:crypto';
+import { copyFile, mkdir, mkdtemp, rmdir, unlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join, relative } from 'node:path';
+
+/**
+ * Give a write-capable child its own git worktree, seeded with the parent's
+ * tracked edits and visible untracked files. Ignored files stay ignored.
+ */
+export async function isolatedCheckout(folder: string): Promise<string> {
+  const git = simpleGit(folder);
+  let root: string;
+  try {
+    root = (await git.revparse(['--show-toplevel'])).trim();
+  } catch {
+    throw new Error('A write-capable subagent needs a git checkout to work in isolation.');
+  }
+
+  const parentChanges = await simpleGit(root).raw(['diff', '--binary', 'HEAD']);
+  const untracked = splitListing(
+    await simpleGit(root).raw(['ls-files', '--others', '--exclude-standard', '-z']),
+  );
+  const temporary = await mkdtemp(join(tmpdir(), 'kira-subagent-'));
+  await rmdir(temporary);
+  await simpleGit(root).raw(['worktree', 'add', '--detach', temporary, 'HEAD']);
+
+  if (parentChanges !== '') {
+    const patch = join(tmpdir(), `kira-subagent-${randomUUID()}.patch`);
+    await writeFile(patch, parentChanges);
+    try {
+      await simpleGit(temporary).raw(['apply', '--binary', patch]);
+    } finally {
+      await unlink(patch);
+    }
+  }
+
+  for (const path of untracked) {
+    const source = join(root, path);
+    const destination = join(temporary, path);
+    await mkdir(dirname(destination), { recursive: true });
+    await copyFile(source, destination);
+  }
+
+  return join(temporary, relative(root, folder));
+}
 
 /**
  * The files git names in `folder`, relative to it, or null when git cannot

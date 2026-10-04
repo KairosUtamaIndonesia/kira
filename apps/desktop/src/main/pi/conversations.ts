@@ -10,7 +10,12 @@
  * turned into transcript lines here, so nothing above has to know what a
  * session entry is.
  */
-import type { AgentSessionEvent, FileEntry, SessionEntry } from '@earendil-works/pi-coding-agent';
+import type {
+  AgentSessionEvent,
+  FileEntry,
+  SessionEntry,
+  SessionManager,
+} from '@earendil-works/pi-coding-agent';
 import { randomUUID } from 'node:crypto';
 import { basename, dirname } from 'node:path';
 import type {
@@ -60,7 +65,7 @@ import type { Tracker } from '../tracker.ts';
 import type { Models } from './models.ts';
 import type { McpManager } from '../mcp/servers.ts';
 import type { Questionnaires } from '../questionnaires.ts';
-import { missingMessage } from './storage.ts';
+import { missingMessage, openThread } from './storage.ts';
 import type { SubagentSummary } from './subagents.ts';
 
 /** A running conversation the window can read from, write to, and watch. */
@@ -207,6 +212,8 @@ export interface Conversation {
    * running counts as the chat working, so it is what keeps the chat open.
    */
   subagents(): SubagentSummary[];
+  /** The stored read-only transcript of one of this chat's children. */
+  subagentTranscript(childThreadId: string): ChatTranscript;
   /** When the current turn began, or null when the chat is idle. */
   runningSince(): number | null;
   /** The reply being written: one message's words, or null when there are none. */
@@ -361,6 +368,22 @@ function conversationOf(
       listener(event);
     }
   };
+  const unsubscribeSubagents =
+    kira.subagents?.subscribe((summary) => {
+      emit({
+        type: 'subagents',
+        threadId: kira.threadId,
+        subagents: kira.subagents?.list() ?? [],
+        settled: summary.state !== 'running',
+      });
+      if (summary.state === 'complete') {
+        emit({
+          type: 'transcript',
+          threadId: kira.threadId,
+          transcript: transcriptOf(kira),
+        });
+      }
+    }) ?? (() => {});
 
   /**
    * The reply being written, as its words arrive: the message in flight, not the
@@ -624,6 +647,7 @@ function conversationOf(
       const words = takeBack();
 
       await kira.session.abort();
+      await kira.subagents?.stopAll();
 
       return words;
     },
@@ -655,7 +679,11 @@ function conversationOf(
       const id = randomUUID();
       shellRunningId = id;
       let printed = '';
-      emit({ type: 'shell-command', threadId: kira.threadId, run: shellRunInProgress(id, command, '') });
+      emit({
+        type: 'shell-command',
+        threadId: kira.threadId,
+        run: shellRunInProgress(id, command, ''),
+      });
 
       try {
         // pi runs it in this session's working folder with the shell this chat is
@@ -775,6 +803,9 @@ function conversationOf(
       kira.session.isStreaming ||
       (kira.subagents?.list().some((child) => child.state === 'running') ?? false),
     subagents: () => kira.subagents?.list() ?? [],
+    subagentTranscript: (childThreadId) => {
+      return subagentTranscriptIn(store, kira.threadId, childThreadId);
+    },
     runningSince: () => runningSince,
     modelId: () => kira.session.model?.id ?? null,
     chatUsage: () => {
@@ -814,6 +845,7 @@ function conversationOf(
     streaming: () => writing,
     close: () => {
       unsubscribe();
+      unsubscribeSubagents();
       listeners.clear();
       kira.dispose();
     },
@@ -956,6 +988,10 @@ function textDeltaOf(event: AgentSessionEvent): string | undefined {
  * back to. `headId` is what says which one is on screen.
  */
 function transcriptOf(kira: KiraSession): ChatTranscript {
+  return transcriptForSessionManager(kira.session.sessionManager);
+}
+
+export function transcriptForSessionManager(sessionManager: SessionManager): ChatTranscript {
   // pi's chain runs through entries that are not messages — model changes,
   // thinking levels, compaction. The window hears only about messages, so a
   // message's parent has to be the message above it: handing the runtime a
@@ -963,7 +999,7 @@ function transcriptOf(kira: KiraSession): ChatTranscript {
   // whole tree rather than drawing it wrongly.
   const messageAbove = new Map<string, string | null>();
   const messages: ChatMessage[] = [];
-  const entries = kira.session.sessionManager.getEntries();
+  const entries = sessionManager.getEntries();
   const answers = answersOf(entries);
   const entryById = new Map(entries.map((entry) => [entry.id, entry]));
   // A boundary stands above the message that carries on from it, and is found by
@@ -995,7 +1031,7 @@ function transcriptOf(kira: KiraSession): ChatTranscript {
     messageAbove.set(entry.id, message?.id ?? parentId);
   }
 
-  const branch = kira.session.sessionManager.getBranch();
+  const branch = sessionManager.getBranch();
   const onScreen = new Set(branch.map((entry) => entry.id));
   // The path from the first message to pi's position ends at the message the
   // reader is looking at, which is where a branch picker stands.
@@ -1012,6 +1048,18 @@ function transcriptOf(kira: KiraSession): ChatTranscript {
     trailing: leaf === undefined ? [] : [...(standingAbove.get(leaf.id) ?? [])],
     headId: head?.id ?? null,
   };
+}
+
+export function subagentTranscriptIn(
+  store: ThreadStore,
+  parentThreadId: string,
+  childThreadId: string,
+): ChatTranscript {
+  const child = store.getThread(childThreadId);
+  if (child.parentThreadId !== parentThreadId || child.subagent === null) {
+    throw new Error('That subagent does not belong to this chat.');
+  }
+  return transcriptForSessionManager(openThread(store, childThreadId).sessionManager);
 }
 
 /**
@@ -1541,11 +1589,7 @@ function messageOf(
             id,
             command: message.command,
             output: message.output,
-            status: message.cancelled
-              ? 'cancelled'
-              : message.exitCode === 0
-                ? 'complete'
-                : 'error',
+            status: message.cancelled ? 'cancelled' : message.exitCode === 0 ? 'complete' : 'error',
             exitCode: message.exitCode ?? null,
             truncated: message.truncated,
             fullOutputPath: message.fullOutputPath ?? null,

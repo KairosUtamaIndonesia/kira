@@ -19,12 +19,14 @@ import { Tab, TabList } from '@astryxdesign/core/TabList';
 import { Text } from '@astryxdesign/core/Text';
 import { VStack } from '@astryxdesign/core/VStack';
 import { Tooltip } from '@astryxdesign/core/Tooltip';
-import { Brain, FileText, FolderTree, Globe, ListChecks, X } from 'lucide-react';
+import { Bot, Brain, FileText, FolderTree, Globe, ListChecks, X } from 'lucide-react';
 import * as stylex from '@stylexjs/stylex';
 import { useRef, useState, type KeyboardEvent } from 'react';
 import type {
   ChatConclusion,
   ChatMemory,
+  SubagentSummary,
+  ChatTranscript,
   ShapingState,
   Ticket,
   TicketQueue,
@@ -104,6 +106,10 @@ export function Workbench({
   ticketQueue,
   onDecide,
   onOpenWork,
+  subagents,
+  selectedSubagentId,
+  selectedSubagentTranscript,
+  onSelectSubagent,
 }: {
   region: ResizableRegion;
   memory: readonly ChatMemory[];
@@ -119,6 +125,10 @@ export function Workbench({
   /** A person's verdict on a proposal: the server's refusal, or null when it was taken. */
   onDecide: (proposalId: string, verdict: ProposalVerdict) => Promise<string | null>;
   onOpenWork: (ticket: Ticket) => void;
+  subagents: SubagentSummary[];
+  selectedSubagentId: string | null;
+  selectedSubagentTranscript: ChatTranscript | null;
+  onSelectSubagent: (id: string | null) => void;
 }) {
   // What this chat has open, and which of its tabs is showing. The files a chat
   // has open are the chat's own, so a switch leaves both where they were.
@@ -151,13 +161,17 @@ export function Workbench({
   const open = held.open;
   const selectedFile = held.selectedFile;
   const showing =
-    (held.showing === SPEC && !available.spec) || (held.showing === TICKETS && !available.tickets)
-      ? CONTEXT
-      : held.showing;
+    selectedSubagentId !== null
+      ? AGENTS
+      : (held.showing === SPEC && !available.spec) ||
+          (held.showing === TICKETS && !available.tickets)
+        ? CONTEXT
+        : held.showing;
   const views = [
     { value: CONTEXT, label: 'Context', icon: Brain },
     ...(available.spec ? [{ value: SPEC, label: 'Spec', icon: FileText }] : []),
     ...(available.tickets ? [{ value: TICKETS, label: 'Tickets', icon: ListChecks }] : []),
+    ...(subagents.length > 0 ? [{ value: AGENTS, label: 'Agents', icon: Bot }] : []),
     { value: WORKSPACE, label: 'Workspace', icon: FolderTree },
     { value: BROWSER, label: 'Browser', icon: Globe },
   ];
@@ -220,6 +234,7 @@ export function Workbench({
 
     if (region.isCollapsed) region.expand();
     setTabs(shown(tabs, chatId, value));
+    if (value !== AGENTS) onSelectSubagent(null);
     if (value === WORKSPACE) setWorkspaceVisits((visits) => visits + 1);
     if (value === BROWSER) {
       const browserId = browsersOf(browsers, chatId).activeId;
@@ -293,6 +308,20 @@ export function Workbench({
          * the tree and the files are read from the folder on disk, so none of it
          * is a turn.
          */}
+        <div
+          id={panelOf(AGENTS)}
+          role="tabpanel"
+          aria-label="Agents"
+          className="workbench-tab"
+          hidden={showing !== AGENTS}
+        >
+          <AgentsTab
+            agents={subagents}
+            selectedId={selectedSubagentId}
+            transcript={selectedSubagentTranscript}
+            onSelect={onSelectSubagent}
+          />
+        </div>
         <div
           id={panelOf(CONTEXT)}
           role="tabpanel"
@@ -438,6 +467,75 @@ export function Workbench({
         </div>
       </div>
     </div>
+  );
+}
+
+const AGENTS = 'agents';
+
+function AgentsTab({
+  agents,
+  selectedId,
+  transcript,
+  onSelect,
+}: {
+  agents: SubagentSummary[];
+  selectedId: string | null;
+  transcript: ChatTranscript | null;
+  onSelect: (id: string | null) => void;
+}) {
+  const selected = agents.find((agent) => agent.id === selectedId) ?? agents.at(-1) ?? null;
+  return (
+    <VStack gap={3}>
+      <HStack gap={2}>
+        {agents.map((agent) => (
+          <Button
+            key={agent.id}
+            label={agent.title}
+            size="sm"
+            variant={selected?.id === agent.id ? 'primary' : 'ghost'}
+            onClick={() => onSelect(agent.id)}
+          />
+        ))}
+      </HStack>
+      {selected === null ? null : (
+        <VStack gap={2}>
+          <Text size="sm" color="secondary">
+            {selected.role} · {selected.state}
+            {selected.activity ? ` · ${selected.activity}` : ''}
+          </Text>
+          {selected.error ? <Text color="secondary">{selected.error}</Text> : null}
+          {selected.outcome ? <Text>{selected.outcome}</Text> : null}
+          {transcript?.messages.map((message) => (
+            <VStack key={message.id} gap={1}>
+              <Text size="sm" color="secondary">
+                {message.role === 'you' ? 'Task' : 'Agent'}
+              </Text>
+              {message.parts.map((part, index) => {
+                if (part.type === 'text') return <Text key={index}>{part.text}</Text>;
+                if (part.type === 'work')
+                  return (
+                    <VStack key={index} gap={1}>
+                      {part.reasoning ? <Text color="secondary">{part.reasoning}</Text> : null}
+                      {part.calls.map((call, callIndex) => (
+                        <VStack key={`${call.name}-${callIndex}`} gap={0.5}>
+                          <Text size="sm" color="secondary">
+                            {call.name}
+                            {call.target ? ` · ${call.target}` : ''}
+                          </Text>
+                          {call.output ? <Text>{call.output}</Text> : null}
+                        </VStack>
+                      ))}
+                    </VStack>
+                  );
+                if (part.type === 'compaction')
+                  return <Text key={index}>{part.reconstruction}</Text>;
+                return null;
+              })}
+            </VStack>
+          ))}
+        </VStack>
+      )}
+    </VStack>
   );
 }
 

@@ -2,24 +2,20 @@ import {
   createAgentSessionFromServices,
   createAgentSessionServices,
   type AgentSession,
-} from "@earendil-works/pi-coding-agent";
-import type { ChatMode } from "../../preload/bridge.ts";
-import type { SubagentRole, ThreadStore } from "../db/threads.ts";
-import type { MemorySource } from "../memory.ts";
-import type { Tracker } from "../tracker.ts";
-import type { McpManager } from "../mcp/servers.ts";
-import type { Questionnaires } from "../questionnaires.ts";
-import { kiraExtension } from "./extension/factory.ts";
-import { subagents as delegateTo, type SubagentManager } from "./subagents.ts";
-import { materializeProjectSkills, type ProjectSkill } from "./projectSkills.ts";
-import { bundledSkillsPath, withoutUserAgentsSkills } from "./resources.ts";
-import type { Models } from "./models.ts";
-import {
-  createThread,
-  forkThread,
-  openThread,
-  type PiThread,
-} from "./storage.ts";
+} from '@earendil-works/pi-coding-agent';
+import type { ChatMode } from '../../preload/bridge.ts';
+import type { SubagentRole, ThreadStore } from '../db/threads.ts';
+import type { MemorySource } from '../memory.ts';
+import type { Tracker } from '../tracker.ts';
+import type { McpManager } from '../mcp/servers.ts';
+import type { Questionnaires } from '../questionnaires.ts';
+import { kiraExtension } from './extension/factory.ts';
+import { isolatedCheckout } from '../workspace/git.ts';
+import { subagents as delegateTo, type SubagentManager } from './subagents.ts';
+import { materializeProjectSkills, type ProjectSkill } from './projectSkills.ts';
+import { bundledSkillsPath, withoutUserAgentsSkills } from './resources.ts';
+import type { Models } from './models.ts';
+import { createThread, forkThread, openThread, type PiThread } from './storage.ts';
 
 /**
  * A running conversation.
@@ -154,6 +150,8 @@ async function boot(
   questionnaires?: Questionnaires,
   /** Set only on a child's own session: the kind of child, which shapes its tools. */
   role?: SubagentRole,
+  /** The owning chat's manager, used to route a child question to its person. */
+  parentSubagents?: SubagentManager,
 ): Promise<KiraSession> {
   // What this runs on comes from the server, and so does the runtime it runs on:
   // the desktop holds no provider credential and no list of models of its own
@@ -164,7 +162,7 @@ async function boot(
   const choice = remembered ?? (await models.preferred());
   if (choice === null) {
     throw new Error(
-      "Kira is not offering any models. Sign in, and check that the server can reach its pool.",
+      'Kira is not offering any models. Sign in, and check that the server can reach its pool.',
     );
   }
 
@@ -176,9 +174,7 @@ async function boot(
   const workspaceId = store.getThread(thread.threadId).workspaceId;
   if (workspaceId !== null) {
     if (mcp !== undefined && prepareWorkspace === undefined) {
-      throw new Error(
-        "Workspace MCP preparation is required for workspace chats.",
-      );
+      throw new Error('Workspace MCP preparation is required for workspace chats.');
     }
     await prepareWorkspace?.(workspaceId);
   }
@@ -186,45 +182,59 @@ async function boot(
   // A chat delegates (ADR 0028); a child does not, so a child's own session gets
   // no manager and therefore no delegation tool. The child's turn is taken on a
   // session of its own, in the folder this chat works in, from the clean brief.
-  const manager =
-    role === undefined
-      ? delegateTo({
+  let manager: SubagentManager | undefined;
+  if (role === undefined) {
+    manager = delegateTo({
+      store,
+      parentThreadId: thread.threadId,
+      cwd: thread.cwd,
+      modelId: choice.model.id,
+      run: async ({ childThreadId, role: childRole, activity }) => {
+        if (childRole === 'general') {
+          const childThread = openThread(store, childThreadId);
+          const cwd = await isolatedCheckout(childThread.cwd);
+          store.setThreadCwd(childThreadId, cwd);
+        }
+        const child = await boot(
           store,
-          parentThreadId: thread.threadId,
-          cwd: thread.cwd,
-          modelId: choice.model.id,
-          run: async ({ childThreadId, role: childRole }) => {
-            const child = await boot(
-              store,
-              openThread(store, childThreadId),
-              models,
-              choice.model.id,
-              memorySettings,
-              tracker,
-              mcp,
-              prepareWorkspace,
-              questionnaires,
-              childRole,
-            );
-            return {
-              turn: async (prompt: string) => {
-                try {
-                  await child.session.prompt(prompt);
-                  return { kind: 'reported', report: reportOf(child.session) };
-                } catch (error) {
-                  return {
-                    kind: 'failed',
-                    error: error instanceof Error ? error.message : String(error),
-                  };
-                }
-              },
-              steer: (text: string) => child.session.steer(text),
-              stop: () => child.session.abort(),
-              dispose: () => child.dispose(),
-            };
+          openThread(store, childThreadId),
+          models,
+          choice.model.id,
+          memorySettings,
+          tracker,
+          mcp,
+          prepareWorkspace,
+          questionnaires,
+          childRole,
+          manager,
+        );
+        const unsubscribe = child.session.subscribe((event) => {
+          if (event.type === 'tool_execution_start') activity(`Using ${event.toolName}`);
+          else if (event.type === 'agent_start') activity('Working');
+          else if (event.type === 'agent_end') activity('Finishing');
+        });
+        return {
+          turn: async (prompt: string) => {
+            try {
+              await child.session.prompt(prompt);
+              return { kind: 'reported', report: reportOf(child.session) };
+            } catch (error) {
+              return {
+                kind: 'failed',
+                error: error instanceof Error ? error.message : String(error),
+              };
+            }
           },
-        })
-      : undefined;
+          steer: (text: string) => child.session.steer(text),
+          stop: () => child.session.abort(),
+          dispose: () => {
+            unsubscribe();
+            child.dispose();
+          },
+        };
+      },
+    });
+  }
 
   // A project's skills reach pi as files, so they are written before the session
   // is built rather than after: pi's resource loader scans the directory once,
@@ -259,6 +269,7 @@ async function boot(
             questionnaires,
             role,
             subagents: manager,
+            parentSubagents,
             getShellPath: () => services.settingsManager.getShellPath(),
             registerCleanup: (cleanup) => {
               cleanupMcpSubscription = cleanup;

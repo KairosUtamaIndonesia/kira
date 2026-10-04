@@ -499,6 +499,8 @@ export interface ChatState {
    * used anything — a chat being composed, which has nothing working in it yet.
    */
   chatUsage: ChatUsage | null;
+  /** The current chat's children, independent of its own transcript. */
+  subagents?: SubagentSummary[];
   /** The ordinary-chat shaping state, when this chat has started shaping. */
   shaping?: ShapingState;
   /** A questionnaire Kira is waiting for this chat's person to answer. */
@@ -591,7 +593,8 @@ export type ChatEvent =
   | { type: 'queued'; threadId: string; queued: QueuedLine[] }
   | { type: 'shaping'; threadId: string; shaping: ShapingState }
   | ({ type: 'questionnaire-opened' } & QuestionnaireRequest)
-  | { type: 'questionnaire-closed'; threadId: string; requestId: string };
+  | { type: 'questionnaire-closed'; threadId: string; requestId: string }
+  | { type: 'subagents'; threadId: string; subagents: SubagentSummary[]; settled?: boolean };
 
 /**
  * What every IPC call answers with. A handler that throws would cross the
@@ -602,6 +605,7 @@ export type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 /** The channels both sides invoke. `event` flows main process to renderer. */
 export const CHAT_CHANNELS = {
   load: 'chat:load',
+  subagentTranscript: 'chat:subagent-transcript',
   setMode: 'chat:set-mode',
   setAttachedTicketIds: 'chat:set-attached-ticket-ids',
   proposalApprove: 'chat:proposal-approve',
@@ -1126,6 +1130,17 @@ export interface ChatUsage {
   context: { tokens: number; window: number } | null;
 }
 
+/** One child agent the current chat delegated, as the Workbench shows it. */
+export interface SubagentSummary {
+  id: string;
+  role: 'general' | 'explore';
+  title: string;
+  state: 'running' | 'complete' | 'error' | 'stopped';
+  outcome: string | null;
+  error: string | null;
+  activity: string | null;
+}
+
 /**
  * The usage channels.
  *
@@ -1396,6 +1411,10 @@ export interface KiraBridge {
   deactivateBrowser(chatId: string): Promise<Result<null>>;
   /** Everything the surface needs to draw itself: chats, current chat, transcript. */
   loadChat(): Promise<Result<ChatState>>;
+  readSubagentTranscript(
+    parentThreadId: string,
+    childThreadId: string,
+  ): Promise<Result<ChatTranscript>>;
   /** Change the current chat between direct building and planning-only Spec mode. */
   setChatMode(mode: ChatMode): Promise<Result<null>>;
   setChatAttachedTicketIds(attachedTicketIds: string[]): Promise<Result<null>>;
@@ -1552,7 +1571,11 @@ export interface KiraBridge {
   /** Write a skill the project works by, refused when its name is taken. */
   writeSkill(projectId: string, draft: SkillDraft): Promise<Result<ProjectSkill>>;
   /** Change a skill, or the files that travel with it. */
-  changeSkill(projectId: string, skillId: string, change: SkillChange): Promise<Result<ProjectSkill>>;
+  changeSkill(
+    projectId: string,
+    skillId: string,
+    change: SkillChange,
+  ): Promise<Result<ProjectSkill>>;
   /** Delete a skill and the files that travel with it. */
   removeSkill(projectId: string, skillId: string): Promise<Result<null>>;
   /** The Git hosts this server is connected to. */
