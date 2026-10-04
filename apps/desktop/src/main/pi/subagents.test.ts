@@ -4,10 +4,14 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { ThreadStore } from '../db/threads.ts';
 import { tempDir } from '../test-support/temp.ts';
-import { subagents, type SubagentSummary } from './subagents.ts';
+import { subagents, type SubagentDriver, type SubagentEnding, type SubagentSummary } from './subagents.ts';
 
 function storePath(): string {
   return join(tempDir('kira-subagents-'), 'threads.db');
+}
+
+function driver(turn: (prompt: string) => Promise<SubagentEnding>): SubagentDriver {
+  return { turn, steer: async () => {}, stop: async () => {}, dispose: () => {} };
 }
 
 test('a delegated child is its own thread, from a clean brief', async () => {
@@ -19,7 +23,7 @@ test('a delegated child is its own thread, from a clean brief', async () => {
     parentThreadId: chat.id,
     cwd: chat.cwd,
     modelId: 'served-model',
-    run: async () => ({ kind: 'reported', report: 'Nothing to report.' }),
+    run: async () => driver(async () => ({ kind: 'reported', report: 'Nothing to report.' })),
   });
 
   const childId = manager.spawn({ role: 'explore', prompt: 'Where is the retry defined?' });
@@ -51,7 +55,7 @@ test('a child that reports writes its outcome down and hands it back', async () 
     parentThreadId: chat.id,
     cwd: chat.cwd,
     modelId: 'served-model',
-    run: async () => ({ kind: 'reported', report: 'It is in session.ts, line 12.' }),
+    run: async () => driver(async () => ({ kind: 'reported', report: 'It is in session.ts, line 12.' })),
     onSettled: (summary) => settled.push(summary),
   });
 
@@ -79,7 +83,7 @@ test('a child that fails records the failure rather than a report', async () => 
     parentThreadId: chat.id,
     cwd: chat.cwd,
     modelId: 'served-model',
-    run: async () => ({ kind: 'failed', error: 'The model would not answer.' }),
+    run: async () => driver(async () => ({ kind: 'failed', error: 'The model would not answer.' })),
   });
 
   const childId = manager.spawn({ role: 'explore', prompt: 'Find the retry.' });
@@ -101,7 +105,7 @@ test('list reports what the chat delegated, and where each child stands', async 
     parentThreadId: chat.id,
     cwd: chat.cwd,
     modelId: 'served-model',
-    run: async () => ({ kind: 'reported', report: 'done' }),
+    run: async () => driver(async () => ({ kind: 'reported', report: 'done' })),
   });
 
   assert.deepEqual(manager.list(), []);
@@ -117,5 +121,47 @@ test('list reports what the chat delegated, and where each child stands', async 
     manager.list().map((summary) => [summary.id, summary.state, summary.outcome]),
     [[childId, 'complete', 'done']],
   );
+  store.close();
+});
+
+test('a child can be steered, stopped, and resumed in its own session', async () => {
+  const store = new ThreadStore(storePath());
+  const chat = store.createThread(tmpdir());
+  const turns: string[] = [];
+  let started!: () => void;
+  let finishFirst!: () => void;
+  const firstStarted = new Promise<void>((resolve) => { started = resolve; });
+  const firstTurn = new Promise<void>((resolve) => { finishFirst = resolve; });
+  const steered: string[] = [];
+  const manager = subagents({
+    store,
+    parentThreadId: chat.id,
+    cwd: chat.cwd,
+    modelId: 'served-model',
+    run: async () => ({
+      turn: async (prompt) => {
+        turns.push(prompt);
+        if (prompt === 'first') {
+          started();
+          await firstTurn;
+        }
+        return { kind: 'reported', report: `finished: ${prompt}` };
+      },
+      steer: async (text) => { steered.push(text); },
+      stop: async () => { finishFirst(); },
+      dispose: () => {},
+    }),
+  });
+
+  const childId = manager.spawn({ role: 'explore', prompt: 'first' });
+  await firstStarted;
+  await manager.steer(childId, 'focus on the parser');
+  assert.deepEqual(steered, ['focus on the parser']);
+  await manager.stop(childId);
+  assert.equal(store.getThread(childId).subagent?.status, 'stopped');
+  await manager.resume(childId, 'second');
+  await manager.settle();
+  assert.deepEqual(turns, ['first', 'second']);
+  assert.equal(store.getThread(childId).subagent?.response, 'finished: second');
   store.close();
 });

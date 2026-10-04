@@ -36,6 +36,9 @@ test('the delegation tool hands the task to the manager and answers with the chi
       return 'child-1';
     },
     list: () => [],
+    stop: async () => {},
+    steer: async () => {},
+    resume: async () => {},
     settle: async () => {},
     subscribe: () => () => {},
     dispose: () => {},

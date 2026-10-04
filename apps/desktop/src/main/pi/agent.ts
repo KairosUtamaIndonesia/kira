@@ -193,7 +193,7 @@ async function boot(
           parentThreadId: thread.threadId,
           cwd: thread.cwd,
           modelId: choice.model.id,
-          run: async ({ childThreadId, role: childRole, prompt }) => {
+          run: async ({ childThreadId, role: childRole }) => {
             const child = await boot(
               store,
               openThread(store, childThreadId),
@@ -206,17 +206,22 @@ async function boot(
               questionnaires,
               childRole,
             );
-            try {
-              await child.session.prompt(prompt);
-              return { kind: 'reported', report: reportOf(child.session) };
-            } catch (error) {
-              return {
-                kind: 'failed',
-                error: error instanceof Error ? error.message : String(error),
-              };
-            } finally {
-              child.dispose();
-            }
+            return {
+              turn: async (prompt: string) => {
+                try {
+                  await child.session.prompt(prompt);
+                  return { kind: 'reported', report: reportOf(child.session) };
+                } catch (error) {
+                  return {
+                    kind: 'failed',
+                    error: error instanceof Error ? error.message : String(error),
+                  };
+                }
+              },
+              steer: (text: string) => child.session.steer(text),
+              stop: () => child.session.abort(),
+              dispose: () => child.dispose(),
+            };
           },
         })
       : undefined;

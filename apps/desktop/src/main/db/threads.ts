@@ -74,6 +74,7 @@ export interface SubagentRecord {
   status: SubagentStatus;
   response: string;
   error: string | null;
+  activity?: string | null;
   startedAt: string;
   endedAt: string | null;
 }

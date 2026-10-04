@@ -23,6 +23,7 @@ export interface SubagentSummary {
   /** The child's report, once it has one. */
   outcome: string | null;
   error: string | null;
+  activity: string | null;
 }
 
 /** How a child's turn ended. */
@@ -37,16 +38,26 @@ export type SubagentEnding =
  * turn is taken. A test supplies one that answers directly, so the manager can
  * be exercised without a model.
  */
+export interface SubagentDriver {
+  turn(prompt: string): Promise<SubagentEnding>;
+  steer(text: string): Promise<void>;
+  stop(): Promise<void>;
+  dispose(): void;
+}
+
 export type RunSubagent = (input: {
   childThreadId: string;
   role: SubagentRole;
   prompt: string;
   cwd: string;
-}) => Promise<SubagentEnding>;
+}) => Promise<SubagentDriver>;
 
 export interface SubagentManager {
   /** Delegate a bounded piece of work to a child, and answer its id. */
   spawn(input: { role: SubagentRole; prompt: string }): string;
+  stop(childThreadId: string): Promise<void>;
+  steer(childThreadId: string, text: string): Promise<void>;
+  resume(childThreadId: string, prompt: string): Promise<void>;
   /** What this chat has delegated, oldest first. */
   list(): SubagentSummary[];
   /** Wait for every running child to reach its end. */
@@ -83,6 +94,7 @@ function summaryOf(id: string, record: SubagentRecord): SubagentSummary {
     state: record.status,
     outcome: record.response === '' ? null : record.response,
     error: record.error,
+    activity: record.activity ?? null,
   };
 }
 
@@ -103,6 +115,8 @@ export function subagents(options: {
 }): SubagentManager {
   const { store, parentThreadId, cwd, modelId, run, onSettled } = options;
   const following = new Set<Promise<void>>();
+  const drivers = new Map<string, SubagentDriver>();
+  const generations = new Map<string, number>();
   const listeners = new Set<(summary: SubagentSummary) => void>();
   let disposed = false;
 
@@ -112,8 +126,9 @@ export function subagents(options: {
     return summaryOf(childThreadId, record);
   };
 
-  const end = (childThreadId: string, ending: SubagentEnding): void => {
+  const end = (childThreadId: string, generation: number, ending: SubagentEnding): void => {
     if (disposed) return;
+    if (generations.get(childThreadId) !== generation) return;
     const endedAt = new Date().toISOString();
     store.updateSubagent(
       childThreadId,
@@ -126,10 +141,18 @@ export function subagents(options: {
     for (const listener of listeners) listener(summary);
   };
 
-  const follow = (childThreadId: string, role: SubagentRole, prompt: string): void => {
-    const running: Promise<void> = run({ childThreadId, role, prompt, cwd })
-      .then((ending) => end(childThreadId, ending))
-      .catch((error: unknown) => end(childThreadId, { kind: 'failed', error: failureText(error) }))
+  const follow = (childThreadId: string, role: SubagentRole, prompt: string, existing?: SubagentDriver): void => {
+    const generation = (generations.get(childThreadId) ?? 0) + 1;
+    generations.set(childThreadId, generation);
+    const running: Promise<void> = (existing === undefined
+      ? run({ childThreadId, role, prompt, cwd }).then((driver) => {
+          drivers.set(childThreadId, driver);
+          return driver;
+        })
+      : Promise.resolve(existing))
+      .then((driver) => driver.turn(prompt))
+      .then((ending) => end(childThreadId, generation, ending))
+      .catch((error: unknown) => end(childThreadId, generation, { kind: 'failed', error: failureText(error) }))
       .finally(() => following.delete(running));
     following.add(running);
   };
@@ -154,6 +177,52 @@ export function subagents(options: {
 
     list: () => store.listSubagents(parentThreadId).map((thread) => summaryOfChild(thread.id)),
 
+    stop: async (childThreadId) => {
+      const driver = drivers.get(childThreadId);
+      const record = store.getThread(childThreadId).subagent;
+      if (record === null || record.status !== 'running' || driver === undefined) {
+        throw new Error('That subagent is not running.');
+      }
+      generations.set(childThreadId, (generations.get(childThreadId) ?? 0) + 1);
+      await driver.stop();
+      store.updateSubagent(childThreadId, {
+        status: 'stopped',
+        response: '',
+        error: null,
+        endedAt: new Date().toISOString(),
+      });
+      const summary = summaryOfChild(childThreadId);
+      onSettled?.(summary);
+      for (const listener of listeners) listener(summary);
+    },
+
+    steer: async (childThreadId, text) => {
+      const driver = drivers.get(childThreadId);
+      if (store.getThread(childThreadId).subagent?.status !== 'running' || driver === undefined) {
+        throw new Error('That subagent is not running.');
+      }
+      await driver.steer(text);
+    },
+
+    resume: async (childThreadId, prompt) => {
+      const thread = store.getThread(childThreadId);
+      const record = thread.subagent;
+      const driver = drivers.get(childThreadId);
+      if (thread.parentThreadId !== parentThreadId || record === null || record.status === 'running') {
+        throw new Error('That subagent cannot be resumed.');
+      }
+      if (driver === undefined) throw new Error('That subagent session is no longer available.');
+      store.updateSubagent(childThreadId, {
+        status: 'running',
+        prompt,
+        response: '',
+        error: null,
+        startedAt: new Date().toISOString(),
+        endedAt: null,
+      });
+      follow(childThreadId, record.role, prompt, driver);
+    },
+
     settle: async () => {
       while (following.size > 0) await Promise.all([...following]);
     },
@@ -168,6 +237,8 @@ export function subagents(options: {
     dispose: () => {
       disposed = true;
       following.clear();
+      for (const driver of drivers.values()) driver.dispose();
+      drivers.clear();
     },
   };
 }
