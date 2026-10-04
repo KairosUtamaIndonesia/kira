@@ -267,7 +267,7 @@ export type ChatPart =
 export interface ChatMessage {
   id: string;
   parentId: string | null;
-  role: 'you' | 'kira';
+  role: 'you' | 'kira' | 'subagent';
   parts: ChatPart[];
 }
 

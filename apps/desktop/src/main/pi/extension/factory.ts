@@ -47,6 +47,8 @@ import {
   trackerTools,
 } from './trackerTool.ts';
 import { toolAllowedInMode, toolsForMode, workflowForMode } from '../workflow.ts';
+import { toolsForRole, type SubagentManager, type SubagentRole } from '../subagents.ts';
+import { subagentTool } from './subagentTool.ts';
 
 async function attachedTicketContext(
   store: ThreadStore,
@@ -107,6 +109,8 @@ export function kiraExtension({
   tracker,
   mcp,
   questionnaires,
+  role,
+  subagents,
   getShellPath = () => undefined,
   registerCleanup,
 }: {
@@ -127,6 +131,10 @@ export function kiraExtension({
   mcp?: McpManager;
   /** The main-process broker for interactive user questions. */
   questionnaires?: Questionnaires;
+  /** Set only on a child's session: the kind of child, which shapes its tools. */
+  role?: SubagentRole;
+  /** The chat's subagent manager. Absent on a child's session, so a child cannot delegate. */
+  subagents?: SubagentManager;
   /** Current executable selected for Pi's Bash tool. */
   getShellPath?: () => string | undefined;
   registerCleanup?: (cleanup: () => void) => void;
@@ -138,7 +146,7 @@ export function kiraExtension({
       const mode = (): ChatMode => store.getThread(threadId).mode;
       const currentMcpTools = (): string[] =>
         mcp?.tools(workspaceId).map((tool) => tool.name) ?? [];
-      let appliedMode: ChatMode | undefined = 'build';
+      let appliedMode: ChatMode | undefined = role === undefined ? 'build' : undefined;
       const applyModeTools = (): void => {
         const current = mode();
         // Pi enables every registered extension tool in the Build baseline and
@@ -147,7 +155,9 @@ export function kiraExtension({
         if (current === appliedMode) return;
         const available = pi.getAllTools().map((tool) => tool.name);
         pi.setActiveTools(
-          toolsForMode(current, available, currentMcpTools(), [...registeredMcpTools]),
+          role === undefined
+            ? toolsForMode(current, available, currentMcpTools(), [...registeredMcpTools])
+            : toolsForRole(role, available),
         );
         appliedMode = current;
       };
@@ -168,6 +178,11 @@ export function kiraExtension({
           const shell = getShellConfig(getShellPath()).shell;
           const quotedShell = `'${shell.replace(/'/g, "'\\''")}'`;
           event.input.command = `export SHELL=${quotedShell}\n${event.input.command}`;
+        }
+        if (role !== undefined) {
+          return toolsForRole(role, [event.toolName]).length > 0
+            ? undefined
+            : { block: true, reason: `A ${role} subagent may not use ${event.toolName}.` };
         }
         if (toolAllowedInMode(mode(), event.toolName, [...registeredMcpTools])) return undefined;
         return {
@@ -213,6 +228,9 @@ export function kiraExtension({
       pi.registerTool(breakdownProposalTool());
       if (questionnaires !== undefined) {
         pi.registerTool(questionnaireTool(questionnaires, threadId));
+      }
+      if (subagents !== undefined) {
+        pi.registerTool(subagentTool(subagents));
       }
       if (tracker !== undefined) {
         for (const tool of trackerTools(store, threadId, tracker)) pi.registerTool(tool);

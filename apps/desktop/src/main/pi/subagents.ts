@@ -53,6 +53,20 @@ export interface SubagentManager {
   settle(): Promise<void>;
   /** Stop following the children. Their records stay. */
   dispose(): void;
+  /** Watch children reach their ends. Returns an unsubscribe function. */
+  subscribe(listener: (summary: SubagentSummary) => void): () => void;
+}
+
+/**
+ * The tools a read-only child may use: reading and looking back, nothing that
+ * changes the workspace. A general child gets the chat's own tools instead.
+ */
+const READ_ONLY_ROLE_TOOLS = new Set(['read', 'grep', 'find', 'ls', 'recall', 'ask_user_question']);
+
+/** Active tools for a child of `role`, out of the tools its session registered. */
+export function toolsForRole(role: SubagentRole, availableTools: readonly string[]): string[] {
+  if (role === 'general') return [...availableTools];
+  return availableTools.filter((name) => READ_ONLY_ROLE_TOOLS.has(name));
 }
 
 /** A child's task, as one line to show against it. */
@@ -89,6 +103,7 @@ export function subagents(options: {
 }): SubagentManager {
   const { store, parentThreadId, cwd, modelId, run, onSettled } = options;
   const following = new Set<Promise<void>>();
+  const listeners = new Set<(summary: SubagentSummary) => void>();
   let disposed = false;
 
   const summaryOfChild = (childThreadId: string): SubagentSummary => {
@@ -106,7 +121,9 @@ export function subagents(options: {
         ? { status: 'complete', response: ending.report, error: null, endedAt }
         : { status: 'error', response: '', error: ending.error, endedAt },
     );
-    onSettled?.(summaryOfChild(childThreadId));
+    const summary = summaryOfChild(childThreadId);
+    onSettled?.(summary);
+    for (const listener of listeners) listener(summary);
   };
 
   const follow = (childThreadId: string, role: SubagentRole, prompt: string): void => {
@@ -139,6 +156,13 @@ export function subagents(options: {
 
     settle: async () => {
       while (following.size > 0) await Promise.all([...following]);
+    },
+
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
     },
 
     dispose: () => {

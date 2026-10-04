@@ -61,6 +61,7 @@ import type { Models } from './models.ts';
 import type { McpManager } from '../mcp/servers.ts';
 import type { Questionnaires } from '../questionnaires.ts';
 import { missingMessage } from './storage.ts';
+import type { SubagentSummary } from './subagents.ts';
 
 /** A running conversation the window can read from, write to, and watch. */
 export interface Conversation {
@@ -201,6 +202,11 @@ export interface Conversation {
   subscribe(listener: (event: ChatEvent) => void): () => void;
   /** Whether Kira is writing in this chat right now. */
   isRunning(): boolean;
+  /**
+   * The child agents this chat has delegated, oldest first. A child that is still
+   * running counts as the chat working, so it is what keeps the chat open.
+   */
+  subagents(): SubagentSummary[];
   /** When the current turn began, or null when the chat is idle. */
   runningSince(): number | null;
   /** The reply being written: one message's words, or null when there are none. */
@@ -765,7 +771,10 @@ function conversationOf(
         listeners.delete(listener);
       };
     },
-    isRunning: () => kira.session.isStreaming,
+    isRunning: () =>
+      kira.session.isStreaming ||
+      (kira.subagents?.list().some((child) => child.state === 'running') ?? false),
+    subagents: () => kira.subagents?.list() ?? [],
     runningSince: () => runningSince,
     modelId: () => kira.session.model?.id ?? null,
     chatUsage: () => {
@@ -1449,6 +1458,13 @@ function messageOf(
   if (message.role === 'user') {
     const text = typeof message.content === 'string' ? message.content : textOf(message.content);
     return text ? { id, parentId, role: 'you', parts: [{ type: 'text', text }] } : null;
+  }
+
+  // A child's report is a message of its own, not Kira's: it reads on her side of
+  // the chat but is marked apart, so a reader sees where it came from (ADR 0028).
+  if (message.role === 'custom') {
+    const text = typeof message.content === 'string' ? message.content : textOf(message.content);
+    return text ? { id, parentId, role: 'subagent', parts: [{ type: 'text', text }] } : null;
   }
 
   if (message.role === 'assistant') {
