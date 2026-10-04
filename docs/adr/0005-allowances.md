@@ -2,6 +2,7 @@
 
 Date: 2026-09-17
 Amended: 2026-09-20, 2026-09-21
+Amended by ADR 0028: a chat's subagents spend the same allowance and count under the same cap.
 
 ## Context
 

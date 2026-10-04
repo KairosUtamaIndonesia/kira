@@ -42,7 +42,7 @@ _Avoid_: Model list, registry, models file
 
 **Allowance**:
 What one user may take from the pool, in two numbers: tokens spent in a WIB calendar month,
-and chats running at once. A default applies to everyone and a per-user override replaces
+and chats running at once, the subagents a chat delegates counted with them. A default applies to everyone and a per-user override replaces
 both, so nobody is ever unbudgeted. Everything the person spends comes out of it, whether
 they typed it or a session of theirs did. It exists so one person cannot take the pool from
 everybody else, not to charge anyone for what they use.
@@ -87,6 +87,10 @@ workbench is showing)
 A separate agent Kira delegates a bounded piece of work from one chat. It belongs to that chat: its
 activity and conversation are shown in that chat's Workbench, and Kira receives its outcome there.
 _Avoid_: Worker, Run
+
+**Role**:
+The kind of subagent Kira delegates, naming what it is allowed to do and the model it runs on. A chat picks the role when it delegates.
+_Avoid_: Agent type, agent, profile
 
 **Context**:
 What Kira is holding for one chat: the goal, the files she touched, the commits, and what the
