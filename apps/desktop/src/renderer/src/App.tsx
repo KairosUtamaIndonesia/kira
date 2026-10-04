@@ -50,6 +50,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ComponentProps,
   type ReactNode,
@@ -79,6 +80,7 @@ import type {
   ChatTranscript,
   ShellCommandRun,
   ChatUsage,
+  SubagentSummary,
   ModelOption,
   Proposal,
   ShapingState,
@@ -150,6 +152,8 @@ const PARKED_PANE: ComponentProps<typeof ChatPane> = {
   onCancel: NOTHING,
   usage: null,
   chatUsage: null,
+  subagents: [],
+  onSelectSubagent: NOTHING,
   queued: [],
   restored: null,
   onTakeBack: NOTHING,
@@ -242,6 +246,13 @@ export default function App() {
   const [modelId, setModelId] = useState<string | null>(null);
   /** What the chat on screen has used, or null when there is no session in it yet. */
   const [chatUsage, setChatUsage] = useState<ChatUsage | null>(null);
+  const [subagents, setSubagents] = useState<SubagentSummary[]>([]);
+  const [selectedSubagentByChat, setSelectedSubagentByChat] = useState<Record<string, string>>({});
+  const [subagentTranscriptsByChat, setSubagentTranscriptsByChat] = useState<
+    Record<string, Record<string, ChatTranscript>>
+  >({});
+  const selectedSubagentRef = useRef<Record<string, string>>({});
+  const currentIdRef = useRef('');
   const [commands, setCommands] = useState<ChatCommand[]>([]);
   const [shellRunsByChat, setShellRunsByChat] = useState<Record<string, ShellCommandRun[]>>({});
   const [shaping, setShaping] = useState<ShapingState>(NO_SHAPING);
@@ -342,12 +353,14 @@ export default function App() {
       setChats(result.value.chats);
       setWorkspaces(result.value.workspaces);
       setCurrentId(result.value.currentId);
+      currentIdRef.current = result.value.currentId;
       setAttachedTicketIds(result.value.attachedTicketIds);
       setMode(result.value.mode);
       setDraftId(result.value.draftId);
       setTranscript(result.value.transcript);
       setModelId(result.value.modelId);
       setChatUsage(result.value.chatUsage);
+      setSubagents(result.value.subagents ?? []);
       const nextShaping = result.value.shaping ?? NO_SHAPING;
       setShaping(nextShaping);
       setQuestionnaire(result.value.questionnaire ?? null);
@@ -383,6 +396,30 @@ export default function App() {
   const refresh = useCallback(async () => {
     await showState(await window.kira.loadChat());
   }, [showState]);
+
+  const readSubagentTranscript = useCallback(async (parentId: string, childId: string) => {
+    const result = await window.kira.readSubagentTranscript(parentId, childId);
+    if (result.ok) {
+      setSubagentTranscriptsByChat((held) => ({
+        ...held,
+        [parentId]: { ...held[parentId], [childId]: result.value },
+      }));
+    }
+  }, []);
+
+  const selectSubagent = useCallback(
+    (id: string | null) => {
+      setSelectedSubagentByChat((selected) => {
+        const next = { ...selected };
+        if (id === null) delete next[currentIdRef.current];
+        else next[currentIdRef.current] = id;
+        selectedSubagentRef.current = next;
+        return next;
+      });
+      if (id !== null) void readSubagentTranscript(currentIdRef.current, id);
+    },
+    [readSubagentTranscript],
+  );
 
   /**
    * Who is signed in, read once and then heard about.
@@ -439,6 +476,15 @@ export default function App() {
           const { [event.requestId]: _closed, ...remaining } = drafts;
           return remaining;
         });
+      }
+      if (event.type === 'subagents') {
+        if (event.threadId === currentIdRef.current) setSubagents(event.subagents);
+        const selectedId = selectedSubagentRef.current[event.threadId];
+        if (selectedId && event.subagents.some((agent) => agent.id === selectedId)) {
+          void readSubagentTranscript(event.threadId, selectedId);
+        }
+        if (event.threadId !== currentIdRef.current) void refresh();
+        return;
       }
       if (event.type === 'progress' && event.workTicketIds !== undefined) {
         const workTicketIds = event.workTicketIds;
@@ -535,7 +581,7 @@ export default function App() {
     void window.kira.loadChat().then(showState);
 
     return unsubscribe;
-  }, [currentId, refresh, showState]);
+  }, [currentId, readSubagentTranscript, refresh, showState]);
 
   /**
    * Ask Kira something, on the branch that ends at `from`.
@@ -1140,6 +1186,8 @@ export default function App() {
     usage,
     chatUsage,
     queued,
+    subagents,
+    onSelectSubagent: selectSubagent,
     restored,
     onTakeBack: takeBack,
     onRestored,
@@ -1403,6 +1451,15 @@ export default function App() {
                 conclusions={conclusions}
                 chatId={currentId}
                 composing={draftShown}
+                subagents={subagents}
+                selectedSubagentId={selectedSubagentByChat[currentId] ?? null}
+                selectedSubagentTranscript={
+                  selectedSubagentByChat[currentId]
+                    ? (subagentTranscriptsByChat[currentId]?.[selectedSubagentByChat[currentId]!] ??
+                      null)
+                    : null
+                }
+                onSelectSubagent={selectSubagent}
                 shaping={shaping}
                 ticketQueue={specQueueChatId === currentId ? specQueue : null}
                 onDecide={decideProposal}
@@ -1549,6 +1606,8 @@ function ChatPane({
   onLinkWorkTicket,
   onRemoveWorkTicket,
   queued,
+  subagents,
+  onSelectSubagent,
   restored,
   onTakeBack,
   onRestored,
@@ -1604,6 +1663,8 @@ function ChatPane({
   onFork: (messageId: string) => Promise<void>;
   onCancel: () => Promise<void>;
   queued: QueuedLine[];
+  subagents: SubagentSummary[];
+  onSelectSubagent: (id: string) => void;
   restored: string | null;
   onTakeBack: () => Promise<void>;
   onRestored: () => void;
@@ -1707,6 +1768,8 @@ function ChatPane({
               onOpenWorkTicket={onOpenWorkTicket}
               onLinkWorkTicket={onLinkWorkTicket}
               onRemoveWorkTicket={onRemoveWorkTicket}
+              subagents={subagents}
+              onSelectSubagent={onSelectSubagent}
           />
         </ThreadPrimitive.ViewportFooter>
       </ThreadPrimitive.Root>
