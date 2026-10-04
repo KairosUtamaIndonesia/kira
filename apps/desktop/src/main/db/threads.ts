@@ -63,9 +63,11 @@ export interface McpServerRecord {
 
 export type SubagentStatus = 'running' | 'complete' | 'error' | 'stopped';
 export type SubagentContext = 'task' | 'parent';
+/** The kind of child a chat delegates: what it may do and which model it runs on. */
+export type SubagentRole = 'general' | 'explore';
 /** The durable identity and terminal result of a child delegated by a chat. */
 export interface SubagentRecord {
-  role: 'general';
+  role: SubagentRole;
   prompt: string;
   context: SubagentContext;
   modelId: string;
@@ -1542,7 +1544,7 @@ function subagentOf(value: string | null): SubagentRecord | null {
   try {
     const held = JSON.parse(value) as Partial<SubagentRecord>;
     if (
-      held.role === 'general' &&
+      (held.role === 'general' || held.role === 'explore') &&
       typeof held.prompt === 'string' &&
       (held.context === 'task' || held.context === 'parent') &&
       typeof held.modelId === 'string' &&
