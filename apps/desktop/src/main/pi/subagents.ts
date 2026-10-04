@@ -62,6 +62,8 @@ export interface SubagentManager {
   stopAll(): Promise<void>;
   steer(childThreadId: string, text: string): Promise<void>;
   resume(childThreadId: string, prompt: string): Promise<void>;
+  /** Ask the owning chat to answer a child question; null means Kira cannot answer. */
+  askParent(childThreadId: string, question: string): Promise<string | null>;
   /** What this chat has delegated, oldest first. */
   list(): SubagentSummary[];
   /** Wait for every running child to reach its end. */
@@ -115,10 +117,11 @@ export function subagents(options: {
   /** The model every child of this chat runs on. */
   modelId: string;
   run: RunSubagent;
+  answerParent?: (childThreadId: string, question: string) => Promise<string | null>;
   /** Called once per child, the moment its end is written down. */
   onSettled?: (summary: SubagentSummary) => void;
 }): SubagentManager {
-  const { store, parentThreadId, cwd, modelId, run, onSettled } = options;
+  const { store, parentThreadId, cwd, modelId, run, answerParent, onSettled } = options;
   const following = new Set<Promise<void>>();
   const drivers = new Map<string, SubagentDriver>();
   const generations = new Map<string, number>();
@@ -279,6 +282,14 @@ export function subagents(options: {
         endedAt: null,
       });
       follow(childThreadId, record.role, prompt, driver);
+    },
+
+    askParent: async (childThreadId, question) => {
+      const child = store.getThread(childThreadId);
+      if (child.parentThreadId !== parentThreadId || child.subagent === null) {
+        throw new Error('That subagent does not belong to this chat.');
+      }
+      return answerParent?.(childThreadId, question) ?? null;
     },
 
     settle: async () => {

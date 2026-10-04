@@ -41,6 +41,7 @@ test('the delegation tool hands the task to the manager and answers with the chi
     stopAll: async () => {},
     steer: async () => {},
     resume: async () => {},
+    askParent: async () => null,
     settle: async () => {},
     subscribe: () => () => {},
     dispose: () => {},

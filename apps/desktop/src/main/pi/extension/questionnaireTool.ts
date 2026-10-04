@@ -18,6 +18,7 @@ export function questionnaireTool(
   threadId: string,
   beforeAsk?: () => void,
   afterAnswer?: () => void,
+  askParent?: (question: string) => Promise<string | null>,
 ) {
   return {
     name: ASK_USER_QUESTION_TOOL_NAME,
@@ -47,6 +48,34 @@ export function questionnaireTool(
       }
 
       beforeAsk?.();
+      const question = params.questions
+        .map(
+          ({ question, options }) =>
+            `${question}\n${options.map(({ label, description }) => `- ${label}: ${description}`).join('\n')}`,
+        )
+        .join('\n\n');
+      let answer: string | null = null;
+      try {
+        answer = (await askParent?.(question)) ?? null;
+      } catch {
+        // Kira may be in a turn already; the existing questionnaire is the fallback.
+      }
+      if (
+        answer !== null &&
+        answer.trim() !== '' &&
+        !/\b(?:i cannot|i can't|i don’t know|i don't know|not enough context)\b/i.test(answer)
+      ) {
+        afterAnswer?.();
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Kira answered your question:\n${answer}\nContinue with Kira's answer in mind.`,
+            },
+          ],
+          details: undefined,
+        };
+      }
       const result = await questionnaires.ask(threadId, params as QuestionnaireParams, signal);
       afterAnswer?.();
       return {

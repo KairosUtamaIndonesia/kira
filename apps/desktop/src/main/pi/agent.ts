@@ -179,6 +179,7 @@ async function boot(
     await prepareWorkspace?.(workspaceId);
   }
 
+  let session: AgentSession | undefined;
   // A chat delegates (ADR 0028); a child does not, so a child's own session gets
   // no manager and therefore no delegation tool. The child's turn is taken on a
   // session of its own, in the folder this chat works in, from the clean brief.
@@ -189,6 +190,17 @@ async function boot(
       parentThreadId: thread.threadId,
       cwd: thread.cwd,
       modelId: choice.model.id,
+      answerParent: async (_childThreadId, question) => {
+        if (session === undefined) return null;
+        try {
+          await session.prompt(
+            `A delegated child needs an answer before it can continue:\n\n${question}\n\nAnswer only from this chat's context. If you cannot answer reliably, say that you cannot answer and the child will ask the person.`,
+          );
+          return reportOf(session) || null;
+        } catch {
+          return null;
+        }
+      },
       run: async ({ childThreadId, role: childRole, activity }) => {
         if (childRole === 'general') {
           const childThread = openThread(store, childThreadId);
@@ -245,7 +257,6 @@ async function boot(
   );
 
   let cleanupMcpSubscription: (() => void) | undefined;
-  let session: AgentSession | undefined;
   try {
     const services = await createAgentSessionServices({
       cwd: thread.cwd,

@@ -240,6 +240,10 @@ export function kiraExtension({
               parentSubagents?.activity(threadId, 'Waiting for your answer');
             },
             () => parentSubagents?.activity(threadId, 'Working'),
+            role === undefined
+              ? undefined
+              : (question) =>
+                  parentSubagents?.askParent(threadId, question) ?? Promise.resolve(null),
           ),
         );
       }

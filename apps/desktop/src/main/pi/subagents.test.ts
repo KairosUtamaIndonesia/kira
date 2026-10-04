@@ -215,3 +215,29 @@ test('a chat refuses a fourth simultaneous child clearly', async () => {
   );
   store.close();
 });
+
+test('a child question is answered through its owning chat', async () => {
+  const store = new ThreadStore(storePath());
+  const chat = store.createThread(tmpdir());
+  const forwarded: string[] = [];
+  const manager = subagents({
+    store,
+    parentThreadId: chat.id,
+    cwd: chat.cwd,
+    modelId: 'served-model',
+    answerParent: async (_childId, question) => {
+      forwarded.push(question);
+      return 'Use the existing Redis cache.';
+    },
+    run: async () => driver(async () => ({ kind: 'reported', report: 'done' })),
+  });
+
+  const childId = manager.spawn({ role: 'explore', prompt: 'Investigate the cache.' });
+  assert.equal(
+    await manager.askParent(childId, 'Which cache is already in use?'),
+    'Use the existing Redis cache.',
+  );
+  assert.deepEqual(forwarded, ['Which cache is already in use?']);
+  await manager.settle();
+  store.close();
+});
