@@ -30,9 +30,7 @@ function models(server = 'http://localhost:4100'): Models {
   });
 }
 
-async function subagentProvider(
-  options: { childAsksQuestion?: boolean; parentCannotAnswer?: boolean } = {},
-): Promise<{
+async function subagentProvider(options: { childAsksQuestion?: boolean } = {}): Promise<{
   url: string;
   requests: {
     tools?: { function?: { name?: string } }[];
@@ -133,9 +131,7 @@ async function subagentProvider(
                     delta: {
                       role: 'assistant',
                       content: asksParent
-                        ? options.parentCannotAnswer === true
-                          ? "I don't know from the chat context."
-                          : 'Use Redis; the project notes specify a shared cache.'
+                        ? 'Use Redis; the project notes specify a shared cache.'
                         : isParent
                           ? 'Delegation started.'
                           : options.childAsksQuestion
