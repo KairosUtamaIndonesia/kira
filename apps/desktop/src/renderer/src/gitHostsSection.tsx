@@ -7,23 +7,23 @@
  * again: it is stored sealed, and the host's webhook is what presents it back
  * (docs/adr/0026).
  *
- * PROTOTYPE — this file holds the data and picks which layout draws it. Development
- * builds can flip between the page as it is and three redesigns with the bar at the foot
- * of the window (`?variant=`), against the server's own connections, four made-up ones, or
- * none (`?hosts=`). Production always draws the current page.
+ * PROTOTYPE — this file holds the data, and picks which Connect a host dialog opens from the
+ * ledger. Development builds can flip between three dialogs with the bar at the foot of the
+ * window (`?variant=`, or `[` and `]`), against the server's own connections, four made-up
+ * ones, or none (`?hosts=`). Production always opens dialog A.
  */
 import { useCallback, useEffect, useState } from 'react';
 import type { GitConnection, GitHubConnect } from '../../preload/bridge';
-import { CurrentVariant } from './gitHostsCurrent';
+import { DialogA } from './gitHostsDialogA';
+import { DialogB } from './gitHostsDialogB';
+import { DialogC } from './gitHostsDialogC';
+import { HostsLedger } from './gitHostsLedger';
 import {
   SAMPLE_CONNECTIONS,
   SAMPLE_GITHUB,
   type ConnectInput,
   type HostsModel,
 } from './gitHostsModel';
-import { VariantA } from './gitHostsVariantA';
-import { VariantB } from './gitHostsVariantB';
-import { VariantC } from './gitHostsVariantC';
 import { PrototypeSwitcher } from './prototypeSwitcher';
 
 function useMountEffect(effect: () => void): void {
@@ -32,10 +32,9 @@ function useMountEffect(effect: () => void): void {
 }
 
 const VARIANTS = [
-  { key: 'current', name: 'As it is' },
-  { key: 'A', name: 'Ledger' },
-  { key: 'B', name: 'By provider' },
-  { key: 'C', name: 'Table and dialog' },
+  { key: 'A', name: 'Choose, then fill' },
+  { key: 'B', name: 'Tabs, then receipt' },
+  { key: 'C', name: 'The whole journey' },
 ];
 
 const DATA = [
@@ -64,8 +63,9 @@ export function GitHostsSection() {
   const [secret, setSecret] = useState<{ id: string; value: string } | null>(null);
   const [github, setGithub] = useState<GitHubConnect | null>(null);
 
+  const [adding, setAdding] = useState(false);
   const [variant, setVariant] = useState(() =>
-    import.meta.env.DEV ? readParam('variant', VARIANTS, 'A') : 'current',
+    import.meta.env.DEV ? readParam('variant', VARIANTS, 'A') : 'A',
   );
   const [data, setData] = useState(() =>
     import.meta.env.DEV ? readParam('hosts', DATA, 'live') : 'live',
@@ -163,21 +163,22 @@ export function GitHostsSection() {
     disconnect,
   };
 
-  const page =
-    variant === 'A' ? (
-      <VariantA model={model} />
-    ) : variant === 'B' ? (
-      <VariantB model={model} />
-    ) : variant === 'C' ? (
-      <VariantC model={model} />
-    ) : (
-      <CurrentVariant model={model} />
-    );
+  const dialogProps = { model, onClose: () => setAdding(false) };
+  const open = adding || secret !== null;
 
   return (
     <>
-      {page}
+      <HostsLedger model={model} onConnect={() => setAdding(true)} />
+      {open &&
+        (variant === 'B' ? (
+          <DialogB {...dialogProps} />
+        ) : variant === 'C' ? (
+          <DialogC {...dialogProps} />
+        ) : (
+          <DialogA {...dialogProps} />
+        ))}
       <PrototypeSwitcher
+        lift={open}
         variants={VARIANTS}
         current={variant}
         onChange={(key) => {

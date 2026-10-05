@@ -1,9 +1,10 @@
 /**
- * PROTOTYPE — Git hosts, variant A: the ledger.
+ * The Git hosts page: one ruled column, drawn the way Work and the chat rail are. Connected
+ * hosts are rows on one grid; disconnecting is asked in the row itself. Connecting is a dialog
+ * the page asks for (`onConnect`) and does not own.
  *
- * One ruled column, drawn the way Work and the chat rail are. Connected hosts are rows on one
- * grid. Connecting is a two-step dialog (gitHostsConnectDialog.tsx), because it ends in the
- * webhook secret, shown once. Disconnecting is asked in the row itself.
+ * Chosen from three layouts (A ledger, B by provider, C table); the others are in the history
+ * of agent/git-hosts-prototype.
  */
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
@@ -19,7 +20,7 @@ import {
   typographyVars,
 } from '@astryxdesign/core/theme/tokens.stylex';
 import * as stylex from '@stylexjs/stylex';
-import { Building2, ExternalLink, Plus, User } from 'lucide-react';
+import { Building2, Plus, User } from 'lucide-react';
 import { useState } from 'react';
 import type { GitConnection } from '../../preload/bridge';
 import {
@@ -29,14 +30,12 @@ import {
   webhookPath,
   type HostsModel,
 } from './gitHostsModel';
-import { ConnectDialog } from './gitHostsConnectDialog';
 import { age } from './workRows';
 
 const pad = 0;
 
-export function VariantA({ model }: { model: HostsModel }) {
-  const { connections, trouble, github } = model;
-  const [adding, setAdding] = useState(false);
+export function HostsLedger({ model, onConnect }: { model: HostsModel; onConnect: () => void }) {
+  const { connections, trouble } = model;
   const empty = connections !== null && connections.length === 0;
 
   return (
@@ -54,13 +53,11 @@ export function VariantA({ model }: { model: HostsModel }) {
           size="sm"
           variant="primary"
           icon={<Icon icon={Plus} size="sm" />}
-          onClick={() => setAdding(true)}
+          onClick={onConnect}
         />
       </header>
 
-      {trouble !== null && !adding && (
-        <Banner status="error" title="Git hosts" description={trouble} />
-      )}
+      {trouble !== null && <Banner status="error" title="Git hosts" description={trouble} />}
 
       <section aria-labelledby="git-hosts-connected">
         <div {...stylex.props(ui.sectionHead)}>
@@ -89,25 +86,6 @@ export function VariantA({ model }: { model: HostsModel }) {
           </ul>
         )}
       </section>
-
-      {github?.configured === true && github.url !== null && (
-        <div {...stylex.props(ui.appRow)}>
-          <Text type="supporting" color="secondary">
-            Install the GitHub App to watch GitHub without a personal token.
-          </Text>
-          <Button
-            label="Install the GitHub App"
-            size="sm"
-            variant="secondary"
-            endContent={<Icon icon={ExternalLink} size="sm" />}
-            onClick={() => window.open(github.url ?? '', '_blank', 'noopener')}
-          />
-        </div>
-      )}
-
-      {(adding || model.secret !== null) && (
-        <ConnectDialog model={model} onClose={() => setAdding(false)} />
-      )}
     </div>
   );
 }
@@ -258,15 +236,4 @@ const ui = stylex.create({
   },
   dim: { color: colorVars['--color-text-secondary'] },
   clip: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  appRow: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacingVars['--spacing-4'],
-    paddingInline: pad,
-    paddingBlock: spacingVars['--spacing-3'],
-    borderBlockStartWidth: borderVars['--border-width'],
-    borderBlockStartStyle: 'solid',
-    borderBlockStartColor: colorVars['--color-border'],
-  },
 });

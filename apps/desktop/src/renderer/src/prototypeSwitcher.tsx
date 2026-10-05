@@ -6,7 +6,7 @@
  */
 import * as stylex from '@stylexjs/stylex';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 export interface PrototypeVariant {
   key: string;
@@ -17,6 +17,8 @@ interface Props {
   variants: PrototypeVariant[];
   current: string;
   onChange: (key: string) => void;
+  /** Pass true while a modal dialog is open so the bar is shown above it. */
+  lift?: boolean;
   /** A second, smaller set of choices beside the variants (which data the page is drawn with). */
   options?: {
     label: string;
@@ -29,11 +31,15 @@ interface Props {
 function typing(target: EventTarget | null): boolean {
   return (
     target instanceof HTMLElement &&
-    (target.matches('input, textarea, select') || target.isContentEditable)
+    (target.matches('input, textarea, select') ||
+      target.isContentEditable ||
+      target.closest('[role="tablist"], [role="radiogroup"], [role="listbox"], [role="menu"]') !==
+        null)
   );
 }
 
-export function PrototypeSwitcher({ variants, current, onChange, options }: Props) {
+export function PrototypeSwitcher({ variants, current, onChange, options, lift = false }: Props) {
+  const bar = useRef<HTMLDivElement>(null);
   const index = Math.max(
     0,
     variants.findIndex((each) => each.key === current),
@@ -44,9 +50,16 @@ export function PrototypeSwitcher({ variants, current, onChange, options }: Prop
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
-      if (typing(event.target) || event.metaKey || event.ctrlKey || event.altKey) return;
-      if (event.key === 'ArrowLeft') step(-1);
-      else if (event.key === 'ArrowRight') step(1);
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (
+        event.target instanceof HTMLElement &&
+        event.target.matches('input, textarea, select') &&
+        (event.key === '[' || event.key === ']')
+      )
+        return;
+      const arrows = !typing(event.target);
+      if ((arrows && event.key === 'ArrowLeft') || event.key === '[') step(-1);
+      else if ((arrows && event.key === 'ArrowRight') || event.key === ']') step(1);
       else return;
       event.preventDefault();
     };
@@ -54,10 +67,28 @@ export function PrototypeSwitcher({ variants, current, onChange, options }: Prop
     return () => window.removeEventListener('keydown', onKey);
   });
 
+  // A native dialog sits in the top layer; showing the bar as a popover after it opens puts the
+  // bar above the dialog. The dialog keeps the page inert, so the bar's keys do the switching.
+  useEffect(() => {
+    const el = bar.current;
+    if (!el || !import.meta.env.DEV) return;
+    const timer = window.setTimeout(() => {
+      if (el.matches(':popover-open')) el.hidePopover();
+      el.showPopover();
+    }, 60);
+    return () => window.clearTimeout(timer);
+  }, [lift, current]);
+
   if (!import.meta.env.DEV) return null;
 
   return (
-    <div role="toolbar" aria-label="Prototype variants" {...stylex.props(ui.bar)}>
+    <div
+      ref={bar}
+      popover="manual"
+      role="toolbar"
+      aria-label="Prototype variants"
+      {...stylex.props(ui.bar)}
+    >
       <button
         type="button"
         aria-label="Previous variant"
@@ -99,6 +130,11 @@ export function PrototypeSwitcher({ variants, current, onChange, options }: Prop
 const ui = stylex.create({
   bar: {
     position: 'fixed',
+    insetBlockStart: 'auto',
+    insetInlineEnd: 'auto',
+    margin: 0,
+    border: 0,
+    overflow: 'visible',
     insetBlockEnd: 16,
     insetInlineStart: '50%',
     transform: 'translateX(-50%)',
