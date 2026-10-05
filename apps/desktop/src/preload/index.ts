@@ -42,7 +42,6 @@ import {
   type TicketQueue,
   type TimelineEntry,
   type WorkspaceSummary,
-  type CloneRequest,
   type WorkspaceAsset,
   type QueuedLine,
   type Usage,

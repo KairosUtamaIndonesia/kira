@@ -125,7 +125,6 @@ import { MarkdownEditor } from './markdownEditor.tsx';
 import { Blockers } from './workBlockers.tsx';
 import { PullRequests } from './workPullRequests.tsx';
 import { Timeline } from './workTimeline.tsx';
-import { RepositoriesDialog } from './workRepositories.tsx';
 import { SkillsDialog } from './workSkills.tsx';
 import { NewTicketDialog, oneLine } from './workNewTicket.tsx';
 import { FilterBar, FilterToolbar } from './workFilters.tsx';
@@ -1245,7 +1244,6 @@ export function WorkSurface({
     readWorkDisplay(window.location.search),
   );
   const [isWriting, setIsWriting] = useState(false);
-  const [isChoosingRepositories, setIsChoosingRepositories] = useState(false);
   const [isChoosingSkills, setIsChoosingSkills] = useState(false);
   /** What the server last refused, in its own words. */
   const toast = useToast();
@@ -1553,20 +1551,6 @@ export function WorkSurface({
             }}
           />
           <Button
-            label={copy.header.repositories}
-            icon={<Icon icon={GitBranch} size="sm" />}
-            variant="secondary"
-            size="sm"
-            isDisabled={queue === null}
-            onClick={() => {
-              setOpenId(null);
-              setIsFull(false);
-              setIsWriting(false);
-              setRefusal(null);
-              setIsChoosingRepositories(true);
-            }}
-          />
-          <Button
             label={copy.header.newTicket}
             icon={<Icon icon={Plus} size="sm" />}
             variant="primary"
@@ -1615,14 +1599,6 @@ export function WorkSurface({
               setOpenId(written.id);
             }
           }}
-        />
-      )}
-
-      {isChoosingRepositories && queue !== null && (
-        <RepositoriesDialog
-          projectId={queue.project.id}
-          projectName={queue.project.name}
-          onClose={() => setIsChoosingRepositories(false)}
         />
       )}
 
