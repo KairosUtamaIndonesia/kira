@@ -2,17 +2,15 @@
  * PROTOTYPE — Git hosts, variant A: the ledger.
  *
  * One ruled column, drawn the way Work and the chat rail are. Connected hosts are rows on one
- * grid; connecting is a section that opens beneath them, and is open from the start when
- * there is nothing yet. Disconnecting is asked in the row itself.
+ * grid. Connecting is a two-step dialog (gitHostsConnectDialog.tsx), because it ends in the
+ * webhook secret, shown once. Disconnecting is asked in the row itself.
  */
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { Heading } from '@astryxdesign/core/Heading';
 import { Icon } from '@astryxdesign/core/Icon';
-import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl';
 import { Skeleton } from '@astryxdesign/core/Skeleton';
 import { Text } from '@astryxdesign/core/Text';
-import { TextInput } from '@astryxdesign/core/TextInput';
 import {
   borderVars,
   colorVars,
@@ -21,29 +19,25 @@ import {
   typographyVars,
 } from '@astryxdesign/core/theme/tokens.stylex';
 import * as stylex from '@stylexjs/stylex';
-import { Building2, ExternalLink, User } from 'lucide-react';
+import { Building2, ExternalLink, Plus, User } from 'lucide-react';
 import { useState } from 'react';
 import type { GitConnection } from '../../preload/bridge';
 import {
-  PROVIDERS,
   accessLabel,
   addressOf,
-  canConnect,
-  needsAddress,
   providerLabel,
   webhookPath,
   type HostsModel,
 } from './gitHostsModel';
-import { CopyButton } from './gitHostsParts';
+import { ConnectDialog } from './gitHostsConnectDialog';
 import { age } from './workRows';
 
 const pad = 0;
 
 export function VariantA({ model }: { model: HostsModel }) {
-  const { connections, trouble, secret, github } = model;
-  const [opened, setOpened] = useState(false);
+  const { connections, trouble, github } = model;
+  const [adding, setAdding] = useState(false);
   const empty = connections !== null && connections.length === 0;
-  const adding = opened || empty;
 
   return (
     <div {...stylex.props(ui.page)}>
@@ -55,31 +49,17 @@ export function VariantA({ model }: { model: HostsModel }) {
             here. Connecting needs an administrator and a personal access token.
           </Text>
         </div>
-        {!adding && (
-          <Button
-            label="Connect a host"
-            size="sm"
-            variant="primary"
-            onClick={() => setOpened(true)}
-          />
-        )}
+        <Button
+          label="Connect a host"
+          size="sm"
+          variant="primary"
+          icon={<Icon icon={Plus} size="sm" />}
+          onClick={() => setAdding(true)}
+        />
       </header>
 
-      {trouble !== null && <Banner status="error" title="Git hosts" description={trouble} />}
-
-      {secret !== null && (
-        <section aria-label="Webhook secret" {...stylex.props(ui.secret)}>
-          <div {...stylex.props(ui.secretHead)}>
-            <Text type="label" weight="medium">
-              Webhook secret
-            </Text>
-            <span {...stylex.props(ui.once)}>Shown once</span>
-            <span {...stylex.props(ui.spacer)} />
-            <Button label="Done" size="sm" variant="secondary" onClick={model.dismissSecret} />
-          </div>
-          <SecretLine name="Secret" value={secret.value} />
-          <SecretLine name="Payload URL" value={`/api/webhooks/git/${secret.id}`} />
-        </section>
+      {trouble !== null && !adding && (
+        <Banner status="error" title="Git hosts" description={trouble} />
       )}
 
       <section aria-labelledby="git-hosts-connected">
@@ -110,10 +90,6 @@ export function VariantA({ model }: { model: HostsModel }) {
         )}
       </section>
 
-      {adding && (
-        <ConnectSection model={model} onClose={empty ? undefined : () => setOpened(false)} />
-      )}
-
       {github?.configured === true && github.url !== null && (
         <div {...stylex.props(ui.appRow)}>
           <Text type="supporting" color="secondary">
@@ -128,20 +104,10 @@ export function VariantA({ model }: { model: HostsModel }) {
           />
         </div>
       )}
-    </div>
-  );
-}
 
-function SecretLine({ name, value }: { name: string; value: string }) {
-  return (
-    <div {...stylex.props(ui.secretLine)}>
-      <Text type="supporting" color="secondary">
-        {name}
-      </Text>
-      <span {...stylex.props(ui.mono, ui.clip)} title={value}>
-        {value}
-      </span>
-      <CopyButton value={value} label={name} />
+      {(adding || model.secret !== null) && (
+        <ConnectDialog model={model} onClose={() => setAdding(false)} />
+      )}
     </div>
   );
 }
@@ -197,87 +163,6 @@ function Row({ connection, model }: { connection: GitConnection; model: HostsMod
         )}
       </span>
     </li>
-  );
-}
-
-function ConnectSection({ model, onClose }: { model: HostsModel; onClose?: () => void }) {
-  const [provider, setProvider] = useState('github');
-  const [instanceUrl, setInstanceUrl] = useState('');
-  const [accessToken, setAccessToken] = useState('');
-  const [accountLogin, setAccountLogin] = useState('');
-  const input = { provider, instanceUrl, accessToken, accountLogin };
-  const ready = canConnect(input) && !model.busy;
-  const chosen = PROVIDERS.find((each) => each.value === provider);
-
-  async function connect(): Promise<void> {
-    if (!ready) return;
-    if (await model.connect(input)) {
-      setAccessToken('');
-      setAccountLogin('');
-      setInstanceUrl('');
-      onClose?.();
-    }
-  }
-
-  return (
-    <section aria-labelledby="git-hosts-connect">
-      <div {...stylex.props(ui.sectionHead)}>
-        <Heading level={3} id="git-hosts-connect">
-          Connect a host
-        </Heading>
-      </div>
-      <div {...stylex.props(ui.form)}>
-        <SegmentedControl
-          label="Host"
-          value={provider}
-          onChange={setProvider}
-          size="sm"
-          layout="fill"
-        >
-          {PROVIDERS.map((each) => (
-            <SegmentedControlItem key={each.value} value={each.value} label={each.label} />
-          ))}
-        </SegmentedControl>
-        <div {...stylex.props(ui.pair)}>
-          <TextInput
-            label="Address"
-            value={instanceUrl}
-            placeholder={needsAddress(provider) ? chosen?.example : 'Blank for github.com'}
-            isOptional={!needsAddress(provider)}
-            isRequired={needsAddress(provider)}
-            size="sm"
-            onChange={setInstanceUrl}
-          />
-          <TextInput
-            label="Account"
-            value={accountLogin}
-            placeholder="acme"
-            isOptional
-            size="sm"
-            onChange={setAccountLogin}
-          />
-        </div>
-        <TextInput
-          label="Access token"
-          type="password"
-          value={accessToken}
-          isRequired
-          size="sm"
-          onChange={setAccessToken}
-          onEnter={() => void connect()}
-        />
-        <div {...stylex.props(ui.foot)}>
-          {onClose && <Button label="Cancel" size="sm" variant="ghost" onClick={onClose} />}
-          <Button
-            label={model.busy ? 'Connecting' : 'Connect host'}
-            size="sm"
-            variant="primary"
-            isDisabled={!ready}
-            onClick={() => void connect()}
-          />
-        </div>
-      </div>
-    </section>
   );
 }
 
@@ -373,21 +258,6 @@ const ui = stylex.create({
   },
   dim: { color: colorVars['--color-text-secondary'] },
   clip: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  form: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: spacingVars['--spacing-3'],
-    paddingInline: pad,
-    paddingBlockStart: spacingVars['--spacing-2'],
-    maxWidth: 560,
-  },
-  pair: {
-    display: 'grid',
-    gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
-    gap: spacingVars['--spacing-3'],
-    alignItems: 'start',
-  },
-  foot: { display: 'flex', justifyContent: 'flex-end', gap: spacingVars['--spacing-2'] },
   appRow: {
     display: 'flex',
     alignItems: 'center',
@@ -398,32 +268,5 @@ const ui = stylex.create({
     borderBlockStartWidth: borderVars['--border-width'],
     borderBlockStartStyle: 'solid',
     borderBlockStartColor: colorVars['--color-border'],
-  },
-  secret: {
-    borderBlockStartWidth: 2,
-    borderBlockStartStyle: 'solid',
-    borderBlockStartColor: colorVars['--color-warning'],
-    paddingBlockEnd: spacingVars['--spacing-2'],
-    backgroundColor: colorVars['--color-background-muted'],
-  },
-  secretHead: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: spacingVars['--spacing-2'],
-    paddingInline: spacingVars['--spacing-4'],
-    paddingBlock: spacingVars['--spacing-2'],
-  },
-  once: {
-    fontSize: textSizeVars['--font-size-sm'],
-    color: colorVars['--color-text-secondary'],
-  },
-  spacer: { flex: 1 },
-  secretLine: {
-    display: 'grid',
-    gridTemplateColumns: '96px minmax(0, 1fr) auto',
-    alignItems: 'center',
-    gap: spacingVars['--spacing-2'],
-    paddingInline: spacingVars['--spacing-4'],
-    minHeight: 36,
   },
 });
