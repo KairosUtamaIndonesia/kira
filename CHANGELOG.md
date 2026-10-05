@@ -125,6 +125,8 @@
 
 - Settings → Git hosts is a ledger of connected hosts, and connecting one is a dialog: pick GitHub, GitLab, Forgejo or Gitea from tabs with their marks, fill only what that host takes (GitHub offers the GitHub App first), and copy the webhook URL and secret from one receipt. Closing the receipt before copying the secret asks twice, since it cannot be shown again.
 
+- Settings → MCP servers is a grid of servers with a status on each and an Add tile. A server opens on a page of its own with Overview, Tools and Settings tabs; adding one takes a pasted command or a link, environment variables as name and value rows, and an optional JSON snippet from the server's README. Removing a server now asks first.
+
 ### Changed
 
 - Kira has a new color theme: warm, neutral ink and paper grays instead of rose-tinted ones, with Kira red as the single accent in both light and dark mode, plus matching code highlighting.
