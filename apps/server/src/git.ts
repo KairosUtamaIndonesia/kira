@@ -1143,31 +1143,15 @@ export function createGit({
         const held = await asking(auth, request);
         if ('refused' in held) return status(401, held.refused);
 
-        const found = await projectByRef(database, params.ref);
-        if (!found) return status(404, refusal('PROJECT_NOT_FOUND', messages.projectNotFound));
+        const source = await pullRequestSource(database, config, key, params.ref, params.id);
+        if ('refused' in source) return status(source.refused.code, source.refused.body);
 
-        const [repo] = await database
-          .select()
-          .from(repository)
-          .where(and(eq(repository.id, params.id), eq(repository.projectId, found.id)));
-        if (!repo) return status(404, refusal('REPOSITORY_NOT_FOUND', messages.repositoryNotFound));
-
-        const connection = await connectionForProvider(database, repo.provider);
-        if (connection === null) {
-          return status(409, refusal('GIT_HOST_NOT_CONNECTED', messages.gitHostNotConnected));
-        }
-        if (connection.provider !== 'github') {
-          return status(
-            501,
-            refusal('GIT_PULL_REQUESTS_UNAVAILABLE', messages.gitPullRequestsUnavailable),
-          );
-        }
-
-        const bearer = await hostBearer(config, key, connection);
-        const pullRequests =
-          bearer === null
-            ? null
-            : await githubLivePullRequests(config, bearer, repo.owner, repo.name);
+        const pullRequests = await githubLivePullRequests(
+          config,
+          source.bearer,
+          source.repo.owner,
+          source.repo.name,
+        );
         if (pullRequests === null) {
           return status(502, refusal('GIT_UNREACHABLE', messages.gitUnreachable));
         }
@@ -1193,15 +1177,6 @@ export function createGit({
         const held = await asking(auth, request);
         if ('refused' in held) return status(401, held.refused);
 
-        const found = await projectByRef(database, params.ref);
-        if (!found) return status(404, refusal('PROJECT_NOT_FOUND', messages.projectNotFound));
-
-        const [repo] = await database
-          .select()
-          .from(repository)
-          .where(and(eq(repository.id, params.id), eq(repository.projectId, found.id)));
-        if (!repo) return status(404, refusal('REPOSITORY_NOT_FOUND', messages.repositoryNotFound));
-
         const number = Number(params.number);
         if (!Number.isInteger(number) || number < 1) {
           return status(
@@ -1210,27 +1185,27 @@ export function createGit({
           );
         }
 
-        const connection = await connectionForProvider(database, repo.provider);
-        if (connection === null) {
-          return status(409, refusal('GIT_HOST_NOT_CONNECTED', messages.gitHostNotConnected));
-        }
-        if (connection.provider !== 'github') {
+        const source = await pullRequestSource(database, config, key, params.ref, params.id);
+        if ('refused' in source) return status(source.refused.code, source.refused.body);
+
+        const answer = await githubLivePullRequest(
+          config,
+          source.bearer,
+          source.repo.owner,
+          source.repo.name,
+          number,
+        );
+        if (answer.kind === 'missing') {
           return status(
-            501,
-            refusal('GIT_PULL_REQUESTS_UNAVAILABLE', messages.gitPullRequestsUnavailable),
+            404,
+            refusal('GIT_PULL_REQUEST_NOT_FOUND', messages.gitPullRequestNotFound),
           );
         }
-
-        const bearer = await hostBearer(config, key, connection);
-        const pullRequest =
-          bearer === null
-            ? null
-            : await githubLivePullRequest(config, bearer, repo.owner, repo.name, number);
-        if (pullRequest === null) {
+        if (answer.kind === 'unreachable') {
           return status(502, refusal('GIT_UNREACHABLE', messages.gitUnreachable));
         }
 
-        return { pullRequest };
+        return { pullRequest: answer.value };
       },
       {
         params: t.Object({ ref: t.String(), id: t.String(), number: t.String() }),
@@ -1524,8 +1499,24 @@ async function githubRequest(
   url: string,
   init: RequestInit = {},
 ): Promise<Response | null> {
+  const response = await githubResponse(bearer, url, init);
+
+  return response?.ok === true ? response : null;
+}
+
+/**
+ * A request to GitHub signed with `bearer`, or null only when it could not be
+ * made at all. A host that answered — with a 404 as readily as a 200 — comes
+ * back as its response, so a caller can tell "this pull request is gone" from
+ * "this host is unreachable".
+ */
+async function githubResponse(
+  bearer: string,
+  url: string,
+  init: RequestInit = {},
+): Promise<Response | null> {
   try {
-    const response = await fetch(url, {
+    return await fetch(url, {
       ...init,
       headers: {
         authorization: bearer,
@@ -1534,8 +1525,6 @@ async function githubRequest(
         ...init.headers,
       },
     });
-
-    return response.ok ? response : null;
   } catch {
     return null;
   }
@@ -1771,8 +1760,67 @@ async function hostBearer(
   return null;
 }
 
+/** What a pull-request read needs — the repository and a bearer — or the refusal it is answered with. */
+type PullRefusalCode = 404 | 409 | 501 | 502;
+type PullRequestSource =
+  | { refused: { code: PullRefusalCode; body: ReturnType<typeof refusal> } }
+  | { repo: typeof repository.$inferSelect; bearer: string };
+
+/**
+ * Resolve a project's repository to its Git host and the credential to read it:
+ * the project, the repository, a connection for its provider, ad adapter for
+ * that provider, and a bearer. Each miss is the sentence a person is shown, so
+ * both pull-request routes answer the same five ways once.
+ */
+async function pullRequestSource(
+  database: Database,
+  config: Config,
+  key: Buffer | null,
+  projectRef: string,
+  repositoryId: string,
+): Promise<PullRequestSource> {
+  const found = await projectByRef(database, projectRef);
+  if (!found) {
+    return { refused: { code: 404, body: refusal('PROJECT_NOT_FOUND', messages.projectNotFound) } };
+  }
+
+  const [repo] = await database
+    .select()
+    .from(repository)
+    .where(and(eq(repository.id, repositoryId), eq(repository.projectId, found.id)));
+  if (!repo) {
+    return {
+      refused: { code: 404, body: refusal('REPOSITORY_NOT_FOUND', messages.repositoryNotFound) },
+    };
+  }
+
+  const connection = await connectionForProvider(database, repo.provider);
+  if (connection === null) {
+    return {
+      refused: { code: 409, body: refusal('GIT_HOST_NOT_CONNECTED', messages.gitHostNotConnected) },
+    };
+  }
+  if (connection.provider !== 'github') {
+    return {
+      refused: {
+        code: 501,
+        body: refusal('GIT_PULL_REQUESTS_UNAVAILABLE', messages.gitPullRequestsUnavailable),
+      },
+    };
+  }
+
+  const bearer = await hostBearer(config, key, connection);
+  if (bearer === null) {
+    return { refused: { code: 502, body: refusal('GIT_UNREACHABLE', messages.gitUnreachable) } };
+  }
+
+  return { repo, bearer };
+}
+
 /** One GitHub pull request as the list draws it, and the commit its checks hang off. */
-function asLivePullRequest(item: unknown): { row: LivePullRequest; headSha: string | null } | null {
+function parseLivePullRequest(
+  item: unknown,
+): { row: LivePullRequest; headSha: string | null } | null {
   if (typeof item !== 'object' || item === null) return null;
 
   const held = item as {
@@ -1879,7 +1927,7 @@ async function githubLivePullRequests(
 
   const found: LivePullRequest[] = [];
   for (const item of body) {
-    const held = asLivePullRequest(item);
+    const held = parseLivePullRequest(item);
     if (held === null) continue;
 
     const checks = await githubChecks(config, bearer, owner, name, held.headSha);
@@ -1935,6 +1983,12 @@ function asLiveFile(item: unknown): LiveFile | null {
   };
 }
 
+/** What reading one pull request came to: found, gone, or a host that did not answer. */
+type LivePullResult =
+  | { kind: 'found'; value: LivePullRequestDetail }
+  | { kind: 'missing' }
+  | { kind: 'unreachable' };
+
 /** One pull request opened, with its checks, comments and changed files. */
 async function githubLivePullRequest(
   config: Config,
@@ -1942,14 +1996,16 @@ async function githubLivePullRequest(
   owner: string,
   name: string,
   number: number,
-): Promise<LivePullRequestDetail | null> {
+): Promise<LivePullResult> {
   const base = `${config.git.apiBaseUrl}/repos/${owner}/${name}`;
-  const response = await githubRequest(bearer, `${base}/pulls/${number}`);
-  if (response === null) return null;
+  const response = await githubResponse(bearer, `${base}/pulls/${number}`);
+  if (response === null) return { kind: 'unreachable' };
+  if (response.status === 404) return { kind: 'missing' };
+  if (!response.ok) return { kind: 'unreachable' };
 
   const pr = await readJson(response);
-  const held = asLivePullRequest(pr);
-  if (held === null) return null;
+  const held = parseLivePullRequest(pr);
+  if (held === null) return { kind: 'unreachable' };
 
   const body = (pr as { body?: unknown }).body;
   const baseRef = (pr as { base?: { ref?: unknown } }).base?.ref;
@@ -1961,19 +2017,22 @@ async function githubLivePullRequest(
   const files = (await githubJsonList(bearer, `${base}/pulls/${number}/files?per_page=100`)) ?? [];
 
   return {
-    number,
-    title: held.row.title,
-    body: typeof body === 'string' ? body : '',
-    authorLogin: held.row.authorLogin,
-    state: held.row.state,
-    url: held.row.url,
-    base: typeof baseRef === 'string' ? baseRef : null,
-    head: held.row.branch,
-    checks,
-    comments: [...issueComments, ...reviewComments]
-      .map(asLiveComment)
-      .filter((comment): comment is LiveComment => comment !== null),
-    files: files.map(asLiveFile).filter((file): file is LiveFile => file !== null),
+    kind: 'found',
+    value: {
+      number,
+      title: held.row.title,
+      body: typeof body === 'string' ? body : '',
+      authorLogin: held.row.authorLogin,
+      state: held.row.state,
+      url: held.row.url,
+      base: typeof baseRef === 'string' ? baseRef : null,
+      head: held.row.branch,
+      checks,
+      comments: [...issueComments, ...reviewComments]
+        .map(asLiveComment)
+        .filter((comment): comment is LiveComment => comment !== null),
+      files: files.map(asLiveFile).filter((file): file is LiveFile => file !== null),
+    },
   };
 }
 

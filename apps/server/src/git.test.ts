@@ -1074,4 +1074,29 @@ describe('live pull requests', () => {
     expect(answer.status).toBe(502);
     expect((await answer.json()).error.message).toMatch(/did not answer/);
   });
+
+  test('reports a pull request that is gone, not an unreachable host', async () => {
+    const github = await startFakeGitHub({
+      id: 94,
+      login: 'acme',
+      type: 'Organization',
+      repositories: [{ owner: 'acme', name: 'api' }],
+      pullRequests: [{ number: 1, title: 'Only one' }],
+    });
+
+    try {
+      const { app, key } = await installedApp(github, 94, 'live-missing');
+      const { projectId, repositoryId } = await attach(app, key);
+
+      const answer = await send(
+        app,
+        `/api/projects/${projectId}/repositories/${repositoryId}/pull-requests/99`,
+        { headers: bearer(key) },
+      );
+      expect(answer.status).toBe(404);
+      expect((await answer.json()).error.message).toMatch(/no longer exists/);
+    } finally {
+      await github.stop();
+    }
+  });
 });

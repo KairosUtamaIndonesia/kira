@@ -9,6 +9,7 @@ import {
   rowKey,
   stagedCount,
   statusWord,
+  watchedFoldersOf,
 } from './changesModel.ts';
 
 const status: WorkspaceGitStatus = {
@@ -25,6 +26,21 @@ test('changed rows are staged first, then unstaged, then untracked', () => {
     { group: 'untracked', path: 'c.txt', status: '?' },
   ]);
   assert.equal(stagedCount(status), 1);
+});
+
+test('the watched levels are the root and each changed file’s folder', () => {
+  const nested: WorkspaceGitStatus = {
+    branch: 'main',
+    staged: [{ path: 'src/auth/login.ts', status: 'M' }],
+    unstaged: [{ path: 'src/auth/session.ts', status: 'M' }],
+    untracked: [
+      { path: 'top.ts', status: '?' },
+      { path: 'src/deep/new.ts', status: '?' },
+    ],
+  };
+  // The root, then each changed file's folder once, with the top-level file adding none.
+  assert.deepEqual(watchedFoldersOf(nested), ['', 'src/auth', 'src/deep']);
+  assert.deepEqual(watchedFoldersOf(null), ['']);
 });
 
 test('a file staged and unstaged at once has two rows with different identities', () => {

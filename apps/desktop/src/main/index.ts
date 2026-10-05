@@ -347,16 +347,22 @@ function registerTrackerChannels(): void {
       if (thread === undefined || thread.cwd === null) {
         throw new Error('This chat has no workspace yet.');
       }
+      if (thread.workspaceId === null) {
+        throw new Error('This chat’s folder is not filed under a project.');
+      }
 
-      return tracker.checkoutPullRequests(thread.workspaceId ?? '', thread.cwd);
+      return tracker.checkoutPullRequests(thread.workspaceId, thread.cwd);
     },
     checkoutPullRequest: (chatId, number) => {
       const thread = store.findThread(chatId);
       if (thread === undefined || thread.cwd === null) {
         throw new Error('This chat has no workspace yet.');
       }
+      if (thread.workspaceId === null) {
+        throw new Error('This chat’s folder is not filed under a project.');
+      }
 
-      return tracker.checkoutPullRequest(thread.workspaceId ?? '', thread.cwd, number);
+      return tracker.checkoutPullRequest(thread.workspaceId, thread.cwd, number);
     },
     repositories: (projectId) => tracker.repositories(projectId),
     attachRepository: (projectId, input) => tracker.attachRepository(projectId, input),

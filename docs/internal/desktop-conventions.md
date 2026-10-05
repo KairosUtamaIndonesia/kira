@@ -62,6 +62,11 @@ and wins over the flip Astryx also declares. So a second rule names that layer a
 which side of its trigger the list belongs on. The two rules are the same kind of thing: a
 rule for a placement no prop can express, naming Astryx's own target and nothing else.
 
+A third rule reaches a third-party target rather than Astryx's: the diff library draws the
+Changes view's diff inside a shadow root, which no StyleX rule can cross, so `.workbench-diff`
+hands its host the code font and the surface colours as custom properties. It is the same kind
+of rule — a placement no prop can express — naming one library's host and nothing else.
+
 The composer is the one exception, and it is a deliberate one: Astryx's `ChatComposer`
 is the whole shell — box, buttons, keyboard handling, the line errors appear on — so
 `renderer/src/composer.tsx` holds it and says the runtime's composer in Astryx's words.

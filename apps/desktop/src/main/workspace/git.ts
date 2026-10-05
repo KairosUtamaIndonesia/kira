@@ -31,7 +31,42 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, relative } from 'node:path';
-import { gitOperations } from './gitQueue.ts';
+import type {
+  ChangedPath,
+  CommitSummary,
+  GitSyncAction,
+  WorkspaceGitStatus,
+} from '../../preload/bridge.ts';
+import { runGitOperation } from './gitQueue.ts';
+
+/**
+ * The repository root each folder belongs to, remembered so the queue's key is
+ * the checkout rather than the folder a command happened to run in: a status
+ * read of a subfolder and a stage of the workspace root have to serialise
+ * against each other, and they only do when both name the same repository.
+ */
+const repositoryRoots = new Map<string, string>();
+
+async function repositoryRoot(folder: string): Promise<string> {
+  const known = repositoryRoots.get(folder);
+  if (known !== undefined) return known;
+
+  let root = folder;
+  try {
+    root = (await simpleGit(folder).revparse(['--show-toplevel'])).trim() || folder;
+  } catch {
+    // Not a checkout, or git cannot answer: the folder is its own key, and the
+    // command that needed the queue says so in its own words.
+  }
+  repositoryRoots.set(folder, root);
+
+  return root;
+}
+
+/** Run one local-git command against its checkout, one at a time. */
+async function onCheckout<T>(folder: string, work: () => Promise<T>): Promise<T> {
+  return runGitOperation(await repositoryRoot(folder), work);
+}
 
 /**
  * Give a write-capable child its own git worktree, seeded with the parent's
@@ -119,7 +154,7 @@ export async function changedByGit(folder: string): Promise<string[] | null> {
     // Serialised against every other command for this folder: `git status`
     // writes the index, and the tree asks for it on every watcher burst, so an
     // index write must not overlap one of these reads (workspace/gitQueue.ts).
-    return await gitOperations(folder, () => readChanged(folder));
+    return await onCheckout(folder, () => readChanged(folder));
   } catch {
     return null;
   }
@@ -319,58 +354,27 @@ export async function branchesOf(
   };
 }
 
-/** One path git reports as changed, named from the folder it was asked about. */
-export interface ChangedPath {
-  path: string;
-  /** git's own code for what happened: `M`, `A`, `D`, `R`, `?`, and so on. */
-  status: string;
-  /** The path it had, when git reports a rename or a copy. */
-  from?: string;
-}
-
-/** Everything git knows about a checkout's changes, grouped the way a person reads them. */
-export interface CheckoutStatus {
-  /** The branch HEAD is on, or null when HEAD is detached or there are no commits yet. */
-  branch: string | null;
-  /** Tracked changes already in the index. */
-  staged: ChangedPath[];
-  /** Tracked changes not yet in the index. */
-  unstaged: ChangedPath[];
-  /** Paths git does not track. */
-  untracked: ChangedPath[];
-}
-
-/** One commit as history draws it. */
-export interface CommitSummary {
-  hash: string;
-  short: string;
-  subject: string;
-  author: string;
-  date: string;
-}
-
-/** Which way a checkout is synced with its remote. */
-export type SyncAction = 'fetch' | 'pull' | 'push';
-
 /** How large a patch the workbench will render: larger than any worth reading here. */
 const DIFF_SIZE_CAP = 1024 * 1024;
+const DIFF_REFUSAL = 'This diff is larger than the 1 MB the workbench renders.';
 
 /**
  * What git says about the checkout at `folder`: its branch and every changed
- * path, grouped staged, unstaged and untracked, named relative to the folder.
+ * path, grouped staged, unstaged and untracked. Named from the folder, and the
+ * shape is `WorkspaceGitStatus`, which crosses into the window.
  *
  * Thrown rather than answered with an empty list when git cannot read the
  * folder, so a folder that is not a checkout never looks like a clean one.
  */
-export async function statusOf(folder: string): Promise<CheckoutStatus> {
+export async function statusOf(folder: string): Promise<WorkspaceGitStatus> {
   try {
-    return await gitOperations(folder, () => readStatus(folder));
+    return await onCheckout(folder, () => readStatus(folder));
   } catch {
     throw new Error('That folder is not a git checkout, or git could not read it.');
   }
 }
 
-async function readStatus(folder: string): Promise<CheckoutStatus> {
+async function readStatus(folder: string): Promise<WorkspaceGitStatus> {
   const git = simpleGit(folder);
   const [status, prefix] = await Promise.all([git.status(['.']), git.revparse(['--show-prefix'])]);
   const cut = prefix.trim();
@@ -416,16 +420,24 @@ async function readStatus(folder: string): Promise<CheckoutStatus> {
  * rendered, because a generated file's diff can dwarf anything worth reading.
  */
 export async function patchOf(folder: string, path: string, staged: boolean): Promise<string> {
-  return gitOperations(folder, async () => {
+  return onCheckout(folder, async () => {
+    // A file already over the cap is refused before a diff of it is built, so a
+    // generated file is never rendered into a diff only to be thrown away. A
+    // path that is not on disk — a deleted file, a rename source — has no size
+    // to read and is left to git.
+    const size = await stat(join(folder, path)).then(
+      (info) => info.size,
+      () => null,
+    );
+    if (size !== null && size > DIFF_SIZE_CAP) throw new Error(DIFF_REFUSAL);
+
     const git = simpleGit(folder);
     const patch = staged
       ? await git.raw(['diff', '--cached', '--', path])
       : await git.raw(['diff', '--', path]);
     const held = patch === '' && !staged ? await untrackedPatch(folder, path) : patch;
 
-    if (Buffer.byteLength(held, 'utf8') > DIFF_SIZE_CAP) {
-      throw new Error('This diff is larger than the 1 MB the workbench renders.');
-    }
+    if (Buffer.byteLength(held, 'utf8') > DIFF_SIZE_CAP) throw new Error(DIFF_REFUSAL);
 
     return held;
   });
@@ -443,9 +455,7 @@ async function untrackedPatch(folder: string, path: string): Promise<string> {
 
   const file = join(folder, path);
   const info = await stat(file);
-  if (info.size > DIFF_SIZE_CAP) {
-    throw new Error('This diff is larger than the 1 MB the workbench renders.');
-  }
+  if (info.size > DIFF_SIZE_CAP) throw new Error(DIFF_REFUSAL);
 
   const bytes = await readFile(file);
   if (bytes.includes(0)) throw new Error('This file is not text.');
@@ -472,7 +482,7 @@ async function untrackedPatch(folder: string, path: string): Promise<string> {
 export async function stagePaths(folder: string, paths: readonly string[]): Promise<void> {
   if (paths.length === 0) return;
 
-  await gitOperations(folder, () => simpleGit(folder).raw(['add', '--', ...paths]));
+  await onCheckout(folder, () => simpleGit(folder).raw(['add', '--', ...paths]));
 }
 
 /**
@@ -484,7 +494,7 @@ export async function stagePaths(folder: string, paths: readonly string[]): Prom
 export async function unstagePaths(folder: string, paths: readonly string[]): Promise<void> {
   if (paths.length === 0) return;
 
-  await gitOperations(folder, async () => {
+  await onCheckout(folder, async () => {
     const git = simpleGit(folder);
     try {
       await git.raw(['restore', '--staged', '--', ...paths]);
@@ -504,7 +514,7 @@ export async function applyPatchToIndex(
   patch: string,
   reverse: boolean,
 ): Promise<void> {
-  await gitOperations(folder, async () => {
+  await onCheckout(folder, async () => {
     const temporary = join(tmpdir(), `kira-hunk-${randomUUID()}.patch`);
     await writeFile(temporary, patch);
 
@@ -527,12 +537,12 @@ export async function commitStaged(folder: string, message: string): Promise<voi
   const subject = message.trim();
   if (subject === '') throw new Error('A commit needs a message.');
 
-  await gitOperations(folder, () => simpleGit(folder).raw(['commit', '-m', subject]));
+  await onCheckout(folder, () => simpleGit(folder).raw(['commit', '-m', subject]));
 }
 
 /** Put one path back the way HEAD has it, index and working tree together. */
 export async function revertPath(folder: string, path: string): Promise<void> {
-  await gitOperations(folder, () =>
+  await onCheckout(folder, () =>
     simpleGit(folder).raw(['restore', '--source=HEAD', '--staged', '--worktree', '--', path]),
   );
 }
@@ -543,7 +553,7 @@ export async function revertPath(folder: string, path: string): Promise<void> {
  * Kira does not stash or commit on the person's behalf.
  */
 export async function switchBranch(folder: string, branch: string): Promise<void> {
-  await gitOperations(folder, async () => {
+  await onCheckout(folder, async () => {
     const status = await readStatus(folder);
     if (status.staged.length > 0 || status.unstaged.length > 0) {
       throw new Error(
@@ -594,8 +604,8 @@ export async function commitFilesOf(folder: string, hash: string): Promise<Chang
  * git's own refusal rather than a prompt that hangs the app. A checkout with no
  * remote says so instead.
  */
-export async function syncRemote(folder: string, action: SyncAction): Promise<string> {
-  return gitOperations(folder, async () => {
+export async function syncRemote(folder: string, action: GitSyncAction): Promise<string> {
+  return onCheckout(folder, async () => {
     const git = simpleGit(folder).env('GIT_TERMINAL_PROMPT', '0');
     const remotes = (await git.raw(['remote'])).trim();
     if (remotes === '') throw new Error('This checkout has no remote to sync with.');

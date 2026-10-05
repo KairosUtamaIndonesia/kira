@@ -66,6 +66,24 @@ export function rowKey(row: ChangeRow): string {
   return `${row.group}:${row.path}`;
 }
 
+/**
+ * The levels the Changes view watches: the workspace root, and the folder of
+ * every changed path. A change is watched where it is, because `fs.watch` is not
+ * recursive — watching only the root would miss an edit to a file in a subfolder,
+ * and watching a changed file's own folder is what keeps its diff current.
+ */
+export function watchedFoldersOf(status: WorkspaceGitStatus | null): string[] {
+  const folders = new Set<string>(['']);
+  if (status !== null) {
+    for (const file of [...status.staged, ...status.unstaged, ...status.untracked]) {
+      const cut = file.path.lastIndexOf('/');
+      if (cut > 0) folders.add(file.path.slice(0, cut));
+    }
+  }
+
+  return [...folders];
+}
+
 /** A patch split into the file header every hunk shares and the hunks themselves. */
 export interface PatchHunks {
   header: string;

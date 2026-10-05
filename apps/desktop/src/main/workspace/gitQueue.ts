@@ -40,4 +40,4 @@ export function createMutationQueue(): MutationQueue {
 }
 
 /** The queue every local-git command for a checkout shares. */
-export const gitOperations = createMutationQueue();
+export const runGitOperation = createMutationQueue();

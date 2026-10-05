@@ -33,6 +33,7 @@ import {
   rowKey,
   stagedCount,
   statusWord,
+  watchedFoldersOf,
 } from './changesModel';
 import { DiffPatch, type DiffStyle } from './diffView';
 
@@ -165,11 +166,17 @@ export function ChangesTab({
   /*
    * Watched only while it is on screen. A change says "read again"; nothing about
    * which file changed is carried, because a wrong diff is worse than a read.
+   *
+   * The levels watched are the root and each changed file's own folder: `fs.watch`
+   * is not recursive, so watching only the root would miss an edit inside a
+   * subfolder. The key is those levels joined, so a watcher-triggered re-read
+   * whose paths are unchanged does not restart the watch.
    */
+  const watchedKey = watchedFoldersOf(status).join('\u0000');
   useEffect(() => {
     if (!showing) return;
 
-    void window.kira.watchWorkspace(chatId, ['']);
+    void window.kira.watchWorkspace(chatId, watchedKey === '' ? [''] : watchedKey.split('\u0000'));
     const stopWatching = window.kira.onWorkspaceChanged(() => {
       setChanges((count) => count + 1);
     });
@@ -178,7 +185,7 @@ export function ChangesTab({
       stopWatching();
       void window.kira.unwatchWorkspace();
     };
-  }, [chatId, showing]);
+  }, [chatId, showing, watchedKey]);
 
   async function stage(row: ChangeRow): Promise<void> {
     if (await run(() => window.kira.stageWorkspacePaths(chatId, [row.path]))) {
