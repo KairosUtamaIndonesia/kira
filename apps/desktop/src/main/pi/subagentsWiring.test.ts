@@ -340,6 +340,39 @@ test('closing a chat stops its running child and settles its stored state', asyn
   }
 });
 
+test('a person stops a running child through its open chat, and a chat that is not open cannot', async () => {
+  const provider = await subagentProvider({ holdChild: true });
+  const store = new ThreadStore(join(tempDir('kira-subagent-control-'), 'threads.db'));
+  const thread = createThread(store, tempDir('kira-subagent-control-work-'));
+  const chats = openChats(
+    store,
+    () => {},
+    () => tempDir('kira-subagent-control-new-work-'),
+    models(provider.url),
+  );
+
+  try {
+    await chats.open(thread.threadId);
+    await chats.send('Delegate this bounded investigation.');
+    await provider.childStarted;
+    const child = chats.state().subagents?.[0];
+    assert.ok(child);
+
+    await assert.rejects(
+      chats.controlSubagent('no-such-chat', child.id, { action: 'stop' }),
+      /That chat is not open/,
+    );
+
+    await chats.controlSubagent(thread.threadId, child.id, { action: 'stop' });
+    assert.equal(store.getThread(child.id).subagent?.status, 'stopped');
+  } finally {
+    chats.closeAll();
+    provider.releaseChild();
+    store.close();
+    await provider.stop();
+  }
+});
+
 test('a real child asks its owning Kira before opening a person questionnaire', async () => {
   const provider = await subagentProvider({ childAsksQuestion: true });
   const store = new ThreadStore(join(tempDir('kira-subagent-question-'), 'threads.db'));

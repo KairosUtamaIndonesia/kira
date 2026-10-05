@@ -25,6 +25,7 @@ import { useRef, useState, type KeyboardEvent } from 'react';
 import type {
   ChatConclusion,
   ChatMemory,
+  SubagentControl,
   SubagentSummary,
   ChatTranscript,
   ShapingState,
@@ -111,6 +112,7 @@ export function Workbench({
   selectedSubagentId,
   selectedSubagentTranscript,
   onSelectSubagent,
+  onControlSubagent,
 }: {
   region: ResizableRegion;
   memory: readonly ChatMemory[];
@@ -130,6 +132,8 @@ export function Workbench({
   selectedSubagentId: string | null;
   selectedSubagentTranscript: ChatTranscript | null;
   onSelectSubagent: (id: string | null) => void;
+  /** A person's steer, stop or resume of a subagent: the refusal, or null when it was taken. */
+  onControlSubagent: (childId: string, control: SubagentControl) => Promise<string | null>;
 }) {
   // What this chat has open, and which of its tabs is showing. The files a chat
   // has open are the chat's own, so a switch leaves both where they were.
@@ -235,7 +239,10 @@ export function Workbench({
 
     if (region.isCollapsed) region.expand();
     setTabs(shown(tabs, chatId, value));
-    if (value !== AGENTS) onSelectSubagent(null);
+    // The run the panel opens on is the latest, so it is the one whose transcript is read.
+    if (value === AGENTS && selectedSubagentId === null) {
+      onSelectSubagent(subagents.at(-1)?.id ?? null);
+    } else if (value !== AGENTS) onSelectSubagent(null);
     if (value === WORKSPACE) setWorkspaceVisits((visits) => visits + 1);
     if (value === BROWSER) {
       const browserId = browsersOf(browsers, chatId).activeId;
@@ -322,6 +329,7 @@ export function Workbench({
               selectedId={selectedSubagentId}
               transcript={selectedSubagentTranscript}
               onSelect={onSelectSubagent}
+              onControl={onControlSubagent}
               isVisible={showing === AGENTS && !region.isCollapsed}
             />
           ) : (

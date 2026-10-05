@@ -80,6 +80,8 @@ const bridge: KiraBridge = {
 
   readSubagentTranscript: (parentThreadId, childThreadId) =>
     ask<ChatTranscript>(CHAT_CHANNELS.subagentTranscript, parentThreadId, childThreadId),
+  controlSubagent: (parentThreadId, childThreadId, control) =>
+    ask<null>(CHAT_CHANNELS.subagentControl, parentThreadId, childThreadId, control),
   setChatMode: (mode: ChatMode) => ask<null>(CHAT_CHANNELS.setMode, mode),
   setChatAttachedTicketIds: (attachedTicketIds) =>
     ask<null>(CHAT_CHANNELS.setAttachedTicketIds, attachedTicketIds),

@@ -80,6 +80,7 @@ import type {
   ChatTranscript,
   ShellCommandRun,
   ChatUsage,
+  SubagentControl,
   SubagentSummary,
   ModelOption,
   Proposal,
@@ -408,6 +409,18 @@ export default function App() {
       }));
     }
   }, []);
+
+  /** The refusal of a steer, stop or resume, or null when it was taken. */
+  const controlSubagent = useCallback(
+    async (childId: string, control: SubagentControl): Promise<string | null> => {
+      const parentId = currentIdRef.current;
+      const result = await window.kira.controlSubagent(parentId, childId, control);
+      if (!result.ok) return result.error;
+      if (control.action === 'steer') void readSubagentTranscript(parentId, childId);
+      return null;
+    },
+    [readSubagentTranscript],
+  );
 
   const selectSubagent = useCallback(
     (id: string | null) => {
@@ -1472,6 +1485,7 @@ export default function App() {
                     : null
                 }
                 onSelectSubagent={selectSubagent}
+                onControlSubagent={controlSubagent}
                 shaping={shaping}
                 ticketQueue={specQueueChatId === currentId ? specQueue : null}
                 onDecide={decideProposal}

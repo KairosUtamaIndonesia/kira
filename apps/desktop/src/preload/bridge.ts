@@ -606,6 +606,7 @@ export type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 export const CHAT_CHANNELS = {
   load: 'chat:load',
   subagentTranscript: 'chat:subagent-transcript',
+  subagentControl: 'chat:subagent-control',
   setMode: 'chat:set-mode',
   setAttachedTicketIds: 'chat:set-attached-ticket-ids',
   proposalApprove: 'chat:proposal-approve',
@@ -1139,7 +1140,18 @@ export interface SubagentSummary {
   outcome: string | null;
   error: string | null;
   activity: string | null;
+  /** Whether it can still be steered, stopped or resumed, rather than only read. */
+  controllable: boolean;
 }
+
+/**
+ * What a person can do to a subagent from the panel: redirect one that is
+ * working, stop it, or give a finished or stopped one more to do.
+ */
+export type SubagentControl =
+  | { action: 'stop' }
+  | { action: 'steer'; text: string }
+  | { action: 'resume'; text: string };
 
 /**
  * The usage channels.
@@ -1415,6 +1427,12 @@ export interface KiraBridge {
     parentThreadId: string,
     childThreadId: string,
   ): Promise<Result<ChatTranscript>>;
+  /** Steer, stop or resume one of a chat's subagents. */
+  controlSubagent(
+    parentThreadId: string,
+    childThreadId: string,
+    control: SubagentControl,
+  ): Promise<Result<null>>;
   /** Change the current chat between direct building and planning-only Spec mode. */
   setChatMode(mode: ChatMode): Promise<Result<null>>;
   setChatAttachedTicketIds(attachedTicketIds: string[]): Promise<Result<null>>;

@@ -97,6 +97,8 @@ function registerChatChannels(): void {
     state: () => chats.state(),
     subagentTranscript: (parentThreadId, childThreadId) =>
       chats.subagentTranscript(parentThreadId, childThreadId),
+    controlSubagent: (parentThreadId, childThreadId, control) =>
+      chats.controlSubagent(parentThreadId, childThreadId, control),
     send: (text) => chats.send(text),
     startShell: (chatId, command) => chats.startShell(chatId, command),
     cancelShell: (chatId, runId) => chats.cancelShell(chatId, runId),
@@ -129,6 +131,13 @@ function registerChatChannels(): void {
     event.sender === mainWindow?.webContents
       ? handlers.subagentTranscript(parentId, childId)
       : { ok: false, error: 'This window cannot read that subagent transcript.' },
+  );
+  ipcMain.handle(
+    CHAT_CHANNELS.subagentControl,
+    (event, parentId: unknown, childId: unknown, control: unknown) =>
+      event.sender === mainWindow?.webContents
+        ? handlers.controlSubagent(parentId, childId, control)
+        : { ok: false, error: 'This window cannot control that subagent.' },
   );
   ipcMain.handle(CHAT_CHANNELS.setMode, (_event, mode: unknown) => handlers.setMode(mode));
   ipcMain.handle(CHAT_CHANNELS.setAttachedTicketIds, (_event, attachedTicketIds: unknown) =>

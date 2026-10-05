@@ -229,6 +229,76 @@ test('a child can be steered, stopped, and resumed in its own session', async ()
   store.close();
 });
 
+test('subscribers hear a child stop and hear it start again on resume', async () => {
+  const store = new ThreadStore(storePath());
+  const chat = store.createThread(tmpdir());
+  let release!: () => void;
+  let began!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const firstBegan = new Promise<void>((resolve) => {
+    began = resolve;
+  });
+  const manager = subagents({
+    store,
+    parentThreadId: chat.id,
+    cwd: chat.cwd,
+    modelId: 'served-model',
+    run: async () => ({
+      turn: async (prompt) => {
+        if (prompt === 'first') {
+          began();
+          await held;
+        }
+        return { kind: 'reported', report: `finished: ${prompt}` };
+      },
+      steer: async () => {},
+      stop: async () => release(),
+      dispose: () => {},
+    }),
+  });
+  const heard: string[] = [];
+  manager.subscribe((summary) => heard.push(summary.state));
+
+  const childId = manager.spawn({ role: 'explore', prompt: 'first' });
+  await firstBegan;
+  await manager.stop(childId);
+  await manager.resume(childId, 'second');
+  await manager.settle();
+
+  assert.deepEqual(heard, ['stopped', 'running', 'complete']);
+  // A follow-up continues the run; it does not rename it.
+  assert.equal(store.getThread(childId).subagent?.prompt, 'first');
+  store.close();
+});
+
+test('a child can be controlled only while its session is held', async () => {
+  const store = new ThreadStore(storePath());
+  const chat = store.createThread(tmpdir());
+  const first = subagents({
+    store,
+    parentThreadId: chat.id,
+    cwd: chat.cwd,
+    modelId: 'served-model',
+    run: async () => driver(async () => ({ kind: 'reported', report: 'Done.' })),
+  });
+
+  const childId = first.spawn({ role: 'explore', prompt: 'Find the retry.' });
+  await first.settle();
+  assert.equal(first.list().find(({ id }) => id === childId)?.controllable, true);
+
+  const reopened = subagents({
+    store,
+    parentThreadId: chat.id,
+    cwd: chat.cwd,
+    modelId: 'served-model',
+    run: async () => driver(async () => ({ kind: 'reported', report: 'Done.' })),
+  });
+  assert.equal(reopened.list().find(({ id }) => id === childId)?.controllable, false);
+  store.close();
+});
+
 test('a chat cannot stop or steer another chat’s child', async () => {
   const store = new ThreadStore(storePath());
   const ownerChat = store.createThread(tmpdir());

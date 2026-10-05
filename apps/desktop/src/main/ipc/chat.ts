@@ -13,6 +13,7 @@ import {
   type ChatState,
   type QueuedLine,
   type Result,
+  type SubagentControl,
 } from '../../preload/bridge.ts';
 import { envelope, isId, nothing, withId } from './result.ts';
 
@@ -26,6 +27,11 @@ export interface ChatDeps {
     parentThreadId: string,
     childThreadId: string,
   ): import('../../preload/bridge.ts').ChatTranscript;
+  controlSubagent?(
+    parentThreadId: string,
+    childThreadId: string,
+    control: SubagentControl,
+  ): Promise<void>;
   send(text: string): Promise<void>;
   startShell?(chatId: string, command: string): Promise<string>;
   cancelShell?(chatId: string, runId: string): boolean;
@@ -64,6 +70,11 @@ export interface ChatHandlers {
     parentThreadId: unknown,
     childThreadId: unknown,
   ): Promise<Result<import('../../preload/bridge.ts').ChatTranscript>>;
+  controlSubagent(
+    parentThreadId: unknown,
+    childThreadId: unknown,
+    control: unknown,
+  ): Promise<Result<null>>;
   send(text: unknown): Promise<Result<null>>;
   runShell(chatId: unknown, command: unknown): Promise<Result<string>>;
   cancelShell(chatId: unknown, runId: unknown): Promise<Result<null>>;
@@ -100,6 +111,7 @@ export interface ShapeChatHandlers {
 export function chatHandlers({
   state,
   subagentTranscript,
+  controlSubagent,
   send,
   startShell,
   cancelShell,
@@ -135,6 +147,19 @@ export function chatHandlers({
         return Promise.resolve({ ok: false, error: 'Subagent transcripts are unavailable.' });
       }
       return envelope(() => subagentTranscript(parentThreadId, childThreadId));
+    },
+
+    controlSubagent: (parentThreadId, childThreadId, control) => {
+      if (!isId(parentThreadId) || !isId(childThreadId) || !isSubagentControl(control)) {
+        return Promise.resolve({
+          ok: false,
+          error: 'A subagent needs a chat, a child and a stop, steer or resume.',
+        });
+      }
+      if (controlSubagent === undefined) {
+        return Promise.resolve({ ok: false, error: 'Controlling a subagent is unavailable.' });
+      }
+      return nothing(() => controlSubagent(parentThreadId, childThreadId, control));
     },
 
     setMode: (mode) => {
@@ -350,6 +375,19 @@ export function chatHandlers({
 /** A lane as it arrives from the renderer: only the two turns there are. */
 function isLane(value: unknown): value is QueuedLine['lane'] {
   return value === 'next' || value === 'later';
+}
+
+/** A subagent control as it arrives from the renderer: stop, or steer/resume with words. */
+function isSubagentControl(value: unknown): value is SubagentControl {
+  if (typeof value !== 'object' || value === null) return false;
+  const { action, text } = value as { action?: unknown; text?: unknown };
+  if (action === 'stop') return true;
+  return (
+    (action === 'steer' || action === 'resume') &&
+    typeof text === 'string' &&
+    text.trim() !== '' &&
+    text.length <= 16_384
+  );
 }
 
 function validAttachedTicketIds(value: unknown): value is string[] {

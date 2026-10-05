@@ -660,6 +660,8 @@ for (const testCase of CASES) {
       load: () => handlers.load(),
       subagentTranscript: () =>
         handlers.subagentTranscript(testCase.argument, testCase.secondArgument),
+      controlSubagent: () =>
+        handlers.controlSubagent(testCase.argument, testCase.secondArgument, { action: 'stop' }),
       send: () => handlers.send(testCase.argument),
       runShell: () => handlers.runShell(testCase.argument, testCase.secondArgument),
       cancelShell: () => handlers.cancelShell(testCase.argument, testCase.secondArgument),
@@ -893,4 +895,68 @@ test('local command operations validate and preserve the explicit chat target', 
     value: null,
   });
   assert.deepEqual(calls, ['run chat-1 !pwd', 'cancel chat-1 run-1']);
+});
+
+test('a subagent is steered, stopped and resumed by the chat and child named', async () => {
+  const calls: string[] = [];
+  const handlers = chatHandlers(
+    deps(calls, {
+      controlSubagent: async (parentId, childId, control) => {
+        calls.push(`${control.action} ${parentId} ${childId} ${'text' in control ? control.text : ''}`);
+      },
+    }),
+  );
+
+  assert.deepEqual(await handlers.controlSubagent('chat-1', 'child-1', { action: 'stop' }), {
+    ok: true,
+    value: null,
+  });
+  assert.deepEqual(
+    await handlers.controlSubagent('chat-1', 'child-1', { action: 'steer', text: 'Focus on the parser.' }),
+    { ok: true, value: null },
+  );
+  assert.deepEqual(
+    await handlers.controlSubagent('chat-1', 'child-1', { action: 'resume', text: 'Now the lexer.' }),
+    { ok: true, value: null },
+  );
+  assert.deepEqual(calls, [
+    'stop chat-1 child-1 ',
+    'steer chat-1 child-1 Focus on the parser.',
+    'resume chat-1 child-1 Now the lexer.',
+  ]);
+});
+
+test('a subagent control that is malformed never reaches a child', async () => {
+  const handlers = chatHandlers(
+    deps([], {
+      controlSubagent: async () => assert.fail('a child was controlled'),
+    }),
+  );
+  const want = { ok: false, error: 'A subagent needs a chat, a child and a stop, steer or resume.' };
+
+  assert.deepEqual(await handlers.controlSubagent('', 'child-1', { action: 'stop' }), want);
+  assert.deepEqual(await handlers.controlSubagent('chat-1', ['child-1'], { action: 'stop' }), want);
+  assert.deepEqual(await handlers.controlSubagent('chat-1', 'child-1', { action: 'delete' }), want);
+  assert.deepEqual(await handlers.controlSubagent('chat-1', 'child-1', null), want);
+  assert.deepEqual(await handlers.controlSubagent('chat-1', 'child-1', { action: 'steer', text: '  ' }), want);
+  assert.deepEqual(await handlers.controlSubagent('chat-1', 'child-1', { action: 'steer', text: 5 }), want);
+  assert.deepEqual(
+    await handlers.controlSubagent('chat-1', 'child-1', { action: 'resume', text: 'x'.repeat(16_385) }),
+    want,
+  );
+});
+
+test('a refused subagent control is reported as a value', async () => {
+  const handlers = chatHandlers(
+    deps([], {
+      controlSubagent: async () => {
+        throw new Error('That subagent is not running.');
+      },
+    }),
+  );
+
+  assert.deepEqual(await handlers.controlSubagent('chat-1', 'child-1', { action: 'stop' }), {
+    ok: false,
+    error: 'That subagent is not running.',
+  });
 });

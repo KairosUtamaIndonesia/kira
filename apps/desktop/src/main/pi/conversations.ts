@@ -22,6 +22,7 @@ import type {
   ChatMode,
   ChatConclusion,
   ChatEvent,
+  SubagentControl,
   GlossaryChangeNote,
   SkillChangeNote,
   ChatCommand,
@@ -214,6 +215,8 @@ export interface Conversation {
   subagents(): SubagentSummary[];
   /** The stored read-only transcript of one of this chat's children. */
   subagentTranscript(childThreadId: string): ChatTranscript;
+  /** Steer, stop or resume one of this chat's children. A child of another chat is refused. */
+  controlSubagent(childThreadId: string, control: SubagentControl): Promise<void>;
   /** When the current turn began, or null when the chat is idle. */
   runningSince(): number | null;
   /** The reply being written: one message's words, or null when there are none. */
@@ -805,6 +808,13 @@ function conversationOf(
     subagents: () => kira.subagents?.list() ?? [],
     subagentTranscript: (childThreadId) => {
       return subagentTranscriptIn(store, kira.threadId, childThreadId);
+    },
+    controlSubagent: async (childThreadId, control) => {
+      const children = kira.subagents;
+      if (children === undefined) throw new Error('That chat has no subagents.');
+      if (control.action === 'stop') return children.stop(childThreadId);
+      if (control.action === 'steer') return children.steer(childThreadId, control.text);
+      return children.resume(childThreadId, control.text);
     },
     runningSince: () => runningSince,
     modelId: () => kira.session.model?.id ?? null,

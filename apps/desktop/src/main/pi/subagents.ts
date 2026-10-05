@@ -26,6 +26,12 @@ export interface SubagentSummary {
   outcome: string | null;
   error: string | null;
   activity: string | null;
+  /**
+   * Whether this session still holds the child's own session, which is what a
+   * steer, a stop or a resume needs. A child from an earlier run of the app does
+   * not: its transcript can be read, but nothing more can be asked of it.
+   */
+  controllable: boolean;
 }
 
 /** How a child's turn ended. */
@@ -93,7 +99,7 @@ function titleOf(prompt: string): string {
   return first.length > 0 ? first : prompt.trim();
 }
 
-function summaryOf(id: string, record: SubagentRecord): SubagentSummary {
+function summaryOf(id: string, record: SubagentRecord, controllable: boolean): SubagentSummary {
   return {
     id,
     role: record.role,
@@ -102,6 +108,7 @@ function summaryOf(id: string, record: SubagentRecord): SubagentSummary {
     outcome: record.response === '' ? null : record.response,
     error: record.error,
     activity: record.activity ?? null,
+    controllable,
   };
 }
 
@@ -144,7 +151,7 @@ export function subagents(options: {
   const summaryOfChild = (childThreadId: string): SubagentSummary => {
     const record = store.getThread(childThreadId).subagent;
     if (record === null) throw new Error(`Thread ${childThreadId} is not a subagent.`);
-    return summaryOf(childThreadId, record);
+    return summaryOf(childThreadId, record, drivers.has(childThreadId));
   };
 
   const recordForOwnedChild = (childThreadId: string): SubagentRecord => {
@@ -291,7 +298,6 @@ export function subagents(options: {
       if (driver === undefined) throw new Error('That subagent session is no longer available.');
       store.updateSubagent(childThreadId, {
         status: 'running',
-        prompt,
         activity: 'Working',
         response: '',
         error: null,
@@ -299,6 +305,8 @@ export function subagents(options: {
         endedAt: null,
       });
       follow(childThreadId, record.role, prompt, driver);
+      const summary = summaryOfChild(childThreadId);
+      for (const listener of listeners) listener(summary);
     },
 
     askParent: async (childThreadId, question) => {

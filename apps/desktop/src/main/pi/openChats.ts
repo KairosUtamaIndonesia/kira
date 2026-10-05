@@ -28,6 +28,7 @@ import { randomUUID } from 'node:crypto';
 import type {
   ChatMode,
   ChatEvent,
+  SubagentControl,
   ChatState,
   ChatTranscript,
   Proposal,
@@ -70,6 +71,12 @@ export interface OpenChats {
   state(): ChatState;
   /** Read a child's own transcript without making it a conversation. */
   subagentTranscript(parentThreadId: string, childThreadId: string): ChatTranscript;
+  /** Steer, stop or resume a child, addressed by the chat that owns it rather than by what is on screen. */
+  controlSubagent(
+    parentThreadId: string,
+    childThreadId: string,
+    control: SubagentControl,
+  ): Promise<void>;
   /** Apply a saved shell choice to every retained conversation. */
   setShellPath(path: string | undefined): Promise<void>;
   /**
@@ -555,6 +562,11 @@ export function openChats(
   return {
     subagentTranscript: (parentThreadId, childThreadId) => {
       return subagentTranscriptIn(store, parentThreadId, childThreadId);
+    },
+    controlSubagent: async (parentThreadId, childThreadId, control) => {
+      const conversation = open.get(parentThreadId);
+      if (conversation === undefined) throw new Error('That chat is not open.');
+      await conversation.controlSubagent(childThreadId, control);
     },
     state: () => {
       const conversation = shown === null ? null : current();
