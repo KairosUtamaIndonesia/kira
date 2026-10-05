@@ -41,6 +41,7 @@ export const messages = {
   gitInstanceUrlInvalid: 'Give the host’s address as a secure HTTPS URL.',
   gitStateInvalid: 'That install did not start here. Begin again from Kira.',
   gitInstallationInvalid: 'That install is not one GitHub named.',
+  gitInstallationUnreadable: 'GitHub did not answer with the repositories that install can see.',
   notAnAdmin: 'Only an administrator can connect a Git host.',
 
   kindUnknown: (kinds: readonly string[]) => `Choose a ticket kind: ${list(kinds)}.`,

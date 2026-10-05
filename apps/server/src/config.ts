@@ -38,6 +38,11 @@ export interface Config {
     appSlug: string | null;
     appId: string | null;
     appPrivateKey: string | null;
+    /**
+     * Where the App's REST calls go. `https://api.github.com` for github.com; a
+     * GitHub Enterprise Server names its own. A test points it at a stand-in.
+     */
+    apiBaseUrl: string;
   };
   entra: {
     tenantId: string;
@@ -54,6 +59,12 @@ export interface Config {
  * sign-in at a stand-in identity provider instead of reaching Microsoft.
  */
 const ENTRA_AUTHORITY = 'https://login.microsoftonline.com';
+
+/**
+ * GitHub's REST API. A GitHub Enterprise Server sets its own address, and a test
+ * points it at a stand-in App API rather than reaching github.com.
+ */
+const GITHUB_API_BASE_URL = 'https://api.github.com';
 
 /**
  * Authorities that admit accounts from anywhere. Better Auth defaults `tenantId`
@@ -190,6 +201,12 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
       KIRA_GITHUB_APP_SLUG: z.string().trim().min(1, REQUIRED).optional(),
       KIRA_GITHUB_APP_ID: z.string().trim().min(1, REQUIRED).optional(),
       KIRA_GITHUB_APP_PRIVATE_KEY: z.string().trim().min(1, REQUIRED).optional(),
+      KIRA_GITHUB_API_BASE_URL: z
+        .string()
+        .trim()
+        .min(1, REQUIRED)
+        .refine(isAbsoluteUrl, 'must be an absolute URL')
+        .default(GITHUB_API_BASE_URL),
     },
     runtimeEnv: env,
     // An empty value in a .env file means unset, not "set to an empty string",
@@ -236,6 +253,7 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
       appSlug: parsed.KIRA_GITHUB_APP_SLUG ?? null,
       appId: parsed.KIRA_GITHUB_APP_ID ?? null,
       appPrivateKey: parsed.KIRA_GITHUB_APP_PRIVATE_KEY ?? null,
+      apiBaseUrl: parsed.KIRA_GITHUB_API_BASE_URL,
     },
     entra: {
       tenantId: parsed.KIRA_ENTRA_TENANT_ID,

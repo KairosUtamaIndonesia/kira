@@ -529,6 +529,13 @@ const CONNECTION = t.Object({
   createdAt: t.String(),
 });
 
+/** A repository an App installation can see, as GitHub reports it. */
+const INSTALLATION_REPOSITORY = t.Object({
+  owner: t.String(),
+  name: t.String(),
+  defaultBranch: t.String(),
+});
+
 type Asking = { readonly refused: ReturnType<typeof refusal> } | { readonly user: HeldUser };
 
 export function createGit({
@@ -669,6 +676,51 @@ export function createGit({
           401: REFUSAL,
         },
         detail: { summary: 'The Git hosts this server is connected to' },
+      },
+    )
+    .get(
+      '/api/git/connections/:id/repositories',
+      async ({ request, params, status }) => {
+        const held = await asking(auth, request);
+        if ('refused' in held) return status(401, held.refused);
+
+        const [connection] = await database
+          .select()
+          .from(gitConnection)
+          .where(eq(gitConnection.id, params.id));
+        // Only an App installation has repositories to browse; a token connection
+        // names one by hand instead.
+        if (
+          connection === undefined ||
+          connection.provider !== 'github' ||
+          connection.authKind !== 'app' ||
+          connection.installationId === null
+        ) {
+          return status(404, refusal('GIT_CONNECTION_UNKNOWN', messages.gitConnectionUnknown));
+        }
+
+        const repositories = await githubInstallationRepositories(
+          config,
+          connection.installationId,
+        );
+        if (repositories === null) {
+          return status(
+            502,
+            refusal('GIT_INSTALLATION_UNREADABLE', messages.gitInstallationUnreadable),
+          );
+        }
+
+        return { repositories };
+      },
+      {
+        params: t.Object({ id: t.String() }),
+        response: {
+          200: t.Object({ repositories: t.Array(INSTALLATION_REPOSITORY) }),
+          401: REFUSAL,
+          404: REFUSAL,
+          502: REFUSAL,
+        },
+        detail: { summary: 'The repositories a GitHub App installation can see' },
       },
     )
     .post(
@@ -1292,34 +1344,73 @@ async function isAdmin(auth: Auth, userId: string): Promise<boolean> {
   return (found as { role?: string | null } | null)?.role === 'admin';
 }
 
-/** The account an installation belongs to, or a placeholder when it cannot be read. */
-async function githubInstallationAccount(
-  config: Config,
-  installationId: number,
-): Promise<{ login: string; type: string }> {
+/**
+ * A GET to GitHub's App API, authenticated as the App itself, or null when it is
+ * refused or unreachable. These calls take the App's own JWT; nothing here needs
+ * an installation token.
+ */
+async function appGet(config: Config, path: string): Promise<unknown | null> {
   const { appId, appPrivateKey } = config.git;
-  if (appId === null || appPrivateKey === null) return { login: 'unknown', type: 'Organization' };
+  if (appId === null || appPrivateKey === null) return null;
 
   try {
     const jwt = signAppJwt(appId, appPrivateKey.replace(/\\n/g, '\n'));
-    const response = await fetch(`https://api.github.com/app/installations/${installationId}`, {
+    const response = await fetch(`${config.git.apiBaseUrl}${path}`, {
       headers: {
         authorization: `Bearer ${jwt}`,
         accept: 'application/vnd.github+json',
         'user-agent': 'kira',
       },
     });
-    if (!response.ok) return { login: 'unknown', type: 'Organization' };
+    if (!response.ok) return null;
 
-    const body = (await response.json()) as { account?: { login?: unknown; type?: unknown } };
-
-    return {
-      login: typeof body.account?.login === 'string' ? body.account.login : 'unknown',
-      type: typeof body.account?.type === 'string' ? body.account.type : 'Organization',
-    };
+    return await response.json();
   } catch {
-    return { login: 'unknown', type: 'Organization' };
+    return null;
   }
+}
+
+/** The account an installation belongs to, or a placeholder when it cannot be read. */
+async function githubInstallationAccount(
+  config: Config,
+  installationId: number,
+): Promise<{ login: string; type: string }> {
+  const body = (await appGet(config, `/app/installations/${installationId}`)) as {
+    account?: { login?: unknown; type?: unknown };
+  } | null;
+
+  return {
+    login: typeof body?.account?.login === 'string' ? body.account.login : 'unknown',
+    type: typeof body?.account?.type === 'string' ? body.account.type : 'Organization',
+  };
+}
+
+/** The repositories an installation can see, or null when GitHub will not say. */
+async function githubInstallationRepositories(
+  config: Config,
+  installationId: number,
+): Promise<{ owner: string; name: string; defaultBranch: string }[] | null> {
+  const body = (await appGet(
+    config,
+    `/app/installations/${installationId}/repositories?per_page=100`,
+  )) as {
+    repositories?: { name?: unknown; default_branch?: unknown; owner?: { login?: unknown } }[];
+  } | null;
+  if (body === null || !Array.isArray(body.repositories)) return null;
+
+  const found: { owner: string; name: string; defaultBranch: string }[] = [];
+  for (const held of body.repositories) {
+    const owner = held?.owner?.login;
+    if (typeof owner !== 'string' || owner === '' || typeof held?.name !== 'string') continue;
+
+    found.push({
+      owner,
+      name: held.name,
+      defaultBranch: typeof held.default_branch === 'string' ? held.default_branch : 'main',
+    });
+  }
+
+  return found;
 }
 
 async function findAppConnection(database: Database, installationId: number) {

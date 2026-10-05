@@ -1,5 +1,6 @@
-import { createHmac } from 'node:crypto';
+import { createHmac, generateKeyPairSync } from 'node:crypto';
 import { afterAll, afterEach, describe, expect, setSystemTime, test } from 'bun:test';
+import { startFakeGitHub } from './test-support/fake-github';
 import { boot, closeDatabases, issue, send, user } from './test-support/server';
 
 afterEach(closeDatabases);
@@ -564,6 +565,75 @@ describe('the GitHub App', () => {
     expect(uninstalled.status).toBe(200);
     const gone = await send(app, '/api/git/connections', { headers: bearer(key) });
     expect((await gone.json()).connections).toHaveLength(0);
+  });
+
+  test('lists the repositories an installation can see', async () => {
+    const github = await startFakeGitHub({
+      id: 77,
+      login: 'acme',
+      type: 'Organization',
+      repositories: [
+        { owner: 'acme', name: 'api', defaultBranch: 'trunk' },
+        { owner: 'acme', name: 'web' },
+      ],
+    });
+
+    try {
+      const { app, auth } = await boot({}, {}, {}, {
+        appSlug: 'kira-test',
+        appId: '123',
+        appPrivateKey: generateKeyPairSync('rsa', { modulusLength: 2048 })
+          .privateKey.export({ type: 'pkcs1', format: 'pem' })
+          .toString(),
+        apiBaseUrl: github.apiBaseUrl,
+      });
+      const person = await user(auth);
+      const key = (await issue(auth, person.id, 'github-repositories')).key;
+      await makeAdmin(auth, person.id);
+
+      const connect = await send(app, '/api/git/github/connect', { headers: bearer(key) });
+      const url = ((await connect.json()) as { url: string }).url;
+      const state = new URL(url).searchParams.get('state')!;
+      await send(
+        app,
+        `/api/git/github/setup?installation_id=77&state=${encodeURIComponent(state)}`,
+      );
+
+      const listed = await send(app, '/api/git/connections', { headers: bearer(key) });
+      const [connection] = (await listed.json()).connections as { id: string }[];
+
+      const answer = await send(app, `/api/git/connections/${connection!.id}/repositories`, {
+        headers: bearer(key),
+      });
+      expect(answer.status).toBe(200);
+      expect((await answer.json()).repositories).toEqual([
+        { owner: 'acme', name: 'api', defaultBranch: 'trunk' },
+        { owner: 'acme', name: 'web', defaultBranch: 'main' },
+      ]);
+      // The App signed and sent its own JWT rather than an installation token.
+      expect(github.tokens[0]?.split('.')).toHaveLength(3);
+    } finally {
+      await github.stop();
+    }
+  });
+
+  test('offers no repositories for a host that is not an App', async () => {
+    const { app, auth } = await boot();
+    const person = await user(auth);
+    const key = (await issue(auth, person.id, 'github-token-host')).key;
+    await makeAdmin(auth, person.id);
+
+    const created = await send(
+      app,
+      '/api/git/connections',
+      json('POST', key, { provider: 'github', accessToken: 'a-token' }),
+    );
+    const connection = (await created.json()).connection as { id: string };
+
+    const answer = await send(app, `/api/git/connections/${connection.id}/repositories`, {
+      headers: bearer(key),
+    });
+    expect(answer.status).toBe(404);
   });
 });
 
