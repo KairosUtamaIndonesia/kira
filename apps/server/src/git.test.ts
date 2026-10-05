@@ -1,9 +1,14 @@
 import { createHmac } from 'node:crypto';
-import { afterAll, afterEach, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, describe, expect, setSystemTime, test } from 'bun:test';
 import { boot, closeDatabases, issue, send, user } from './test-support/server';
 
 afterEach(closeDatabases);
 afterAll(closeDatabases);
+
+// A test that moves the clock puts it back, so the next one reads the real time.
+afterEach(() => {
+  setSystemTime();
+});
 
 const bearer = (key: string) => ({ authorization: `Bearer ${key}` });
 const json = (method: string, key: string, value: unknown): RequestInit => ({
@@ -507,6 +512,58 @@ describe('the GitHub App', () => {
       authKind: 'app',
       accountLogin: 'unknown',
     });
+  });
+
+  test('refuses an install state older than an hour', async () => {
+    const { app, auth } = await boot({}, {}, {}, { appSlug: 'kira-test' });
+    const person = await user(auth);
+    const key = (await issue(auth, person.id, 'github-app-stale')).key;
+    await makeAdmin(auth, person.id);
+
+    const connect = await send(app, '/api/git/github/connect', { headers: bearer(key) });
+    const body = (await connect.json()) as { url: string };
+    const state = new URL(body.url).searchParams.get('state')!;
+
+    setSystemTime(new Date(Date.now() + 2 * 60 * 60 * 1000));
+
+    const late = await send(
+      app,
+      `/api/git/github/setup?installation_id=42&state=${encodeURIComponent(state)}`,
+    );
+    expect(late.status).toBe(400);
+  });
+
+  test('drops the connection only when the App is uninstalled', async () => {
+    const { app, auth } = await boot({}, {}, {}, { appSlug: 'kira-test' });
+    const person = await user(auth);
+    const key = (await issue(auth, person.id, 'github-app-uninstall')).key;
+    await makeAdmin(auth, person.id);
+
+    const connect = await send(app, '/api/git/github/connect', { headers: bearer(key) });
+    const body = (await connect.json()) as { url: string };
+    const state = new URL(body.url).searchParams.get('state')!;
+    await send(
+      app,
+      `/api/git/github/setup?installation_id=42&state=${encodeURIComponent(state)}`,
+    );
+
+    const suspended = await send(
+      app,
+      '/api/webhooks/github',
+      delivery({ action: 'suspend', installation: { id: 42 } }, SECRET, 'installation'),
+    );
+    expect(suspended.status).toBe(200);
+    const kept = await send(app, '/api/git/connections', { headers: bearer(key) });
+    expect((await kept.json()).connections).toHaveLength(1);
+
+    const uninstalled = await send(
+      app,
+      '/api/webhooks/github',
+      delivery({ action: 'deleted', installation: { id: 42 } }, SECRET, 'installation'),
+    );
+    expect(uninstalled.status).toBe(200);
+    const gone = await send(app, '/api/git/connections', { headers: bearer(key) });
+    expect((await gone.json()).connections).toHaveLength(0);
   });
 });
 

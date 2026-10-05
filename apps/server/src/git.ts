@@ -61,10 +61,17 @@ interface CheckEvent {
   state: 'pending' | 'passed' | 'failed' | 'neutral';
 }
 
+/** A GitHub App's own lifecycle, as its `installation` delivery reports it. */
+interface InstallationChange {
+  /** created, deleted, suspend, unsuspend or new_permissions_accepted. */
+  action: string;
+  installationId: number;
+}
+
 interface GitProvider {
   kind: string;
   /** What the host says the delivery is, from its own headers. */
-  eventKind(headers: Headers): 'pull_request' | 'checks' | 'other';
+  eventKind(headers: Headers): 'pull_request' | 'checks' | 'installation' | 'other';
   /** Whether the delivery is signed with `secret` over the raw body. */
   verifySignature(secret: string, headers: Headers, body: Uint8Array): boolean;
   /** The pull request a delivery carries, or null when it is not one. */
@@ -80,6 +87,7 @@ const github: GitProvider = {
     const event = headers.get('x-github-event');
     if (event === 'pull_request') return 'pull_request';
     if (event === 'check_run' || event === 'status') return 'checks';
+    if (event === 'installation') return 'installation';
 
     return 'other';
   },
@@ -429,24 +437,34 @@ function hexDigest(value: string): Buffer | null {
   return Buffer.from(value, 'hex');
 }
 
+/** How long an install link stays good: long enough to sign into GitHub and pick
+ * repositories, short enough that a leaked URL does not stay usable. */
+const INSTALL_STATE_TTL_MS = 60 * 60 * 1000;
+
 /**
- * A GitHub install state: a nonce and its HMAC, so the callback can trust that
- * the install it is being told about is one this server started.
+ * A GitHub install state: a nonce, when it was issued, and their HMAC, so the
+ * callback can trust that the install is one this server started, and recently.
  */
 function signState(secret: string, nonce: string): string {
-  const mac = createHmac('sha256', secret).update(nonce).digest('hex');
+  const issuedAt = Date.now();
+  const mac = createHmac('sha256', secret).update(`${nonce}.${issuedAt}`).digest('hex');
 
-  return `${nonce}.${mac}`;
+  return `${nonce}.${issuedAt}.${mac}`;
 }
 
 function verifyState(secret: string, state: string): string | null {
-  const [nonce, mac] = state.split('.');
-  if (nonce === undefined || mac === undefined || nonce === '' || mac === '') return null;
+  const [nonce, issued, mac] = state.split('.');
+  if (nonce === undefined || issued === undefined || mac === undefined) return null;
+  if (nonce === '' || mac === '') return null;
+
+  const issuedAt = Number(issued);
+  if (!Number.isInteger(issuedAt)) return null;
+  if (Date.now() - issuedAt > INSTALL_STATE_TTL_MS) return null;
 
   const delivered = hexDigest(mac);
   if (delivered === null) return null;
 
-  const expected = createHmac('sha256', secret).update(nonce).digest();
+  const expected = createHmac('sha256', secret).update(`${nonce}.${issuedAt}`).digest();
 
   return sameBytes(delivered, expected) ? nonce : null;
 }
@@ -550,9 +568,12 @@ export function createGit({
         if (kind === 'pull_request') {
           const event = github.parsePullRequest(payload);
           if (event !== null) await mirror(database, github.kind, event);
-        } else {
+        } else if (kind === 'checks') {
           const check = github.parseCheck(payload);
           if (check !== null) await applyCheck(database, github.kind, check);
+        } else {
+          const change = parseInstallationChange(payload);
+          if (change !== null) await applyInstallation(database, change);
         }
 
         return { received: true };
@@ -564,7 +585,7 @@ export function createGit({
           401: REFUSAL,
           404: REFUSAL,
         },
-        detail: { summary: 'A GitHub delivery: a pull request or a check, linked to its ticket' },
+        detail: { summary: 'A GitHub delivery: a pull request, a check, or an App install' },
       },
     )
     .post(
@@ -609,10 +630,12 @@ export function createGit({
         if (kind === 'pull_request') {
           const event = provider.parsePullRequest(payload);
           if (event !== null) await mirror(database, connection.provider, event);
-        } else {
+        } else if (kind === 'checks') {
           const check = provider.parseCheck(payload);
           if (check !== null) await applyCheck(database, connection.provider, check);
         }
+        // An `installation` delivery is the App's own and belongs to the shared
+        // route, not to a connection's token.
 
         return { received: true };
       },
@@ -1192,6 +1215,38 @@ async function applyCheck(database: Database, provider: string, event: CheckEven
       target: [pullRequestCheck.pullRequestId, pullRequestCheck.context],
       set: { state: event.state, updatedAt },
     });
+}
+
+/** The App lifecycle change a `installation` delivery carries, or null when it is not one. */
+function parseInstallationChange(body: unknown): InstallationChange | null {
+  const held = body as { action?: unknown; installation?: { id?: unknown } };
+  const id = held?.installation?.id;
+  if (typeof held?.action !== 'string' || typeof id !== 'number') return null;
+
+  return { action: held.action, installationId: id };
+}
+
+/**
+ * Act on a GitHub App lifecycle change.
+ *
+ * An uninstall drops the connection GitHub no longer backs, so a stale host does
+ * not linger in Settings. The other actions — created, suspend, unsuspend and
+ * new_permissions_accepted — leave it in place: the installation id is what a
+ * later delivery, or a reconnect, comes back to, and a suspend can be lifted.
+ * Repositories a project attached are Kira's own and stay, so reconnecting the
+ * App resumes the watching they describe.
+ */
+async function applyInstallation(database: Database, change: InstallationChange): Promise<void> {
+  if (change.action !== 'deleted') return;
+
+  await database
+    .delete(gitConnection)
+    .where(
+      and(
+        eq(gitConnection.provider, 'github'),
+        eq(gitConnection.installationId, change.installationId),
+      ),
+    );
 }
 
 /** What a set of checks adds up to, or null when there are none. */
