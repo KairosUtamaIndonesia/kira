@@ -14,6 +14,7 @@ import { IconButton } from '@astryxdesign/core/IconButton';
 import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList';
 import { ProgressBar } from '@astryxdesign/core/ProgressBar';
 import { Selector } from '@astryxdesign/core/Selector';
+import { StatusDot } from '@astryxdesign/core/StatusDot';
 import { Text } from '@astryxdesign/core/Text';
 import { Popover } from '@astryxdesign/core/Popover';
 import { Tooltip } from '@astryxdesign/core/Tooltip';
@@ -548,15 +549,23 @@ export function Composer({
           />
         ))}
       {subagents.length > 0 ? (
-        <fieldset className="subagent-activity" aria-label="Subagents">
+        <fieldset aria-label="Subagents" {...stylex.props(styles.agents)}>
           {subagents.map((agent) => (
-            <Button
+            <button
               key={agent.id}
-              label={`${agent.title} · ${agent.state}${agent.activity ? ` · ${agent.activity}` : ''}`}
-              size="sm"
-              variant="ghost"
+              type="button"
+              {...stylex.props(styles.agentChip)}
               onClick={() => onSelectSubagent?.(agent.id)}
-            />
+            >
+              <StatusDot
+                variant={AGENT_DOT[agent.state].variant}
+                label={AGENT_DOT[agent.state].word}
+                isPulsing={agent.state === 'running'}
+              />
+              <Text size="sm" color="inherit" maxLines={1}>
+                {agent.title}
+              </Text>
+            </button>
           ))}
         </fieldset>
       ) : null}
@@ -760,7 +769,44 @@ function ShellCommandActivity({
  * it has used.
  */
 /** The meter fills its tooltip, not the composer around it. */
+const AGENT_DOT = {
+  running: { variant: 'accent', word: 'Working' },
+  complete: { variant: 'success', word: 'Done' },
+  error: { variant: 'error', word: 'Failed' },
+  stopped: { variant: 'neutral', word: 'Stopped' },
+} as const;
+
 const styles = stylex.create({
+  agents: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: spacingVars['--spacing-1-5'],
+    margin: 0,
+    padding: 0,
+    border: 0,
+    minWidth: 0,
+  },
+  agentChip: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: spacingVars['--spacing-2'],
+    minWidth: 0,
+    maxWidth: 'min(28ch, 100%)',
+    paddingBlock: spacingVars['--spacing-1'],
+    paddingInline: spacingVars['--spacing-3'],
+    borderWidth: borderVars['--border-width'],
+    borderStyle: 'solid',
+    borderColor: colorVars['--color-border'],
+    borderRadius: radiusVars['--radius-full'],
+    backgroundColor: 'transparent',
+    color: colorVars['--color-text-secondary'],
+    cursor: 'pointer',
+    ':hover': {
+      backgroundColor: colorVars['--color-background-muted'],
+      color: colorVars['--color-text-primary'],
+    },
+    ':focus-visible': { outline: `2px solid ${colorVars['--color-accent']}`, outlineOffset: 2 },
+  },
   allowance: { width: '100%' },
   // The month's number belongs on the card's right edge, matching the context
   // figure below it rather than merely following its label.

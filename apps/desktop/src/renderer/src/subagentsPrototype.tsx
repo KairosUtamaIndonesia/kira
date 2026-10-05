@@ -1,16 +1,25 @@
 /**
- * PROTOTYPE: Three variants of the chat's Agents panel — the incumbent selector,
- * a roster/detail split, and a report-first run journal — switchable with
+ * PROTOTYPE: Three structures for the chat's Agents panel, switchable with
  * `?variant=A|B|C` on the existing chat route.
  *
- * Direction: preserve Kira's warm neutral surfaces and ruled Workbench; use
- * semantic state colors, Kira red only for selection, and the existing compact
- * Inter/mono hierarchy. The variants differ in information structure, not skin.
+ * What every variant shares, and what the first pass got wrong: a run is read
+ * as a report, not a log. The task is the title; the report is the content; the
+ * work is the chat's own `Work` step, folded; the raw task prompt is a
+ * disclosure. State is a dot with a word, never a `· complete · Done` string.
+ * Kira red appears only on the selected run.
+ *
+ * A · Stack    one ruled list of runs, the selected run's report beneath.
+ * B · Cards    each run a card with its report excerpt; the open one unfolds.
+ * C · Focus    a numbered strip of runs over one full-width report.
  */
-import { Button } from '@astryxdesign/core/Button';
+import { Banner } from '@astryxdesign/core/Banner';
+import { Badge } from '@astryxdesign/core/Badge';
+import { Collapsible } from '@astryxdesign/core/Collapsible';
 import { HStack } from '@astryxdesign/core/HStack';
 import { Icon } from '@astryxdesign/core/Icon';
 import { IconButton } from '@astryxdesign/core/IconButton';
+import { Markdown } from '@astryxdesign/core/Markdown';
+import { StatusDot } from '@astryxdesign/core/StatusDot';
 import { Text } from '@astryxdesign/core/Text';
 import { VStack } from '@astryxdesign/core/VStack';
 import {
@@ -21,51 +30,97 @@ import {
   spacingVars,
 } from '@astryxdesign/core/theme/tokens.stylex';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import * as stylex from '@stylexjs/stylex';
 import type { ChatMessage, ChatTranscript, SubagentSummary } from '../../preload/bridge';
+import { Work } from './workTrace';
 
 const VARIANTS = [
-  { key: 'A', name: 'Current' },
-  { key: 'B', name: 'Roster' },
-  { key: 'C', name: 'Run journal' },
+  { key: 'A', name: 'Stack' },
+  { key: 'B', name: 'Cards' },
+  { key: 'C', name: 'Focus' },
 ] as const;
 type Variant = (typeof VARIANTS)[number]['key'];
 
+const STATE = {
+  running: { dot: 'accent', word: 'Working', pulse: true },
+  complete: { dot: 'success', word: 'Done', pulse: false },
+  error: { dot: 'error', word: 'Failed', pulse: false },
+  stopped: { dot: 'neutral', word: 'Stopped', pulse: false },
+} as const;
+
+const ROLE = { general: 'General', explore: 'Explore' } as const;
+
 const styles = stylex.create({
   root: { minWidth: 0, width: '100%', paddingBlockEnd: 56 },
-  heading: {
-    paddingBlockEnd: spacingVars['--spacing-2'],
-    borderBlockEndWidth: borderVars['--border-width'],
-    borderBlockEndStyle: 'solid',
-    borderBlockEndColor: colorVars['--color-border'],
+  list: {
+    display: 'flex',
+    flexDirection: 'column',
+    minWidth: 0,
+    borderWidth: borderVars['--border-width'],
+    borderStyle: 'solid',
+    borderColor: colorVars['--color-border'],
+    borderRadius: radiusVars['--radius-container'],
+    backgroundColor: colorVars['--color-background-surface'],
+    overflow: 'hidden',
   },
-  count: { fontFamily: 'var(--font-family-code)', fontVariantNumeric: 'tabular-nums' },
-  chips: { flexWrap: 'wrap' },
-  detail: { minWidth: 0 },
-  selectedTitle: { overflowWrap: 'anywhere' },
-  roster: {
-    maxHeight: 192,
-    overflowY: 'auto',
+  row: {
+    position: 'relative',
+    display: 'grid',
+    gridTemplateColumns: '8px minmax(0, 1fr) auto',
+    alignItems: 'center',
+    columnGap: spacingVars['--spacing-3'],
+    width: '100%',
+    paddingBlock: spacingVars['--spacing-3'],
+    paddingInline: spacingVars['--spacing-3'],
+    border: 0,
     borderBlockStartWidth: borderVars['--border-width'],
     borderBlockStartStyle: 'solid',
     borderBlockStartColor: colorVars['--color-border'],
-  },
-  rosterButton: {
-    width: '100%',
-    textAlign: 'start',
-    display: 'grid',
-    gridTemplateColumns: 'minmax(0, 1fr) auto',
-    alignItems: 'center',
-    gap: spacingVars['--spacing-2'],
-    paddingBlock: spacingVars['--spacing-2'],
-    paddingInline: spacingVars['--spacing-2'],
-    border: 0,
-    borderBlockEndWidth: borderVars['--border-width'],
-    borderBlockEndStyle: 'solid',
-    borderBlockEndColor: colorVars['--color-border'],
     backgroundColor: 'transparent',
     color: colorVars['--color-text-primary'],
+    textAlign: 'start',
+    cursor: 'pointer',
+    ':first-child': { borderBlockStartWidth: 0 },
+    ':hover': { backgroundColor: colorVars['--color-background-muted'] },
+    ':focus-visible': {
+      outline: `2px solid ${colorVars['--color-accent']}`,
+      outlineOffset: -2,
+    },
+  },
+  rowOn: { backgroundColor: colorVars['--color-background-muted'] },
+  bar: {
+    position: 'absolute',
+    insetBlock: 0,
+    insetInlineStart: 0,
+    width: 2,
+    backgroundColor: colorVars['--color-accent'],
+  },
+  stateWord: { whiteSpace: 'nowrap' },
+  card: {
+    display: 'flex',
+    flexDirection: 'column',
+    minWidth: 0,
+    borderWidth: borderVars['--border-width'],
+    borderStyle: 'solid',
+    borderColor: colorVars['--color-border'],
+    borderRadius: radiusVars['--radius-container'],
+    backgroundColor: colorVars['--color-background-surface'],
+    overflow: 'hidden',
+  },
+  cardOn: { borderColor: colorVars['--color-border-emphasized'], boxShadow: shadowVars['--shadow-low'] },
+  cardHead: {
+    position: 'relative',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: spacingVars['--spacing-1-5'],
+    width: '100%',
+    padding: spacingVars['--spacing-3'],
+    border: 0,
+    backgroundColor: 'transparent',
+    color: colorVars['--color-text-primary'],
+    textAlign: 'start',
     cursor: 'pointer',
     ':hover': { backgroundColor: colorVars['--color-background-muted'] },
     ':focus-visible': {
@@ -73,32 +128,59 @@ const styles = stylex.create({
       outlineOffset: -2,
     },
   },
-  rosterButtonSelected: { backgroundColor: colorVars['--color-background-muted'] },
-  title: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  status: { whiteSpace: 'nowrap', fontFamily: 'var(--font-family-code)' },
-  split: { display: 'grid', gridTemplateColumns: 'minmax(7rem, 0.85fr) minmax(0, 2fr)', minHeight: 0 },
-  splitRoster: {
-    minWidth: 0,
-    borderInlineEndWidth: borderVars['--border-width'],
-    borderInlineEndStyle: 'solid',
-    borderInlineEndColor: colorVars['--color-border'],
-  },
-  splitDetail: { minWidth: 0, paddingInlineStart: spacingVars['--spacing-3'] },
-  journal: { gap: spacingVars['--spacing-4'] },
-  journalRun: {
-    minWidth: 0,
-    paddingBlockStart: spacingVars['--spacing-3'],
+  cardBody: {
+    paddingInline: spacingVars['--spacing-3'],
+    paddingBlockEnd: spacingVars['--spacing-3'],
     borderBlockStartWidth: borderVars['--border-width'],
     borderBlockStartStyle: 'solid',
     borderBlockStartColor: colorVars['--color-border'],
+    paddingBlockStart: spacingVars['--spacing-3'],
   },
-  journalSelected: { borderBlockStartColor: colorVars['--color-accent'] },
-  result: {
-    borderInlineStartWidth: 2,
-    borderInlineStartStyle: 'solid',
-    borderInlineStartColor: colorVars['--color-accent'],
-    paddingInlineStart: spacingVars['--spacing-3'],
+  strip: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: spacingVars['--spacing-1-5'],
+    margin: 0,
+    padding: 0,
+    border: 0,
+    minWidth: 0,
   },
+  pill: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: spacingVars['--spacing-1-5'],
+    paddingBlock: spacingVars['--spacing-1'],
+    paddingInline: spacingVars['--spacing-3'],
+    borderWidth: borderVars['--border-width'],
+    borderStyle: 'solid',
+    borderColor: colorVars['--color-border'],
+    borderRadius: radiusVars['--radius-full'],
+    backgroundColor: 'transparent',
+    color: colorVars['--color-text-secondary'],
+    cursor: 'pointer',
+    ':hover': { backgroundColor: colorVars['--color-background-muted'] },
+    ':focus-visible': { outline: `2px solid ${colorVars['--color-accent']}`, outlineOffset: 2 },
+  },
+  pillOn: {
+    borderColor: colorVars['--color-accent'],
+    backgroundColor: colorVars['--color-background-muted'],
+    color: colorVars['--color-text-primary'],
+  },
+  detail: { minWidth: 0 },
+  label: { textTransform: 'uppercase', letterSpacing: '0.06em' },
+  report: {
+    minWidth: 0,
+    padding: spacingVars['--spacing-3'],
+    borderWidth: borderVars['--border-width'],
+    borderStyle: 'solid',
+    borderColor: colorVars['--color-border'],
+    borderRadius: radiusVars['--radius-element'],
+    backgroundColor: colorVars['--color-background-surface'],
+    overflowWrap: 'anywhere',
+  },
+  reportInCard: { backgroundColor: colorVars['--color-background-muted'], borderWidth: 0 },
+  activity: { minWidth: 0, overflowWrap: 'anywhere' },
+  task: { overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' },
   switcher: {
     position: 'fixed',
     zIndex: 1000,
@@ -116,8 +198,15 @@ const styles = stylex.create({
     boxShadow: shadowVars['--shadow-med'],
     '@media (max-width: 70rem)': { display: 'none' },
   },
-  switcherLabel: { minWidth: 104, textAlign: 'center' },
+  switcherLabel: { minWidth: 88, textAlign: 'center' },
 });
+
+interface PanelProps {
+  agents: SubagentSummary[];
+  selected: SubagentSummary | null;
+  transcript: ChatTranscript | null;
+  onSelect: (id: string | null) => void;
+}
 
 export function SubagentsPrototype({
   agents,
@@ -134,6 +223,7 @@ export function SubagentsPrototype({
 }) {
   const [variant, setVariant] = useState<Variant>(() => variantFromUrl());
   const selected = agents.find((agent) => agent.id === selectedId) ?? agents.at(-1) ?? null;
+  const panel = { agents, selected, transcript, onSelect };
 
   function cycle(direction: number) {
     setVariant((current) => {
@@ -168,23 +258,16 @@ export function SubagentsPrototype({
     return () => window.removeEventListener('keydown', onKeyDown);
   });
 
-  if (!import.meta.env.DEV) {
-    return <AgentsPanel agents={agents} selected={selected} transcript={transcript} onSelect={onSelect} />;
-  }
+  if (!import.meta.env.DEV) return <StackVariant {...panel} />;
 
   return (
     <div {...stylex.props(styles.root)}>
       {variant === 'A' ? (
-        <CurrentVariant agents={agents} selected={selected} transcript={transcript} onSelect={onSelect} />
+        <StackVariant {...panel} />
       ) : variant === 'B' ? (
-        <RosterVariant agents={agents} selected={selected} transcript={transcript} onSelect={onSelect} />
+        <CardsVariant {...panel} />
       ) : (
-        <JournalVariant
-          agents={agents}
-          selectedId={selected?.id ?? null}
-          transcript={transcript}
-          onSelect={onSelect}
-        />
+        <FocusVariant {...panel} />
       )}
       {isVisible && agents.length > 0 ? (
         <nav
@@ -215,210 +298,220 @@ export function SubagentsPrototype({
   );
 }
 
-function CurrentVariant({
-  agents,
-  selected,
-  transcript,
-  onSelect,
-}: {
-  agents: SubagentSummary[];
-  selected: SubagentSummary | null;
-  transcript: ChatTranscript | null;
-  onSelect: (id: string | null) => void;
-}) {
+/** A · one ruled list; the selected run's report sits under it. */
+function StackVariant({ agents, selected, transcript, onSelect }: PanelProps) {
   return (
-    <VStack gap={3}>
-      <HStack gap={2} {...stylex.props(styles.chips)}>
-        {agents.map((agent) => (
-          <Button
-            key={agent.id}
-            label={agent.title}
-            size="sm"
-            variant={selected?.id === agent.id ? 'primary' : 'ghost'}
-            onClick={() => onSelect(agent.id)}
-          />
-        ))}
-      </HStack>
-      {selected ? <AgentDetail selected={selected} transcript={transcript} /> : null}
-    </VStack>
-  );
-}
-
-function RosterVariant({
-  agents,
-  selected,
-  transcript,
-  onSelect,
-}: {
-  agents: SubagentSummary[];
-  selected: SubagentSummary | null;
-  transcript: ChatTranscript | null;
-  onSelect: (id: string | null) => void;
-}) {
-  const running = agents.filter((agent) => agent.state === 'running').length;
-  return (
-    <VStack gap={3}>
-      <HStack justify="between" align="center" {...stylex.props(styles.heading)}>
-        <Text type="label">Delegated work</Text>
-        <Text size="sm" color="secondary" {...stylex.props(styles.count)}>
-          {String(agents.length).padStart(2, '0')} · {running} running
-        </Text>
-      </HStack>
-      <div {...stylex.props(styles.split)}>
-        <div aria-label="Subagent runs" {...stylex.props(styles.splitRoster)}>
-          <div {...stylex.props(styles.roster)}>
-            {agents.map((agent) => (
-              <button
-                key={agent.id}
-                type="button"
-                aria-pressed={selected?.id === agent.id}
-                aria-label={`${agent.title}, ${agent.state}`}
-                {...stylex.props(
-                  styles.rosterButton,
-                  selected?.id === agent.id && styles.rosterButtonSelected,
-                )}
-                onClick={() => onSelect(agent.id)}
-              >
-                <span {...stylex.props(styles.title)}>{agent.title}</span>
-                <span {...stylex.props(styles.status)}>{stateWord(agent)}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-        <div {...stylex.props(styles.splitDetail)}>
-          {selected ? <AgentDetail selected={selected} transcript={transcript} /> : null}
-        </div>
-      </div>
-    </VStack>
-  );
-}
-
-function JournalVariant({
-  agents,
-  selectedId,
-  transcript,
-  onSelect,
-}: {
-  agents: SubagentSummary[];
-  selectedId: string | null;
-  transcript: ChatTranscript | null;
-  onSelect: (id: string | null) => void;
-}) {
-  return (
-    <VStack gap={3} {...stylex.props(styles.journal)}>
-      <HStack justify="between" align="center" {...stylex.props(styles.heading)}>
-        <Text type="label">Run journal</Text>
-        <Text size="sm" color="secondary" {...stylex.props(styles.count)}>
-          {String(agents.length).padStart(2, '0')} runs
-        </Text>
-      </HStack>
-      {agents.map((agent) => (
-        <section
-          key={agent.id}
-          {...stylex.props(styles.journalRun, selectedId === agent.id && styles.journalSelected)}
-        >
-          <button
-            type="button"
-            aria-pressed={selectedId === agent.id}
-            {...stylex.props(styles.rosterButton)}
-            onClick={() => onSelect(agent.id)}
-          >
-            <span {...stylex.props(styles.title)}>{agent.title}</span>
-            <span {...stylex.props(styles.status)}>{stateWord(agent)}</span>
-          </button>
-          <HStack gap={2}>
-            <Text size="sm" color="secondary">{agent.role}</Text>
-            {agent.activity ? <Text size="sm" color="secondary">{agent.activity}</Text> : null}
-          </HStack>
-          {agent.error ? <Text color="secondary">{agent.error}</Text> : null}
-          {agent.outcome ? (
-            <div {...stylex.props(styles.result)}>
-              <Text>{agent.outcome}</Text>
-            </div>
-          ) : null}
-          {selectedId === agent.id ? <Transcript messages={transcript?.messages ?? []} /> : null}
-        </section>
-      ))}
-    </VStack>
-  );
-}
-
-function AgentDetail({
-  selected,
-  transcript,
-}: {
-  selected: SubagentSummary;
-  transcript: ChatTranscript | null;
-}) {
-  return (
-    <VStack gap={2} {...stylex.props(styles.detail)}>
-      <HStack justify="between" align="center">
-        <Text type="label" {...stylex.props(styles.selectedTitle)}>{selected.title}</Text>
-        <Text size="sm" color="secondary" {...stylex.props(styles.status)}>{stateWord(selected)}</Text>
-      </HStack>
-      <Text size="sm" color="secondary">
-        {selected.role}{selected.activity ? ` · ${selected.activity}` : ''}
-      </Text>
-      {selected.error ? <Text color="secondary">{selected.error}</Text> : null}
-      {selected.outcome ? <div {...stylex.props(styles.result)}><Text>{selected.outcome}</Text></div> : null}
-      <Transcript messages={transcript?.messages ?? []} />
-    </VStack>
-  );
-}
-
-function Transcript({ messages }: { messages: ChatMessage[] }) {
-  return (
-    <VStack gap={3}>
-      {messages.map((message) => <TranscriptMessage key={message.id} message={message} />)}
-    </VStack>
-  );
-}
-
-function TranscriptMessage({ message }: { message: ChatMessage }) {
-  return (
-    <VStack gap={1}>
-      <Text size="sm" color="secondary">{message.role === 'you' ? 'Task' : 'Agent'}</Text>
-      {message.parts.map((part, index) => {
-        if (part.type === 'text') return <Text key={index}>{part.text}</Text>;
-        if (part.type === 'work') {
+    <VStack gap={5}>
+      <div {...stylex.props(styles.list)}>
+        {agents.map((agent) => {
+          const on = selected?.id === agent.id;
           return (
-            <VStack key={index} gap={1}>
-              {part.reasoning ? <Text color="secondary">{part.reasoning}</Text> : null}
-              {part.calls.map((call, callIndex) => (
-                <VStack key={`${call.name}-${callIndex}`} gap={0.5}>
-                  <Text size="sm" color="secondary">{call.name}{call.target ? ` · ${call.target}` : ''}</Text>
-                  {call.output ? <Text>{call.output}</Text> : null}
-                </VStack>
-              ))}
-            </VStack>
+            <button
+              key={agent.id}
+              type="button"
+              aria-pressed={on}
+              {...stylex.props(styles.row, on && styles.rowOn)}
+              onClick={() => onSelect(agent.id)}
+            >
+              {on ? <span aria-hidden="true" {...stylex.props(styles.bar)} /> : null}
+              <Dot agent={agent} />
+              <Text maxLines={1} weight={on ? 'semibold' : 'normal'}>
+                {agent.title}
+              </Text>
+              <Text size="sm" color="secondary" xstyle={styles.stateWord}>
+                {STATE[agent.state].word}
+              </Text>
+            </button>
           );
-        }
-        if (part.type === 'compaction') return <Text key={index}>{part.reconstruction}</Text>;
-        return null;
+        })}
+      </div>
+      {selected ? <RunDetail agent={selected} transcript={transcript} /> : null}
+    </VStack>
+  );
+}
+
+/** B · every run a card with its report excerpt; the open one unfolds in place. */
+function CardsVariant({ agents, selected, transcript, onSelect }: PanelProps) {
+  return (
+    <VStack gap={3}>
+      {agents.map((agent) => {
+        const on = selected?.id === agent.id;
+        const excerpt = agent.error ?? plain(agent.outcome);
+        return (
+          <section key={agent.id} {...stylex.props(styles.card, on && styles.cardOn)}>
+            <button
+              type="button"
+              aria-expanded={on}
+              {...stylex.props(styles.cardHead)}
+              onClick={() => onSelect(agent.id)}
+            >
+              {on ? <span aria-hidden="true" {...stylex.props(styles.bar)} /> : null}
+              <HStack justify="between" align="center" gap={2}>
+                <HStack gap={2} align="center">
+                  <Dot agent={agent} />
+                  <Text size="sm" color="secondary">
+                    {STATE[agent.state].word} · {ROLE[agent.role]}
+                  </Text>
+                </HStack>
+              </HStack>
+              <Text weight="semibold" maxLines={on ? 0 : 2}>
+                {agent.title}
+              </Text>
+              {!on && excerpt ? (
+                <Text size="sm" color="secondary" maxLines={3}>
+                  {excerpt}
+                </Text>
+              ) : null}
+            </button>
+            {on ? (
+              <div {...stylex.props(styles.cardBody)}>
+                <RunDetail agent={agent} transcript={transcript} inCard />
+              </div>
+            ) : null}
+          </section>
+        );
       })}
     </VStack>
   );
 }
 
-function AgentsPanel({
-  agents,
-  selected,
-  transcript,
-  onSelect,
-}: {
-  agents: SubagentSummary[];
-  selected: SubagentSummary | null;
-  transcript: ChatTranscript | null;
-  onSelect: (id: string | null) => void;
-}) {
-  return <CurrentVariant agents={agents} selected={selected} transcript={transcript} onSelect={onSelect} />;
+/** C · a numbered strip of runs over one full-width report. */
+function FocusVariant({ agents, selected, transcript, onSelect }: PanelProps) {
+  return (
+    <VStack gap={4}>
+      <fieldset aria-label="Subagent runs" {...stylex.props(styles.strip)}>
+        {agents.map((agent, index) => {
+          const on = selected?.id === agent.id;
+          return (
+            <button
+              key={agent.id}
+              type="button"
+              aria-pressed={on}
+              aria-label={`Run ${index + 1}: ${agent.title}, ${STATE[agent.state].word}`}
+              {...stylex.props(styles.pill, on && styles.pillOn)}
+              onClick={() => onSelect(agent.id)}
+            >
+              <Dot agent={agent} />
+              <Text size="sm" weight="medium" hasTabularNumbers color="inherit">
+                {index + 1}
+              </Text>
+            </button>
+          );
+        })}
+      </fieldset>
+      {selected ? <RunDetail agent={selected} transcript={transcript} large /> : null}
+    </VStack>
+  );
 }
 
-function stateWord(agent: SubagentSummary): string {
-  if (agent.state === 'running') return agent.activity ?? 'Working';
-  if (agent.state === 'complete') return 'Done';
-  if (agent.state === 'stopped') return 'Stopped';
-  return 'Error';
+/** The one place a run is read: report first, work folded, task on request. */
+function RunDetail({
+  agent,
+  transcript,
+  inCard = false,
+  large = false,
+}: {
+  agent: SubagentSummary;
+  transcript: ChatTranscript | null;
+  inCard?: boolean;
+  large?: boolean;
+}) {
+  const messages = transcript?.messages ?? [];
+  const task = messages.find((message) => message.role === 'you');
+  const taskText = task ? textOf(task) : agent.title;
+  const steps = messages
+    .filter((message) => message.role !== 'you')
+    .flatMap((message) => message.parts)
+    .filter((part) => part.type === 'work' || (part.type === 'text' && part.text.trim() !== agent.outcome?.trim()));
+  const working = agent.state === 'running';
+
+  return (
+    <VStack gap={4} xstyle={styles.detail}>
+      {inCard ? null : (
+        <VStack gap={1.5}>
+          <Text type={large ? 'large' : 'body'} weight="semibold" textWrap="balance">
+            {agent.title}
+          </Text>
+          <HStack gap={2} align="center">
+            <Dot agent={agent} />
+            <Text size="sm" color="secondary">
+              {STATE[agent.state].word}
+              {working && agent.activity ? ` · ${agent.activity}` : ''}
+            </Text>
+            <Badge label={ROLE[agent.role]} variant="neutral" />
+          </HStack>
+        </VStack>
+      )}
+      {inCard && working && agent.activity ? (
+        <Text size="sm" color="secondary">
+          {agent.activity}
+        </Text>
+      ) : null}
+      {agent.error ? <Banner status="error" title={agent.error} /> : null}
+      {agent.outcome ? (
+        <Section label="Report">
+          <div {...stylex.props(styles.report, inCard && styles.reportInCard)}>
+            <Markdown density="compact">{agent.outcome}</Markdown>
+          </div>
+        </Section>
+      ) : null}
+      {steps.length > 0 ? (
+        <Section label="Activity">
+          <VStack gap={2} xstyle={styles.activity}>
+            {steps.map((part, index) =>
+              part.type === 'work' ? (
+                <Work key={index} part={part} isWorking={working && index === steps.length - 1} />
+              ) : part.type === 'text' ? (
+                <Markdown key={index} density="compact">{part.text}</Markdown>
+              ) : null,
+            )}
+          </VStack>
+        </Section>
+      ) : null}
+      <Collapsible
+        defaultIsOpen={false}
+        chevronPosition="start"
+        trigger={
+          <Text size="sm" weight="medium" color="secondary">
+            Task given
+          </Text>
+        }
+      >
+        <Text size="sm" color="secondary" xstyle={styles.task}>
+          {taskText}
+        </Text>
+      </Collapsible>
+    </VStack>
+  );
+}
+
+function Section({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <VStack gap={1.5}>
+      <Text size="xsm" weight="semibold" color="secondary" xstyle={styles.label}>
+        {label}
+      </Text>
+      {children}
+    </VStack>
+  );
+}
+
+function Dot({ agent }: { agent: SubagentSummary }) {
+  const state = STATE[agent.state];
+  return <StatusDot variant={state.dot} label={state.word} isPulsing={state.pulse} />;
+}
+
+function textOf(message: ChatMessage): string {
+  return message.parts
+    .flatMap((part) => (part.type === 'text' ? [part.text] : []))
+    .join('\n')
+    .trim();
+}
+
+/** A report as one line of prose, for an excerpt: no markup, no breaks. */
+function plain(markdown: string | null): string | null {
+  if (markdown === null) return null;
+  return markdown.replace(/[*`#>]/g, '').replace(/\s+/g, ' ').trim();
 }
 
 function variantFromUrl(): Variant {
