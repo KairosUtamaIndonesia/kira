@@ -31,6 +31,8 @@ export const messages = {
   repositoryProviderUnknown: 'Choose a host: github.',
   repositoryExists: (owner: string, name: string) =>
     `${owner}/${name} is already attached to this project.`,
+  repositoryElsewhere: (owner: string, name: string, project: string) =>
+    `${owner}/${name} is already watched by ${project}.`,
   repositoryNotFound: 'That repository is no longer attached to this project.',
 
   gitConnectionUnknown: 'No Git host is connected as that.',

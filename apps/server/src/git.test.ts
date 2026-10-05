@@ -227,6 +227,44 @@ describe('repositories', () => {
     });
     expect((await empty.json()).repositories).toEqual([]);
   });
+
+  test('a repository belongs to one project', async () => {
+    const { app, key } = await signedIn();
+    const first = await makeProject(app, key);
+    const created = await send(
+      app,
+      '/api/projects',
+      json('POST', key, { name: 'Other', prefix: 'OTH' }),
+    );
+    const other = (await created.json()).project as { id: string };
+
+    const attached = await send(
+      app,
+      `/api/projects/${first.id}/repositories`,
+      json('POST', key, { owner: 'acme', name: 'api' }),
+    );
+    expect(attached.status).toBe(200);
+
+    // The second project is refused: a delivery is routed by provider and owner and
+    // name, so the same repository on two projects would make its project ambiguous.
+    const elsewhere = await send(
+      app,
+      `/api/projects/${other.id}/repositories`,
+      json('POST', key, { owner: 'acme', name: 'api' }),
+    );
+    expect(elsewhere.status).toBe(409);
+    expect((await elsewhere.json()).error.code).toBe('REPOSITORY_ELSEWHERE');
+
+    // And the project that holds it is named in the refusal, so the person is told
+    // which queue to work rather than only that they cannot.
+    const named = await send(
+      app,
+      `/api/projects/${other.id}/repositories`,
+      json('POST', key, { owner: 'ACME', name: 'Api' }),
+    );
+    expect(named.status).toBe(409);
+    expect((await named.json()).error.message).toContain('Kira');
+  });
 });
 
 describe('git webhook', () => {

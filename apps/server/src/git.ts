@@ -970,6 +970,30 @@ export function createGit({
           defaultBranch: body.defaultBranch?.trim() || 'main',
         };
 
+        // A repository belongs to one project (ADR 0029). A webhook is routed to a
+        // project by provider, owner and name, so the same repository on two projects
+        // would make its project ambiguous — whichever row was read first would win.
+        const [elsewhere] = await database
+          .select({ projectId: repository.projectId, name: project.name })
+          .from(repository)
+          .innerJoin(project, eq(project.id, repository.projectId))
+          .where(
+            and(
+              eq(repository.provider, provider),
+              sql`lower(${repository.owner}) = lower(${owner})`,
+              sql`lower(${repository.name}) = lower(${name})`,
+            ),
+          );
+        if (elsewhere !== undefined && elsewhere.projectId !== found.id) {
+          return status(
+            409,
+            refusal(
+              'REPOSITORY_ELSEWHERE',
+              messages.repositoryElsewhere(owner, name, elsewhere.name),
+            ),
+          );
+        }
+
         // A repository is on a project once, and the constraint is what says so
         // rather than a read that two people could both pass.
         const [attached] = await database
