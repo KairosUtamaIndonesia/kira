@@ -1,10 +1,6 @@
 import { createHmac, generateKeyPairSync } from 'node:crypto';
 import { afterAll, afterEach, describe, expect, setSystemTime, test } from 'bun:test';
-import {
-  type FakeGitHub,
-  INSTALLATION_TOKEN,
-  startFakeGitHub,
-} from './test-support/fake-github';
+import { type FakeGitHub, INSTALLATION_TOKEN, startFakeGitHub } from './test-support/fake-github';
 import { boot, closeDatabases, issue, send, user } from './test-support/server';
 
 afterEach(closeDatabases);
@@ -113,14 +109,19 @@ async function makeTicket(
  * connection it recorded.
  */
 async function installedApp(github: FakeGitHub, installationId: number, keyName: string) {
-  const { app, auth } = await boot({}, {}, {}, {
-    appSlug: 'kira-test',
-    appId: '123',
-    appPrivateKey: generateKeyPairSync('rsa', { modulusLength: 2048 })
-      .privateKey.export({ type: 'pkcs1', format: 'pem' })
-      .toString(),
-    apiBaseUrl: github.apiBaseUrl,
-  });
+  const { app, auth } = await boot(
+    {},
+    {},
+    {},
+    {
+      appSlug: 'kira-test',
+      appId: '123',
+      appPrivateKey: generateKeyPairSync('rsa', { modulusLength: 2048 })
+        .privateKey.export({ type: 'pkcs1', format: 'pem' })
+        .toString(),
+      apiBaseUrl: github.apiBaseUrl,
+    },
+  );
   const person = await user(auth);
   const key = (await issue(auth, person.id, keyName)).key;
   await makeAdmin(auth, person.id);
@@ -616,10 +617,7 @@ describe('the GitHub App', () => {
     const connect = await send(app, '/api/git/github/connect', { headers: bearer(key) });
     const body = (await connect.json()) as { url: string };
     const state = new URL(body.url).searchParams.get('state')!;
-    await send(
-      app,
-      `/api/git/github/setup?installation_id=42&state=${encodeURIComponent(state)}`,
-    );
+    await send(app, `/api/git/github/setup?installation_id=42&state=${encodeURIComponent(state)}`);
 
     const suspended = await send(
       app,
@@ -885,5 +883,195 @@ describe('checks', () => {
       checksState: 'failed',
       checks: [{ context: 'pipeline', state: 'failed' }],
     });
+  });
+});
+
+describe('live pull requests', () => {
+  /** Attach a repository to a fresh project and answer its id. */
+  async function attach(
+    app: Awaited<ReturnType<typeof boot>>['app'],
+    key: string,
+    values: Record<string, unknown> = {},
+  ): Promise<{ projectId: string; repositoryId: string }> {
+    const project = await makeProject(app, key);
+    const attached = await send(
+      app,
+      `/api/projects/${project.id}/repositories`,
+      json('POST', key, { owner: 'acme', name: 'api', ...values }),
+    );
+    expect(attached.status).toBe(200);
+
+    return { projectId: project.id, repositoryId: (await attached.json()).repository.id };
+  }
+
+  test('lists a repository’s pull requests, each with its checks rollup', async () => {
+    const github = await startFakeGitHub({
+      id: 91,
+      login: 'acme',
+      type: 'Organization',
+      repositories: [{ owner: 'acme', name: 'api' }],
+      pullRequests: [
+        {
+          number: 12,
+          title: 'Fix the thing',
+          authorLogin: 'ada',
+          branch: 'fnd-12',
+          headSha: 'sha-12',
+          checks: [{ name: 'build', conclusion: 'success' }],
+        },
+        {
+          number: 9,
+          title: 'Add the thing',
+          draft: true,
+          checks: [{ name: 'build', conclusion: 'failure' }],
+        },
+      ],
+    });
+
+    try {
+      const { app, key } = await installedApp(github, 91, 'live-list');
+      const { projectId, repositoryId } = await attach(app, key);
+
+      const answer = await send(
+        app,
+        `/api/projects/${projectId}/repositories/${repositoryId}/pull-requests`,
+        { headers: bearer(key) },
+      );
+      expect(answer.status).toBe(200);
+      const pullRequests = (await answer.json()).pullRequests as Record<string, unknown>[];
+      expect(pullRequests).toHaveLength(2);
+      expect(pullRequests[0]).toMatchObject({
+        number: 12,
+        title: 'Fix the thing',
+        state: 'open',
+        checksState: 'passed',
+        authorLogin: 'ada',
+        branch: 'fnd-12',
+        url: 'https://github.com/acme/api/pull/12',
+      });
+      expect(pullRequests[1]).toMatchObject({ number: 9, state: 'draft', checksState: 'failed' });
+      // Both the list and the checks were read with the installation token.
+      expect(github.pullRequestTokens[0]).toBe(INSTALLATION_TOKEN);
+    } finally {
+      await github.stop();
+    }
+  });
+
+  test('opens a pull request to its body, checks, comments and files', async () => {
+    const github = await startFakeGitHub({
+      id: 92,
+      login: 'acme',
+      type: 'Organization',
+      repositories: [{ owner: 'acme', name: 'api' }],
+      pullRequests: [
+        {
+          number: 12,
+          title: 'Fix the thing',
+          body: 'It fixes it.',
+          authorLogin: 'ada',
+          branch: 'fnd-12',
+          headSha: 'sha-12',
+          baseBranch: 'main',
+          checks: [
+            { name: 'build', conclusion: 'success' },
+            { name: 'lint', status: 'in_progress' },
+          ],
+          comments: [{ authorLogin: 'grace', body: 'Looks good.' }],
+          files: [{ filename: 'src/a.ts', status: 'modified', patch: '@@ -1 +1 @@\n-old\n+new\n' }],
+        },
+      ],
+    });
+
+    try {
+      const { app, key } = await installedApp(github, 92, 'live-detail');
+      const { projectId, repositoryId } = await attach(app, key);
+
+      const answer = await send(
+        app,
+        `/api/projects/${projectId}/repositories/${repositoryId}/pull-requests/12`,
+        { headers: bearer(key) },
+      );
+      expect(answer.status).toBe(200);
+      expect((await answer.json()).pullRequest).toMatchObject({
+        number: 12,
+        title: 'Fix the thing',
+        body: 'It fixes it.',
+        authorLogin: 'ada',
+        state: 'open',
+        base: 'main',
+        head: 'fnd-12',
+        checks: [
+          { context: 'build', state: 'passed' },
+          { context: 'lint', state: 'pending' },
+        ],
+        comments: [
+          { authorLogin: 'grace', body: 'Looks good.', createdAt: '2026-01-02T00:00:00Z' },
+        ],
+        files: [{ path: 'src/a.ts', status: 'M', patch: '@@ -1 +1 @@\n-old\n+new\n' }],
+      });
+    } finally {
+      await github.stop();
+    }
+  });
+
+  test('says so when the repository’s Git host is not connected', async () => {
+    const { app, key } = await signedIn();
+    const { projectId, repositoryId } = await attach(app, key);
+
+    const answer = await send(
+      app,
+      `/api/projects/${projectId}/repositories/${repositoryId}/pull-requests`,
+      { headers: bearer(key) },
+    );
+    expect(answer.status).toBe(409);
+    expect((await answer.json()).error.message).toMatch(/not connected/);
+  });
+
+  test('says so when the host has no adapter yet', async () => {
+    const { app, auth } = await boot();
+    const person = await user(auth);
+    const key = (await issue(auth, person.id, 'live-no-adapter')).key;
+    await makeAdmin(auth, person.id);
+
+    const connected = await send(
+      app,
+      '/api/git/connections',
+      json('POST', key, {
+        provider: 'gitlab',
+        instanceUrl: 'https://gitlab.com',
+        accessToken: 'a-token',
+      }),
+    );
+    expect(connected.status).toBe(200);
+
+    const { projectId, repositoryId } = await attach(app, key, { provider: 'gitlab' });
+    const answer = await send(
+      app,
+      `/api/projects/${projectId}/repositories/${repositoryId}/pull-requests`,
+      { headers: bearer(key) },
+    );
+    expect(answer.status).toBe(501);
+    expect((await answer.json()).error.message).toMatch(/cannot read pull requests/);
+  });
+
+  test('reports an unreachable host rather than an empty repository', async () => {
+    const github = await startFakeGitHub({
+      id: 93,
+      login: 'acme',
+      type: 'Organization',
+      repositories: [{ owner: 'acme', name: 'api' }],
+    });
+    const { app, key } = await installedApp(github, 93, 'live-unreachable');
+    const { projectId, repositoryId } = await attach(app, key);
+
+    await github.stop();
+
+    const answer = await send(
+      app,
+      `/api/projects/${projectId}/repositories/${repositoryId}/pull-requests`,
+      { headers: bearer(key) },
+    );
+    expect(answer.status).toBe(502);
+    expect((await answer.json()).error.message).toMatch(/did not answer/);
   });
 });

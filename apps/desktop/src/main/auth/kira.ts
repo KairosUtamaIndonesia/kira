@@ -28,6 +28,8 @@ import {
   type ProjectSummary,
   type Repository,
   type InstallationRepository,
+  type LivePullRequest,
+  type LivePullRequestDetail,
   type Ticket,
   type TicketComment,
   type TicketPullRequest,
@@ -488,6 +490,27 @@ export function kiraFor({ server, scheme }: { server: string; scheme: string }):
         (data) => asInstallationRepositories((data as { repositories: unknown }).repositories),
       ),
 
+    repositoryPullRequests: async (key, projectId, repositoryId) =>
+      asked(
+        () =>
+          kira.api
+            .projects({ ref: projectId })
+            .repositories({ id: repositoryId })
+            ['pull-requests'].get({ headers: bearerFor(key) }),
+        (data) => asLivePullRequests((data as { pullRequests: unknown }).pullRequests),
+      ),
+
+    repositoryPullRequest: async (key, projectId, repositoryId, number) =>
+      asked(
+        () =>
+          kira.api
+            .projects({ ref: projectId })
+            .repositories({ id: repositoryId })
+            ['pull-requests']({ number: String(number) })
+            .get({ headers: bearerFor(key) }),
+        (data) => asLivePullRequestDetail((data as { pullRequest: unknown }).pullRequest),
+      ),
+
     markBreakdownReady: async (key, specTicketId) =>
       asked(
         () =>
@@ -701,6 +724,55 @@ function asInstallationRepositories(body: unknown): InstallationRepository[] | n
     : (repositories as InstallationRepository[]);
 }
 
+function asLivePullRequest(body: unknown): LivePullRequest | null {
+  const held = body as { number?: unknown; title?: unknown; state?: unknown; url?: unknown };
+  if (
+    typeof held?.number !== 'number' ||
+    typeof held.title !== 'string' ||
+    typeof held.state !== 'string' ||
+    typeof held.url !== 'string'
+  ) {
+    return null;
+  }
+
+  return held as LivePullRequest;
+}
+
+function asLivePullRequests(body: unknown): LivePullRequest[] | null {
+  if (!Array.isArray(body)) return null;
+
+  const requests = body.map(asLivePullRequest);
+
+  return requests.some((each) => each === null) ? null : (requests as LivePullRequest[]);
+}
+
+function asLivePullRequestDetail(body: unknown): LivePullRequestDetail | null {
+  const held = body as {
+    number?: unknown;
+    title?: unknown;
+    body?: unknown;
+    state?: unknown;
+    url?: unknown;
+    checks?: unknown;
+    comments?: unknown;
+    files?: unknown;
+  };
+  if (
+    typeof held?.number !== 'number' ||
+    typeof held.title !== 'string' ||
+    typeof held.body !== 'string' ||
+    typeof held.state !== 'string' ||
+    typeof held.url !== 'string'
+  ) {
+    return null;
+  }
+  if (!Array.isArray(held.checks) || !Array.isArray(held.comments) || !Array.isArray(held.files)) {
+    return null;
+  }
+
+  return held as LivePullRequestDetail;
+}
+
 function asPullRequests(body: unknown): TicketPullRequest[] | null {
   if (!Array.isArray(body)) return null;
 
@@ -856,9 +928,7 @@ function asSkill(body: unknown): ProjectSkill | null {
     typeof held.description !== 'string' ||
     typeof held.body !== 'string' ||
     !Array.isArray(held.files) ||
-    !held.files.every(
-      (file) => typeof file?.path === 'string' && typeof file.content === 'string',
-    )
+    !held.files.every((file) => typeof file?.path === 'string' && typeof file.content === 'string')
   ) {
     return null;
   }

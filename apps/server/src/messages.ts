@@ -45,6 +45,10 @@ export const messages = {
   gitInstallationInvalid: 'That install is not one GitHub named.',
   gitInstallationUnreadable: 'GitHub did not answer with the repositories that install can see.',
   notAnAdmin: 'Only an administrator can connect a Git host.',
+  gitHostNotConnected: 'This repository’s Git host is not connected. Connect it in Settings.',
+  gitPullRequestsUnavailable: 'Kira cannot read pull requests from this host yet.',
+  gitUnreachable: 'The Git host did not answer.',
+  gitPullRequestNotFound: 'That pull request no longer exists.',
 
   kindUnknown: (kinds: readonly string[]) => `Choose a ticket kind: ${list(kinds)}.`,
   statusUnknown: (statuses: readonly string[]) => `Choose a status: ${list(statuses)}.`,

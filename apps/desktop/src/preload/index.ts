@@ -25,6 +25,8 @@ import {
   type GitConnectionCreated,
   type GitHubConnect,
   type InstallationRepository,
+  type LivePullRequest,
+  type LivePullRequestDetail,
   type ChangedPath,
   type CommitSummary,
   type GitSyncAction,
@@ -169,6 +171,12 @@ const bridge: KiraBridge = {
   deleteComment: (commentId) => ask<null>(TRACKER_CHANNELS.deleteComment, commentId),
 
   loadPullRequests: (ticketId) => ask<TicketPullRequest[]>(TRACKER_CHANNELS.pullRequests, ticketId),
+
+  loadCheckoutPullRequests: (chatId) =>
+    ask<LivePullRequest[]>(TRACKER_CHANNELS.checkoutPullRequests, chatId),
+
+  loadCheckoutPullRequest: (chatId, number) =>
+    ask<LivePullRequestDetail>(TRACKER_CHANNELS.checkoutPullRequest, chatId, number),
 
   loadRepositories: (projectId) => ask<Repository[]>(TRACKER_CHANNELS.repositories, projectId),
   attachRepository: (projectId, input) =>

@@ -342,6 +342,22 @@ function registerTrackerChannels(): void {
     editComment: (commentId, body) => tracker.editComment(commentId, body),
     deleteComment: (commentId) => tracker.deleteComment(commentId),
     pullRequests: (ticketId) => tracker.pullRequests(ticketId),
+    checkoutPullRequests: (chatId) => {
+      const thread = store.findThread(chatId);
+      if (thread === undefined || thread.cwd === null) {
+        throw new Error('This chat has no workspace yet.');
+      }
+
+      return tracker.checkoutPullRequests(thread.workspaceId ?? '', thread.cwd);
+    },
+    checkoutPullRequest: (chatId, number) => {
+      const thread = store.findThread(chatId);
+      if (thread === undefined || thread.cwd === null) {
+        throw new Error('This chat has no workspace yet.');
+      }
+
+      return tracker.checkoutPullRequest(thread.workspaceId ?? '', thread.cwd, number);
+    },
     repositories: (projectId) => tracker.repositories(projectId),
     attachRepository: (projectId, input) => tracker.attachRepository(projectId, input),
     detachRepository: (projectId, id) => tracker.detachRepository(projectId, id),
@@ -381,6 +397,12 @@ function registerTrackerChannels(): void {
   );
   ipcMain.handle(TRACKER_CHANNELS.pullRequests, (_event, ticketId: unknown) =>
     handlers.pullRequests(ticketId),
+  );
+  ipcMain.handle(TRACKER_CHANNELS.checkoutPullRequests, (_event, chatId: unknown) =>
+    handlers.checkoutPullRequests(chatId),
+  );
+  ipcMain.handle(TRACKER_CHANNELS.checkoutPullRequest, (_event, chatId: unknown, number: unknown) =>
+    handlers.checkoutPullRequest(chatId, number),
   );
   ipcMain.handle(TRACKER_CHANNELS.editComment, (_event, commentId: unknown, body: unknown) =>
     handlers.editComment(commentId, body),

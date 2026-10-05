@@ -9,6 +9,24 @@ export interface FakeInstallation {
   login: string;
   type: string;
   repositories: { owner: string; name: string; defaultBranch?: string }[];
+  /** The pull requests the repository list and detail reads answer with. */
+  pullRequests?: FakePullRequest[];
+}
+
+export interface FakePullRequest {
+  number: number;
+  title: string;
+  state?: 'open' | 'closed';
+  draft?: boolean;
+  mergedAt?: string | null;
+  authorLogin?: string;
+  branch?: string;
+  headSha?: string;
+  body?: string;
+  baseBranch?: string;
+  checks?: { name: string; status?: string; conclusion?: string }[];
+  comments?: { authorLogin?: string; body: string; createdAt?: string }[];
+  files?: { filename: string; status?: string; patch?: string }[];
 }
 
 export interface FakeGitHub {
@@ -20,6 +38,8 @@ export interface FakeGitHub {
   repositoryPages: number[];
   /** The bearer each repositories request carried, in call order. */
   repositoryTokens: string[];
+  /** The bearer each pull-request read carried, in call order. */
+  pullRequestTokens: string[];
   stop(): Promise<void>;
 }
 
@@ -38,6 +58,7 @@ export async function startFakeGitHub(installation: FakeInstallation): Promise<F
     tokens: [],
     repositoryPages: [],
     repositoryTokens: [],
+    pullRequestTokens: [],
     stop: async () => {},
   };
 
@@ -53,9 +74,7 @@ export async function startFakeGitHub(installation: FakeInstallation): Promise<F
     // /app/installations/<id>/..., and /installation/...
     const parts = url.pathname.split('/').filter((each) => each !== '');
     const owned =
-      parts[0] === 'app' &&
-      parts[1] === 'installations' &&
-      Number(parts[2]) === installation.id;
+      parts[0] === 'app' && parts[1] === 'installations' && Number(parts[2]) === installation.id;
 
     if (request.method === 'POST' && owned && parts[3] === 'access_tokens') {
       response.writeHead(201, { 'content-type': 'application/json' }).end(
@@ -68,9 +87,9 @@ export async function startFakeGitHub(installation: FakeInstallation): Promise<F
     }
 
     if (owned && parts[3] === undefined) {
-      response.writeHead(200, { 'content-type': 'application/json' }).end(
-        JSON.stringify({ account: { login: installation.login, type: installation.type } }),
-      );
+      response
+        .writeHead(200, { 'content-type': 'application/json' })
+        .end(JSON.stringify({ account: { login: installation.login, type: installation.type } }));
       return;
     }
 
@@ -109,6 +128,99 @@ export async function startFakeGitHub(installation: FakeInstallation): Promise<F
       return;
     }
 
+    // A repository read: the pull requests, one of them, its comments, its files,
+    // and the checks a commit ran. Only the installation token may read these, so
+    // a read authenticated as the App itself fails here as it does on GitHub.
+    if (parts[0] === 'repos' && parts.length >= 4) {
+      fake.pullRequestTokens.push(bearer);
+      if (bearer !== INSTALLATION_TOKEN) {
+        response.writeHead(401).end();
+        return;
+      }
+
+      const owner = parts[1] ?? '';
+      const name = parts[2] ?? '';
+      const known = installation.repositories.some(
+        (each) => each.owner === owner && each.name === name,
+      );
+      if (!known) {
+        response.writeHead(404).end();
+        return;
+      }
+
+      const held = installation.pullRequests ?? [];
+      const asItem = (pr: FakePullRequest): Record<string, unknown> => ({
+        number: pr.number,
+        title: pr.title,
+        state: pr.state ?? 'open',
+        draft: pr.draft ?? false,
+        merged_at: pr.mergedAt ?? null,
+        updated_at: '2026-01-02T00:00:00Z',
+        html_url: `https://github.com/${owner}/${name}/pull/${pr.number}`,
+        user: { login: pr.authorLogin ?? 'ada' },
+        head: { ref: pr.branch ?? `fnd-${pr.number}`, sha: pr.headSha ?? 'abc123' },
+        base: { ref: pr.baseBranch ?? 'main' },
+        body: pr.body ?? '',
+      });
+      const jsonReply = (body: unknown): void => {
+        response.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(body));
+      };
+
+      const kind = parts[3];
+      if (kind === 'pulls' && parts.length === 4) {
+        jsonReply(held.map(asItem));
+        return;
+      }
+      if (kind === 'pulls' && parts.length >= 5) {
+        const pr = held.find((each) => each.number === Number(parts[4]));
+        if (pr === undefined) {
+          response.writeHead(404).end();
+          return;
+        }
+        if (parts.length === 5) {
+          jsonReply(asItem(pr));
+          return;
+        }
+        if (parts.length === 6 && parts[5] === 'comments') {
+          jsonReply([]);
+          return;
+        }
+        if (parts.length === 6 && parts[5] === 'files') {
+          jsonReply(
+            (pr.files ?? []).map((file) => ({
+              filename: file.filename,
+              status: file.status ?? 'modified',
+              patch: file.patch,
+            })),
+          );
+          return;
+        }
+      }
+      if (kind === 'issues' && parts.length === 6 && parts[5] === 'comments') {
+        const pr = held.find((each) => each.number === Number(parts[4]));
+        jsonReply(
+          (pr?.comments ?? []).map((comment) => ({
+            body: comment.body,
+            created_at: comment.createdAt ?? '2026-01-02T00:00:00Z',
+            user: { login: comment.authorLogin ?? 'ada' },
+          })),
+        );
+        return;
+      }
+      if (kind === 'commits' && parts.length === 6 && parts[5] === 'check-runs') {
+        const sha = parts[4] ?? '';
+        const pr = held.find((each) => (each.headSha ?? 'abc123') === sha);
+        jsonReply({
+          check_runs: (pr?.checks ?? []).map((check) => ({
+            name: check.name,
+            status: check.status ?? 'completed',
+            conclusion: check.conclusion ?? 'success',
+          })),
+        });
+        return;
+      }
+    }
+
     response.writeHead(404).end();
   });
 
@@ -126,4 +238,3 @@ export async function startFakeGitHub(installation: FakeInstallation): Promise<F
 
   return fake;
 }
-

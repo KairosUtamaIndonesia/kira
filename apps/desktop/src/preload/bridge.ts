@@ -734,6 +734,8 @@ export const TRACKER_CHANNELS = {
   editComment: 'tracker:comment-edit',
   deleteComment: 'tracker:comment-delete',
   pullRequests: 'tracker:pull-requests',
+  checkoutPullRequests: 'tracker:checkout-pull-requests',
+  checkoutPullRequest: 'tracker:checkout-pull-request',
   repositories: 'tracker:repositories',
   attachRepository: 'tracker:repository-attach',
   detachRepository: 'tracker:repository-detach',
@@ -1017,6 +1019,54 @@ export interface TicketPullRequest {
   checksState: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** A repository's pull request, read live from its Git host. */
+export interface LivePullRequest {
+  number: number;
+  title: string;
+  /** open, draft, merged or closed, as the host states it. */
+  state: string;
+  url: string;
+  branch: string | null;
+  authorLogin: string | null;
+  checksState: string | null;
+  updatedAt: string | null;
+}
+
+/** A check a pull request's commits ran. */
+export interface LiveCheck {
+  context: string;
+  state: string;
+}
+
+/** A comment on a pull request, from a person or a review. */
+export interface LiveComment {
+  authorLogin: string | null;
+  body: string;
+  createdAt: string | null;
+}
+
+/** One file a pull request changed, with the patch to read it. */
+export interface LiveFile {
+  path: string;
+  status: string;
+  patch: string | null;
+}
+
+/** One repository pull request opened, with everything the view reads about it. */
+export interface LivePullRequestDetail {
+  number: number;
+  title: string;
+  body: string;
+  authorLogin: string | null;
+  state: string;
+  url: string;
+  base: string | null;
+  head: string | null;
+  checks: LiveCheck[];
+  comments: LiveComment[];
+  files: LiveFile[];
 }
 
 /** A Git host this server can watch. */
@@ -1683,6 +1733,14 @@ export interface KiraBridge {
   ): Promise<Result<TicketComment>>;
   /** The pull requests reviewing a ticket. */
   loadPullRequests(ticketId: string): Promise<Result<TicketPullRequest[]>>;
+  /**
+   * The chat's checkout repository's pull requests, read live from its connected
+   * Git host. A checkout with no remote, a repository whose host is not connected,
+   * and a host with no adapter each come back as a sentence.
+   */
+  loadCheckoutPullRequests(chatId: string): Promise<Result<LivePullRequest[]>>;
+  /** One pull request opened: its body, checks, comments and changed files. */
+  loadCheckoutPullRequest(chatId: string, number: number): Promise<Result<LivePullRequestDetail>>;
   /** Change the words of a comment you wrote. */
   editComment(commentId: string, body: string): Promise<Result<TicketComment>>;
   /** Remove a comment you wrote, keeping any replies it has. */

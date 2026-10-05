@@ -19,7 +19,17 @@ import { Tab, TabList } from '@astryxdesign/core/TabList';
 import { Text } from '@astryxdesign/core/Text';
 import { VStack } from '@astryxdesign/core/VStack';
 import { Tooltip } from '@astryxdesign/core/Tooltip';
-import { Bot, Brain, FileText, FolderTree, GitBranch, Globe, ListChecks, X } from 'lucide-react';
+import {
+  Bot,
+  Brain,
+  FileText,
+  FolderTree,
+  GitBranch,
+  GitPullRequest,
+  Globe,
+  ListChecks,
+  X,
+} from 'lucide-react';
 import * as stylex from '@stylexjs/stylex';
 import { useRef, useState, type KeyboardEvent } from 'react';
 import type {
@@ -51,6 +61,7 @@ import {
   BROWSER,
   CHANGES,
   CONTEXT,
+  PULL_REQUESTS,
   SPEC,
   TICKETS,
   type Reading,
@@ -66,6 +77,7 @@ import {
 } from './workbenchTabs';
 import { WorkspaceTab } from './workspaceTab';
 import { ChangesTab } from './changesTab';
+import { PullRequestsTab } from './pullRequestsTab';
 import { SubagentsPrototype } from './subagentsPrototype';
 import { fileKindOf } from './filePreview';
 import { copy } from './workCopy.ts';
@@ -153,6 +165,7 @@ export function Workbench({
   // away comes back showing what is there now rather than what was there then.
   const [workspaceVisits, setWorkspaceVisits] = useState(0);
   const [changesVisits, setChangesVisits] = useState(0);
+  const [pullRequestsVisits, setPullRequestsVisits] = useState(0);
   const [browsers, setBrowsers] = useState<BrowsersByChat>(() => {
     try {
       const saved = localStorage.getItem(BROWSER_STORAGE_KEY);
@@ -186,6 +199,7 @@ export function Workbench({
     ...(subagents.length > 0 ? [{ value: AGENTS, label: 'Agents', icon: Bot }] : []),
     { value: WORKSPACE, label: 'Workspace', icon: FolderTree },
     { value: CHANGES, label: 'Changes', icon: GitBranch },
+    { value: PULL_REQUESTS, label: 'Pull requests', icon: GitPullRequest },
     { value: BROWSER, label: 'Browser', icon: Globe },
   ];
 
@@ -253,6 +267,7 @@ export function Workbench({
     } else if (value !== AGENTS) onSelectSubagent(null);
     if (value === WORKSPACE) setWorkspaceVisits((visits) => visits + 1);
     if (value === CHANGES) setChangesVisits((visits) => visits + 1);
+    if (value === PULL_REQUESTS) setPullRequestsVisits((visits) => visits + 1);
     if (value === BROWSER) {
       const browserId = browsersOf(browsers, chatId).activeId;
       if (browserId) void window.kira.activateBrowser(chatId, browserId);
@@ -495,6 +510,15 @@ export function Workbench({
             showing={showing === CHANGES && !region.isCollapsed}
             onChanged={() => setWorkspaceVisits((visits) => visits + 1)}
           />
+        </div>
+        <div
+          id={panelOf(PULL_REQUESTS)}
+          role="tabpanel"
+          aria-label="Pull requests"
+          className="workbench-tab"
+          hidden={showing !== PULL_REQUESTS}
+        >
+          <PullRequestsTab key={chatId} chatId={chatId} visits={pullRequestsVisits} />
         </div>
         <div
           id={panelOf(BROWSER)}

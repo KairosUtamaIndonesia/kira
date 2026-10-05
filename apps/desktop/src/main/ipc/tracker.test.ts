@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import {
   TICKET_KINDS,
+  type LivePullRequestDetail,
   type ProjectSkill,
   type Repository,
   type Ticket,
@@ -96,6 +97,20 @@ const repository: Repository = {
   defaultBranch: 'main',
 };
 
+const liveDetail: LivePullRequestDetail = {
+  number: 12,
+  title: 'Fix it',
+  body: '',
+  authorLogin: null,
+  state: 'open',
+  url: 'https://github.com/acme/api/pull/12',
+  base: 'main',
+  head: 'fnd-12',
+  checks: [],
+  comments: [],
+  files: [],
+};
+
 const skill: ProjectSkill = {
   id: 'skill-1',
   projectId: 'kira-project',
@@ -155,6 +170,14 @@ function deps(calls: string[], overrides: Partial<TrackerDeps> = {}): TrackerDep
     pullRequests: async (ticketId) => {
       calls.push(`pullRequests ${ticketId}`);
       return [];
+    },
+    checkoutPullRequests: async (chatId) => {
+      calls.push(`checkoutPullRequests ${chatId}`);
+      return [];
+    },
+    checkoutPullRequest: async (chatId, number) => {
+      calls.push(`checkoutPullRequest ${chatId} ${number}`);
+      return liveDetail;
     },
     attachRepository: async (projectId, input) => {
       calls.push(`attachRepository ${projectId} ${input.owner}/${input.name}`);
@@ -628,10 +651,13 @@ test('skills read, write, change and remove, with the shape checked', async () =
     ok: false,
     error: 'Skills are read for a project.',
   });
-  assert.deepEqual(await handlers.writeSkill('kira-project', { name: '', description: 'x', body: '' }), {
-    ok: false,
-    error: 'That is not a skill to write.',
-  });
+  assert.deepEqual(
+    await handlers.writeSkill('kira-project', { name: '', description: 'x', body: '' }),
+    {
+      ok: false,
+      error: 'That is not a skill to write.',
+    },
+  );
   // A skill with no description does not load in pi at all, so it is not a skill
   // to write here either.
   assert.deepEqual(
@@ -660,7 +686,6 @@ test('skills read, write, change and remove, with the shape checked', async () =
     error: 'A skill needs an id to be removed.',
   });
 });
-
 
 for (const testCase of CASES) {
   test(testCase.name, async () => {

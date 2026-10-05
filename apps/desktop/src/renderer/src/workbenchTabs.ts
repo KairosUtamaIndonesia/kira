@@ -19,6 +19,8 @@ export const CONTEXT = 'context';
 export const WORKSPACE = 'workspace';
 /** The chat's checkout: what changed, its diff, staging, history and sync. */
 export const CHANGES = 'changes';
+/** The checkout repository's pull requests, read live from its Git host. */
+export const PULL_REQUESTS = 'pull-requests';
 /** The agreed spec, rendered as Markdown rather than a plain-text draft. */
 export const SPEC = 'spec';
 /** Tickets under the agreed spec, with their server-derived bands. */

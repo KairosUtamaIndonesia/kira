@@ -18,6 +18,8 @@ import {
   TICKET_STATUSES,
   TRACKER_CHANNELS,
   type GlossaryEntry,
+  type LivePullRequest,
+  type LivePullRequestDetail,
   type ProjectSkill,
   type ProjectSkillFile,
   type Repository,
@@ -68,6 +70,10 @@ export interface TrackerDeps {
   deleteComment(commentId: string): Promise<null>;
   /** A ticket's pull requests, newest first. */
   pullRequests(ticketId: string): Promise<TicketPullRequest[]>;
+  /** The chat's checkout repository's pull requests, read live from its host. */
+  checkoutPullRequests(chatId: string): Promise<LivePullRequest[]>;
+  /** One pull request of the chat's checkout repository, opened for reading. */
+  checkoutPullRequest(chatId: string, number: number): Promise<LivePullRequestDetail>;
   /** A project's repositories. */
   repositories(projectId: string): Promise<Repository[]>;
   /** Attach a repository to a project. */
@@ -105,6 +111,8 @@ export interface TrackerHandlers {
     authorKind: unknown,
   ): Promise<Result<TicketComment>>;
   pullRequests(ticketId: unknown): Promise<Result<TicketPullRequest[]>>;
+  checkoutPullRequests(chatId: unknown): Promise<Result<LivePullRequest[]>>;
+  checkoutPullRequest(chatId: unknown, number: unknown): Promise<Result<LivePullRequestDetail>>;
   editComment(commentId: unknown, body: unknown): Promise<Result<TicketComment>>;
   deleteComment(commentId: unknown): Promise<Result<null>>;
   repositories(projectId: unknown): Promise<Result<Repository[]>>;
@@ -112,11 +120,7 @@ export interface TrackerHandlers {
   detachRepository(projectId: unknown, id: unknown): Promise<Result<null>>;
   skills(projectId: unknown): Promise<Result<ProjectSkill[]>>;
   writeSkill(projectId: unknown, draft: unknown): Promise<Result<ProjectSkill>>;
-  changeSkill(
-    projectId: unknown,
-    skillId: unknown,
-    change: unknown,
-  ): Promise<Result<ProjectSkill>>;
+  changeSkill(projectId: unknown, skillId: unknown, change: unknown): Promise<Result<ProjectSkill>>;
   removeSkill(projectId: unknown, skillId: unknown): Promise<Result<null>>;
   undoGlossary(
     workspaceId: unknown,
@@ -142,6 +146,8 @@ export function trackerHandlers({
   editComment,
   deleteComment,
   pullRequests,
+  checkoutPullRequests,
+  checkoutPullRequest,
   repositories,
   attachRepository,
   detachRepository,
@@ -282,6 +288,25 @@ export function trackerHandlers({
       }
 
       return envelope(() => pullRequests(ticketId));
+    },
+
+    checkoutPullRequests: (chatId) => {
+      if (!isId(chatId)) {
+        return Promise.resolve({ ok: false, error: 'Pull requests are read for a chat.' });
+      }
+
+      return envelope(() => checkoutPullRequests(chatId));
+    },
+
+    checkoutPullRequest: (chatId, number) => {
+      if (!isId(chatId)) {
+        return Promise.resolve({ ok: false, error: 'A pull request is read for a chat.' });
+      }
+      if (typeof number !== 'number' || !Number.isInteger(number) || number < 1) {
+        return Promise.resolve({ ok: false, error: 'A pull request is named by its number.' });
+      }
+
+      return envelope(() => checkoutPullRequest(chatId, number));
     },
 
     attachRepository: (projectId, input) => {
