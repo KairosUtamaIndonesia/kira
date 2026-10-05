@@ -1,6 +1,10 @@
 import { createHmac, generateKeyPairSync } from 'node:crypto';
 import { afterAll, afterEach, describe, expect, setSystemTime, test } from 'bun:test';
-import { type FakeGitHub, startFakeGitHub } from './test-support/fake-github';
+import {
+  type FakeGitHub,
+  INSTALLATION_TOKEN,
+  startFakeGitHub,
+} from './test-support/fake-github';
 import { boot, closeDatabases, issue, send, user } from './test-support/server';
 
 afterEach(closeDatabases);
@@ -622,6 +626,8 @@ describe('the GitHub App', () => {
       ]);
       // The App signed and sent its own JWT rather than an installation token.
       expect(github.tokens[0]?.split('.')).toHaveLength(3);
+      // The list itself was read with the installation token that JWT minted.
+      expect(github.repositoryTokens).toEqual([INSTALLATION_TOKEN]);
     } finally {
       await github.stop();
     }

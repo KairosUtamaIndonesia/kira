@@ -1345,26 +1345,49 @@ async function isAdmin(auth: Auth, userId: string): Promise<boolean> {
 }
 
 /**
- * A request to GitHub's App API, authenticated as the App itself, or null when it
- * is refused or unreachable. These calls take the App's own JWT; nothing here
- * needs an installation token. The whole response comes back so a caller can read
- * its headers, which is how the next page of a list is found.
+ * A request to GitHub signed with `bearer`, or null when it is refused or
+ * unreachable. The whole response comes back so a caller can read its headers,
+ * which is how the next page of a list is found.
  */
-async function appRequest(config: Config, url: string): Promise<Response | null> {
+async function githubRequest(
+  bearer: string,
+  url: string,
+  init: RequestInit = {},
+): Promise<Response | null> {
+  try {
+    const response = await fetch(url, {
+      ...init,
+      headers: {
+        authorization: bearer,
+        accept: 'application/vnd.github+json',
+        'user-agent': 'kira',
+        ...init.headers,
+      },
+    });
+
+    return response.ok ? response : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A request to GitHub as the App itself, or null when it is refused or
+ * unreachable. These calls take the App's own JWT, which is what mints an
+ * installation token.
+ */
+async function appRequest(
+  config: Config,
+  url: string,
+  init: RequestInit = {},
+): Promise<Response | null> {
   const { appId, appPrivateKey } = config.git;
   if (appId === null || appPrivateKey === null) return null;
 
   try {
     const jwt = signAppJwt(appId, appPrivateKey.replace(/\\n/g, '\n'));
-    const response = await fetch(url, {
-      headers: {
-        authorization: `Bearer ${jwt}`,
-        accept: 'application/vnd.github+json',
-        'user-agent': 'kira',
-      },
-    });
 
-    return response.ok ? response : null;
+    return await githubRequest(`Bearer ${jwt}`, url, init);
   } catch {
     return null;
   }
@@ -1429,6 +1452,25 @@ function nextPage(link: string | null): string | null {
 }
 
 /**
+ * An installation access token, minted from the App's JWT.
+ *
+ * Listing an installation's own repositories takes this token: GitHub answers the
+ * App-authenticated path with a 404, so the JWT alone can never read the list.
+ */
+async function installationToken(config: Config, installationId: number): Promise<string | null> {
+  const response = await appRequest(
+    config,
+    `${config.git.apiBaseUrl}/app/installations/${installationId}/access_tokens`,
+    { method: 'POST' },
+  );
+  if (response === null) return null;
+
+  const body = (await readJson(response)) as { token?: unknown } | null;
+
+  return typeof body?.token === 'string' && body.token !== '' ? body.token : null;
+}
+
+/**
  * The repositories an installation can see, or null when GitHub will not say.
  *
  * GitHub pages this list, so every page is walked and the answer is the whole
@@ -1438,12 +1480,14 @@ async function githubInstallationRepositories(
   config: Config,
   installationId: number,
 ): Promise<{ owner: string; name: string; defaultBranch: string }[] | null> {
+  const token = await installationToken(config, installationId);
+  if (token === null) return null;
+
   const found: { owner: string; name: string; defaultBranch: string }[] = [];
-  let url: string | null =
-    `${config.git.apiBaseUrl}/app/installations/${installationId}/repositories?per_page=100`;
+  let url: string | null = `${config.git.apiBaseUrl}/installation/repositories?per_page=100`;
 
   for (let page = 0; url !== null && page < INSTALLATION_REPOSITORIES_MAX_PAGES; page += 1) {
-    const response = await appRequest(config, url);
+    const response = await githubRequest(`Bearer ${token}`, url);
     if (response === null) return null;
 
     const body = (await readJson(response)) as {

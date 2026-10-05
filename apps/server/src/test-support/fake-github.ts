@@ -1,5 +1,8 @@
 import { createServer } from 'node:http';
 
+/** The installation access token every mint hands back, so a test can name it. */
+export const INSTALLATION_TOKEN = 'ghs_fake_installation_token';
+
 /** What the stand-in GitHub will answer about one installation. */
 export interface FakeInstallation {
   id: number;
@@ -15,22 +18,26 @@ export interface FakeGitHub {
   tokens: string[];
   /** The `page` each repositories request asked for, in call order. */
   repositoryPages: number[];
+  /** The bearer each repositories request carried, in call order. */
+  repositoryTokens: string[];
   stop(): Promise<void>;
 }
 
 /**
- * A stand-in for the parts of GitHub's App API Kira calls: the installation
- * itself, and the repositories that installation can see.
+ * A stand-in for the parts of GitHub's API Kira calls: the installation itself,
+ * the access token minted from it, and the repositories that token can read.
  *
- * It records the App JWT rather than verifying it — real GitHub is what checks
- * the signature, and the point of the stand-in is that Kira signs and sends one
- * at all, and reads what comes back.
+ * It mirrors the real routes, including the one Kira must not use: the
+ * App-authenticated repositories path is a 404 here, as it is on GitHub, so a
+ * regression to it fails rather than passing on a stand-in's agreement. The JWT
+ * is recorded rather than verified — real GitHub is what checks the signature.
  */
 export async function startFakeGitHub(installation: FakeInstallation): Promise<FakeGitHub> {
   const fake: FakeGitHub = {
     apiBaseUrl: '',
     tokens: [],
     repositoryPages: [],
+    repositoryTokens: [],
     stop: async () => {},
   };
 
@@ -38,24 +45,42 @@ export async function startFakeGitHub(installation: FakeInstallation): Promise<F
     // Requests here carry no body this stand-in needs; draining keeps the
     // connection from stalling.
     request.resume();
-    const authorization = request.headers.authorization ?? '';
-    if (authorization.startsWith('Bearer ')) {
-      fake.tokens.push(authorization.slice('Bearer '.length));
-    }
+    const bearer = (request.headers.authorization ?? '').replace(/^Bearer /, '');
+    // Only the App's own JWT is a three-part token; an installation token is not.
+    if (bearer.split('.').length === 3) fake.tokens.push(bearer);
 
     const url = new URL(request.url ?? '/', 'http://fake');
-    // /app/installations/<id> and /app/installations/<id>/repositories
+    // /app/installations/<id>/..., and /installation/...
     const parts = url.pathname.split('/').filter((each) => each !== '');
-    if (
-      parts[0] !== 'app' ||
-      parts[1] !== 'installations' ||
-      Number(parts[2]) !== installation.id
-    ) {
-      response.writeHead(404).end();
+    const owned =
+      parts[0] === 'app' &&
+      parts[1] === 'installations' &&
+      Number(parts[2]) === installation.id;
+
+    if (request.method === 'POST' && owned && parts[3] === 'access_tokens') {
+      response.writeHead(201, { 'content-type': 'application/json' }).end(
+        JSON.stringify({
+          token: INSTALLATION_TOKEN,
+          expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+        }),
+      );
       return;
     }
 
-    if (parts[3] === 'repositories') {
+    if (owned && parts[3] === undefined) {
+      response.writeHead(200, { 'content-type': 'application/json' }).end(
+        JSON.stringify({ account: { login: installation.login, type: installation.type } }),
+      );
+      return;
+    }
+
+    if (parts[0] === 'installation' && parts[1] === 'repositories') {
+      fake.repositoryTokens.push(bearer);
+      if (bearer !== INSTALLATION_TOKEN) {
+        response.writeHead(401).end();
+        return;
+      }
+
       // GitHub's own paging: `per_page` per page, and a `Link` to the next one
       // while any repository is left over.
       const page = Math.max(1, Number(url.searchParams.get('page') ?? '1'));
@@ -84,15 +109,6 @@ export async function startFakeGitHub(installation: FakeInstallation): Promise<F
       return;
     }
 
-    if (parts[3] === undefined) {
-      response.writeHead(200, { 'content-type': 'application/json' }).end(
-        JSON.stringify({
-          account: { login: installation.login, type: installation.type },
-        }),
-      );
-      return;
-    }
-
     response.writeHead(404).end();
   });
 
@@ -110,3 +126,4 @@ export async function startFakeGitHub(installation: FakeInstallation): Promise<F
 
   return fake;
 }
+
