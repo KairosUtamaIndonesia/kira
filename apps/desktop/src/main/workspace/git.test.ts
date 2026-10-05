@@ -392,26 +392,22 @@ test('providerOf names the hosts Kira can watch by itself, and nothing else', ()
   assert.equal(providerOf('git.acme.dev'), null);
 });
 
-test(
-  'remoteOf reads the origin a checkout was cloned from',
-  { skip: !gitRuns() },
-  async () => {
-    const root = tempDir('kira-remote-');
-    execFileSync('git', ['-C', root, 'init'], { stdio: 'ignore' });
-    execFileSync(
-      'git',
-      ['-C', root, 'remote', 'add', 'origin', 'git@github.com:KairosUtamaIndonesia/kira.git'],
-      { stdio: 'ignore' },
-    );
+test('remoteOf reads the origin a checkout was cloned from', { skip: !gitRuns() }, async () => {
+  const root = tempDir('kira-remote-');
+  execFileSync('git', ['-C', root, 'init'], { stdio: 'ignore' });
+  execFileSync(
+    'git',
+    ['-C', root, 'remote', 'add', 'origin', 'git@github.com:KairosUtamaIndonesia/kira.git'],
+    { stdio: 'ignore' },
+  );
 
-    assert.deepEqual(await remoteOf(root), {
-      host: 'github.com',
-      owner: 'KairosUtamaIndonesia',
-      name: 'kira',
-      provider: 'github',
-    });
-  },
-);
+  assert.deepEqual(await remoteOf(root), {
+    host: 'github.com',
+    owner: 'KairosUtamaIndonesia',
+    name: 'kira',
+    provider: 'github',
+  });
+});
 
 test(
   'remoteOf answers nothing for no remote, no checkout, or an unreadable URL',

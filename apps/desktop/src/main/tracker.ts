@@ -176,7 +176,11 @@ export interface TrackerWire {
   /** Take a repository off a project. */
   detachRepository(key: string, projectId: string, id: string): Promise<TrackerAnswer<true>>;
   /** Write a skill the project works by, refused when its name is taken. */
-  writeSkill?(key: string, projectId: string, draft: SkillDraft): Promise<TrackerAnswer<ProjectSkill>>;
+  writeSkill?(
+    key: string,
+    projectId: string,
+    draft: SkillDraft,
+  ): Promise<TrackerAnswer<ProjectSkill>>;
   /** Change a skill, or the files that travel with it. */
   changeSkill?(
     key: string,

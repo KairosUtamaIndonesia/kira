@@ -14,12 +14,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import type {
-  AuthState,
-  ChatEvent,
-  CloneRequest,
-  WorkspaceSummary,
-} from '../preload/bridge.ts';
+import type { AuthState, ChatEvent, CloneRequest, WorkspaceSummary } from '../preload/bridge.ts';
 import { kiraFor } from './auth/kira.ts';
 import { keyStore, type SecretKeeper } from './auth/keys.ts';
 import { handoffToken, signIn, type SignIn } from './auth/signIn.ts';

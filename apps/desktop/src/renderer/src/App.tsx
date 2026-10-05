@@ -93,7 +93,6 @@ import type {
   Usage,
   QuestionnaireRequest,
   QuestionnaireResult,
-  CloneRequest,
 } from '../../preload/bridge';
 import { messagesShowingActions } from './lineActions';
 import { CompactionBoundary, type Boundary } from './compactionBoundary';
@@ -884,35 +883,16 @@ export default function App() {
   }
 
   /**
-   * Choose a folder to work in, and remember it.
- The folder is chosen in the
-   * main process — only it can open a picker — and a picker closed without a
-   * choice answers nothing at all, which is not a failure to report.
+   * Take a folder the new-workspace dialog just made to where its project is chosen.
    *
-   * A folder nobody has joined to a project is taken straight to the work, where
-   * the projects it could join are offered: opening a folder is what asks the
-   * question, and leaving it to be found later means a folder that works nothing
-   * and says nothing about it.
+   * The work itself — picking the folder, or cloning a repository into one — happens
+   * in the dialog, which stays open and says what it is doing while it does. This is
+   * only what follows: a folder nobody has joined to a project is taken straight to
+   * the work, where the projects it could join are offered, because opening a folder
+   * is what asks the question.
    */
-  async function addWorkspace(): Promise<void> {
+  function startedWorkspace(added: WorkspaceSummary): void {
     setStartingWorkspace(false);
-    const added = await run(() => window.kira.addWorkspace());
-    if (added === null) return;
-
-    setWorkWorkspaceId(added.id);
-    if (added.projectId === null) showSurface('work');
-  }
-
-  /**
-   * Clone a repository the person chose, and take the new folder to Work for its
-   * project exactly as an opened folder goes. A refusal — git cannot read the
-   * repository — is shown, and nothing is remembered.
-   */
-  async function cloneWorkspace(request: CloneRequest): Promise<void> {
-    setStartingWorkspace(false);
-    const added = await run(() => window.kira.cloneWorkspace(request));
-    if (added === null) return;
-
     setWorkWorkspaceId(added.id);
     if (added.projectId === null) showSurface('work');
   }
@@ -1517,8 +1497,7 @@ export default function App() {
 
       {startingWorkspace && (
         <NewWorkspaceDialog
-          onOpenFolder={() => void addWorkspace()}
-          onClone={(request) => void cloneWorkspace(request)}
+          onStarted={startedWorkspace}
           onClose={() => setStartingWorkspace(false)}
         />
       )}
@@ -1796,33 +1775,33 @@ function ChatPane({
 
         <ThreadPrimitive.ViewportFooter className="thread-footer">
           <Composer
-              chatId={chatId}
-              commands={commands}
-              shellRuns={shellRuns}
-              onOpenMagicPrompts={onOpenMagicPrompts}
-              placeholder="@ for files · / for commands and skills · ! for a local command · # for Magic Prompts"
-              error={error}
-              usage={usage}
-              chatUsage={chatUsage}
-              models={models}
-              modelId={modelId}
-              onChoose={(chosen) => void onChooseModel(chosen)}
-              mode={mode}
-              onChooseMode={(chosen) => void onChooseChatMode(chosen)}
-              queued={queued}
-              restored={restored}
-              onTakeBack={onTakeBack}
-              onRestored={onRestored}
-              browserElements={browserElements}
-              onBrowserElementsChange={onBrowserElementsChange}
-              attachedTicketIds={attachedTicketIds}
-              workTicketDetails={workTicketDetails}
-              linkableWorkTickets={linkableWorkTickets}
-              onOpenWorkTicket={onOpenWorkTicket}
-              onLinkWorkTicket={onLinkWorkTicket}
-              onRemoveWorkTicket={onRemoveWorkTicket}
-              subagents={subagents}
-              onSelectSubagent={onSelectSubagent}
+            chatId={chatId}
+            commands={commands}
+            shellRuns={shellRuns}
+            onOpenMagicPrompts={onOpenMagicPrompts}
+            placeholder="@ for files · / for commands and skills · ! for a local command · # for Magic Prompts"
+            error={error}
+            usage={usage}
+            chatUsage={chatUsage}
+            models={models}
+            modelId={modelId}
+            onChoose={(chosen) => void onChooseModel(chosen)}
+            mode={mode}
+            onChooseMode={(chosen) => void onChooseChatMode(chosen)}
+            queued={queued}
+            restored={restored}
+            onTakeBack={onTakeBack}
+            onRestored={onRestored}
+            browserElements={browserElements}
+            onBrowserElementsChange={onBrowserElementsChange}
+            attachedTicketIds={attachedTicketIds}
+            workTicketDetails={workTicketDetails}
+            linkableWorkTickets={linkableWorkTickets}
+            onOpenWorkTicket={onOpenWorkTicket}
+            onLinkWorkTicket={onLinkWorkTicket}
+            onRemoveWorkTicket={onRemoveWorkTicket}
+            subagents={subagents}
+            onSelectSubagent={onSelectSubagent}
           />
         </ThreadPrimitive.ViewportFooter>
       </ThreadPrimitive.Root>
@@ -1927,18 +1906,20 @@ function Line({
     <MessagePrimitive.Root className="line" data-sender={isKira ? 'assistant' : 'user'}>
       {boundariesIn(parts)}
 
-      {said.length > 0 && (
-        isLocalCommand ? (
+      {said.length > 0 &&
+        (isLocalCommand ? (
           <MessageBody parts={said} isKira={false} isWorking={isWorking} />
         ) : (
           <ChatMessage sender={isKira ? 'assistant' : 'user'}>
             {/* Kira's answer is flat and fills the reading column; a question keeps its bubble. */}
-            <ChatMessageBubble variant={isKira ? 'ghost' : 'filled'} width={isKira ? '100%' : undefined}>
+            <ChatMessageBubble
+              variant={isKira ? 'ghost' : 'filled'}
+              width={isKira ? '100%' : undefined}
+            >
               <MessageBody parts={said} isKira={isKira} isWorking={isWorking} />
             </ChatMessageBubble>
           </ChatMessage>
-        )
-      )}
+        ))}
 
       {showsActions && (
         <div className="line-actions">
@@ -2162,10 +2143,7 @@ function MessageBody({
         ) : part.type === 'skill' ? (
           <SkillNote key={index} change={part.change} />
         ) : part.type === 'shell' ? (
-          <ShellCommandTranscript
-            key={part.run.id}
-            run={part.run}
-          />
+          <ShellCommandTranscript key={part.run.id} run={part.run} />
         ) : (
           <Work key={index} part={part} isWorking={isWorking} />
         ),
@@ -2174,30 +2152,30 @@ function MessageBody({
   );
 }
 
-function ShellCommandTranscript({
-  run,
-}: {
-  run: ShellCommandRun;
-}) {
-  const status = run.status === 'running'
-    ? 'Running'
-    : run.status === 'cancelled'
-    ? 'Cancelled'
-    : run.status === 'error'
-      ? `Failed${run.exitCode === null ? '' : ` · exit code ${run.exitCode}`}`
-      : `Finished${run.exitCode === null ? '' : ` · exit code ${run.exitCode}`}`;
+function ShellCommandTranscript({ run }: { run: ShellCommandRun }) {
+  const status =
+    run.status === 'running'
+      ? 'Running'
+      : run.status === 'cancelled'
+        ? 'Cancelled'
+        : run.status === 'error'
+          ? `Failed${run.exitCode === null ? '' : ` · exit code ${run.exitCode}`}`
+          : `Finished${run.exitCode === null ? '' : ` · exit code ${run.exitCode}`}`;
 
   return (
     <details {...stylex.props(shellStyles.inlineResult)}>
       <summary {...stylex.props(shellStyles.inlineSummary)}>
         <code>! {run.command}</code>
         <Text color="secondary" size="sm">
-          {status}{run.truncated ? ' · output truncated' : ''}
+          {status}
+          {run.truncated ? ' · output truncated' : ''}
         </Text>
       </summary>
       <pre {...stylex.props(shellStyles.inlineOutput)}>{run.output || 'No output'}</pre>
       {run.fullOutputPath === null ? null : (
-        <Text color="secondary" size="sm">Full output: {run.fullOutputPath}</Text>
+        <Text color="secondary" size="sm">
+          Full output: {run.fullOutputPath}
+        </Text>
       )}
     </details>
   );
