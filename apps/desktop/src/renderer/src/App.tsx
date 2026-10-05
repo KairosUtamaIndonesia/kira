@@ -2194,7 +2194,9 @@ function MessageBody({
         part.type === 'text' ? (
           // A question is words, and reads as words; only Kira's answer is
           // markdown, because that is what the model writes.
-          <Fragment key={index}>{isKira ? <Markdown>{part.text}</Markdown> : part.text}</Fragment>
+          <Fragment key={index}>
+            {isKira ? <Markdown autolink="gfm">{part.text}</Markdown> : part.text}
+          </Fragment>
         ) : part.type === 'glossary' ? (
           <GlossaryNote key={index} change={part.change} />
         ) : part.type === 'skill' ? (
