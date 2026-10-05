@@ -1486,6 +1486,7 @@ export default function App() {
                 }
                 onSelectSubagent={selectSubagent}
                 onControlSubagent={controlSubagent}
+                models={models}
                 shaping={shaping}
                 ticketQueue={specQueueChatId === currentId ? specQueue : null}
                 onDecide={decideProposal}

@@ -25,6 +25,7 @@ import { useRef, useState, type KeyboardEvent } from 'react';
 import type {
   ChatConclusion,
   ChatMemory,
+  ModelOption,
   SubagentControl,
   SubagentSummary,
   ChatTranscript,
@@ -113,6 +114,7 @@ export function Workbench({
   selectedSubagentTranscript,
   onSelectSubagent,
   onControlSubagent,
+  models,
 }: {
   region: ResizableRegion;
   memory: readonly ChatMemory[];
@@ -134,6 +136,8 @@ export function Workbench({
   onSelectSubagent: (id: string | null) => void;
   /** A person's steer, stop or resume of a subagent: the refusal, or null when it was taken. */
   onControlSubagent: (childId: string, control: SubagentControl) => Promise<string | null>;
+  /** What the pool offers, so a subagent's model is named rather than its id shown. */
+  models: readonly ModelOption[];
 }) {
   // What this chat has open, and which of its tabs is showing. The files a chat
   // has open are the chat's own, so a switch leaves both where they were.
@@ -330,6 +334,7 @@ export function Workbench({
               transcript={selectedSubagentTranscript}
               onSelect={onSelectSubagent}
               onControl={onControlSubagent}
+              models={models}
               isVisible={showing === AGENTS && !region.isCollapsed}
             />
           ) : (

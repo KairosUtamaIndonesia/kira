@@ -19,6 +19,8 @@ export const MAX_RUNNING_SUBAGENTS_PER_CHAT = 3;
 export interface SubagentSummary {
   id: string;
   role: SubagentRole;
+  /** The model the child runs on: the one its chat was on when it was delegated. */
+  modelId: string;
   /** The child's task as one line, to show against it. */
   title: string;
   state: SubagentStatus;
@@ -103,6 +105,7 @@ function summaryOf(id: string, record: SubagentRecord, controllable: boolean): S
   return {
     id,
     role: record.role,
+    modelId: record.modelId,
     title: titleOf(record.prompt),
     state: record.status,
     outcome: record.response === '' ? null : record.response,

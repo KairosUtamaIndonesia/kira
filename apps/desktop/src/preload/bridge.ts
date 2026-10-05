@@ -1135,6 +1135,8 @@ export interface ChatUsage {
 export interface SubagentSummary {
   id: string;
   role: 'general' | 'explore';
+  /** The model it runs on; `ModelOption` names it. */
+  modelId: string;
   title: string;
   state: 'running' | 'complete' | 'error' | 'stopped';
   outcome: string | null;

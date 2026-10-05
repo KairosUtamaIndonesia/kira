@@ -17,11 +17,11 @@ import { Badge } from '@astryxdesign/core/Badge';
 import { Collapsible } from '@astryxdesign/core/Collapsible';
 import { HStack } from '@astryxdesign/core/HStack';
 import { Button } from '@astryxdesign/core/Button';
+import { ChatComposer } from '@astryxdesign/core/Chat';
 import { Icon } from '@astryxdesign/core/Icon';
 import { IconButton } from '@astryxdesign/core/IconButton';
 import { Markdown } from '@astryxdesign/core/Markdown';
 import { Text } from '@astryxdesign/core/Text';
-import { TextInput } from '@astryxdesign/core/TextInput';
 import { VStack } from '@astryxdesign/core/VStack';
 import {
   borderVars,
@@ -36,6 +36,7 @@ import * as stylex from '@stylexjs/stylex';
 import type {
   ChatMessage,
   ChatTranscript,
+  ModelOption,
   SubagentControl,
   SubagentSummary,
 } from '../../preload/bridge';
@@ -179,7 +180,6 @@ const styles = stylex.create({
     borderBlockStartColor: colorVars['--color-border'],
     backgroundColor: colorVars['--color-background-surface'],
   },
-  controlInput: { flexGrow: 1, minWidth: 0 },
   label: { textTransform: 'uppercase', letterSpacing: '0.06em' },
   report: {
     minWidth: 0,
@@ -220,6 +220,7 @@ interface PanelProps {
   transcript: ChatTranscript | null;
   onSelect: (id: string | null) => void;
   onControl: (childId: string, control: SubagentControl) => Promise<string | null>;
+  models: readonly ModelOption[];
 }
 
 export function SubagentsPrototype({
@@ -228,6 +229,7 @@ export function SubagentsPrototype({
   transcript,
   onSelect,
   onControl,
+  models,
   isVisible,
 }: {
   agents: SubagentSummary[];
@@ -235,11 +237,12 @@ export function SubagentsPrototype({
   transcript: ChatTranscript | null;
   onSelect: (id: string | null) => void;
   onControl: (childId: string, control: SubagentControl) => Promise<string | null>;
+  models: readonly ModelOption[];
   isVisible: boolean;
 }) {
   const [variant, setVariant] = useState<Variant>(() => variantFromUrl());
   const selected = agents.find((agent) => agent.id === selectedId) ?? agents.at(-1) ?? null;
-  const panel = { agents, selected, transcript, onSelect, onControl };
+  const panel = { agents, selected, transcript, onSelect, onControl, models };
 
   function cycle(direction: number) {
     setVariant((current) => {
@@ -315,7 +318,14 @@ export function SubagentsPrototype({
 }
 
 /** A · one ruled list; the selected run's report sits under it. */
-function StackVariant({ agents, selected, transcript, onSelect, onControl }: PanelProps) {
+function StackVariant({
+  agents,
+  selected,
+  transcript,
+  onSelect,
+  onControl,
+  models,
+}: PanelProps) {
   return (
     <VStack gap={5}>
       <div {...stylex.props(styles.list)}>
@@ -341,13 +351,20 @@ function StackVariant({ agents, selected, transcript, onSelect, onControl }: Pan
           );
         })}
       </div>
-      {selected ? <RunDetail agent={selected} transcript={transcript} onControl={onControl} /> : null}
+      {selected ? <RunDetail agent={selected} transcript={transcript} onControl={onControl} models={models} /> : null}
     </VStack>
   );
 }
 
 /** B · every run a card with its report excerpt; the open one unfolds in place. */
-function CardsVariant({ agents, selected, transcript, onSelect, onControl }: PanelProps) {
+function CardsVariant({
+  agents,
+  selected,
+  transcript,
+  onSelect,
+  onControl,
+  models,
+}: PanelProps) {
   return (
     <VStack gap={3}>
       {agents.map((agent) => {
@@ -366,7 +383,8 @@ function CardsVariant({ agents, selected, transcript, onSelect, onControl }: Pan
                 <HStack gap={2} align="center">
                   <Dot agent={agent} />
                   <Text size="sm" color="secondary">
-                    {AGENT_STATE_WORD[agent.state]} · {ROLE[agent.role]}
+                    {AGENT_STATE_WORD[agent.state]} · {ROLE[agent.role]} ·{' '}
+                    {modelName(models, agent.modelId)}
                   </Text>
                 </HStack>
               </HStack>
@@ -381,7 +399,7 @@ function CardsVariant({ agents, selected, transcript, onSelect, onControl }: Pan
             </button>
             {on ? (
               <div {...stylex.props(styles.cardBody)}>
-                <RunDetail agent={agent} transcript={transcript} onControl={onControl} inCard />
+                <RunDetail agent={agent} transcript={transcript} onControl={onControl} models={models} inCard />
               </div>
             ) : null}
           </section>
@@ -392,7 +410,14 @@ function CardsVariant({ agents, selected, transcript, onSelect, onControl }: Pan
 }
 
 /** C · a numbered strip of runs over one full-width report. */
-function FocusVariant({ agents, selected, transcript, onSelect, onControl }: PanelProps) {
+function FocusVariant({
+  agents,
+  selected,
+  transcript,
+  onSelect,
+  onControl,
+  models,
+}: PanelProps) {
   return (
     <VStack gap={4}>
       <fieldset aria-label="Subagent runs" {...stylex.props(styles.strip)}>
@@ -415,7 +440,7 @@ function FocusVariant({ agents, selected, transcript, onSelect, onControl }: Pan
           );
         })}
       </fieldset>
-      {selected ? <RunDetail agent={selected} transcript={transcript} onControl={onControl} large /> : null}
+      {selected ? <RunDetail agent={selected} transcript={transcript} onControl={onControl} models={models} large /> : null}
     </VStack>
   );
 }
@@ -425,12 +450,14 @@ function RunDetail({
   agent,
   transcript,
   onControl,
+  models,
   inCard = false,
   large = false,
 }: {
   agent: SubagentSummary;
   transcript: ChatTranscript | null;
   onControl: (childId: string, control: SubagentControl) => Promise<string | null>;
+  models: readonly ModelOption[];
   inCard?: boolean;
   large?: boolean;
 }) {
@@ -457,6 +484,9 @@ function RunDetail({
               {working && agent.activity ? ` · ${agent.activity}` : ''}
             </Text>
             <Badge label={ROLE[agent.role]} variant="neutral" />
+            <Text size="sm" color="secondary">
+              {modelName(models, agent.modelId)}
+            </Text>
           </HStack>
         </VStack>
       )}
@@ -522,7 +552,6 @@ function AgentControls({
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
   const running = agent.state === 'running';
-  const words = text.trim();
 
   async function take(control: SubagentControl) {
     setBusy(true);
@@ -533,45 +562,35 @@ function AgentControls({
     else if (control.action !== 'stop') setText('');
   }
 
-  function send() {
+  function send(value: string) {
+    const words = value.trim();
     if (words === '' || busy) return;
     void take({ action: running ? 'steer' : 'resume', text: words });
   }
 
   return (
-    <VStack gap={2} xstyle={styles.controls}>
-      {refusal !== null ? <Banner status="error" title={refusal} /> : null}
-      <HStack gap={2} align="center">
-        <div {...stylex.props(styles.controlInput)}>
-          <TextInput
-            label={running ? 'Steer this agent' : 'Give this agent more to do'}
-            isLabelHidden
-            size="sm"
-            value={text}
-            placeholder={running ? 'Steer this agent…' : 'Give it more to do…'}
-            isDisabled={busy}
-            onChange={setText}
-            onEnter={send}
-          />
-        </div>
-        <Button
-          label={running ? 'Steer' : 'Resume'}
-          size="sm"
-          variant="primary"
-          isDisabled={words === '' || busy}
-          onClick={send}
-        />
-        {running ? (
-          <Button
-            label="Stop"
-            size="sm"
-            variant="secondary"
-            isDisabled={busy}
-            onClick={() => void take({ action: 'stop' })}
-          />
-        ) : null}
-      </HStack>
-    </VStack>
+    <div {...stylex.props(styles.controls)}>
+      <ChatComposer
+        value={text}
+        onChange={setText}
+        onSubmit={send}
+        placeholder={running ? 'Steer this agent…' : 'Give it more to do…'}
+        density="compact"
+        isDisabled={busy}
+        status={refusal === null ? undefined : { type: 'error', message: refusal }}
+        sendActions={
+          running ? (
+            <Button
+              label="Stop"
+              size="sm"
+              variant="ghost"
+              isDisabled={busy}
+              onClick={() => void take({ action: 'stop' })}
+            />
+          ) : undefined
+        }
+      />
+    </div>
   );
 }
 
@@ -588,6 +607,11 @@ function Section({ label, children }: { label: string; children: ReactNode }) {
 
 function Dot({ agent }: { agent: SubagentSummary }) {
   return <AgentStateMark state={agent.state} />;
+}
+
+/** The name the pool gives a model, or its id when the pool no longer offers it. */
+function modelName(models: readonly ModelOption[], id: string): string {
+  return models.find((model) => model.id === id)?.name ?? id;
 }
 
 function textOf(message: ChatMessage): string {

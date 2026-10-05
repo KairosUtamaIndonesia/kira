@@ -170,6 +170,7 @@ test('list reports what the chat delegated, and where each child stands', async 
     manager.list().map((summary) => [summary.id, summary.state, summary.role]),
     [[childId, 'running', 'explore']],
   );
+  assert.equal(manager.list()[0]?.modelId, 'served-model');
 
   await manager.settle();
   assert.deepEqual(
