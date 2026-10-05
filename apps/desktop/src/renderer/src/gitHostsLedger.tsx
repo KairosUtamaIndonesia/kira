@@ -2,9 +2,6 @@
  * The Git hosts page: one ruled column, drawn the way Work and the chat rail are. Connected
  * hosts are rows on one grid; disconnecting is asked in the row itself. Connecting is a dialog
  * the page asks for (`onConnect`) and does not own.
- *
- * Chosen from three layouts (A ledger, B by provider, C table); the others are in the history
- * of agent/git-hosts-prototype.
  */
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
@@ -31,8 +28,6 @@ import {
   type HostsModel,
 } from './gitHostsModel';
 import { age } from './workRows';
-
-const pad = 0;
 
 export function HostsLedger({ model, onConnect }: { model: HostsModel; onConnect: () => void }) {
   const { connections, trouble } = model;
@@ -160,7 +155,6 @@ const ui = stylex.create({
     gap: spacingVars['--spacing-2'],
     paddingBlockStart: spacingVars['--spacing-3'],
     paddingBlockEnd: spacingVars['--spacing-2'],
-    paddingInline: pad,
     borderBlockStartWidth: borderVars['--border-width'],
     borderBlockStartStyle: 'solid',
     borderBlockStartColor: colorVars['--color-border'],
@@ -175,12 +169,10 @@ const ui = stylex.create({
     display: 'flex',
     flexDirection: 'column',
     gap: spacingVars['--spacing-2'],
-    paddingInline: pad,
     paddingBlock: spacingVars['--spacing-2'],
   },
   none: {
     margin: 0,
-    paddingInline: pad,
     paddingBlock: spacingVars['--spacing-2'],
     fontSize: textSizeVars['--font-size-sm'],
     color: colorVars['--color-text-secondary'],

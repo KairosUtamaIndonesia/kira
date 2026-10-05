@@ -1,9 +1,11 @@
 /**
- * PROTOTYPE — Connect a host, dialog B: tabs, then a receipt.
+ * Connecting a Git host, in a dialog over the Git hosts page.
  *
- * One screen to fill: the four hosts are tabs, and the body is only what that host takes, with
- * the GitHub App offered first on GitHub's. Connecting swaps the body for a receipt — the
- * payload URL and secret as one block with a single control that copies both.
+ * The four hosts are tabs, and the body asks only what that host takes; GitHub's tab offers the
+ * GitHub App first, since it needs no token. Connecting ends in the one thing that cannot be
+ * repeated: a token connection's webhook secret, which the server shows once. So the dialog
+ * then swaps to a receipt with the payload URL and secret and a single control that copies
+ * both, and leaving it before they are copied takes two tries (docs/adr/0026).
  */
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
@@ -22,35 +24,50 @@ import {
 } from '@astryxdesign/core/theme/tokens.stylex';
 import * as stylex from '@stylexjs/stylex';
 import { Check, Copy, ExternalLink } from 'lucide-react';
+import { useState } from 'react';
 import { FlushDialogHeader } from './dialogHeader';
-import {
-  SecretFoot,
-  ui as shared,
-  useDraft,
-  useSecretGuard,
-  type DialogProps,
-} from './gitHostsDialogParts';
 import { HOST_MARKS } from './gitHostIcons';
-import { PROVIDERS, addressOf, needsAddress } from './gitHostsModel';
+import { PROVIDERS, addressOf, canConnect, needsAddress, type HostsModel } from './gitHostsModel';
 
-export function DialogB(props: DialogProps) {
-  const { model, onClose } = props;
+export function ConnectDialog({ model, onClose }: { model: HostsModel; onClose: () => void }) {
   const { secret, github } = model;
-  const draft = useDraft(model);
-  const guard = useSecretGuard(props);
+  const [provider, setProvider] = useState('github');
+  const [instanceUrl, setInstanceUrl] = useState('');
+  const [accessToken, setAccessToken] = useState('');
+  const [accountLogin, setAccountLogin] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [warned, setWarned] = useState(false);
+  const { copy, isCopied } = useClipboard({ announce: 'Payload URL and secret copied' });
+
+  const input = { provider, instanceUrl, accessToken, accountLogin };
+  const ready = canConnect(input) && !model.busy;
+  const chosen = PROVIDERS.find((each) => each.value === provider) ?? PROVIDERS[0];
+  const address = needsAddress(provider);
   const app = github?.configured === true && github.url !== null ? github.url : null;
   const made =
     secret === null ? undefined : model.connections?.find((each) => each.id === secret.id);
-  const address = needsAddress(draft.provider);
-  const both = secret === null ? '' : `/api/webhooks/git/${secret.id}\n${secret.value}`;
-  const { copy, isCopied } = useClipboard({ announce: 'Payload URL and secret copied' });
+  const unsaved = warned && !copied;
 
-  const close = (next: boolean): void => {
-    if (!next) guard.leave();
-  };
+  async function connect(): Promise<void> {
+    if (!ready) return;
+    if (await model.connect(input)) setAccessToken('');
+  }
+
+  function finish(): void {
+    model.dismissSecret();
+    onClose();
+  }
+
+  // Leaving a secret that was never copied loses it for good, so the first try only warns.
+  function leave(): void {
+    if (model.busy) return;
+    if (secret === null) onClose();
+    else if (copied || warned) finish();
+    else setWarned(true);
+  }
 
   return (
-    <Dialog isOpen onOpenChange={close} purpose="form" width={520}>
+    <Dialog isOpen onOpenChange={(open) => !open && leave()} purpose="form" width={520}>
       {secret !== null ? (
         <>
           <FlushDialogHeader
@@ -60,7 +77,7 @@ export function DialogB(props: DialogProps) {
                 ? 'The host is connected'
                 : `${made.accountLogin} on ${addressOf(made)}`
             }
-            onOpenChange={close}
+            onOpenChange={(open) => !open && leave()}
           />
           <div {...stylex.props(ui.body)}>
             <Text type="supporting" color="secondary">
@@ -79,8 +96,8 @@ export function DialogB(props: DialogProps) {
                 variant="secondary"
                 icon={<Icon icon={isCopied ? Check : Copy} size="sm" />}
                 onClick={() => {
-                  void copy(both).then((ok) => {
-                    if (ok) guard.markCopied();
+                  void copy(`/api/webhooks/git/${secret.id}\n${secret.value}`).then((ok) => {
+                    if (ok) setCopied(true);
                   });
                 }}
               />
@@ -91,89 +108,99 @@ export function DialogB(props: DialogProps) {
               description="Kira keeps it sealed and cannot show it again. If it is lost, disconnect the host and connect it again."
             />
           </div>
-          <SecretFoot guard={guard} />
+          <div {...stylex.props(ui.foot)}>
+            <Text type="supporting" color={unsaved ? 'primary' : 'secondary'}>
+              {copied
+                ? 'Copied.'
+                : unsaved
+                  ? 'Not copied yet. Close again to lose the secret.'
+                  : 'Copy the secret before you close this.'}
+            </Text>
+            <span {...stylex.props(ui.footButtons)}>
+              <Button
+                label={unsaved ? 'Close without copying' : 'Done'}
+                size="sm"
+                variant={unsaved ? 'destructive' : 'primary'}
+                onClick={leave}
+              />
+            </span>
+          </div>
         </>
       ) : (
         <>
-          <FlushDialogHeader title="Connect a host" onOpenChange={close} />
-          <TabList
-            value={draft.provider}
-            onChange={draft.setProvider}
-            size="sm"
-            hasDivider
-            isFullBleed
-          >
+          <FlushDialogHeader title="Connect a host" onOpenChange={(open) => !open && leave()} />
+          <TabList value={provider} onChange={setProvider} size="sm" hasDivider isFullBleed>
             {PROVIDERS.map((each) => (
               <Tab
                 key={each.value}
                 value={each.value}
                 label={each.label}
-                icon={<Icon icon={HOST_MARKS[each.value]!} size="sm" />}
+                icon={<Icon icon={HOST_MARKS[each.value] ?? ExternalLink} size="sm" />}
               />
             ))}
           </TabList>
           <div {...stylex.props(ui.body, ui.bodyTop)}>
-            {draft.provider === 'github' && app !== null && (
-              <div {...stylex.props(ui.app)}>
-                <span {...stylex.props(ui.appText)}>
-                  <Text type="label" weight="medium">
-                    Install the GitHub App
-                  </Text>
-                  <Text type="supporting" color="secondary">
-                    Watches GitHub without a personal token.
-                  </Text>
-                </span>
-                <Button
-                  label="Install"
-                  size="sm"
-                  variant="secondary"
-                  endContent={<Icon icon={ExternalLink} size="sm" />}
-                  onClick={() => window.open(app, '_blank', 'noopener')}
-                />
-              </div>
-            )}
-            {draft.provider === 'github' && app !== null && (
-              <Text type="supporting" color="secondary">
-                Or connect with a personal access token:
-              </Text>
+            {provider === 'github' && app !== null && (
+              <>
+                <div {...stylex.props(ui.app)}>
+                  <span {...stylex.props(ui.appText)}>
+                    <Text type="label" weight="medium">
+                      Install the GitHub App
+                    </Text>
+                    <Text type="supporting" color="secondary">
+                      Watches GitHub without a personal token.
+                    </Text>
+                  </span>
+                  <Button
+                    label="Install"
+                    size="sm"
+                    variant="secondary"
+                    endContent={<Icon icon={ExternalLink} size="sm" />}
+                    onClick={() => window.open(app, '_blank', 'noopener')}
+                  />
+                </div>
+                <Text type="supporting" color="secondary">
+                  Or connect with a personal access token:
+                </Text>
+              </>
             )}
             <div {...stylex.props(ui.pair)}>
               <TextInput
-                label={draft.provider === 'github' ? 'Enterprise address' : 'Server address'}
-                value={draft.instanceUrl}
-                placeholder={address ? draft.chosen.example : 'Blank for github.com'}
+                label={provider === 'github' ? 'Enterprise address' : 'Server address'}
+                value={instanceUrl}
+                placeholder={address ? chosen?.example : 'Blank for github.com'}
                 isOptional={!address}
                 isRequired={address}
                 size="sm"
-                onChange={draft.setInstanceUrl}
+                onChange={setInstanceUrl}
               />
               <TextInput
                 label="Account"
-                value={draft.accountLogin}
+                value={accountLogin}
                 placeholder="acme"
                 isOptional
                 size="sm"
-                onChange={draft.setAccountLogin}
+                onChange={setAccountLogin}
               />
             </div>
             <TextInput
               label="Access token"
               type="password"
-              value={draft.accessToken}
+              value={accessToken}
               isRequired
               size="sm"
-              onChange={draft.setAccessToken}
-              onEnter={() => void draft.connect()}
+              onChange={setAccessToken}
+              onEnter={() => void connect()}
             />
             {model.trouble !== null && (
               <Banner status="error" title="Could not connect" description={model.trouble} />
             )}
           </div>
-          <div {...stylex.props(shared.foot)}>
-            <Text type="supporting" color="secondary" maxLines={2}>
+          <div {...stylex.props(ui.foot)}>
+            <Text type="supporting" color="secondary">
               Needs an administrator.
             </Text>
-            <span {...stylex.props(shared.footButtons)}>
+            <span {...stylex.props(ui.footButtons)}>
               <Button
                 label="Cancel"
                 size="sm"
@@ -185,8 +212,8 @@ export function DialogB(props: DialogProps) {
                 label={model.busy ? 'Connecting' : 'Connect host'}
                 size="sm"
                 variant="primary"
-                isDisabled={!draft.ready}
-                onClick={() => void draft.connect()}
+                isDisabled={!ready}
+                onClick={() => void connect()}
               />
             </span>
           </div>
@@ -236,4 +263,13 @@ const ui = stylex.create({
     fontFamily: typographyVars['--font-family-code'],
     fontSize: textSizeVars['--font-size-sm'],
   },
+  foot: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: spacingVars['--spacing-3'],
+    paddingBlockStart: spacingVars['--spacing-4'],
+  },
+  footButtons: { display: 'flex', gap: spacingVars['--spacing-2'], marginInlineStart: 'auto' },
 });

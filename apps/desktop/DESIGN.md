@@ -227,6 +227,12 @@ The composer is sized by its own width, not the window's, because the workbench 
 
 The workbench's Context tab is a ledger like Work: no header, then a hairline and heading with a zero-padded mono count per kind, and ruled rows. What Kira concluded comes first, then what you asked for and the work as body-size prose (the work is one row per message, its lines stacked, and a change of plan says "Scope change" above it; the ledger stores one row per line, so the tab puts lines from one turn back together); the skills Kira loaded come next (a book icon, the skill's name, then the folder it came from; a skill is a `SKILL.md` Kira read, told apart from the files read, which is how the transcript already reads that call); changed files and commits follow as scannable rows (file-type icon, name, then folder; mono hash, then subject). A changed file opens in the workspace; a file outside the folder, which the workspace cannot open, is drawn the same but is not a button. Files read is the longest list and folds by default.
 
+### Git hosts
+
+Settings' Git hosts pane is a ledger like Work (`gitHostsLedger.tsx`): heading and one sentence, then a ruled **Connected** section with a zero-padded mono count and one 52px row per connection on a single subgrid (account-type glyph, account and `Provider · address`, access kind, short age, Disconnect). Rows have no corners, no resting shadow and no side padding, so their text shares the heading's left edge. Disconnect is asked in the row: the access and age cells give way to "Its repositories stop being watched." with Keep and a destructive Disconnect. The pane is wider than other panes (960px) because the row's trailing columns need it.
+
+Connecting is a dialog (`gitHostsConnectDialog.tsx`), not a section, because it ends in the one step that cannot be repeated. The four hosts are tabs carrying their marks (`gitHostIcons.tsx`, one color so they follow the theme); the body asks only what that host takes, and GitHub's tab offers the GitHub App first. After connecting, the body becomes a receipt: payload URL and secret in one muted block with a single **Copy both**, and a warning that the secret is shown once. Leaving before it is copied takes two tries (the first warns, the button turns into a destructive "Close without copying"); having copied makes leaving free.
+
 ### Work
 
 Work is the reference for how Kira draws dense, task-shaped UI. The rules below are the direction that produced it; hold new Work UI to them rather than to what looks plausible.

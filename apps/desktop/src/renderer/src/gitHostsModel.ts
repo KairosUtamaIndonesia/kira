@@ -1,9 +1,6 @@
 /**
- * PROTOTYPE — Git hosts settings redesign. Wipe me once a variant has won.
- *
- * What every variant of the page is handed: the server's connections, and the two things a
- * person can do to them. The variants own how it looks and which fields they ask for; this
- * file owns the words they share so the three can be compared on layout, not on wording.
+ * What the Git hosts page and its connect dialog share: the server's connections, the two
+ * things a person can do to them, and the words for a host.
  */
 import type { GitConnection, GitHubConnect } from '../../preload/bridge';
 
@@ -50,6 +47,11 @@ export function needsAddress(provider: string): boolean {
   return provider !== 'github';
 }
 
+/** A server address must be https; the server says so too, this only saves the round trip. */
+export function isHttps(value: string): boolean {
+  return /^https:\/\/\S+$/u.test(value.trim());
+}
+
 /** Whether a form's fields are enough to connect: a token, and an https address where one is due. */
 export function canConnect(input: ConnectInput): boolean {
   if (input.accessToken.trim() === '') return false;
@@ -77,59 +79,3 @@ export function accessLabel(connection: GitConnection): string {
 export function webhookPath(connection: GitConnection): string | null {
   return connection.authKind === 'app' ? null : `/api/webhooks/git/${connection.id}`;
 }
-
-/** A server address must be https; the server says so too, this only saves the round trip. */
-export function isHttps(value: string): boolean {
-  return /^https:\/\/\S+$/u.test(value.trim());
-}
-
-const DAY = 86_400_000;
-
-function ago(days: number): string {
-  return new Date(Date.now() - days * DAY).toISOString();
-}
-
-/** Four connections of different kinds, so a layout is judged with a populated list. */
-export const SAMPLE_CONNECTIONS: GitConnection[] = [
-  {
-    id: 'c0a1b2c3-0001',
-    provider: 'github',
-    authKind: 'app',
-    instanceUrl: null,
-    accountLogin: 'acme-inc',
-    accountType: 'Organization',
-    createdAt: ago(12),
-  },
-  {
-    id: 'c0a1b2c3-0002',
-    provider: 'github',
-    authKind: 'token',
-    instanceUrl: null,
-    accountLogin: 'brandon',
-    accountType: 'User',
-    createdAt: ago(94),
-  },
-  {
-    id: 'c0a1b2c3-0003',
-    provider: 'forgejo',
-    authKind: 'token',
-    instanceUrl: 'https://git.acme.dev',
-    accountLogin: 'kira-bot',
-    accountType: 'User',
-    createdAt: ago(5),
-  },
-  {
-    id: 'c0a1b2c3-0004',
-    provider: 'gitlab',
-    authKind: 'token',
-    instanceUrl: 'https://gitlab.example.com',
-    accountLogin: 'platform',
-    accountType: 'Organization',
-    createdAt: ago(1),
-  },
-];
-
-export const SAMPLE_GITHUB: GitHubConnect = {
-  configured: true,
-  url: 'https://github.com/apps/kira',
-};
