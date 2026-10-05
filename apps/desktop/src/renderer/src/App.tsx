@@ -93,6 +93,7 @@ import type {
   Usage,
   QuestionnaireRequest,
   QuestionnaireResult,
+  CloneRequest,
 } from '../../preload/bridge';
 import { messagesShowingActions } from './lineActions';
 import { CompactionBoundary, type Boundary } from './compactionBoundary';
@@ -104,6 +105,7 @@ import { WorkHome } from './workHome';
 import SettingsPage, { type Setting } from './settings';
 import type { ProposalVerdict } from './proposalCard';
 import { MoveToProject } from './moveToProject.tsx';
+import { NewWorkspaceDialog } from './newWorkspaceDialog.tsx';
 import { needsProject } from './moveToProject.ts';
 import { AccountMenu, ChatRail } from './chatRail.tsx';
 import { approvedSpecTicket } from './specPane';
@@ -236,6 +238,7 @@ export default function App() {
    */
   const [workWorkspaceId, setWorkWorkspaceId] = useState<string | null>(null);
   const [workTicketId, setWorkTicketId] = useState<string | null>(null);
+  const [startingWorkspace, setStartingWorkspace] = useState(false);
   const [usage, setUsage] = useState<Usage | null>(null);
   /** The models Kira offers, in the pool's order, as the picker lists them. */
   const [models, setModels] = useState<ModelOption[]>([]);
@@ -892,7 +895,22 @@ export default function App() {
    * and says nothing about it.
    */
   async function addWorkspace(): Promise<void> {
+    setStartingWorkspace(false);
     const added = await run(() => window.kira.addWorkspace());
+    if (added === null) return;
+
+    setWorkWorkspaceId(added.id);
+    if (added.projectId === null) showSurface('work');
+  }
+
+  /**
+   * Clone a repository the person chose, and take the new folder to Work for its
+   * project exactly as an opened folder goes. A refusal — git cannot read the
+   * repository — is shown, and nothing is remembered.
+   */
+  async function cloneWorkspace(request: CloneRequest): Promise<void> {
+    setStartingWorkspace(false);
+    const added = await run(() => window.kira.cloneWorkspace(request));
     if (added === null) return;
 
     setWorkWorkspaceId(added.id);
@@ -1360,7 +1378,7 @@ export default function App() {
               onChooseSort={chooseChatSort}
               openChat={(id) => void switchChat(() => window.kira.openChat(id))}
               newChat={(workspaceId) => void startChat(workspaceId)}
-              newWorkspace={() => void addWorkspace()}
+              newWorkspace={() => setStartingWorkspace(true)}
               openWork={openWork}
               openWorkHome={openWorkHome}
               removeWorkspace={(id) => void removeWorkspace(id)}
@@ -1496,6 +1514,14 @@ export default function App() {
           </div>
         )}
       </AppShell>
+
+      {startingWorkspace && (
+        <NewWorkspaceDialog
+          onOpenFolder={() => void addWorkspace()}
+          onClone={(request) => void cloneWorkspace(request)}
+          onClose={() => setStartingWorkspace(false)}
+        />
+      )}
 
       {filing !== null && (
         <MoveToProject
