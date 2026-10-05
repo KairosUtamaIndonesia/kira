@@ -12,10 +12,23 @@
  * render is not always followed by another, so waiting is what keeps a diff from
  * drawing as an empty box until something else redraws it.
  */
-import { preloadHighlighter } from '@pierre/diffs';
+import * as diffs from '@pierre/diffs';
 import { PatchDiff } from '@pierre/diffs/react';
 import { Component, type ReactNode, useEffect, useState, useSyncExternalStore } from 'react';
 import { languageOf } from './filePreview';
+
+/**
+ * The library's highlighter preloader, read off its namespace rather than named
+ * directly: the package is imported by two entries, and a dev server that has
+ * not re-optimised one of them fails a named import hard and takes the window
+ * down with it. Read this way, a build without it simply renders and lets the
+ * library load its own highlighter.
+ */
+const preload = (
+  diffs as {
+    preloadHighlighter?: (options: { themes: string[]; langs: string[] }) => Promise<void>;
+  }
+).preloadHighlighter;
 
 /** Whether the pane draws its diff inline or in two columns. */
 export type DiffStyle = 'unified' | 'split';
@@ -57,7 +70,9 @@ export function DiffPatch({
 
   useEffect(() => {
     let live = true;
-    void preloadHighlighter({ themes: [theme], langs: [language] })
+    const work =
+      preload === undefined ? Promise.resolve() : preload({ themes: [theme], langs: [language] });
+    void work
       .catch(() => undefined)
       .then(() => {
         if (live) setLoaded(key);

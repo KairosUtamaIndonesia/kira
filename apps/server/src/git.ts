@@ -1947,16 +1947,21 @@ async function githubLivePullRequests(
   const body = await readJson(response);
   if (!Array.isArray(body)) return null;
 
-  const found: LivePullRequest[] = [];
-  for (const item of body) {
-    const held = parseLivePullRequest(item);
-    if (held === null) continue;
+  // One checks read per pull request, all in flight together: done one after the
+  // other, a page of twenty is twenty round trips and reads as an empty list
+  // while it waits.
+  const found = await Promise.all(
+    body.map(async (item) => {
+      const held = parseLivePullRequest(item);
+      if (held === null) return null;
 
-    const checks = await githubChecks(config, bearer, owner, name, held.headSha);
-    found.push({ ...held.row, checksState: checks === null ? null : rollupOf(checks) });
-  }
+      const checks = await githubChecks(config, bearer, owner, name, held.headSha);
 
-  return found;
+      return { ...held.row, checksState: checks === null ? null : rollupOf(checks) };
+    }),
+  );
+
+  return found.filter((each): each is LivePullRequest => each !== null);
 }
 
 /** A JSON array a GitHub path answered, or null when it answered something else. */

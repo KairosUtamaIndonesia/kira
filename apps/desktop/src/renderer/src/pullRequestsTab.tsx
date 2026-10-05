@@ -181,7 +181,13 @@ export function PullRequestsTab({ chatId, visits }: { chatId: string; visits: nu
     );
   }
 
-  if (pullRequests === null) return null;
+  if (pullRequests === null) {
+    return (
+      <Text type="supporting" color="secondary">
+        Reading pull requests…
+      </Text>
+    );
+  }
 
   return (
     <div {...stylex.props(styles.tab)}>
