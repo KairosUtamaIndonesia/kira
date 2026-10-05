@@ -123,6 +123,8 @@
   person choose a folder when none is linked. Workspace menus remain direct shortcuts to their
   project's queue.
 
+- Settings → Git hosts is a ledger of connected hosts, and connecting one is a dialog: pick GitHub, GitLab, Forgejo or Gitea from tabs with their marks, fill only what that host takes (GitHub offers the GitHub App first), and copy the webhook URL and secret from one receipt. Closing the receipt before copying the secret asks twice, since it cannot be shown again.
+
 ### Changed
 
 - Kira has a new color theme: warm, neutral ink and paper grays instead of rose-tinted ones, with Kira red as the single accent in both light and dark mode, plus matching code highlighting.
