@@ -10,6 +10,8 @@
 
 ### Added
 
+- Attaching a repository to a project can pick from the repositories the connected GitHub App can see, instead of typing the owner and name by hand.
+
 - Chats can delegate bounded work to child agents, track live progress in the composer and Workbench, inspect child transcripts, and stop, steer, or resume children. Read-only children share the chat folder; write-capable children receive an isolated checkout. Child model requests share the person's usage ledger and are capped for concurrent work.
 
 - A project can hold its own skills. A skill is a name, a description, the instructions it works by, and any reference files that travel with it; Kira writes them into the folder a chat works in, so every chat in the project can use them beside the workflow skills she ships with. See [ADR 0027](docs/adr/0027-project-skills-live-in-the-store.md).
