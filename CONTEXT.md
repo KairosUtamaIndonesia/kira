@@ -76,6 +76,12 @@ worked in from many folders, and a chat can be moved from one to another. It is 
 ticket belongs to.
 _Avoid_: Project (the word it replaces), checkout, working directory
 
+**Repository**:
+A body of code Kira watches, named by a provider, an owner and a name, and attached to exactly
+one project. It is what a project's pull requests are recognised by, and it is named from a
+checkout: a folder's remote says which repository it is. A project may hold several.
+_Avoid_: Repo, codebase (a repository is not a project, and a project is not one repository)
+
 **Workbench**:
 The part of the window where a chat's own things are looked at: what Kira is holding for it, and
 the files in the workspace it works in — open beside the chat rather than instead of it. It
