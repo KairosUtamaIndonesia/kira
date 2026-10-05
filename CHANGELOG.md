@@ -10,6 +10,10 @@
 
 ### Added
 
+- A chat's workbench gains a **Changes** view over its own checkout: what changed grouped staged, unstaged and untracked; a per-file diff that reads inline or side by side and wraps long lines; staging a file or a single hunk; a commit message and commit; reverting a file; the branch list and switching; the commit history with the files each commit changed; and fetch, pull and push shown in git's own words. Every index write is serialised per checkout, so it never interleaves with the file tree's status reads.
+
+- A chat's workbench gains a **Pull requests** view: the checkout repository's pull requests read live from its connected Git host, each row showing its number, title, author, state and checks rollup. Opening one reads it read-only — its body, base and head, checks, comments and changed files with each file's diff. See [ADR 0030](docs/adr/0030-a-repositorys-pull-requests-are-read-from-its-host.md).
+
 - Attaching a repository to a project can pick from the repositories the connected GitHub App can see, instead of typing the owner and name by hand.
 
 - Chats can delegate bounded work to child agents, track live progress in the composer and Workbench, inspect child transcripts, and stop, steer, or resume children. Read-only children share the chat folder; write-capable children receive an isolated checkout. Child model requests share the person's usage ledger and are capped for concurrent work.

@@ -144,7 +144,10 @@ The tree is git's answer, not ours (ADR 0014), and nothing here matches `.gitign
 
 Directory rows come before file rows, each alphabetical and case-insensitive. The preview is
 read-only — the file's text, capped in size, refusing a binary with a sentence saying so — and
-nothing here edits a file. A watched file re-reads itself in place and keeps its scroll position
+the preview itself edits nothing. The **Changes** view beside it is the one workbench surface
+that writes: it stages, commits, reverts and switches branch through the local-git channels,
+which are distinct from the `git:` channels that mean Git hosts. A watched file re-reads itself
+in place and keeps its scroll position
 (ADR 0016); a file that disappears keeps its contents on screen while its tab marks that it is
 gone.
 

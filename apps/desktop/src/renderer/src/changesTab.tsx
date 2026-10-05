@@ -466,7 +466,7 @@ export function ChangesTab({
                       onClick={() => void applyHunk(part, selected.group === 'staged')}
                     />
                   ) : null}
-                  <DiffPatch patch={part} diffStyle={diffStyle} wrap={wrap} />
+                  <DiffPatch patch={part} path={selected.path} diffStyle={diffStyle} wrap={wrap} />
                 </div>
               ))}
             </VStack>

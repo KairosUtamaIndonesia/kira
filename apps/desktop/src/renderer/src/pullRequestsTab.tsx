@@ -168,7 +168,7 @@ export function PullRequestsTab({ chatId, visits }: { chatId: string; visits: nu
                           This file has no diff to show.
                         </Text>
                       ) : (
-                        <DiffPatch patch={file.patch} diffStyle="unified" wrap />
+                        <DiffPatch patch={file.patch} path={file.path} diffStyle="unified" wrap />
                       )
                     ) : null}
                   </VStack>
