@@ -77,7 +77,6 @@ import {
 } from './workbenchTabs';
 import { WorkspaceTab } from './workspaceTab';
 import { ChangesTab } from './changesTab';
-import { ChangesPrototypeHost } from './changesPrototype';
 import { PullRequestsTab } from './pullRequestsTab';
 import { SubagentsPrototype } from './subagentsPrototype';
 import { fileKindOf } from './filePreview';
@@ -504,15 +503,13 @@ export function Workbench({
           className="workbench-tab"
           hidden={showing !== CHANGES}
         >
-          <ChangesPrototypeHost showing={showing === CHANGES && !region.isCollapsed}>
-            <ChangesTab
-              key={chatId}
-              chatId={chatId}
-              visits={changesVisits}
-              showing={showing === CHANGES && !region.isCollapsed}
-              onChanged={() => setWorkspaceVisits((visits) => visits + 1)}
-            />
-          </ChangesPrototypeHost>
+          <ChangesTab
+            key={chatId}
+            chatId={chatId}
+            visits={changesVisits}
+            showing={showing === CHANGES && !region.isCollapsed}
+            onChanged={() => setWorkspaceVisits((visits) => visits + 1)}
+          />
         </div>
         <div
           id={panelOf(PULL_REQUESTS)}
