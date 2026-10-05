@@ -13,6 +13,7 @@ import { Icon } from '@astryxdesign/core/Icon';
 import { IconButton } from '@astryxdesign/core/IconButton';
 import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl';
 import { Text } from '@astryxdesign/core/Text';
+import { TextArea } from '@astryxdesign/core/TextArea';
 import {
   borderVars,
   colorVars,
@@ -145,24 +146,6 @@ const styles = stylex.create({
     borderBlockStartStyle: 'solid',
     borderBlockStartColor: colorVars['--color-border'],
     backgroundColor: colorVars['--color-background-surface'],
-  },
-  message: {
-    width: '100%',
-    boxSizing: 'border-box',
-    minHeight: 56,
-    resize: 'none',
-    padding: spacingVars['--spacing-2'],
-    borderWidth: borderVars['--border-width'],
-    borderStyle: 'solid',
-    borderColor: {
-      default: colorVars['--color-border-emphasized'],
-      ':focus': colorVars['--color-accent'],
-    },
-    borderRadius: radiusVars['--radius-element'],
-    color: colorVars['--color-text-primary'],
-    backgroundColor: colorVars['--color-background-surface'],
-    font: 'inherit',
-    outline: 'none',
   },
   commitBox: { display: 'flex', flexDirection: 'column', gap: spacingVars['--spacing-2'] },
   grow: { flex: 1 },
@@ -400,12 +383,13 @@ export function Review() {
       <div {...stylex.props(styles.grow)} />
       <div {...stylex.props(styles.foot)}>
         <div {...stylex.props(styles.commitBox)} style={{ width: '100%' }}>
-          <textarea
-            {...stylex.props(styles.message)}
-            aria-label="Commit message"
+          <TextArea
+            label="Commit message"
+            isLabelHidden
             placeholder="Commit message"
+            rows={3}
             value={message}
-            onChange={(event) => setMessage(event.currentTarget.value)}
+            onChange={setMessage}
           />
           <div {...stylex.props(styles.between)}>
             <Text type="supporting" color="secondary">
