@@ -7,6 +7,8 @@ import { test } from 'node:test';
 import {
   branchesOf,
   changedByGit,
+  cloneInto,
+  cloneUrl,
   hasRemote,
   isolatedCheckout,
   insideFolder,
@@ -469,3 +471,48 @@ test(
     assert.equal(await remoteOf(root), null);
   },
 );
+
+test('cloneUrl names the URL a public host clones from, and nothing else', () => {
+  assert.equal(cloneUrl('github', 'acme', 'api'), 'https://github.com/acme/api.git');
+  assert.equal(
+    cloneUrl('gitlab', 'group', 'subgroup/project'),
+    'https://gitlab.com/group/subgroup/project.git',
+  );
+  // A host Kira cannot name is one it cannot build a URL for either — the person is
+  // told rather than handed a guess that would clone from somewhere else.
+  assert.equal(cloneUrl('forgejo', 'acme', 'api'), null);
+});
+
+test(
+  'cloneInto lands a repository under the parent, named after it',
+  { skip: !gitRuns() },
+  async () => {
+    const origin = committedCheckout();
+    const parent = tempDir('kira-clone-');
+
+    const landed = await cloneInto(origin, parent, 'api');
+
+    assert.equal(landed, join(parent, 'api'));
+    // What landed is a checkout of the origin, which is what the join then reads.
+    assert.equal(await hasRemote(landed), true);
+  },
+);
+
+test(
+  'cloneInto names the folder after the repository, not after a group',
+  { skip: !gitRuns() },
+  async () => {
+    const origin = committedCheckout();
+    const parent = tempDir('kira-clone-group-');
+
+    const landed = await cloneInto(origin, parent, 'group/subgroup/project');
+
+    assert.equal(landed, join(parent, 'project'));
+  },
+);
+
+test('cloneInto raises what git said when it will not clone', { skip: !gitRuns() }, async () => {
+  const parent = tempDir('kira-clone-fail-');
+
+  await assert.rejects(cloneInto(join(parent, 'nowhere'), parent, 'gone'));
+});

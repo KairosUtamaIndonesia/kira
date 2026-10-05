@@ -21,7 +21,7 @@ import { simpleGit } from 'simple-git';
 import { randomUUID } from 'node:crypto';
 import { copyFile, mkdir, mkdtemp, rmdir, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative } from 'node:path';
+import { basename, dirname, join, relative } from 'node:path';
 
 /**
  * Give a write-capable child its own git worktree, seeded with the parent's
@@ -222,6 +222,32 @@ export async function remoteOf(folder: string): Promise<RepositoryRemote | null>
   } catch {
     return null;
   }
+}
+
+/** The URL git clones a repository from, or null when Kira does not know the host. */
+export function cloneUrl(provider: string, owner: string, name: string): string | null {
+  if (provider === 'github') return `https://github.com/${owner}/${name}.git`;
+  if (provider === 'gitlab') return `https://gitlab.com/${owner}/${name}.git`;
+
+  return null;
+}
+
+/**
+ * Clone `url` into a new folder under `parent`, named after the repository, and
+ * answer where it landed.
+ *
+ * The clone runs as the person: git uses the credentials the machine already has,
+ * and a repository those cannot read is a refusal raised in git's own words rather
+ * than worked around with a token handed down from the server (ADR 0029). The name
+ * is the repository's last segment, so a GitLab group does not become a folder of
+ * folders.
+ */
+export async function cloneInto(url: string, parent: string, name: string): Promise<string> {
+  const destination = join(parent, basename(name));
+
+  await simpleGit().clone(url, destination);
+
+  return destination;
 }
 
 /**
