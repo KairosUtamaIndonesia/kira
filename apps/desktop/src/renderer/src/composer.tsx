@@ -419,12 +419,13 @@ export function Composer({
         )}
         {/*
          * The mode is one dropdown: the trigger names the mode the next turn runs
-         * in, and the menu offers the other with a tick on the chosen one. The
-         * tooltip the two buttons each carried is kept, but asked for as the
-         * trigger's own `tooltip` — the control shows it, rather than swallowing
-         * an outer one, the same lesson the model picker's `disabledMessage`
-         * records. While Kira is writing the trigger is disabled and its tooltip
-         * with it; the label still names the mode in force.
+         * in, and the menu offers the other with a tick on the chosen one. What
+         * each mode promises is the trigger's `tooltip`, not a description under
+         * every row — the menu stays two short labels, and the promise is read on
+         * hover. Asked for as the trigger's own `tooltip` so the control shows it,
+         * rather than swallowing an outer one, the same lesson the model picker's
+         * `disabledMessage` records. While Kira is writing the trigger is disabled
+         * and its tooltip with it; the label still names the mode in force.
          */}
         <DropdownMenu
           placement="above"
@@ -437,7 +438,6 @@ export function Composer({
           }}
           items={MODE_ORDER.map((value) => ({
             label: MODES[value].label,
-            description: MODES[value].says,
             endContent: value === mode ? <Icon icon={Check} size="sm" /> : undefined,
             onClick: () => onChooseMode?.(value),
           }))}
