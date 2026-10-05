@@ -893,6 +893,10 @@ export default function App() {
    */
   function startedWorkspace(added: WorkspaceSummary): void {
     setStartingWorkspace(false);
+    // The new folder has to be in the list the surface reads from. Without it, the
+    // lookup falls through to whichever folder was already there and Work draws
+    // that project's board instead of the offer to join one or start one.
+    setWorkspaces((held) => (held.some((each) => each.id === added.id) ? held : [...held, added]));
     setWorkWorkspaceId(added.id);
     if (added.projectId === null) showSurface('work');
   }
