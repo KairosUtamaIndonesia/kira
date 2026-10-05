@@ -1,7 +1,13 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import type { LivePullRequest } from '../../preload/bridge.ts';
-import { checksWord, rowLabel, stateWord, visibleRequests } from './pullRequestsModel.ts';
+import {
+  checksWord,
+  fileLetter,
+  patchCounts,
+  stateWord,
+  visibleRequests,
+} from './pullRequestsModel.ts';
 
 test('a pull request state is said in a person’s words', () => {
   assert.equal(stateWord('open'), 'Open');
@@ -17,10 +23,6 @@ test('a checks rollup is said in a person’s words, or not at all', () => {
   assert.equal(checksWord('pending'), 'Checks running');
   assert.equal(checksWord('neutral'), 'Checks neutral');
   assert.equal(checksWord(null), null);
-});
-
-test('a row is its number then its title', () => {
-  assert.equal(rowLabel(12, 'Fix the thing'), '#12 Fix the thing');
 });
 
 function request(values: Partial<LivePullRequest> = {}): LivePullRequest {
@@ -76,4 +78,36 @@ test('open and draft requests sort above closed and merged, keeping host order',
     visibleRequests(held, '').map((each) => each.number),
     [3, 4, 5, 1, 2],
   );
+});
+
+test('a patch counts its added and removed lines, not its file header', () => {
+  const patch = [
+    'diff --git a/x b/x',
+    '--- a/x',
+    '+++ b/x',
+    '@@ -1,3 +1,3 @@',
+    ' keep',
+    '-old',
+    '+new',
+    '+more',
+    '',
+  ].join('\n');
+
+  assert.deepEqual(patchCounts(patch), { added: 2, removed: 1 });
+  assert.deepEqual(patchCounts('diff --git a/i.png b/i.png\nBinary files differ'), {
+    added: 0,
+    removed: 0,
+  });
+  assert.equal(patchCounts(null), null);
+});
+
+test('a changed file’s status is shown as one letter', () => {
+  const cases: { status: string; want: string }[] = [
+    { status: 'added', want: 'A' },
+    { status: 'modified', want: 'M' },
+    { status: 'removed', want: 'D' },
+    { status: 'renamed', want: 'R' },
+    { status: 'unknown', want: 'U' },
+  ];
+  for (const each of cases) assert.equal(fileLetter(each.status), each.want, each.status);
 });

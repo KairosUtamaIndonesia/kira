@@ -10,7 +10,6 @@
  * unstaged ones (which stage) together, each in the state git has it.
  */
 import { Button } from '@astryxdesign/core/Button';
-import { DropdownMenu } from '@astryxdesign/core/DropdownMenu';
 import { Icon } from '@astryxdesign/core/Icon';
 import { IconButton } from '@astryxdesign/core/IconButton';
 import { edgeCompSlot } from '@astryxdesign/core/Layout';
@@ -23,10 +22,11 @@ import {
   typographyVars,
 } from '@astryxdesign/core/theme/tokens.stylex';
 import * as stylex from '@stylexjs/stylex';
-import { ArrowDown, ArrowLeft, ArrowUp, Check, CircleCheck, Settings2 } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowUp, CircleCheck } from 'lucide-react';
 import { useState } from 'react';
 import { type ChangedFile, blocksOf } from './changesModel';
 import { Counts, Letter, parts } from './changesParts';
+import { DiffOptionsMenu } from './diffOptions';
 import { DiffPatch, type DiffStyle } from './diffView';
 import { FileTypeIcon } from './fileTypeIcon';
 import { pathParts } from './memoryGroups';
@@ -211,32 +211,11 @@ export function ReviewScreen({
                 onClick={onUnstage}
               />
             )}
-            <DropdownMenu
-              button={{
-                label: 'Diff options',
-                size: 'sm',
-                variant: 'ghost',
-                isIconOnly: true,
-                icon: <Icon icon={Settings2} size="sm" />,
-              }}
-              items={[
-                {
-                  label: 'Inline',
-                  endContent: diffStyle === 'unified' ? <Icon icon={Check} size="sm" /> : undefined,
-                  onClick: () => onDiffStyle('unified'),
-                },
-                {
-                  label: 'Side by side',
-                  endContent: diffStyle === 'split' ? <Icon icon={Check} size="sm" /> : undefined,
-                  onClick: () => onDiffStyle('split'),
-                },
-                { type: 'divider' },
-                {
-                  label: 'Wrap lines',
-                  endContent: wrap ? <Icon icon={Check} size="sm" /> : undefined,
-                  onClick: () => onWrap(!wrap),
-                },
-              ]}
+            <DiffOptionsMenu
+              diffStyle={diffStyle}
+              wrap={wrap}
+              onDiffStyle={onDiffStyle}
+              onWrap={onWrap}
             />
           </span>
         </div>

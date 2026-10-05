@@ -39,11 +39,6 @@ export function checksWord(state: string | null): string | null {
   }
 }
 
-/** A pull request's row: its number and title, as one label. */
-export function rowLabel(number: number, title: string): string {
-  return `#${number} ${title}`;
-}
-
 /**
  * The requests a search leaves, open and draft first.
  *
@@ -74,4 +69,46 @@ export function visibleRequests(
 
 function rank(request: LivePullRequest): number {
   return request.state === 'open' || request.state === 'draft' ? 0 : 1;
+}
+
+/**
+ * The lines a file's patch adds and removes, or null when the host sent no patch.
+ *
+ * Only lines after the first hunk header count, so the `---` and `+++` of the
+ * file header are never read as a removed and an added line.
+ */
+export function patchCounts(patch: string | null): { added: number; removed: number } | null {
+  if (patch === null) return null;
+
+  const lines = patch.split('\n');
+  const first = lines.findIndex((line) => line.startsWith('@@'));
+  if (first === -1) return { added: 0, removed: 0 };
+
+  let added = 0;
+  let removed = 0;
+  for (const line of lines.slice(first)) {
+    if (line.startsWith('+')) added += 1;
+    else if (line.startsWith('-')) removed += 1;
+  }
+
+  return { added, removed };
+}
+
+/** The one letter a host's word for a changed file is shown as: added, modified, removed, renamed. */
+export function fileLetter(status: string): string {
+  switch (status) {
+    case 'added':
+      return 'A';
+    case 'modified':
+    case 'changed':
+      return 'M';
+    case 'removed':
+      return 'D';
+    case 'renamed':
+      return 'R';
+    case 'copied':
+      return 'C';
+    default:
+      return status.slice(0, 1).toUpperCase();
+  }
 }
