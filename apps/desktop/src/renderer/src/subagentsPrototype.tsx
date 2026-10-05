@@ -141,6 +141,8 @@ const styles = stylex.create({
   pill: {
     display: 'inline-flex',
     alignItems: 'center',
+    minWidth: 0,
+    maxWidth: 'min(26ch, 100%)',
     gap: spacingVars['--spacing-1-5'],
     paddingBlock: spacingVars['--spacing-1'],
     paddingInline: spacingVars['--spacing-3'],
@@ -373,20 +375,20 @@ function FocusVariant({ agents, selected, transcript, onSelect }: PanelProps) {
   return (
     <VStack gap={4}>
       <fieldset aria-label="Subagent runs" {...stylex.props(styles.strip)}>
-        {agents.map((agent, index) => {
+        {agents.map((agent) => {
           const on = selected?.id === agent.id;
           return (
             <button
               key={agent.id}
               type="button"
               aria-pressed={on}
-              aria-label={`Run ${index + 1}: ${agent.title}, ${AGENT_STATE_WORD[agent.state]}`}
+              aria-label={`${agent.title}, ${AGENT_STATE_WORD[agent.state]}`}
               {...stylex.props(styles.pill, on && styles.pillOn)}
               onClick={() => onSelect(agent.id)}
             >
               <Dot agent={agent} />
-              <Text size="sm" weight="medium" hasTabularNumbers color="inherit">
-                {index + 1}
+              <Text size="sm" weight="medium" color="inherit" maxLines={1}>
+                {agent.title}
               </Text>
             </button>
           );
