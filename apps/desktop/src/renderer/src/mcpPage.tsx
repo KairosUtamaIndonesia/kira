@@ -1,9 +1,8 @@
 /**
- * PROTOTYPE — a server's page, variant B: tabs.
- *
- * Three tabs split what a person comes for: Overview (is it working, and how is it reached),
- * Tools (which of them Kira may call) and Settings (the form). Edits made in Settings survive a
- * trip to another tab. Add has no tabs, only the form.
+ * A server's page, opened from its tile (or Add): its name and status, whether it is on, and its
+ * menu, then three tabs that split what a person comes for. Overview says whether it is working
+ * and how it is reached; Tools says which of them Kira may call; Settings is the form. Edits made
+ * in Settings survive a trip to another tab. Add has no tabs, only the form.
  */
 import { Button } from '@astryxdesign/core/Button';
 import { Tab, TabList } from '@astryxdesign/core/TabList';
@@ -21,7 +20,7 @@ import { McpServerForm, SaveRow, useServerEditor } from './mcpForm';
 import { kindOf, reachOf, scopeLabel } from './mcpModel';
 import { Notices, ServerHead, Tools, type PageProps } from './mcpParts';
 
-export function McpPageB({ model, server, onBack, onSaved, onRemove }: PageProps) {
+export function McpPage({ model, server, onBack, onSaved, onRemove }: PageProps) {
   const editor = useServerEditor(model, server, onSaved);
   const [tab, setTab] = useState('overview');
 

@@ -1,9 +1,9 @@
 /**
- * PROTOTYPE — the MCP servers page: a grid of tiles, one per server, with an Add tile first.
+ * The MCP servers page: a grid of tiles, one per server, with an Add tile first.
  *
  * Each tile carries the server's status chip, how it is reached and how many tools it offers;
  * search and a where-it-is-offered filter narrow the grid. A tile asks to be opened (`onOpen`),
- * and the page it opens is the next screen's business. Wipe the PROTOTYPE marks when this folds in.
+ * and the page it opens is the next screen's business.
  */
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';

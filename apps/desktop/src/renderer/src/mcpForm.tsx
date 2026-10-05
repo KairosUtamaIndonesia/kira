@@ -1,8 +1,6 @@
 /**
- * PROTOTYPE — the add/edit form for an MCP server, in the sections the page's variants share:
- * what it is called and where it is offered, how it is reached, what it is given, and the
- * rarely-wanted rest. Each variant decides only where the form sits (a dialog, a pane, a page).
- * Wipe me with them, or fold me in with the winner.
+ * The add/edit form for an MCP server, in four ruled sections: what it is called and where it is
+ * offered, how it is reached, what it is given, and the rarely-wanted rest.
  *
  * Credentials are write-only: the main process never sends an environment variable or a token
  * back, so on an edit these start empty, and adding any replaces the whole saved set.
@@ -43,10 +41,9 @@ export function useServerEditor(
   model: McpModel,
   editing: McpServer | null,
   onSaved: (saved: McpServer) => void,
-  scope = 'global',
 ) {
   const [form, setForm] = useState<FormValues>(() =>
-    editing === null ? blankForm(scope) : formOf(editing),
+    editing === null ? blankForm() : formOf(editing),
   );
   const built = buildDraft(form);
   const ready = 'draft' in built && !model.busy;
@@ -65,8 +62,6 @@ export function useServerEditor(
     /** Whether the form differs from the server as it is saved (always, for a new one). */
     dirty: editing === null || JSON.stringify(form) !== JSON.stringify(formOf(editing)),
     change: (next: Partial<FormValues>) => setForm((current) => ({ ...current, ...next })),
-    /** Put the form back as the saved server has it. */
-    reset: () => setForm(editing === null ? blankForm(scope) : formOf(editing)),
     ready,
     /** Why saving is not yet possible, for a person who has not done anything wrong yet. */
     missing: 'error' in built ? built.error : null,
@@ -82,7 +77,7 @@ interface FieldsProps {
 }
 
 /** The words over each part of the form, so a page that lays them out its own way says the same. */
-export function sectionText(remote: boolean) {
+function sectionText(remote: boolean) {
   return {
     server: { title: 'Server', hint: null },
     reach: {
@@ -100,7 +95,7 @@ export function sectionText(remote: boolean) {
 }
 
 /** Name, where it is offered, and a way to fill the whole form from a README's JSON. */
-export function ServerFields({ form, change, model }: FieldsProps) {
+function ServerFields({ form, change, model }: FieldsProps) {
   const [snippet, setSnippet] = useState<string | null>(null);
   const [snippetError, setSnippetError] = useState<string | null>(null);
 
@@ -176,7 +171,7 @@ export function ServerFields({ form, change, model }: FieldsProps) {
 }
 
 /** Command or link, and the one box for whichever it is. */
-export function ReachFields({ form, change }: FieldsProps) {
+function ReachFields({ form, change }: FieldsProps) {
   return (
     <>
       <SegmentedControl
@@ -223,7 +218,7 @@ export function ReachFields({ form, change }: FieldsProps) {
 }
 
 /** What the server is given: environment variables, or headers and a token. Write-only. */
-export function SecretsFields({ form, change, editing }: FieldsProps) {
+function SecretsFields({ form, change, editing }: FieldsProps) {
   const remote = form.transport === 'streamable-http';
   const saved = editing !== null && (editing.hasCredentials || editing.credentialsPersisted);
 
@@ -272,7 +267,7 @@ export function SecretsFields({ form, change, editing }: FieldsProps) {
   );
 }
 
-export function AdvancedFields({ form, change }: FieldsProps) {
+function AdvancedFields({ form, change }: FieldsProps) {
   return (
     <TextInput
       label="Working folder"

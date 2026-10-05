@@ -1,6 +1,6 @@
 /**
- * PROTOTYPE — the small pieces the MCP variants share (a server's status, its tool checklist,
- * its action menu), so they differ in layout and not in behavior. Wipe me with them.
+ * The small pieces of a server's page: its tool checklist, its action menu, what is wrong with
+ * it, and the head of the page.
  */
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
@@ -10,7 +10,6 @@ import { DropdownMenu } from '@astryxdesign/core/DropdownMenu';
 import { Heading } from '@astryxdesign/core/Heading';
 import { Icon } from '@astryxdesign/core/Icon';
 import { IconButton } from '@astryxdesign/core/IconButton';
-import { StatusDot } from '@astryxdesign/core/StatusDot';
 import { Switch } from '@astryxdesign/core/Switch';
 import { Text } from '@astryxdesign/core/Text';
 import { colorVars, spacingVars, textSizeVars } from '@astryxdesign/core/theme/tokens.stylex';
@@ -35,17 +34,6 @@ export interface PageProps {
   /** A new server was saved; the page it made is next. */
   onSaved: (saved: McpServer) => void;
   onRemove: () => void;
-}
-
-/** A status as a dot and its word: color never carries the meaning alone. */
-export function Status({ server }: { server: McpServer }) {
-  const { label, tone } = statusOf(server);
-  return (
-    <span {...stylex.props(ui.status)}>
-      <StatusDot variant={tone} label={label} isPulsing={server.status === 'connecting'} />
-      <span>{label}</span>
-    </span>
-  );
 }
 
 /** Which tools of a server Kira may call: all of them, or a chosen few. */

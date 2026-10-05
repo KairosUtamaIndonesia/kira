@@ -1,10 +1,6 @@
 /**
- * PROTOTYPE — MCP servers settings redesign. Wipe me once a variant has won (the pure helpers
- * and their test are meant to stay).
- *
- * What every variant of the page is handed: the saved servers and what can be done to them,
- * plus the words for a server (its status, how it is reached) and the form's rules, so the
- * variants are judged on layout rather than on wording.
+ * What the MCP servers page and its form share: the saved servers and what can be done to them,
+ * the words for a server (its status, how it is reached), and the form's rules.
  */
 import type {
   McpCredentialsDraft,
@@ -219,33 +215,6 @@ export function buildDraft(form: FormValues): { draft: McpServerDraft } | { erro
       ...(credentials === undefined ? {} : { credentials }),
     },
   };
-}
-
-export interface ScopeGroup {
-  /** 'global', or a workspace's id. */
-  id: string;
-  label: string;
-  servers: McpServer[];
-}
-
-/** Every chat first, then the workspaces that hold a server of their own. */
-export function groupByScope(
-  servers: McpServer[],
-  workspaces: readonly WorkspaceSummary[],
-): ScopeGroup[] {
-  const groups: ScopeGroup[] = [
-    {
-      id: 'global',
-      label: 'Every chat',
-      servers: servers.filter((each) => each.scope === 'global'),
-    },
-    ...workspaces.map((workspace) => ({
-      id: workspace.id,
-      label: workspace.name,
-      servers: servers.filter((each) => each.workspaceId === workspace.id),
-    })),
-  ];
-  return groups.filter((group) => group.id === 'global' || group.servers.length > 0);
 }
 
 export function matches(server: McpServer, query: string): boolean {
