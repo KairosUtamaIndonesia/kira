@@ -1021,6 +1021,9 @@ export interface TicketPullRequest {
   updatedAt: string;
 }
 
+/** Which pull requests a repository read asks its host for. */
+export type PullRequestState = 'open' | 'closed' | 'all';
+
 /** A repository's pull request, read live from its Git host. */
 export interface LivePullRequest {
   number: number;
@@ -1738,7 +1741,10 @@ export interface KiraBridge {
    * Git host. A checkout with no remote, a repository whose host is not connected,
    * and a host with no adapter each come back as a sentence.
    */
-  loadCheckoutPullRequests(chatId: string): Promise<Result<LivePullRequest[]>>;
+  loadCheckoutPullRequests(
+    chatId: string,
+    state: PullRequestState,
+  ): Promise<Result<LivePullRequest[]>>;
   /** One pull request opened: its body, checks, comments and changed files. */
   loadCheckoutPullRequest(chatId: string, number: number): Promise<Result<LivePullRequestDetail>>;
   /** Change the words of a comment you wrote. */

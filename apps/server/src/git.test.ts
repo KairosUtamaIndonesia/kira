@@ -1098,4 +1098,33 @@ describe('live pull requests', () => {
       await github.stop();
     }
   });
+
+  test('asks the host only for the state the filter names', async () => {
+    const github = await startFakeGitHub({
+      id: 95,
+      login: 'acme',
+      type: 'Organization',
+      repositories: [{ owner: 'acme', name: 'api' }],
+      pullRequests: [
+        { number: 1, title: 'Still open', state: 'open' },
+        { number: 2, title: 'Already merged', state: 'closed', mergedAt: '2026-01-01T00:00:00Z' },
+      ],
+    });
+
+    try {
+      const { app, key } = await installedApp(github, 95, 'live-state');
+      const project = await makeProject(app, key);
+
+      const answer = await send(
+        app,
+        `/api/projects/${project.id}/pull-requests?${remote('github', 'acme', 'api')}&state=open`,
+        { headers: bearer(key) },
+      );
+      expect(answer.status).toBe(200);
+      expect((await answer.json()).pullRequests).toMatchObject([{ number: 1 }]);
+      expect(github.pullRequestStates).toEqual(['open']);
+    } finally {
+      await github.stop();
+    }
+  });
 });

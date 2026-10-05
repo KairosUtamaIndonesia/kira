@@ -5,6 +5,7 @@
  * the words a person reads, kept apart from the component so both are checkable
  * without a DOM.
  */
+import type { LivePullRequest } from '../../preload/bridge.ts';
 
 /** What a pull request's state is called. */
 export function stateWord(state: string): string {
@@ -41,4 +42,36 @@ export function checksWord(state: string | null): string | null {
 /** A pull request's row: its number and title, as one label. */
 export function rowLabel(number: number, title: string): string {
   return `#${number} ${title}`;
+}
+
+/**
+ * The requests a search leaves, open and draft first.
+ *
+ * A search matches the number, the title, the author or the branch, all
+ * case-insensitively, so `165`, `dummy`, `brandonvalentino` and `agent/dummy-pr`
+ * all find the same request. Open and draft requests sort above closed and
+ * merged ones; within a group the host's own order — most recently updated
+ * first — is kept, which a stable sort gives for free.
+ */
+export function visibleRequests(
+  requests: readonly LivePullRequest[],
+  query: string,
+): LivePullRequest[] {
+  const term = query.trim().toLowerCase();
+  const matches =
+    term === ''
+      ? [...requests]
+      : requests.filter(
+          (request) =>
+            `#${request.number}`.includes(term) ||
+            request.title.toLowerCase().includes(term) ||
+            (request.authorLogin ?? '').toLowerCase().includes(term) ||
+            (request.branch ?? '').toLowerCase().includes(term),
+        );
+
+  return matches.sort((one, other) => rank(one) - rank(other));
+}
+
+function rank(request: LivePullRequest): number {
+  return request.state === 'open' || request.state === 'draft' ? 0 : 1;
 }

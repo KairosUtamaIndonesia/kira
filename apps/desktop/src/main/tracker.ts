@@ -28,6 +28,7 @@ import type {
   JoinRequest,
   LivePullRequest,
   LivePullRequestDetail,
+  PullRequestState,
   ProjectSummary,
   Ticket,
   TicketComment,
@@ -207,6 +208,7 @@ export interface TrackerWire {
     key: string,
     projectId: string,
     remote: { provider: string; owner: string; name: string },
+    state: PullRequestState,
   ): Promise<TrackerAnswer<LivePullRequest[]>>;
   /** One repository pull request opened, with its body, checks, comments and files. */
   repositoryPullRequest?(
@@ -312,7 +314,11 @@ export interface Tracker {
    * Git host. A checkout with no remote is one sentence, and a host Kira cannot
    * watch or is not connected is another.
    */
-  checkoutPullRequests(workspaceId: string, folder: string): Promise<LivePullRequest[]>;
+  checkoutPullRequests(
+    workspaceId: string,
+    folder: string,
+    state: PullRequestState,
+  ): Promise<LivePullRequest[]>;
   /** One pull request of the checkout's repository, opened for reading. */
   checkoutPullRequest(
     workspaceId: string,
@@ -583,7 +589,7 @@ export function trackerFor({
       return await asked(() => wire.pullRequests(held, ticketId));
     },
 
-    async checkoutPullRequests(workspaceId, folder) {
+    async checkoutPullRequests(workspaceId, folder, state) {
       const held = await key();
       const projectId = projectIn(workspaceId);
       const remote = await remoteFor(folder);
@@ -591,7 +597,7 @@ export function trackerFor({
         throw new Error('Reading a repository’s pull requests is unavailable.');
       }
 
-      return await asked(() => wire.repositoryPullRequests!(held, projectId, remote));
+      return await asked(() => wire.repositoryPullRequests!(held, projectId, remote, state));
     },
 
     async checkoutPullRequest(workspaceId, folder, number) {

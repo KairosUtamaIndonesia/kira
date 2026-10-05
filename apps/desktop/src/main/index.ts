@@ -342,7 +342,7 @@ function registerTrackerChannels(): void {
     editComment: (commentId, body) => tracker.editComment(commentId, body),
     deleteComment: (commentId) => tracker.deleteComment(commentId),
     pullRequests: (ticketId) => tracker.pullRequests(ticketId),
-    checkoutPullRequests: (chatId) => {
+    checkoutPullRequests: (chatId, state) => {
       const thread = store.findThread(chatId);
       if (thread === undefined || thread.cwd === null) {
         throw new Error('This chat has no workspace yet.');
@@ -351,7 +351,7 @@ function registerTrackerChannels(): void {
         throw new Error('This chat’s folder is not filed under a project.');
       }
 
-      return tracker.checkoutPullRequests(thread.workspaceId, thread.cwd);
+      return tracker.checkoutPullRequests(thread.workspaceId, thread.cwd, state);
     },
     checkoutPullRequest: (chatId, number) => {
       const thread = store.findThread(chatId);
@@ -404,8 +404,8 @@ function registerTrackerChannels(): void {
   ipcMain.handle(TRACKER_CHANNELS.pullRequests, (_event, ticketId: unknown) =>
     handlers.pullRequests(ticketId),
   );
-  ipcMain.handle(TRACKER_CHANNELS.checkoutPullRequests, (_event, chatId: unknown) =>
-    handlers.checkoutPullRequests(chatId),
+  ipcMain.handle(TRACKER_CHANNELS.checkoutPullRequests, (_event, chatId: unknown, state: unknown) =>
+    handlers.checkoutPullRequests(chatId, state),
   );
   ipcMain.handle(TRACKER_CHANNELS.checkoutPullRequest, (_event, chatId: unknown, number: unknown) =>
     handlers.checkoutPullRequest(chatId, number),

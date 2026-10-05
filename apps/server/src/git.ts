@@ -553,6 +553,7 @@ const PULL_REQUEST_REMOTE = t.Object({
   provider: t.String(),
   owner: t.String(),
   name: t.String(),
+  state: t.Optional(t.Union([t.Literal('open'), t.Literal('closed'), t.Literal('all')])),
 });
 
 const LIVE_CHECK = t.Object({ context: t.String(), state: t.String() });
@@ -1158,6 +1159,7 @@ export function createGit({
           source.bearer,
           source.owner,
           source.name,
+          query.state ?? 'all',
         );
         if (pullRequests === null) {
           return status(502, refusal('GIT_UNREACHABLE', messages.gitUnreachable));
@@ -1937,10 +1939,11 @@ async function githubLivePullRequests(
   bearer: string,
   owner: string,
   name: string,
+  state: 'open' | 'closed' | 'all',
 ): Promise<LivePullRequest[] | null> {
   const response = await githubRequest(
     bearer,
-    `${config.git.apiBaseUrl}/repos/${owner}/${name}/pulls?state=all&sort=updated&direction=desc&per_page=20`,
+    `${config.git.apiBaseUrl}/repos/${owner}/${name}/pulls?state=${state}&sort=updated&direction=desc&per_page=30`,
   );
   if (response === null) return null;
 

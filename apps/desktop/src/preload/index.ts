@@ -172,8 +172,8 @@ const bridge: KiraBridge = {
 
   loadPullRequests: (ticketId) => ask<TicketPullRequest[]>(TRACKER_CHANNELS.pullRequests, ticketId),
 
-  loadCheckoutPullRequests: (chatId) =>
-    ask<LivePullRequest[]>(TRACKER_CHANNELS.checkoutPullRequests, chatId),
+  loadCheckoutPullRequests: (chatId, state) =>
+    ask<LivePullRequest[]>(TRACKER_CHANNELS.checkoutPullRequests, chatId, state),
 
   loadCheckoutPullRequest: (chatId, number) =>
     ask<LivePullRequestDetail>(TRACKER_CHANNELS.checkoutPullRequest, chatId, number),

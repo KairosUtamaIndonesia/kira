@@ -20,6 +20,7 @@ import {
   type GlossaryEntry,
   type LivePullRequest,
   type LivePullRequestDetail,
+  type PullRequestState,
   type ProjectSkill,
   type ProjectSkillFile,
   type Repository,
@@ -71,7 +72,7 @@ export interface TrackerDeps {
   /** A ticket's pull requests, newest first. */
   pullRequests(ticketId: string): Promise<TicketPullRequest[]>;
   /** The chat's checkout repository's pull requests, read live from its host. */
-  checkoutPullRequests(chatId: string): Promise<LivePullRequest[]>;
+  checkoutPullRequests(chatId: string, state: PullRequestState): Promise<LivePullRequest[]>;
   /** One pull request of the chat's checkout repository, opened for reading. */
   checkoutPullRequest(chatId: string, number: number): Promise<LivePullRequestDetail>;
   /** A project's repositories. */
@@ -111,7 +112,7 @@ export interface TrackerHandlers {
     authorKind: unknown,
   ): Promise<Result<TicketComment>>;
   pullRequests(ticketId: unknown): Promise<Result<TicketPullRequest[]>>;
-  checkoutPullRequests(chatId: unknown): Promise<Result<LivePullRequest[]>>;
+  checkoutPullRequests(chatId: unknown, state: unknown): Promise<Result<LivePullRequest[]>>;
   checkoutPullRequest(chatId: unknown, number: unknown): Promise<Result<LivePullRequestDetail>>;
   editComment(commentId: unknown, body: unknown): Promise<Result<TicketComment>>;
   deleteComment(commentId: unknown): Promise<Result<null>>;
@@ -290,12 +291,15 @@ export function trackerHandlers({
       return envelope(() => pullRequests(ticketId));
     },
 
-    checkoutPullRequests: (chatId) => {
+    checkoutPullRequests: (chatId, state) => {
       if (!isId(chatId)) {
         return Promise.resolve({ ok: false, error: 'Pull requests are read for a chat.' });
       }
+      if (state !== 'open' && state !== 'closed' && state !== 'all') {
+        return Promise.resolve({ ok: false, error: 'Choose open, closed or all pull requests.' });
+      }
 
-      return envelope(() => checkoutPullRequests(chatId));
+      return envelope(() => checkoutPullRequests(chatId, state));
     },
 
     checkoutPullRequest: (chatId, number) => {

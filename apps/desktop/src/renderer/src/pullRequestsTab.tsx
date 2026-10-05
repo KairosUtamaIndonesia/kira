@@ -18,11 +18,15 @@ import { Text } from '@astryxdesign/core/Text';
 import { VStack } from '@astryxdesign/core/VStack';
 import { colorVars, spacingVars } from '@astryxdesign/core/theme/tokens.stylex';
 import * as stylex from '@stylexjs/stylex';
-import { ArrowLeft, RefreshCw } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Search } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import type { LivePullRequest, LivePullRequestDetail } from '../../preload/bridge';
+import type {
+  LivePullRequest,
+  LivePullRequestDetail,
+  PullRequestState,
+} from '../../preload/bridge';
 import { DiffPatch } from './diffView';
-import { checksWord, rowLabel, stateWord } from './pullRequestsModel';
+import { checksWord, rowLabel, stateWord, visibleRequests } from './pullRequestsModel';
 
 export function PullRequestsTab({ chatId, visits }: { chatId: string; visits: number }) {
   const [pullRequests, setPullRequests] = useState<LivePullRequest[] | null>(null);
@@ -31,13 +35,15 @@ export function PullRequestsTab({ chatId, visits }: { chatId: string; visits: nu
   const [detail, setDetail] = useState<LivePullRequestDetail | null>(null);
   const [detailTrouble, setDetailTrouble] = useState<string | null>(null);
   const [openFile, setOpenFile] = useState<string | null>(null);
+  const [state, setState] = useState<PullRequestState>('open');
+  const [query, setQuery] = useState('');
   const [tick, setTick] = useState(0);
   const reading = useRef(0);
 
   useEffect(() => {
     if (visits === 0) return;
     const mine = (reading.current += 1);
-    void window.kira.loadCheckoutPullRequests(chatId).then((answer) => {
+    void window.kira.loadCheckoutPullRequests(chatId, state).then((answer) => {
       if (mine !== reading.current) return;
       if (answer.ok) {
         setPullRequests(answer.value);
@@ -47,7 +53,7 @@ export function PullRequestsTab({ chatId, visits }: { chatId: string; visits: nu
         setTrouble(answer.error);
       }
     });
-  }, [chatId, visits, tick]);
+  }, [chatId, visits, tick, state]);
 
   useEffect(() => {
     if (selected === null) return;
@@ -181,13 +187,8 @@ export function PullRequestsTab({ chatId, visits }: { chatId: string; visits: nu
     );
   }
 
-  if (pullRequests === null) {
-    return (
-      <Text type="supporting" color="secondary">
-        Reading pull requests…
-      </Text>
-    );
-  }
+  const visible = visibleRequests(pullRequests ?? [], query);
+  const loading = pullRequests === null;
 
   return (
     <div {...stylex.props(styles.tab)}>
@@ -201,13 +202,42 @@ export function PullRequestsTab({ chatId, visits }: { chatId: string; visits: nu
           onClick={refresh}
         />
       </HStack>
-      {pullRequests.length === 0 ? (
+      <HStack gap={2} align="center">
+        <select
+          {...stylex.props(styles.filter)}
+          aria-label="Pull request state"
+          value={state}
+          onChange={(event) => setState(event.currentTarget.value as PullRequestState)}
+        >
+          <option value="open">Open</option>
+          <option value="all">All</option>
+          <option value="closed">Closed</option>
+        </select>
+        <label {...stylex.props(styles.search)}>
+          <Icon icon={Search} size="sm" />
+          <input
+            {...stylex.props(styles.searchInput)}
+            aria-label="Search pull requests"
+            placeholder="Search pull requests…"
+            value={query}
+            onChange={(event) => setQuery(event.currentTarget.value)}
+          />
+        </label>
+      </HStack>
+      {loading ? (
         <Text type="supporting" color="secondary">
-          This repository has no pull requests to show.
+          Reading pull requests…
+        </Text>
+      ) : null}
+      {!loading && visible.length === 0 ? (
+        <Text type="supporting" color="secondary">
+          {query.trim() === ''
+            ? 'This repository has no pull requests to show.'
+            : 'No pull request matches that search.'}
         </Text>
       ) : null}
       <VStack gap={1}>
-        {pullRequests.map((request) => (
+        {visible.map((request) => (
           <button
             key={request.number}
             type="button"
@@ -284,5 +314,37 @@ const styles = stylex.create({
   body: {
     whiteSpace: 'pre-wrap',
     color: colorVars['--color-text-primary'],
+  },
+  filter: {
+    paddingInline: spacingVars['--spacing-1'],
+    borderWidth: 0,
+    color: colorVars['--color-text-primary'],
+    backgroundColor: 'transparent',
+    font: 'inherit',
+  },
+  search: {
+    display: 'flex',
+    flex: 1,
+    alignItems: 'center',
+    gap: spacingVars['--spacing-2'],
+    minHeight: 30,
+    minWidth: 0,
+    paddingInline: spacingVars['--spacing-2'],
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: colorVars['--color-border'],
+    borderRadius: 'var(--radius-element)',
+    color: colorVars['--color-text-secondary'],
+    backgroundColor: colorVars['--color-background-muted'],
+  },
+  searchInput: {
+    width: '100%',
+    minWidth: 0,
+    border: 0,
+    outline: 0,
+    color: colorVars['--color-text-primary'],
+    backgroundColor: 'transparent',
+    font: 'inherit',
+    '::placeholder': { color: colorVars['--color-text-secondary'] },
   },
 });

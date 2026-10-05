@@ -40,6 +40,8 @@ export interface FakeGitHub {
   repositoryTokens: string[];
   /** The bearer each pull-request read carried, in call order. */
   pullRequestTokens: string[];
+  /** The `state` each pull-request list asked for, in call order. */
+  pullRequestStates: string[];
   stop(): Promise<void>;
 }
 
@@ -59,6 +61,7 @@ export async function startFakeGitHub(installation: FakeInstallation): Promise<F
     repositoryPages: [],
     repositoryTokens: [],
     pullRequestTokens: [],
+    pullRequestStates: [],
     stop: async () => {},
   };
 
@@ -168,7 +171,14 @@ export async function startFakeGitHub(installation: FakeInstallation): Promise<F
 
       const kind = parts[3];
       if (kind === 'pulls' && parts.length === 4) {
-        jsonReply(held.map(asItem));
+        const wanted = url.searchParams.get('state') ?? 'all';
+        fake.pullRequestStates.push(wanted);
+        const isClosed = (pr: FakePullRequest): boolean =>
+          pr.state === 'closed' || (pr.mergedAt ?? null) !== null;
+        const matching = held.filter((pr) =>
+          wanted === 'open' ? !isClosed(pr) : wanted === 'closed' ? isClosed(pr) : true,
+        );
+        jsonReply(matching.map(asItem));
         return;
       }
       if (kind === 'pulls' && parts.length >= 5) {
