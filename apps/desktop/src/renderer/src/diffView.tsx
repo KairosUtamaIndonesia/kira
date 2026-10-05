@@ -14,7 +14,7 @@
  */
 import { preloadHighlighter } from '@pierre/diffs';
 import { PatchDiff } from '@pierre/diffs/react';
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { Component, type ReactNode, useEffect, useState, useSyncExternalStore } from 'react';
 import { languageOf } from './filePreview';
 
 /** Whether the pane draws its diff inline or in two columns. */
@@ -71,17 +71,40 @@ export function DiffPatch({
   return (
     <div className="workbench-diff" data-scheme={scheme}>
       {loaded === key ? (
-        <PatchDiff
-          patch={patch}
-          disableWorkerPool
-          options={{
-            theme,
-            diffStyle,
-            overflow: wrap ? 'wrap' : 'scroll',
-            disableFileHeader: true,
-          }}
-        />
+        <DiffBoundary key={patch}>
+          <PatchDiff
+            patch={patch}
+            disableWorkerPool
+            options={{
+              theme,
+              diffStyle,
+              overflow: wrap ? 'wrap' : 'scroll',
+              disableFileHeader: true,
+            }}
+          />
+        </DiffBoundary>
       ) : null}
     </div>
   );
+}
+
+/**
+ * A patch the renderer cannot draw says so rather than taking the window down
+ * with it: a diff is third-party output over host data, and one unexpected patch
+ * must not unmount the chat beside it. A new patch gets a fresh boundary.
+ */
+class DiffBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError(): { failed: boolean } {
+    return { failed: true };
+  }
+
+  render(): ReactNode {
+    if (this.state.failed) {
+      return <p className="workbench-diff-failed">This diff could not be drawn.</p>;
+    }
+
+    return this.props.children;
+  }
 }

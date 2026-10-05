@@ -1998,11 +1998,36 @@ function asLiveFile(item: unknown): LiveFile | null {
   const held = item as { filename?: unknown; status?: unknown; patch?: unknown };
   if (typeof held.filename !== 'string' || held.filename === '') return null;
 
+  const status = fileCode(held.status);
+
   return {
     path: held.filename,
-    status: fileCode(held.status),
-    patch: typeof held.patch === 'string' ? held.patch : null,
+    status,
+    patch: typeof held.patch === 'string' ? completePatch(held.filename, status, held.patch) : null,
   };
+}
+
+/**
+ * A whole unified diff: GitHub returns a changed file's hunks without the file
+ * header, and the diff renderer needs one. A patch that already has its header —
+ * git's own output — is left as it is.
+ */
+function completePatch(path: string, status: string, patch: string): string {
+  if (patch.startsWith('diff --git')) return patch;
+
+  const header =
+    status === 'A'
+      ? [`diff --git a/${path} b/${path}`, 'new file mode 100644', '--- /dev/null', `+++ b/${path}`]
+      : status === 'D'
+        ? [
+            `diff --git a/${path} b/${path}`,
+            'deleted file mode 100644',
+            `--- a/${path}`,
+            '+++ /dev/null',
+          ]
+        : [`diff --git a/${path} b/${path}`, `--- a/${path}`, `+++ b/${path}`];
+
+  return [...header, patch].join('\n');
 }
 
 /** What reading one pull request came to: found, gone, or a host that did not answer. */

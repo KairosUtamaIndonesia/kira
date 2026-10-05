@@ -980,7 +980,10 @@ describe('live pull requests', () => {
         { headers: bearer(key) },
       );
       expect(answer.status).toBe(200);
-      expect((await answer.json()).pullRequest).toMatchObject({
+      const detail = (await answer.json()).pullRequest as {
+        files: { path: string; status: string; patch: string | null }[];
+      };
+      expect(detail).toMatchObject({
         number: 12,
         title: 'Fix the thing',
         body: 'It fixes it.',
@@ -995,8 +998,16 @@ describe('live pull requests', () => {
         comments: [
           { authorLogin: 'grace', body: 'Looks good.', createdAt: '2026-01-02T00:00:00Z' },
         ],
-        files: [{ path: 'src/a.ts', status: 'M', patch: '@@ -1 +1 @@\n-old\n+new\n' }],
       });
+      // GitHub returns only the hunks; the server hands back a whole patch.
+      expect(detail.files).toEqual([
+        {
+          path: 'src/a.ts',
+          status: 'M',
+          patch:
+            'diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n',
+        },
+      ]);
     } finally {
       await github.stop();
     }
