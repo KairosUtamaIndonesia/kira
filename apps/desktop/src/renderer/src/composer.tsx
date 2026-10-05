@@ -14,7 +14,7 @@ import { IconButton } from '@astryxdesign/core/IconButton';
 import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList';
 import { ProgressBar } from '@astryxdesign/core/ProgressBar';
 import { Selector } from '@astryxdesign/core/Selector';
-import { StatusDot } from '@astryxdesign/core/StatusDot';
+import { AgentStateMark } from './agentState';
 import { Text } from '@astryxdesign/core/Text';
 import { Popover } from '@astryxdesign/core/Popover';
 import { Tooltip } from '@astryxdesign/core/Tooltip';
@@ -557,11 +557,7 @@ export function Composer({
               {...stylex.props(styles.agentChip)}
               onClick={() => onSelectSubagent?.(agent.id)}
             >
-              <StatusDot
-                variant={AGENT_DOT[agent.state].variant}
-                label={AGENT_DOT[agent.state].word}
-                isPulsing={agent.state === 'running'}
-              />
+              <AgentStateMark state={agent.state} />
               <Text size="sm" color="inherit" maxLines={1}>
                 {agent.title}
               </Text>
@@ -769,13 +765,6 @@ function ShellCommandActivity({
  * it has used.
  */
 /** The meter fills its tooltip, not the composer around it. */
-const AGENT_DOT = {
-  running: { variant: 'accent', word: 'Working' },
-  complete: { variant: 'success', word: 'Done' },
-  error: { variant: 'error', word: 'Failed' },
-  stopped: { variant: 'neutral', word: 'Stopped' },
-} as const;
-
 const styles = stylex.create({
   agents: {
     display: 'flex',

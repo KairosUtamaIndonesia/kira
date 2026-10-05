@@ -19,7 +19,6 @@ import { HStack } from '@astryxdesign/core/HStack';
 import { Icon } from '@astryxdesign/core/Icon';
 import { IconButton } from '@astryxdesign/core/IconButton';
 import { Markdown } from '@astryxdesign/core/Markdown';
-import { StatusDot } from '@astryxdesign/core/StatusDot';
 import { Text } from '@astryxdesign/core/Text';
 import { VStack } from '@astryxdesign/core/VStack';
 import {
@@ -33,6 +32,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import * as stylex from '@stylexjs/stylex';
 import type { ChatMessage, ChatTranscript, SubagentSummary } from '../../preload/bridge';
+import { AGENT_STATE_WORD, AgentStateMark } from './agentState';
 import { Work } from './workTrace';
 
 const VARIANTS = [
@@ -41,13 +41,6 @@ const VARIANTS = [
   { key: 'C', name: 'Focus' },
 ] as const;
 type Variant = (typeof VARIANTS)[number]['key'];
-
-const STATE = {
-  running: { dot: 'accent', word: 'Working', pulse: true },
-  complete: { dot: 'success', word: 'Done', pulse: false },
-  error: { dot: 'error', word: 'Failed', pulse: false },
-  stopped: { dot: 'neutral', word: 'Stopped', pulse: false },
-} as const;
 
 const ROLE = { general: 'General', explore: 'Explore' } as const;
 
@@ -319,7 +312,7 @@ function StackVariant({ agents, selected, transcript, onSelect }: PanelProps) {
                 {agent.title}
               </Text>
               <Text size="sm" color="secondary" xstyle={styles.stateWord}>
-                {STATE[agent.state].word}
+                {AGENT_STATE_WORD[agent.state]}
               </Text>
             </button>
           );
@@ -350,7 +343,7 @@ function CardsVariant({ agents, selected, transcript, onSelect }: PanelProps) {
                 <HStack gap={2} align="center">
                   <Dot agent={agent} />
                   <Text size="sm" color="secondary">
-                    {STATE[agent.state].word} · {ROLE[agent.role]}
+                    {AGENT_STATE_WORD[agent.state]} · {ROLE[agent.role]}
                   </Text>
                 </HStack>
               </HStack>
@@ -387,7 +380,7 @@ function FocusVariant({ agents, selected, transcript, onSelect }: PanelProps) {
               key={agent.id}
               type="button"
               aria-pressed={on}
-              aria-label={`Run ${index + 1}: ${agent.title}, ${STATE[agent.state].word}`}
+              aria-label={`Run ${index + 1}: ${agent.title}, ${AGENT_STATE_WORD[agent.state]}`}
               {...stylex.props(styles.pill, on && styles.pillOn)}
               onClick={() => onSelect(agent.id)}
             >
@@ -435,7 +428,7 @@ function RunDetail({
           <HStack gap={2} align="center">
             <Dot agent={agent} />
             <Text size="sm" color="secondary">
-              {STATE[agent.state].word}
+              {AGENT_STATE_WORD[agent.state]}
               {working && agent.activity ? ` · ${agent.activity}` : ''}
             </Text>
             <Badge label={ROLE[agent.role]} variant="neutral" />
@@ -497,8 +490,7 @@ function Section({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function Dot({ agent }: { agent: SubagentSummary }) {
-  const state = STATE[agent.state];
-  return <StatusDot variant={state.dot} label={state.word} isPulsing={state.pulse} />;
+  return <AgentStateMark state={agent.state} />;
 }
 
 function textOf(message: ChatMessage): string {
