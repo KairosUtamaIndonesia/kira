@@ -13,12 +13,12 @@
  * sentence rather than showing an empty list.
  */
 import { Button } from '@astryxdesign/core/Button';
+import { ChatComposer } from '@astryxdesign/core/Chat';
 import { DropdownMenu } from '@astryxdesign/core/DropdownMenu';
 import { Icon } from '@astryxdesign/core/Icon';
 import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl';
 import { Selector } from '@astryxdesign/core/Selector';
 import { Text } from '@astryxdesign/core/Text';
-import { TextArea } from '@astryxdesign/core/TextArea';
 import { VStack } from '@astryxdesign/core/VStack';
 import { borderVars, colorVars, spacingVars } from '@astryxdesign/core/theme/tokens.stylex';
 import * as stylex from '@stylexjs/stylex';
@@ -350,6 +350,7 @@ export function ChangesTab({
 
   const totals = totalsOf(files);
   const committing = committingCount(files);
+  const canCommit = !busy && committing > 0 && commitMessage.trim() !== '';
   const allStaged = files.length > 0 && files.every((file) => file.state === 'staged');
 
   return (
@@ -490,26 +491,29 @@ export function ChangesTab({
               {message}
             </Text>
           )}
-          <TextArea
-            label="Commit message"
-            isLabelHidden
-            placeholder="Commit message"
-            rows={3}
+          <ChatComposer
             value={commitMessage}
             onChange={setCommitMessage}
+            placeholder="Commit message"
+            density="compact"
+            onSubmit={() => {
+              if (canCommit) void commit();
+            }}
+            footerActions={
+              <Text type="supporting" color="secondary">
+                {committing} of {files.length} staged
+              </Text>
+            }
+            sendButton={
+              <Button
+                label="Commit"
+                size="sm"
+                variant="primary"
+                isDisabled={!canCommit}
+                onClick={() => void commit()}
+              />
+            }
           />
-          <div {...stylex.props(styles.commitRow)}>
-            <Text type="supporting" color="secondary">
-              {committing} of {files.length} staged
-            </Text>
-            <Button
-              label="Commit"
-              size="sm"
-              variant="primary"
-              isDisabled={busy || committing === 0 || commitMessage.trim() === ''}
-              onClick={() => void commit()}
-            />
-          </div>
         </div>
       )}
     </div>
@@ -554,11 +558,5 @@ const styles = stylex.create({
     borderBlockStartStyle: 'solid',
     borderBlockStartColor: colorVars['--color-border'],
     backgroundColor: colorVars['--color-background-surface'],
-  },
-  commitRow: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacingVars['--spacing-2'],
   },
 });
