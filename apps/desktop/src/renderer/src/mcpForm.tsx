@@ -54,12 +54,19 @@ export function useServerEditor(
   async function save(): Promise<void> {
     if (!('draft' in built) || model.busy) return;
     const saved = await model.save(editing?.id ?? null, built.draft);
-    if (saved !== null) onSaved(saved);
+    if (saved === null) return;
+    // Credentials never come back, so what was typed is dropped once it is saved.
+    setForm(formOf(saved));
+    onSaved(saved);
   }
 
   return {
     form,
+    /** Whether the form differs from the server as it is saved (always, for a new one). */
+    dirty: editing === null || JSON.stringify(form) !== JSON.stringify(formOf(editing)),
     change: (next: Partial<FormValues>) => setForm((current) => ({ ...current, ...next })),
+    /** Put the form back as the saved server has it. */
+    reset: () => setForm(editing === null ? blankForm(scope) : formOf(editing)),
     ready,
     /** Why saving is not yet possible, for a person who has not done anything wrong yet. */
     missing: 'error' in built ? built.error : null,
@@ -67,21 +74,35 @@ export function useServerEditor(
   };
 }
 
-export function McpServerForm({
-  form,
-  change,
-  editing,
-  model,
-}: {
+interface FieldsProps {
   form: FormValues;
   change: (next: Partial<FormValues>) => void;
   editing: McpServer | null;
   model: McpModel;
-}) {
+}
+
+/** The words over each part of the form, so a page that lays them out its own way says the same. */
+export function sectionText(remote: boolean) {
+  return {
+    server: { title: 'Server', hint: null },
+    reach: {
+      title: 'How to reach it',
+      hint: 'Paste the command that starts it, or the link to a hosted server.',
+    },
+    secrets: {
+      title: remote ? 'Headers and token' : 'Environment variables',
+      hint: remote
+        ? 'What the server needs to let Kira in, such as an API key.'
+        : 'Values the server needs, such as an API key.',
+    },
+    advanced: { title: 'Advanced', hint: 'Where the command runs.' },
+  };
+}
+
+/** Name, where it is offered, and a way to fill the whole form from a README's JSON. */
+export function ServerFields({ form, change, model }: FieldsProps) {
   const [snippet, setSnippet] = useState<string | null>(null);
   const [snippetError, setSnippetError] = useState<string | null>(null);
-  const remote = form.transport === 'streamable-http';
-  const saved = editing !== null && (editing.hasCredentials || editing.credentialsPersisted);
 
   function importSnippet(): void {
     const found = parseSnippet(snippet ?? '');
@@ -95,169 +116,212 @@ export function McpServerForm({
   }
 
   return (
-    <div {...stylex.props(ui.form)}>
-      <section {...stylex.props(ui.section)}>
-        <div {...stylex.props(ui.sectionHead)}>
-          <Text type="label" weight="medium">
-            Server
+    <>
+      <div {...stylex.props(ui.pair)}>
+        <TextInput
+          label="Name"
+          value={form.name}
+          placeholder="postgres"
+          size="sm"
+          onChange={(name) => change({ name })}
+        />
+        <Selector
+          label="Available in"
+          options={[
+            { value: 'global', label: 'Every chat' },
+            ...model.workspaces.map((workspace) => ({
+              value: workspace.id,
+              label: `Only in ${workspace.name}`,
+            })),
+          ]}
+          value={form.scope}
+          onChange={(scope) => change({ scope: scope ?? 'global' })}
+        />
+      </div>
+      <div {...stylex.props(ui.snippetRow)}>
+        <Button
+          label={snippet === null ? 'Import a JSON snippet' : 'Cancel import'}
+          size="sm"
+          variant="ghost"
+          onClick={() => {
+            setSnippet(snippet === null ? '' : null);
+            setSnippetError(null);
+          }}
+        />
+      </div>
+      {snippet !== null && (
+        <div {...stylex.props(ui.snippet)}>
+          <TextArea
+            label="JSON snippet"
+            value={snippet}
+            rows={5}
+            placeholder={'{ "mcpServers": { "name": { "command": "npx", "args": ["-y", "…"] } } }'}
+            description="From a server's README. It fills in the form; nothing is saved yet."
+            onChange={setSnippet}
+          />
+          {snippetError !== null && <Banner status="error" title={snippetError} />}
+          <div>
+            <Button
+              label="Fill the form"
+              size="sm"
+              variant="secondary"
+              isDisabled={snippet.trim() === ''}
+              onClick={importSnippet}
+            />
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+/** Command or link, and the one box for whichever it is. */
+export function ReachFields({ form, change }: FieldsProps) {
+  return (
+    <>
+      <SegmentedControl
+        label="How the server is reached"
+        value={form.transport}
+        onChange={(transport) => change({ transport: transport as FormValues['transport'] })}
+        size="sm"
+        layout="fill"
+      >
+        <SegmentedControlItem
+          value="stdio"
+          label="Command"
+          icon={<Icon icon={Terminal} size="sm" />}
+        />
+        <SegmentedControlItem
+          value="streamable-http"
+          label="Link"
+          icon={<Icon icon={Globe} size="sm" />}
+        />
+      </SegmentedControl>
+      {form.transport === 'streamable-http' ? (
+        <TextInput
+          label="Link"
+          isLabelHidden
+          value={form.url}
+          placeholder="https://example.com/mcp"
+          description="A Streamable HTTP server."
+          size="sm"
+          onChange={(url) => change({ url })}
+        />
+      ) : (
+        <TextArea
+          label="Command"
+          isLabelHidden
+          value={form.command}
+          rows={3}
+          placeholder="npx -y @modelcontextprotocol/server-postgres postgresql://user:pass@host/db"
+          description="Runs on this machine. A whole command is split into the program and one argument per word; quote a word that holds a space."
+          onChange={(command) => change({ command })}
+        />
+      )}
+    </>
+  );
+}
+
+/** What the server is given: environment variables, or headers and a token. Write-only. */
+export function SecretsFields({ form, change, editing }: FieldsProps) {
+  const remote = form.transport === 'streamable-http';
+  const saved = editing !== null && (editing.hasCredentials || editing.credentialsPersisted);
+
+  return (
+    <>
+      {remote && (
+        <TextInput
+          label="Bearer token"
+          type="password"
+          value={form.bearerToken}
+          placeholder="Optional"
+          size="sm"
+          onChange={(bearerToken) => change({ bearerToken, clearCredentials: false })}
+        />
+      )}
+      <Pairs
+        label={remote ? 'header' : 'variable'}
+        keyLabel={remote ? 'Header' : 'Variable'}
+        pairs={remote ? form.headers : form.env}
+        onChange={(pairs) =>
+          change(
+            remote
+              ? { headers: pairs, clearCredentials: false }
+              : { env: pairs, clearCredentials: false },
+          )
+        }
+      />
+      {saved && (
+        <div {...stylex.props(ui.saved)}>
+          <Text type="supporting" color="secondary">
+            {form.clearCredentials
+              ? 'The saved values will be cleared when you save.'
+              : editing?.credentialsPersisted && !editing.hasCredentials
+                ? 'Saved values exist but cannot be opened on this device. Adding any here replaces them.'
+                : 'Saved values are encrypted and never shown. Adding any here replaces them.'}
           </Text>
           <Button
-            label={snippet === null ? 'Import a JSON snippet' : 'Cancel import'}
+            label={form.clearCredentials ? 'Keep them' : 'Clear them'}
             size="sm"
             variant="ghost"
-            onClick={() => {
-              setSnippet(snippet === null ? '' : null);
-              setSnippetError(null);
-            }}
+            onClick={() => change({ clearCredentials: !form.clearCredentials })}
           />
         </div>
-        {snippet !== null && (
-          <div {...stylex.props(ui.snippet)}>
-            <TextArea
-              label="JSON snippet"
-              value={snippet}
-              rows={5}
-              placeholder={
-                '{ "mcpServers": { "name": { "command": "npx", "args": ["-y", "…"] } } }'
-              }
-              description="From a server's README. It fills in the form; nothing is saved yet."
-              onChange={setSnippet}
-            />
-            {snippetError !== null && <Banner status="error" title={snippetError} />}
-            <div>
-              <Button
-                label="Fill the form"
-                size="sm"
-                variant="secondary"
-                isDisabled={snippet.trim() === ''}
-                onClick={importSnippet}
-              />
-            </div>
-          </div>
-        )}
-        <div {...stylex.props(ui.pair)}>
-          <TextInput
-            label="Name"
-            value={form.name}
-            placeholder="postgres"
-            size="sm"
-            onChange={(name) => change({ name })}
-          />
-          <Selector
-            label="Available in"
-            options={[
-              { value: 'global', label: 'Every chat' },
-              ...model.workspaces.map((workspace) => ({
-                value: workspace.id,
-                label: `Only in ${workspace.name}`,
-              })),
-            ]}
-            value={form.scope}
-            onChange={(scope) => change({ scope: scope ?? 'global' })}
-          />
-        </div>
+      )}
+    </>
+  );
+}
+
+export function AdvancedFields({ form, change }: FieldsProps) {
+  return (
+    <TextInput
+      label="Working folder"
+      value={form.cwd}
+      placeholder="Inherited from the chat"
+      description="Where the command runs."
+      size="sm"
+      onChange={(cwd) => change({ cwd })}
+    />
+  );
+}
+
+/** The whole form: four ruled sections, one after another. */
+export function McpServerForm(props: FieldsProps) {
+  const { form } = props;
+  const remote = form.transport === 'streamable-http';
+  const text = sectionText(remote);
+
+  return (
+    <div {...stylex.props(ui.form)}>
+      <section {...stylex.props(ui.section)}>
+        <Text type="label" weight="medium">
+          {text.server.title}
+        </Text>
+        <ServerFields {...props} />
       </section>
 
       <section {...stylex.props(ui.section)}>
         <div {...stylex.props(ui.sectionText)}>
           <Text type="label" weight="medium">
-            How to reach it
+            {text.reach.title}
           </Text>
           <Text type="supporting" color="secondary">
-            Paste the command that starts it, or the link to a hosted server.
+            {text.reach.hint}
           </Text>
         </div>
-        <SegmentedControl
-          label="How the server is reached"
-          value={form.transport}
-          onChange={(transport) => change({ transport: transport as FormValues['transport'] })}
-          size="sm"
-          layout="fill"
-        >
-          <SegmentedControlItem
-            value="stdio"
-            label="Command"
-            icon={<Icon icon={Terminal} size="sm" />}
-          />
-          <SegmentedControlItem
-            value="streamable-http"
-            label="Link"
-            icon={<Icon icon={Globe} size="sm" />}
-          />
-        </SegmentedControl>
-        {remote ? (
-          <TextInput
-            label="Link"
-            isLabelHidden
-            value={form.url}
-            placeholder="https://example.com/mcp"
-            description="A Streamable HTTP server."
-            size="sm"
-            onChange={(url) => change({ url })}
-          />
-        ) : (
-          <TextArea
-            label="Command"
-            isLabelHidden
-            value={form.command}
-            rows={3}
-            placeholder="npx -y @modelcontextprotocol/server-postgres postgresql://user:pass@host/db"
-            description="Runs on this machine. A whole command is split into the program and one argument per word; quote a word that holds a space."
-            onChange={(command) => change({ command })}
-          />
-        )}
+        <ReachFields {...props} />
       </section>
 
       <section {...stylex.props(ui.section)}>
         <div {...stylex.props(ui.sectionText)}>
           <Text type="label" weight="medium">
-            {remote ? 'Headers and token' : 'Environment variables'}
+            {text.secrets.title}
           </Text>
           <Text type="supporting" color="secondary">
-            {remote
-              ? 'What the server needs to let Kira in, such as an API key.'
-              : 'Values the server needs, such as an API key.'}
+            {text.secrets.hint}
           </Text>
         </div>
-        {remote && (
-          <TextInput
-            label="Bearer token"
-            type="password"
-            value={form.bearerToken}
-            placeholder="Optional"
-            size="sm"
-            onChange={(bearerToken) => change({ bearerToken, clearCredentials: false })}
-          />
-        )}
-        <Pairs
-          label={remote ? 'header' : 'variable'}
-          keyLabel={remote ? 'Header' : 'Variable'}
-          pairs={remote ? form.headers : form.env}
-          onChange={(pairs) =>
-            change(
-              remote
-                ? { headers: pairs, clearCredentials: false }
-                : { env: pairs, clearCredentials: false },
-            )
-          }
-        />
-        {saved && (
-          <div {...stylex.props(ui.saved)}>
-            <Text type="supporting" color="secondary">
-              {form.clearCredentials
-                ? 'The saved values will be cleared when you save.'
-                : editing?.credentialsPersisted && !editing.hasCredentials
-                  ? 'Saved values exist but cannot be opened on this device. Adding any here replaces them.'
-                  : 'Saved values are encrypted and never shown. Adding any here replaces them.'}
-            </Text>
-            <Button
-              label={form.clearCredentials ? 'Keep them' : 'Clear them'}
-              size="sm"
-              variant="ghost"
-              onClick={() => change({ clearCredentials: !form.clearCredentials })}
-            />
-          </div>
-        )}
+        <SecretsFields {...props} />
       </section>
 
       {!remote && (
@@ -266,19 +330,12 @@ export function McpServerForm({
             defaultIsOpen={form.cwd !== ''}
             trigger={
               <Text type="label" weight="medium">
-                Advanced
+                {text.advanced.title}
               </Text>
             }
           >
             <div {...stylex.props(ui.advanced)}>
-              <TextInput
-                label="Working folder"
-                value={form.cwd}
-                placeholder="Inherited from the chat"
-                description="Where the command runs."
-                size="sm"
-                onChange={(cwd) => change({ cwd })}
-              />
+              <AdvancedFields {...props} />
             </div>
           </Collapsible>
         </section>
@@ -345,6 +402,50 @@ function Pairs({
   );
 }
 
+/** Save and cancel, with whatever the main process refused and what is still missing. */
+export function SaveRow({
+  editor,
+  model,
+  label,
+  cancelLabel,
+  onCancel,
+}: {
+  editor: ReturnType<typeof useServerEditor>;
+  model: McpModel;
+  label: string;
+  cancelLabel?: string;
+  onCancel?: () => void;
+}) {
+  return (
+    <div {...stylex.props(ui.save)}>
+      {model.problem !== null && (
+        <Banner status="error" title="Could not save" description={model.problem} />
+      )}
+      <div {...stylex.props(ui.saveRow)}>
+        <Button
+          label={model.busy ? 'Saving' : label}
+          size="sm"
+          variant="primary"
+          isDisabled={!editor.ready || !editor.dirty}
+          onClick={() => void editor.save()}
+        />
+        {onCancel && (
+          <Button
+            label={cancelLabel ?? 'Cancel'}
+            size="sm"
+            variant="ghost"
+            isDisabled={model.busy}
+            onClick={onCancel}
+          />
+        )}
+        <Text type="supporting" color="secondary">
+          {editor.dirty ? (editor.missing ?? ' ') : ' '}
+        </Text>
+      </div>
+    </div>
+  );
+}
+
 /** Removing a server is asked, since it also drops what it was given. */
 export function ConfirmRemove({
   server,
@@ -380,12 +481,7 @@ const ui = stylex.create({
     borderBlockStartStyle: 'solid',
     borderBlockStartColor: colorVars['--color-border'],
   },
-  sectionHead: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    minHeight: 28,
-  },
+  snippetRow: { display: 'flex' },
   sectionText: { display: 'flex', flexDirection: 'column', gap: 2 },
   snippet: { display: 'flex', flexDirection: 'column', gap: spacingVars['--spacing-2'] },
   pair: {
@@ -409,4 +505,6 @@ const ui = stylex.create({
     fontSize: textSizeVars['--font-size-sm'],
   },
   advanced: { paddingBlockStart: spacingVars['--spacing-3'] },
+  save: { display: 'flex', flexDirection: 'column', gap: spacingVars['--spacing-3'] },
+  saveRow: { display: 'flex', alignItems: 'center', gap: spacingVars['--spacing-2'] },
 });

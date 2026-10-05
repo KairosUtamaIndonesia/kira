@@ -1,10 +1,12 @@
 /**
  * The MCP servers this desktop makes available in global and workspace chats, in Settings.
  *
+ * A grid of servers (`mcpGrid.tsx`), and a page for the one opened or being added.
+ *
  * PROTOTYPE — this file holds the data and what can be done to it, and picks which layout draws
- * it. Development builds flip between three layouts with the bar at the foot of the window
+ * a server's page. Development builds flip between four with the bar at the foot of the window
  * (`?variant=`, or `[` and `]`), against the real servers, six made-up ones, or none (`?mcp=`).
- * Production always draws variant A.
+ * Production always draws page A.
  */
 import { useEffect, useState } from 'react';
 import type {
@@ -16,9 +18,12 @@ import type {
 } from '../../preload/bridge';
 import type { McpModel } from './mcpModel';
 import { liveSource, sampleServers, sampleSource, type McpSource } from './mcpSource';
-import { McpVariantA } from './mcpVariantA';
-import { McpVariantB } from './mcpVariantB';
-import { McpVariantC } from './mcpVariantC';
+import { ConfirmRemove } from './mcpForm';
+import { McpGrid } from './mcpGrid';
+import { McpPageA } from './mcpPageA';
+import { McpPageB } from './mcpPageB';
+import { McpPageC } from './mcpPageC';
+import { McpPageD } from './mcpPageD';
 import { PrototypeSwitcher } from './prototypeSwitcher';
 
 function useMountEffect(effect: () => void | (() => void)): void {
@@ -27,9 +32,10 @@ function useMountEffect(effect: () => void | (() => void)): void {
 }
 
 const VARIANTS = [
-  { key: 'A', name: 'Ledger and dialog' },
-  { key: 'B', name: 'List and detail' },
-  { key: 'C', name: 'Tiles and page' },
+  { key: 'A', name: 'One page' },
+  { key: 'B', name: 'Tabs' },
+  { key: 'C', name: 'Form and panel' },
+  { key: 'D', name: 'Edit in place' },
 ];
 
 const DATA = [
@@ -49,12 +55,6 @@ function writeParam(key: string, value: string): void {
   window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`);
 }
 
-export interface VariantProps {
-  model: McpModel;
-  /** Tell the prototype bar a modal dialog is open, so it can show above it. */
-  onModal: (open: boolean) => void;
-}
-
 export function McpSection({ workspaces }: { workspaces: readonly WorkspaceSummary[] }) {
   const [variant, setVariant] = useState(() =>
     import.meta.env.DEV ? readParam('variant', VARIANTS, 'A') : 'A',
@@ -62,7 +62,7 @@ export function McpSection({ workspaces }: { workspaces: readonly WorkspaceSumma
   const [data, setData] = useState(() =>
     import.meta.env.DEV ? readParam('mcp', DATA, 'live') : 'live',
   );
-  const [modal, setModal] = useState(false);
+  const [confirming, setConfirming] = useState(false);
 
   return (
     <>
@@ -71,10 +71,10 @@ export function McpSection({ workspaces }: { workspaces: readonly WorkspaceSumma
         data={data}
         variant={variant}
         workspaces={workspaces}
-        onModal={setModal}
+        onConfirming={setConfirming}
       />
       <PrototypeSwitcher
-        lift={modal}
+        lift={confirming}
         variants={VARIANTS}
         current={variant}
         onChange={(key) => {
@@ -87,7 +87,7 @@ export function McpSection({ workspaces }: { workspaces: readonly WorkspaceSumma
           current: data,
           onChange: (key) => {
             writeParam('mcp', key);
-            setModal(false);
+            setConfirming(false);
             setData(key);
           },
         }}
@@ -100,12 +100,13 @@ function McpData({
   data,
   variant,
   workspaces,
-  onModal,
+  onConfirming,
 }: {
   data: string;
   variant: string;
   workspaces: readonly WorkspaceSummary[];
-  onModal: (open: boolean) => void;
+  /** Tell the prototype bar a confirmation is open, so it can show above it. */
+  onConfirming: (open: boolean) => void;
 }) {
   const [source] = useState<McpSource>(() =>
     data === 'live'
@@ -115,6 +116,9 @@ function McpData({
   const [servers, setServers] = useState<McpServer[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  /** The server whose page is open, 'new' for Add, or null for the grid. */
+  const [page, setPage] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<McpServer | null>(null);
 
   useMountEffect(() => {
     let mounted = true;
@@ -184,12 +188,42 @@ function McpData({
     },
   };
 
-  const props = { model, onModal };
-  return variant === 'B' ? (
-    <McpVariantB {...props} />
-  ) : variant === 'C' ? (
-    <McpVariantC {...props} />
-  ) : (
-    <McpVariantA {...props} />
+  const open = page === 'new' ? 'new' : (servers?.find((each) => each.id === page) ?? null);
+  const back = (): void => {
+    setPage(null);
+    model.clearProblem();
+  };
+  const Page =
+    variant === 'B' ? McpPageB : variant === 'C' ? McpPageC : variant === 'D' ? McpPageD : McpPageA;
+
+  if (open === null) {
+    return <McpGrid model={model} onOpen={setPage} />;
+  }
+
+  return (
+    <>
+      <Page
+        key={open === 'new' ? 'new' : open.id}
+        model={model}
+        server={open === 'new' ? null : open}
+        onBack={back}
+        onSaved={(saved) => setPage(saved.id)}
+        onRemove={() => {
+          if (open !== 'new') setRemoving(open);
+          onConfirming(true);
+        }}
+      />
+      {removing !== null && (
+        <ConfirmRemove
+          server={removing}
+          model={model}
+          onDone={(removed) => {
+            setRemoving(null);
+            onConfirming(false);
+            if (removed) back();
+          }}
+        />
+      )}
+    </>
   );
 }
