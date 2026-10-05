@@ -887,24 +887,11 @@ describe('checks', () => {
 });
 
 describe('live pull requests', () => {
-  /** Attach a repository to a fresh project and answer its id. */
-  async function attach(
-    app: Awaited<ReturnType<typeof boot>>['app'],
-    key: string,
-    values: Record<string, unknown> = {},
-  ): Promise<{ projectId: string; repositoryId: string }> {
-    const project = await makeProject(app, key);
-    const attached = await send(
-      app,
-      `/api/projects/${project.id}/repositories`,
-      json('POST', key, { owner: 'acme', name: 'api', ...values }),
-    );
-    expect(attached.status).toBe(200);
+  /** The repository a checkout names, as the read's query carries it. */
+  const remote = (provider: string, owner: string, name: string): string =>
+    `provider=${provider}&owner=${owner}&name=${name}`;
 
-    return { projectId: project.id, repositoryId: (await attached.json()).repository.id };
-  }
-
-  test('lists a repository’s pull requests, each with its checks rollup', async () => {
+  test('lists a checkout repository’s pull requests, each with its checks rollup', async () => {
     const github = await startFakeGitHub({
       id: 91,
       login: 'acme',
@@ -930,11 +917,12 @@ describe('live pull requests', () => {
 
     try {
       const { app, key } = await installedApp(github, 91, 'live-list');
-      const { projectId, repositoryId } = await attach(app, key);
+      // No repository is attached to the project: the checkout names its own.
+      const project = await makeProject(app, key);
 
       const answer = await send(
         app,
-        `/api/projects/${projectId}/repositories/${repositoryId}/pull-requests`,
+        `/api/projects/${project.id}/pull-requests?${remote('github', 'acme', 'api')}`,
         { headers: bearer(key) },
       );
       expect(answer.status).toBe(200);
@@ -984,11 +972,11 @@ describe('live pull requests', () => {
 
     try {
       const { app, key } = await installedApp(github, 92, 'live-detail');
-      const { projectId, repositoryId } = await attach(app, key);
+      const project = await makeProject(app, key);
 
       const answer = await send(
         app,
-        `/api/projects/${projectId}/repositories/${repositoryId}/pull-requests/12`,
+        `/api/projects/${project.id}/pull-requests/12?${remote('github', 'acme', 'api')}`,
         { headers: bearer(key) },
       );
       expect(answer.status).toBe(200);
@@ -1014,13 +1002,13 @@ describe('live pull requests', () => {
     }
   });
 
-  test('says so when the repository’s Git host is not connected', async () => {
+  test('says so when the checkout’s Git host is not connected', async () => {
     const { app, key } = await signedIn();
-    const { projectId, repositoryId } = await attach(app, key);
+    const project = await makeProject(app, key);
 
     const answer = await send(
       app,
-      `/api/projects/${projectId}/repositories/${repositoryId}/pull-requests`,
+      `/api/projects/${project.id}/pull-requests?${remote('github', 'acme', 'api')}`,
       { headers: bearer(key) },
     );
     expect(answer.status).toBe(409);
@@ -1044,10 +1032,10 @@ describe('live pull requests', () => {
     );
     expect(connected.status).toBe(200);
 
-    const { projectId, repositoryId } = await attach(app, key, { provider: 'gitlab' });
+    const project = await makeProject(app, key);
     const answer = await send(
       app,
-      `/api/projects/${projectId}/repositories/${repositoryId}/pull-requests`,
+      `/api/projects/${project.id}/pull-requests?${remote('gitlab', 'acme', 'api')}`,
       { headers: bearer(key) },
     );
     expect(answer.status).toBe(501);
@@ -1062,13 +1050,13 @@ describe('live pull requests', () => {
       repositories: [{ owner: 'acme', name: 'api' }],
     });
     const { app, key } = await installedApp(github, 93, 'live-unreachable');
-    const { projectId, repositoryId } = await attach(app, key);
+    const project = await makeProject(app, key);
 
     await github.stop();
 
     const answer = await send(
       app,
-      `/api/projects/${projectId}/repositories/${repositoryId}/pull-requests`,
+      `/api/projects/${project.id}/pull-requests?${remote('github', 'acme', 'api')}`,
       { headers: bearer(key) },
     );
     expect(answer.status).toBe(502);
@@ -1086,11 +1074,11 @@ describe('live pull requests', () => {
 
     try {
       const { app, key } = await installedApp(github, 94, 'live-missing');
-      const { projectId, repositoryId } = await attach(app, key);
+      const project = await makeProject(app, key);
 
       const answer = await send(
         app,
-        `/api/projects/${projectId}/repositories/${repositoryId}/pull-requests/99`,
+        `/api/projects/${project.id}/pull-requests/99?${remote('github', 'acme', 'api')}`,
         { headers: bearer(key) },
       );
       expect(answer.status).toBe(404);

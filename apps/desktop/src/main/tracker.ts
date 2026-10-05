@@ -206,13 +206,13 @@ export interface TrackerWire {
   repositoryPullRequests?(
     key: string,
     projectId: string,
-    repositoryId: string,
+    remote: { provider: string; owner: string; name: string },
   ): Promise<TrackerAnswer<LivePullRequest[]>>;
   /** One repository pull request opened, with its body, checks, comments and files. */
   repositoryPullRequest?(
     key: string,
     projectId: string,
-    repositoryId: string,
+    remote: { provider: string; owner: string; name: string },
     number: number,
   ): Promise<TrackerAnswer<LivePullRequestDetail>>;
   /** Publish proposed children and dependency gates in one server transaction. */
@@ -308,9 +308,9 @@ export interface Tracker {
   /** A ticket's pull requests, newest first. */
   pullRequests(ticketId: string): Promise<TicketPullRequest[]>;
   /**
-   * The checkout's repository's pull requests, read live from its connected Git
-   * host. A checkout with no remote, a repository that is not attached to the
-   * project, and a host that is not connected each come back as a sentence.
+   * The checkout's own repository's pull requests, read live from its connected
+   * Git host. A checkout with no remote is one sentence, and a host Kira cannot
+   * watch or is not connected is another.
    */
   checkoutPullRequests(workspaceId: string, folder: string): Promise<LivePullRequest[]>;
   /** One pull request of the checkout's repository, opened for reading. */
@@ -349,8 +349,6 @@ export const UNREACHABLE = 'Kira could not be reached.';
 export const NO_REMOTE = 'This checkout has no remote to read pull requests from.';
 /** A host Kira cannot watch is one whose pull requests it cannot read. */
 export const NO_HOST_ADAPTER = 'Kira cannot read pull requests from this checkout’s host.';
-/** A checkout's repository that no one attached to the project has nothing to read. */
-export const REPOSITORY_NOT_ATTACHED = 'This checkout’s repository is not attached to the project.';
 
 export function trackerFor({
   token,
@@ -588,23 +586,23 @@ export function trackerFor({
     async checkoutPullRequests(workspaceId, folder) {
       const held = await key();
       const projectId = projectIn(workspaceId);
-      const repositoryId = await repositoryFor(held, projectId, folder);
+      const remote = await remoteFor(folder);
       if (wire.repositoryPullRequests === undefined) {
         throw new Error('Reading a repository’s pull requests is unavailable.');
       }
 
-      return await asked(() => wire.repositoryPullRequests!(held, projectId, repositoryId));
+      return await asked(() => wire.repositoryPullRequests!(held, projectId, remote));
     },
 
     async checkoutPullRequest(workspaceId, folder, number) {
       const held = await key();
       const projectId = projectIn(workspaceId);
-      const repositoryId = await repositoryFor(held, projectId, folder);
+      const remote = await remoteFor(folder);
       if (wire.repositoryPullRequest === undefined) {
         throw new Error('Reading a repository’s pull requests is unavailable.');
       }
 
-      return await asked(() => wire.repositoryPullRequest!(held, projectId, repositoryId, number));
+      return await asked(() => wire.repositoryPullRequest!(held, projectId, remote, number));
     },
 
     async attachRepository(projectId, input) {
@@ -724,26 +722,18 @@ export function trackerFor({
   }
 
   /**
-   * The project repository a checkout's remote names, or a sentence saying why
-   * there is none. A checkout with no remote, a host Kira cannot watch, and a
-   * repository no one attached to the project are three different answers, and
-   * each is the one a person is shown.
+   * The repository a checkout's remote names, as its host names it, or a sentence
+   * saying why there is none. A checkout with no remote and a host Kira cannot
+   * watch are two different answers, and each is the one a person is shown.
    */
-  async function repositoryFor(held: string, projectId: string, folder: string): Promise<string> {
+  async function remoteFor(
+    folder: string,
+  ): Promise<{ provider: string; owner: string; name: string }> {
     const remote = await checkoutRepository(folder);
     if (remote === null) throw new Error(NO_REMOTE);
     if (remote.provider === null) throw new Error(NO_HOST_ADAPTER);
 
-    const repositories = await asked(() => wire.repositories(held, projectId));
-    const found = repositories.find(
-      (each) =>
-        each.provider === remote.provider &&
-        each.owner.toLowerCase() === remote.owner.toLowerCase() &&
-        each.name.toLowerCase() === remote.name.toLowerCase(),
-    );
-    if (found === undefined) throw new Error(REPOSITORY_NOT_ATTACHED);
-
-    return found.id;
+    return { provider: remote.provider, owner: remote.owner, name: remote.name };
   }
 }
 

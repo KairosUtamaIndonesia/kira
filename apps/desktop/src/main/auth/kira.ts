@@ -490,24 +490,23 @@ export function kiraFor({ server, scheme }: { server: string; scheme: string }):
         (data) => asInstallationRepositories((data as { repositories: unknown }).repositories),
       ),
 
-    repositoryPullRequests: async (key, projectId, repositoryId) =>
+    repositoryPullRequests: async (key, projectId, remote) =>
       asked(
         () =>
-          kira.api
-            .projects({ ref: projectId })
-            .repositories({ id: repositoryId })
-            ['pull-requests'].get({ headers: bearerFor(key) }),
+          kira.api.projects({ ref: projectId })['pull-requests'].get({
+            query: remote,
+            headers: bearerFor(key),
+          }),
         (data) => asLivePullRequests((data as { pullRequests: unknown }).pullRequests),
       ),
 
-    repositoryPullRequest: async (key, projectId, repositoryId, number) =>
+    repositoryPullRequest: async (key, projectId, remote, number) =>
       asked(
         () =>
           kira.api
             .projects({ ref: projectId })
-            .repositories({ id: repositoryId })
             ['pull-requests']({ number: String(number) })
-            .get({ headers: bearerFor(key) }),
+            .get({ query: remote, headers: bearerFor(key) }),
         (data) => asLivePullRequestDetail((data as { pullRequest: unknown }).pullRequest),
       ),
 

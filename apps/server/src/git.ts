@@ -548,6 +548,13 @@ const LIVE_PULL_REQUEST = t.Object({
   updatedAt: t.Union([t.String(), t.Null()]),
 });
 
+/** The repository a pull-request read is about, named the way its host names it. */
+const PULL_REQUEST_REMOTE = t.Object({
+  provider: t.String(),
+  owner: t.String(),
+  name: t.String(),
+});
+
 const LIVE_CHECK = t.Object({ context: t.String(), state: t.String() });
 
 const LIVE_COMMENT = t.Object({
@@ -1138,19 +1145,19 @@ export function createGit({
       },
     )
     .get(
-      '/api/projects/:ref/repositories/:id/pull-requests',
-      async ({ request, params, status }) => {
+      '/api/projects/:ref/pull-requests',
+      async ({ request, params, query, status }) => {
         const held = await asking(auth, request);
         if ('refused' in held) return status(401, held.refused);
 
-        const source = await pullRequestSource(database, config, key, params.ref, params.id);
+        const source = await pullRequestSource(database, config, key, params.ref, query);
         if ('refused' in source) return status(source.refused.code, source.refused.body);
 
         const pullRequests = await githubLivePullRequests(
           config,
           source.bearer,
-          source.repo.owner,
-          source.repo.name,
+          source.owner,
+          source.name,
         );
         if (pullRequests === null) {
           return status(502, refusal('GIT_UNREACHABLE', messages.gitUnreachable));
@@ -1159,9 +1166,11 @@ export function createGit({
         return { pullRequests };
       },
       {
-        params: t.Object({ ref: t.String(), id: t.String() }),
+        params: t.Object({ ref: t.String() }),
+        query: PULL_REQUEST_REMOTE,
         response: {
           200: t.Object({ pullRequests: t.Array(LIVE_PULL_REQUEST) }),
+          400: REFUSAL,
           401: REFUSAL,
           404: REFUSAL,
           409: REFUSAL,
@@ -1172,8 +1181,8 @@ export function createGit({
       },
     )
     .get(
-      '/api/projects/:ref/repositories/:id/pull-requests/:number',
-      async ({ request, params, status }) => {
+      '/api/projects/:ref/pull-requests/:number',
+      async ({ request, params, query, status }) => {
         const held = await asking(auth, request);
         if ('refused' in held) return status(401, held.refused);
 
@@ -1185,14 +1194,14 @@ export function createGit({
           );
         }
 
-        const source = await pullRequestSource(database, config, key, params.ref, params.id);
+        const source = await pullRequestSource(database, config, key, params.ref, query);
         if ('refused' in source) return status(source.refused.code, source.refused.body);
 
         const answer = await githubLivePullRequest(
           config,
           source.bearer,
-          source.repo.owner,
-          source.repo.name,
+          source.owner,
+          source.name,
           number,
         );
         if (answer.kind === 'missing') {
@@ -1208,9 +1217,11 @@ export function createGit({
         return { pullRequest: answer.value };
       },
       {
-        params: t.Object({ ref: t.String(), id: t.String(), number: t.String() }),
+        params: t.Object({ ref: t.String(), number: t.String() }),
+        query: PULL_REQUEST_REMOTE,
         response: {
           200: t.Object({ pullRequest: LIVE_PULL_REQUEST_DETAIL }),
+          400: REFUSAL,
           401: REFUSAL,
           404: REFUSAL,
           409: REFUSAL,
@@ -1760,41 +1771,52 @@ async function hostBearer(
   return null;
 }
 
-/** What a pull-request read needs — the repository and a bearer — or the refusal it is answered with. */
-type PullRefusalCode = 404 | 409 | 501 | 502;
+/** What a pull-request read needs — the repository, named as its host names it, and a bearer. */
+type PullRefusalCode = 400 | 404 | 409 | 501 | 502;
 type PullRequestSource =
   | { refused: { code: PullRefusalCode; body: ReturnType<typeof refusal> } }
-  | { repo: typeof repository.$inferSelect; bearer: string };
+  | { owner: string; name: string; bearer: string };
 
 /**
- * Resolve a project's repository to its Git host and the credential to read it:
- * the project, the repository, a connection for its provider, ad adapter for
- * that provider, and a bearer. Each miss is the sentence a person is shown, so
- * both pull-request routes answer the same five ways once.
+ * Resolve a checkout's repository to its Git host and the credential to read it:
+ * the project, the host's adapter, a connection for its provider, and a bearer.
+ * Each miss is the sentence a person is shown, so both pull-request routes
+ * answer the same ways once.
+ *
+ * The repository is named by the checkout rather than looked up among a
+ * project's rows: the view is about the checkout's own repository, and a
+ * folder joined before its repository was recorded still has one to read.
  */
 async function pullRequestSource(
   database: Database,
   config: Config,
   key: Buffer | null,
   projectRef: string,
-  repositoryId: string,
+  remote: { provider: string; owner: string; name: string },
 ): Promise<PullRequestSource> {
   const found = await projectByRef(database, projectRef);
   if (!found) {
     return { refused: { code: 404, body: refusal('PROJECT_NOT_FOUND', messages.projectNotFound) } };
   }
 
-  const [repo] = await database
-    .select()
-    .from(repository)
-    .where(and(eq(repository.id, repositoryId), eq(repository.projectId, found.id)));
-  if (!repo) {
+  const provider = remote.provider.trim();
+  if (!(provider in PROVIDERS)) {
     return {
-      refused: { code: 404, body: refusal('REPOSITORY_NOT_FOUND', messages.repositoryNotFound) },
+      refused: { code: 400, body: refusal('GIT_PROVIDER_UNKNOWN', messages.gitProviderUnknown) },
+    };
+  }
+  const owner = remote.owner.trim();
+  const name = remote.name.trim();
+  if (owner === '' || name === '') {
+    return {
+      refused: {
+        code: 400,
+        body: refusal('REPOSITORY_REMOTE_REQUIRED', messages.repositoryRemoteRequired),
+      },
     };
   }
 
-  const connection = await connectionForProvider(database, repo.provider);
+  const connection = await connectionForProvider(database, provider);
   if (connection === null) {
     return {
       refused: { code: 409, body: refusal('GIT_HOST_NOT_CONNECTED', messages.gitHostNotConnected) },
@@ -1814,7 +1836,7 @@ async function pullRequestSource(
     return { refused: { code: 502, body: refusal('GIT_UNREACHABLE', messages.gitUnreachable) } };
   }
 
-  return { repo, bearer };
+  return { owner, name, bearer };
 }
 
 /** One GitHub pull request as the list draws it, and the commit its checks hang off. */
