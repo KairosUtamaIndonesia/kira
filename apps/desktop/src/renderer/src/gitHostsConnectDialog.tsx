@@ -3,7 +3,7 @@
  * as the real thing when one wins).
  *
  * Connecting ends in the one moment that cannot be repeated: the webhook secret, shown once. So
- * the dialog's second step is that moment, and it cannot be left until the secret is copied.
+ * the dialog's second step is that moment, and leaving it before the secret is copied takes two tries.
  */
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
@@ -31,6 +31,7 @@ export function ConnectDialog({ model, onClose }: { model: HostsModel; onClose: 
   const [accessToken, setAccessToken] = useState('');
   const [accountLogin, setAccountLogin] = useState('');
   const [copied, setCopied] = useState(false);
+  const [warned, setWarned] = useState(false);
   const input = { provider, instanceUrl, accessToken, accountLogin };
   const ready = canConnect(input) && !model.busy;
   const chosen = PROVIDERS.find((each) => each.value === provider);
@@ -41,11 +42,12 @@ export function ConnectDialog({ model, onClose }: { model: HostsModel; onClose: 
     model.dismissSecret();
     onClose();
   };
-  // Until the secret is copied there is no way out: it cannot be shown again.
+  // Leaving before the secret is copied loses it for good, so the first try only warns.
   const leave = (): void => {
     if (model.busy) return;
     if (secret === null) onClose();
-    else if (copied) finish();
+    else if (copied || warned) finish();
+    else setWarned(true);
   };
 
   async function connect(): Promise<void> {
@@ -164,16 +166,19 @@ export function ConnectDialog({ model, onClose }: { model: HostsModel; onClose: 
             />
           </div>
           <div {...stylex.props(ui.foot)}>
-            <Text type="supporting" color="secondary">
-              {copied ? 'Secret copied.' : 'Copy the secret to continue.'}
+            <Text type="supporting" color={warned && !copied ? 'primary' : 'secondary'}>
+              {copied
+                ? 'Secret copied.'
+                : warned
+                  ? 'Not copied yet. Close again to lose the secret.'
+                  : 'Copy the secret before you close this.'}
             </Text>
             <span {...stylex.props(ui.footButtons)}>
               <Button
-                label="Done"
+                label={warned && !copied ? 'Close without copying' : 'Done'}
                 size="sm"
-                variant="primary"
-                isDisabled={!copied}
-                onClick={finish}
+                variant={warned && !copied ? 'destructive' : 'primary'}
+                onClick={leave}
               />
             </span>
           </div>
