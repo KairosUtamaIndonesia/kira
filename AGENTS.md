@@ -6,6 +6,8 @@ Understand the constraint, then choose the smallest change that makes the correc
 
 This repository uses GitButler (`but`) for version-control inspection and write operations. The workspace may be shared by several agents, so every session must preserve existing work, isolate its own changes, and leave a recoverable checkpoint.
 
+**Landing policy:** this project lands work directly with GitButler; pull requests are not the default. When the user asks to land completed work, use `but land <branch> --yes` (or `--whole-stack --yes` only when the whole stack is intended), following the GitButler skill's landing rules. `but land` changes the target directly and is hard to reverse, so ask for confirmation unless the user's current request explicitly authorizes landing. Create a PR only when the user explicitly asks for one.
+
 **Start every session**
 
 1. Run `but status` and `but diff` before editing. If GitButler reports that setup is required, stop and ask the owner to run `but setup` once; setup changes repository registration, the workspace branch, and target configuration.
@@ -20,7 +22,7 @@ This repository uses GitButler (`but`) for version-control inspection and write 
 
 **Finish and recover**
 
-- Before finishing, inspect `but status` and `but diff`; leave no session-owned change only in the uncommitted workspace. Do not push or open a pull request unless asked.
+- Before finishing, inspect `but status` and `but diff`; leave no session-owned change only in the uncommitted workspace. Do not push or open a pull request unless asked; when landing is requested, follow the landing policy above.
 - Undo only your own last GitButler operation with `but undo`. For conflicts, use `but resolve`, check `but resolve status`, and finish or cancel the resolution explicitly.
 - For uncertain or broader recovery, inspect `but oplog list` first. Ask before `but oplog restore`, because restoring workspace state can replace another agent's work. Never use a reset, clean, discard, or history rewrite as a collision shortcut.
 
