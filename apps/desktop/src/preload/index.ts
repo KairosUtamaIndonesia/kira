@@ -42,6 +42,7 @@ import {
   type TicketQueue,
   type TimelineEntry,
   type WorkspaceSummary,
+  type CloneRequest,
   type WorkspaceAsset,
   type QueuedLine,
   type Usage,
@@ -129,6 +130,8 @@ const bridge: KiraBridge = {
   forkChat: (messageId) => ask<null>(CHAT_CHANNELS.fork, messageId),
 
   addWorkspace: () => ask<WorkspaceSummary | null>(WORKSPACE_CHANNELS.add),
+
+  cloneWorkspace: (request) => ask<WorkspaceSummary | null>(WORKSPACE_CHANNELS.clone, request),
 
   removeWorkspace: (id) => ask<null>(WORKSPACE_CHANNELS.remove, id),
 

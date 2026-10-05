@@ -14,7 +14,12 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import type { AuthState, ChatEvent } from '../preload/bridge.ts';
+import type {
+  AuthState,
+  ChatEvent,
+  CloneRequest,
+  WorkspaceSummary,
+} from '../preload/bridge.ts';
 import { kiraFor } from './auth/kira.ts';
 import { keyStore, type SecretKeeper } from './auth/keys.ts';
 import { handoffToken, signIn, type SignIn } from './auth/signIn.ts';
@@ -37,7 +42,7 @@ import { trackerFor, type Tracker } from './tracker.ts';
 import { usageFor, type UsageKeeper } from './usage.ts';
 import { type OpenChats, openChats } from './pi/openChats.ts';
 import { listFolder, searchWorkspaceFiles } from './workspace/listing.ts';
-import { hasRemote, remoteOf } from './workspace/git.ts';
+import { cloneInto, cloneUrl, hasRemote, remoteOf } from './workspace/git.ts';
 import {
   createWorkspaceItem,
   readWorkspaceAsset,
@@ -252,6 +257,26 @@ async function chooseFolder(): Promise<string | null> {
 }
 
 /**
+ * Clone a repository the person chose into a folder they pick, and remember it as
+ * a workspace.
+ *
+ * The folder they pick is the parent, and the checkout lands beside their other
+ * folders rather than in a root of Kira's own (ADR 0029). A host Kira cannot name
+ * is refused here rather than guessed at, and git's own refusal — a private
+ * repository this machine cannot read — is raised as it came, so the person is
+ * told what to authenticate rather than handed a workaround.
+ */
+async function cloneWorkspace(request: CloneRequest): Promise<WorkspaceSummary | null> {
+  const url = cloneUrl(request.provider, request.owner, request.name);
+  if (url === null) throw new Error('Kira cannot clone from that host.');
+
+  const parent = await chooseFolder();
+  if (parent === null) return null;
+
+  return workspaceSummaryOf(store.rememberWorkspace(await cloneInto(url, parent, request.name)));
+}
+
+/**
  * The workspace channels, over the store, the server and the one thing only this
  * side can do: ask for a folder.
  *
@@ -263,6 +288,7 @@ async function chooseFolder(): Promise<string | null> {
 function registerWorkspaceChannels(): void {
   const handlers = workspaceHandlers({
     chooseFolder,
+    clone: cloneWorkspace,
     remember: (folder) => workspaceSummaryOf(store.rememberWorkspace(folder)),
     forget: (id) => chats.removeWorkspace(id),
     projects: () => tracker.projects(),
@@ -270,6 +296,7 @@ function registerWorkspaceChannels(): void {
   });
 
   ipcMain.handle(WORKSPACE_CHANNELS.add, () => handlers.add());
+  ipcMain.handle(WORKSPACE_CHANNELS.clone, (_event, request: unknown) => handlers.clone(request));
   ipcMain.handle(WORKSPACE_CHANNELS.remove, (_event, id: unknown) => handlers.remove(id));
   ipcMain.handle(WORKSPACE_CHANNELS.projects, () => handlers.projects());
   ipcMain.handle(WORKSPACE_CHANNELS.join, (_event, workspaceId: unknown, request: unknown) =>

@@ -37,6 +37,10 @@ const projects: ProjectSummary[] = [{ id: 'kira-project', name: 'Kira', prefix: 
 function deps(calls: string[], overrides: Partial<WorkspaceDeps> = {}): WorkspaceDeps {
   return {
     chooseFolder: async () => '/work/api',
+    clone: async (request) => {
+      calls.push(`clone ${request.provider} ${request.owner}/${request.name}`);
+      return added;
+    },
     remember: (folder) => {
       calls.push(`remember ${folder}`);
       return added;
@@ -212,6 +216,22 @@ const CASES: Case[] = [
     want: { ok: false, error: 'That is not a project to join.' },
     wantCalls: [],
   },
+  {
+    name: 'a repository to clone is checked, then git is asked for it',
+    makeDeps: (calls) => deps(calls),
+    call: 'clone',
+    args: [{ provider: 'github', owner: 'acme', name: 'api' }],
+    want: { ok: true, value: added },
+    wantCalls: ['clone github acme/api'],
+  },
+  {
+    name: 'a clone naming no repository is refused without reaching git',
+    makeDeps: (calls) => deps(calls),
+    call: 'clone',
+    args: [{ provider: 'github', owner: '', name: 'api' }],
+    want: { ok: false, error: 'That is not a repository to clone.' },
+    wantCalls: [],
+  },
 ];
 
 for (const testCase of CASES) {
@@ -221,6 +241,7 @@ for (const testCase of CASES) {
     const [first, second] = testCase.args ?? [];
     const run = {
       add: () => handlers.add(),
+      clone: () => handlers.clone(first),
       remove: () => handlers.remove(first),
       projects: () => handlers.projects(),
       join: () => handlers.join(first, second),

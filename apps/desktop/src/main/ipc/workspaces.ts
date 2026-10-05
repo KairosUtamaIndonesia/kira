@@ -20,6 +20,7 @@
  */
 import {
   WORKSPACE_CHANNELS,
+  type CloneRequest,
   type JoinRequest,
   type ProjectSummary,
   type Result,
@@ -33,6 +34,8 @@ export { WORKSPACE_CHANNELS };
 export interface WorkspaceDeps {
   /** Ask for a folder, answering null when the picker was closed without choosing. */
   chooseFolder(): Promise<string | null>;
+  /** Clone a repository into a folder the person picks, and remember it. */
+  clone(request: CloneRequest): Promise<WorkspaceSummary | null>;
   /** Remember the folder as a workspace, and describe it as the sidebar draws it. */
   remember(folder: string): WorkspaceSummary;
   /** Forget a workspace, leaving its chats and their folder alone. */
@@ -45,6 +48,7 @@ export interface WorkspaceDeps {
 
 export interface WorkspaceHandlers {
   add(): Promise<Result<WorkspaceSummary | null>>;
+  clone(request: unknown): Promise<Result<WorkspaceSummary | null>>;
   remove(id: unknown): Promise<Result<null>>;
   projects(): Promise<Result<ProjectSummary[]>>;
   join(workspaceId: unknown, request: unknown): Promise<Result<WorkspaceSummary>>;
@@ -52,6 +56,7 @@ export interface WorkspaceHandlers {
 
 export function workspaceHandlers({
   chooseFolder,
+  clone,
   remember,
   forget,
   projects,
@@ -66,6 +71,15 @@ export function workspaceHandlers({
 
         return folder === null ? null : remember(folder);
       }),
+
+    clone: (request) => {
+      const asked = cloneRequestIn(request);
+      if (asked === null) {
+        return Promise.resolve({ ok: false, error: 'That is not a repository to clone.' });
+      }
+
+      return envelope(() => clone(asked));
+    },
 
     remove: (id) =>
       withId(id, 'A workspace needs an id to be removed.', async (chosen) => {
@@ -87,6 +101,24 @@ export function workspaceHandlers({
       return envelope(() => join(workspaceId, asked));
     },
   };
+}
+
+/**
+ * What the renderer asked to clone, or null when it is not a clone at all.
+ *
+ * A clone names a provider, an owner and a name, all non-empty: a request missing
+ * any of them is not one a host could be asked for, and the window is an input to
+ * be checked rather than a caller to be believed (./result.ts).
+ */
+function cloneRequestIn(value: unknown): CloneRequest | null {
+  if (typeof value !== 'object' || value === null) return null;
+
+  const held = value as { provider?: unknown; owner?: unknown; name?: unknown };
+  if (typeof held.provider !== 'string' || held.provider.trim() === '') return null;
+  if (typeof held.owner !== 'string' || held.owner.trim() === '') return null;
+  if (typeof held.name !== 'string' || held.name.trim() === '') return null;
+
+  return { provider: held.provider.trim(), owner: held.owner.trim(), name: held.name.trim() };
 }
 
 /**

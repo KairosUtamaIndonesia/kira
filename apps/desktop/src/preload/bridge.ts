@@ -384,6 +384,13 @@ export interface WorkspaceSummary {
   projectId: string | null;
 }
 
+/** A repository to clone, as the host that names it. */
+export interface CloneRequest {
+  provider: string;
+  owner: string;
+  name: string;
+}
+
 /**
  * One entry in a folder of a chat's workspace.
  *
@@ -646,6 +653,7 @@ export const CHAT_CHANNELS = {
  */
 export const WORKSPACE_CHANNELS = {
   add: 'workspace:add',
+  clone: 'workspace:clone',
   remove: 'workspace:remove',
   projects: 'workspace:projects',
   join: 'workspace:join',
@@ -1524,6 +1532,13 @@ export interface KiraBridge {
    * before — or null when the folder picker was closed without choosing.
    */
   addWorkspace(): Promise<Result<WorkspaceSummary | null>>;
+  /**
+   * Clone a repository into a folder you pick, and remember it as a workspace.
+   * Answers null when the folder picker was closed without choosing, and raises
+   * what git said when the clone is refused — a private repository this machine
+   * has no credential for is the person's to fix, not Kira's to work around.
+   */
+  cloneWorkspace(request: CloneRequest): Promise<Result<WorkspaceSummary | null>>;
   /**
    * Stop showing a workspace. Its chats keep their conversations and the folder
    * they work in; they are simply filed nowhere until they are filed again. A
