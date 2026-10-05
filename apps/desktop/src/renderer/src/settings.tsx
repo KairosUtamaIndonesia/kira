@@ -82,7 +82,7 @@ export default function SettingsPage({
   showing: Setting;
 }) {
   return (
-    <VStack gap={6} padding={6} maxWidth={640}>
+    <VStack gap={6} padding={6} maxWidth={showing === 'git-hosts' ? 960 : 640}>
       <Heading level={1}>Settings</Heading>
 
       {showing === 'account' ? (

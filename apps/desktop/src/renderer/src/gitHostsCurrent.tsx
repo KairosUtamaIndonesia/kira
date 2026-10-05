@@ -1,0 +1,142 @@
+/** PROTOTYPE — the page as it ships today, kept as the thing to compare against. */
+import { Button } from '@astryxdesign/core/Button';
+import { Heading } from '@astryxdesign/core/Heading';
+import { HStack } from '@astryxdesign/core/HStack';
+import { Section } from '@astryxdesign/core/Section';
+import { Selector } from '@astryxdesign/core/Selector';
+import { Text } from '@astryxdesign/core/Text';
+import { TextInput } from '@astryxdesign/core/TextInput';
+import { VStack } from '@astryxdesign/core/VStack';
+import { useState } from 'react';
+import { PROVIDERS, type HostsModel } from './gitHostsModel';
+
+export function CurrentVariant({ model }: { model: HostsModel }) {
+  const [provider, setProvider] = useState('github');
+  const [instanceUrl, setInstanceUrl] = useState('');
+  const [accessToken, setAccessToken] = useState('');
+  const [accountLogin, setAccountLogin] = useState('');
+  const { connections, trouble, busy, secret, github } = model;
+
+  async function connect(): Promise<void> {
+    if (busy || accessToken.trim() === '') return;
+    const connected = await model.connect({ provider, instanceUrl, accessToken, accountLogin });
+    if (connected) {
+      setAccessToken('');
+      setAccountLogin('');
+    }
+  }
+
+  return (
+    <Section padding={4}>
+      <VStack gap={4}>
+        <VStack gap={1}>
+          <Heading level={2}>Git hosts</Heading>
+          <Text color="secondary" size="sm">
+            A repository is watched once it is attached to a project, and its host is connected
+            here. Connecting needs an administrator and a personal access token.
+          </Text>
+        </VStack>
+
+        {trouble !== null && (
+          <Text color="secondary" size="sm">
+            {trouble}
+          </Text>
+        )}
+
+        {secret !== null && (
+          <VStack gap={1}>
+            <Text weight="bold" size="sm">
+              Webhook secret — copy it now, it is shown once
+            </Text>
+            <Text size="sm" color="secondary">
+              {secret.value}
+            </Text>
+            <Text size="sm" color="secondary">
+              {`Point the host’s webhook at /api/webhooks/git/${secret.id}.`}
+            </Text>
+          </VStack>
+        )}
+
+        {connections === null ? (
+          <Text size="sm" color="secondary">
+            Loading hosts
+          </Text>
+        ) : connections.length === 0 ? (
+          <Text size="sm" color="secondary">
+            No hosts are connected yet.
+          </Text>
+        ) : (
+          <VStack gap={2}>
+            {connections.map((connection) => (
+              <HStack key={connection.id} justify="between" align="center">
+                <VStack gap={0.5}>
+                  <Text weight="bold" size="sm">
+                    {connection.instanceUrl ?? 'github.com'}
+                  </Text>
+                  <Text color="secondary" size="sm">
+                    {`${connection.provider} · ${connection.authKind}`}
+                  </Text>
+                </VStack>
+                <Button
+                  label="Disconnect"
+                  size="sm"
+                  variant="ghost"
+                  isDisabled={busy}
+                  onClick={() => void model.disconnect(connection.id)}
+                />
+              </HStack>
+            ))}
+          </VStack>
+        )}
+
+        {github?.configured === true && github.url !== null && (
+          <HStack justify="between" align="center">
+            <Text size="sm" color="secondary">
+              Install the GitHub App to watch GitHub without a personal token.
+            </Text>
+            <Button
+              label="Install the GitHub App"
+              size="sm"
+              variant="secondary"
+              onClick={() => window.open(github.url ?? '', '_blank', 'noopener')}
+            />
+          </HStack>
+        )}
+
+        <VStack gap={3}>
+          <Selector
+            label="Host"
+            options={PROVIDERS.map(({ value, label }) => ({ value, label }))}
+            value={provider}
+            isDisabled={busy}
+            onChange={(value) => setProvider(value ?? 'github')}
+          />
+          <TextInput
+            label="Address"
+            value={instanceUrl}
+            placeholder="https://git.example.com"
+            size="sm"
+            onChange={setInstanceUrl}
+          />
+          <TextInput label="Access token" value={accessToken} size="sm" onChange={setAccessToken} />
+          <TextInput
+            label="Account (optional)"
+            value={accountLogin}
+            placeholder="acme"
+            size="sm"
+            onChange={setAccountLogin}
+          />
+          <HStack justify="end">
+            <Button
+              label={busy ? 'Connecting' : 'Connect host'}
+              size="sm"
+              variant="primary"
+              isDisabled={busy || accessToken.trim() === ''}
+              onClick={() => void connect()}
+            />
+          </HStack>
+        </VStack>
+      </VStack>
+    </Section>
+  );
+}
