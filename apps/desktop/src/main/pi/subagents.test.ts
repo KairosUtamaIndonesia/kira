@@ -6,6 +6,7 @@ import { ThreadStore } from '../db/threads.ts';
 import { tempDir } from '../test-support/temp.ts';
 import {
   subagents,
+  toolsForRole,
   type SubagentDriver,
   type SubagentEnding,
   type SubagentSummary,
@@ -18,6 +19,20 @@ function storePath(): string {
 function driver(turn: (prompt: string) => Promise<SubagentEnding>): SubagentDriver {
   return { turn, steer: async () => {}, stop: async () => {}, dispose: () => {} };
 }
+
+test('explore children get only read tools, while general children keep the chat tools', () => {
+  const available = ['read', 'grep', 'find', 'ls', 'recall', 'ask_user_question', 'bash', 'write'];
+
+  assert.deepEqual(toolsForRole('explore', available), [
+    'read',
+    'grep',
+    'find',
+    'ls',
+    'recall',
+    'ask_user_question',
+  ]);
+  assert.deepEqual(toolsForRole('general', available), available);
+});
 
 test('a delegated child is its own thread, from a clean brief', async () => {
   const store = new ThreadStore(storePath());
@@ -211,6 +226,64 @@ test('a child can be steered, stopped, and resumed in its own session', async ()
   await manager.settle();
   assert.deepEqual(turns, ['first', 'second']);
   assert.equal(store.getThread(childId).subagent?.response, 'finished: second');
+  store.close();
+});
+
+test('a chat cannot stop or steer another chat’s child', async () => {
+  const store = new ThreadStore(storePath());
+  const ownerChat = store.createThread(tmpdir());
+  const otherChat = store.createThread(tmpdir());
+  let childStarted!: () => void;
+  const started = new Promise<void>((resolve) => {
+    childStarted = resolve;
+  });
+  let finishChild!: () => void;
+  const held = new Promise<void>((resolve) => {
+    finishChild = resolve;
+  });
+  let driverStopped = false;
+  let driverSteered = false;
+  const owner = subagents({
+    store,
+    parentThreadId: ownerChat.id,
+    cwd: ownerChat.cwd,
+    modelId: 'served-model',
+    run: async () => driver(async () => ({ kind: 'reported', report: 'unused' })),
+  });
+  const other = subagents({
+    store,
+    parentThreadId: otherChat.id,
+    cwd: otherChat.cwd,
+    modelId: 'served-model',
+    run: async () => ({
+      turn: async () => {
+        childStarted();
+        await held;
+        return { kind: 'reported', report: 'done' };
+      },
+      steer: async () => {
+        driverSteered = true;
+      },
+      stop: async () => {
+        driverStopped = true;
+        finishChild();
+      },
+      dispose: () => {},
+    }),
+  });
+  const childId = other.spawn({ role: 'general', prompt: 'Keep working.' });
+  await started;
+
+  await assert.rejects(owner.stop(childId), /does not belong to this chat/);
+  await assert.rejects(owner.steer(childId, 'Change direction.'), /does not belong to this chat/);
+  assert.equal(driverStopped, false);
+  assert.equal(driverSteered, false);
+  assert.equal(store.getThread(childId).subagent?.status, 'running');
+
+  await other.stop(childId);
+  await Promise.all([owner.settle(), other.settle()]);
+  owner.dispose();
+  other.dispose();
   store.close();
 });
 

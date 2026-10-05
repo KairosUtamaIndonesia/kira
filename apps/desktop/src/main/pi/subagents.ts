@@ -147,6 +147,14 @@ export function subagents(options: {
     return summaryOf(childThreadId, record);
   };
 
+  const recordForOwnedChild = (childThreadId: string): SubagentRecord => {
+    const child = store.getThread(childThreadId);
+    if (child.parentThreadId !== parentThreadId || child.subagent === null) {
+      throw new Error('That subagent does not belong to this chat.');
+    }
+    return child.subagent;
+  };
+
   const end = (childThreadId: string, generation: number, ending: SubagentEnding): void => {
     if (disposed) return;
     if (generations.get(childThreadId) !== generation) return;
@@ -239,9 +247,9 @@ export function subagents(options: {
     list: () => store.listSubagents(parentThreadId).map((thread) => summaryOfChild(thread.id)),
 
     stop: async (childThreadId) => {
+      const record = recordForOwnedChild(childThreadId);
       const driver = drivers.get(childThreadId);
-      const record = store.getThread(childThreadId).subagent;
-      if (record === null || record.status !== 'running') {
+      if (record.status !== 'running') {
         throw new Error('That subagent is not running.');
       }
       generations.set(childThreadId, (generations.get(childThreadId) ?? 0) + 1);
@@ -266,22 +274,18 @@ export function subagents(options: {
     },
 
     steer: async (childThreadId, text) => {
+      const record = recordForOwnedChild(childThreadId);
       const driver = drivers.get(childThreadId);
-      if (store.getThread(childThreadId).subagent?.status !== 'running' || driver === undefined) {
+      if (record.status !== 'running' || driver === undefined) {
         throw new Error('That subagent is not running.');
       }
       await driver.steer(text);
     },
 
     resume: async (childThreadId, prompt) => {
-      const thread = store.getThread(childThreadId);
-      const record = thread.subagent;
+      const record = recordForOwnedChild(childThreadId);
       const driver = drivers.get(childThreadId);
-      if (
-        thread.parentThreadId !== parentThreadId ||
-        record === null ||
-        record.status === 'running'
-      ) {
+      if (record.status === 'running') {
         throw new Error('That subagent cannot be resumed.');
       }
       if (driver === undefined) throw new Error('That subagent session is no longer available.');
@@ -298,10 +302,7 @@ export function subagents(options: {
     },
 
     askParent: async (childThreadId, question) => {
-      const child = store.getThread(childThreadId);
-      if (child.parentThreadId !== parentThreadId || child.subagent === null) {
-        throw new Error('That subagent does not belong to this chat.');
-      }
+      recordForOwnedChild(childThreadId);
       return answerParent?.(childThreadId, question) ?? null;
     },
 

@@ -111,7 +111,11 @@ export function Work({
           // Expanded, because a transcript is read rather than interrogated: the
           // work is the shape of the turn, and a group that starts closed hides
           // what Kira did to get here.
-          <ChatToolCalls xstyle={styles.tools} calls={part.calls.map(toolCall)} defaultIsExpanded />
+          <ChatToolCalls
+            xstyle={styles.tools}
+            calls={part.calls.map((call, index) => toolCall(call, index))}
+            defaultIsExpanded
+          />
         )}
       </TraceDisclosure>
     </div>
@@ -167,7 +171,7 @@ function TraceDisclosure({
  * limit), the row becomes clickable and the full text opens beneath it as a
  * code block, so nothing pi did is actually out of reach.
  */
-function toolCall(call: ToolRun): ChatToolCallItem {
+function toolCall(call: ToolRun, index: number): ChatToolCallItem {
   const target = call.target === null ? undefined : shorten(call.target);
   const detail: ReactNode[] = [];
 
@@ -185,6 +189,7 @@ function toolCall(call: ToolRun): ChatToolCallItem {
   }
 
   return {
+    key: `${call.name}:${index}`,
     name: call.name,
     status: call.status,
     target,
