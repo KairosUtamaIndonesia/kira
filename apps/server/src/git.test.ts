@@ -1,6 +1,6 @@
 import { createHmac, generateKeyPairSync } from 'node:crypto';
 import { afterAll, afterEach, describe, expect, setSystemTime, test } from 'bun:test';
-import { startFakeGitHub } from './test-support/fake-github';
+import { type FakeGitHub, startFakeGitHub } from './test-support/fake-github';
 import { boot, closeDatabases, issue, send, user } from './test-support/server';
 
 afterEach(closeDatabases);
@@ -102,6 +102,37 @@ async function makeTicket(
   );
   expect(response.status).toBe(200);
   return (await response.json()).ticket as { id: string; name: string; status: string };
+}
+
+/**
+ * Boot a server whose App answers through `github`, install it, and hand back the
+ * connection it recorded.
+ */
+async function installedApp(github: FakeGitHub, installationId: number, keyName: string) {
+  const { app, auth } = await boot({}, {}, {}, {
+    appSlug: 'kira-test',
+    appId: '123',
+    appPrivateKey: generateKeyPairSync('rsa', { modulusLength: 2048 })
+      .privateKey.export({ type: 'pkcs1', format: 'pem' })
+      .toString(),
+    apiBaseUrl: github.apiBaseUrl,
+  });
+  const person = await user(auth);
+  const key = (await issue(auth, person.id, keyName)).key;
+  await makeAdmin(auth, person.id);
+
+  const connect = await send(app, '/api/git/github/connect', { headers: bearer(key) });
+  const url = ((await connect.json()) as { url: string }).url;
+  const state = new URL(url).searchParams.get('state')!;
+  await send(
+    app,
+    `/api/git/github/setup?installation_id=${installationId}&state=${encodeURIComponent(state)}`,
+  );
+
+  const listed = await send(app, '/api/git/connections', { headers: bearer(key) });
+  const [connection] = (await listed.json()).connections as { id: string }[];
+
+  return { app, key, connection: connection! };
 }
 
 function delivery(payload: unknown, secret = SECRET, event = 'pull_request'): RequestInit {
@@ -579,30 +610,9 @@ describe('the GitHub App', () => {
     });
 
     try {
-      const { app, auth } = await boot({}, {}, {}, {
-        appSlug: 'kira-test',
-        appId: '123',
-        appPrivateKey: generateKeyPairSync('rsa', { modulusLength: 2048 })
-          .privateKey.export({ type: 'pkcs1', format: 'pem' })
-          .toString(),
-        apiBaseUrl: github.apiBaseUrl,
-      });
-      const person = await user(auth);
-      const key = (await issue(auth, person.id, 'github-repositories')).key;
-      await makeAdmin(auth, person.id);
+      const { app, key, connection } = await installedApp(github, 77, 'github-repositories');
 
-      const connect = await send(app, '/api/git/github/connect', { headers: bearer(key) });
-      const url = ((await connect.json()) as { url: string }).url;
-      const state = new URL(url).searchParams.get('state')!;
-      await send(
-        app,
-        `/api/git/github/setup?installation_id=77&state=${encodeURIComponent(state)}`,
-      );
-
-      const listed = await send(app, '/api/git/connections', { headers: bearer(key) });
-      const [connection] = (await listed.json()).connections as { id: string }[];
-
-      const answer = await send(app, `/api/git/connections/${connection!.id}/repositories`, {
+      const answer = await send(app, `/api/git/connections/${connection.id}/repositories`, {
         headers: bearer(key),
       });
       expect(answer.status).toBe(200);
@@ -612,6 +622,35 @@ describe('the GitHub App', () => {
       ]);
       // The App signed and sent its own JWT rather than an installation token.
       expect(github.tokens[0]?.split('.')).toHaveLength(3);
+    } finally {
+      await github.stop();
+    }
+  });
+
+  test('follows the Link header when an installation has more than one page', async () => {
+    const github = await startFakeGitHub({
+      id: 88,
+      login: 'acme',
+      type: 'Organization',
+      repositories: Array.from({ length: 150 }, (_each, index) => ({
+        owner: 'acme',
+        name: `repo-${String(index).padStart(3, '0')}`,
+      })),
+    });
+
+    try {
+      const { app, key, connection } = await installedApp(github, 88, 'github-pages');
+
+      const answer = await send(app, `/api/git/connections/${connection.id}/repositories`, {
+        headers: bearer(key),
+      });
+      expect(answer.status).toBe(200);
+      const repositories = (await answer.json()).repositories as { name: string }[];
+      expect(repositories).toHaveLength(150);
+      expect(repositories[0]?.name).toBe('repo-000');
+      expect(repositories[149]?.name).toBe('repo-149');
+      // Two requests: the first page, then the one the Link header named.
+      expect(github.repositoryPages).toEqual([1, 2]);
     } finally {
       await github.stop();
     }

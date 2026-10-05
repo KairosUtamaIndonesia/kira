@@ -13,6 +13,8 @@ export interface FakeGitHub {
   apiBaseUrl: string;
   /** Every App JWT the stand-in was handed, in call order. */
   tokens: string[];
+  /** The `page` each repositories request asked for, in call order. */
+  repositoryPages: number[];
   stop(): Promise<void>;
 }
 
@@ -28,6 +30,7 @@ export async function startFakeGitHub(installation: FakeInstallation): Promise<F
   const fake: FakeGitHub = {
     apiBaseUrl: '',
     tokens: [],
+    repositoryPages: [],
     stop: async () => {},
   };
 
@@ -53,10 +56,24 @@ export async function startFakeGitHub(installation: FakeInstallation): Promise<F
     }
 
     if (parts[3] === 'repositories') {
-      response.writeHead(200, { 'content-type': 'application/json' }).end(
+      // GitHub's own paging: `per_page` per page, and a `Link` to the next one
+      // while any repository is left over.
+      const page = Math.max(1, Number(url.searchParams.get('page') ?? '1'));
+      const perPage = Math.max(1, Number(url.searchParams.get('per_page') ?? '30'));
+      fake.repositoryPages.push(page);
+
+      const start = (page - 1) * perPage;
+      const slice = installation.repositories.slice(start, start + perPage);
+      const headers: Record<string, string> = { 'content-type': 'application/json' };
+      if (start + perPage < installation.repositories.length) {
+        const host = request.headers.host ?? '127.0.0.1';
+        headers.link = `<http://${host}${url.pathname}?per_page=${perPage}&page=${page + 1}>; rel="next"`;
+      }
+
+      response.writeHead(200, headers).end(
         JSON.stringify({
           total_count: installation.repositories.length,
-          repositories: installation.repositories.map((each) => ({
+          repositories: slice.map((each) => ({
             name: each.name,
             full_name: `${each.owner}/${each.name}`,
             default_branch: each.defaultBranch ?? 'main',

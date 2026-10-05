@@ -1345,29 +1345,46 @@ async function isAdmin(auth: Auth, userId: string): Promise<boolean> {
 }
 
 /**
- * A GET to GitHub's App API, authenticated as the App itself, or null when it is
- * refused or unreachable. These calls take the App's own JWT; nothing here needs
- * an installation token.
+ * A request to GitHub's App API, authenticated as the App itself, or null when it
+ * is refused or unreachable. These calls take the App's own JWT; nothing here
+ * needs an installation token. The whole response comes back so a caller can read
+ * its headers, which is how the next page of a list is found.
  */
-async function appGet(config: Config, path: string): Promise<unknown | null> {
+async function appRequest(config: Config, url: string): Promise<Response | null> {
   const { appId, appPrivateKey } = config.git;
   if (appId === null || appPrivateKey === null) return null;
 
   try {
     const jwt = signAppJwt(appId, appPrivateKey.replace(/\\n/g, '\n'));
-    const response = await fetch(`${config.git.apiBaseUrl}${path}`, {
+    const response = await fetch(url, {
       headers: {
         authorization: `Bearer ${jwt}`,
         accept: 'application/vnd.github+json',
         'user-agent': 'kira',
       },
     });
-    if (!response.ok) return null;
 
+    return response.ok ? response : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A response's JSON body, or null when it is not one. */
+async function readJson(response: Response): Promise<unknown | null> {
+  try {
     return await response.json();
   } catch {
     return null;
   }
+}
+
+/** A GET to the App API, by path, whose body is parsed. */
+async function appGet(config: Config, path: string): Promise<unknown | null> {
+  const response = await appRequest(config, `${config.git.apiBaseUrl}${path}`);
+  if (response === null) return null;
+
+  return await readJson(response);
 }
 
 /** The account an installation belongs to, or a placeholder when it cannot be read. */
@@ -1385,29 +1402,67 @@ async function githubInstallationAccount(
   };
 }
 
-/** The repositories an installation can see, or null when GitHub will not say. */
+/**
+ * How many pages of an installation's repositories Kira will walk. GitHub pages
+ * at 100, so this is 5,000 repositories — far past any project's list, and the
+ * ceiling on what one listing can cost. Beyond it the list is short, not wrong.
+ */
+const INSTALLATION_REPOSITORIES_MAX_PAGES = 50;
+
+/** The `rel="next"` URL in a `Link` header, or null when there is no next page. */
+function nextPage(link: string | null): string | null {
+  if (link === null) return null;
+
+  for (const part of link.split(',')) {
+    const [target, ...params] = part.trim().split(';');
+    if (
+      target !== undefined &&
+      target.startsWith('<') &&
+      target.endsWith('>') &&
+      params.some((param) => param.trim() === 'rel="next"')
+    ) {
+      return target.slice(1, -1);
+    }
+  }
+
+  return null;
+}
+
+/**
+ * The repositories an installation can see, or null when GitHub will not say.
+ *
+ * GitHub pages this list, so every page is walked and the answer is the whole
+ * set: a picker that stopped at the first hundred would hide the rest.
+ */
 async function githubInstallationRepositories(
   config: Config,
   installationId: number,
 ): Promise<{ owner: string; name: string; defaultBranch: string }[] | null> {
-  const body = (await appGet(
-    config,
-    `/app/installations/${installationId}/repositories?per_page=100`,
-  )) as {
-    repositories?: { name?: unknown; default_branch?: unknown; owner?: { login?: unknown } }[];
-  } | null;
-  if (body === null || !Array.isArray(body.repositories)) return null;
-
   const found: { owner: string; name: string; defaultBranch: string }[] = [];
-  for (const held of body.repositories) {
-    const owner = held?.owner?.login;
-    if (typeof owner !== 'string' || owner === '' || typeof held?.name !== 'string') continue;
+  let url: string | null =
+    `${config.git.apiBaseUrl}/app/installations/${installationId}/repositories?per_page=100`;
 
-    found.push({
-      owner,
-      name: held.name,
-      defaultBranch: typeof held.default_branch === 'string' ? held.default_branch : 'main',
-    });
+  for (let page = 0; url !== null && page < INSTALLATION_REPOSITORIES_MAX_PAGES; page += 1) {
+    const response = await appRequest(config, url);
+    if (response === null) return null;
+
+    const body = (await readJson(response)) as {
+      repositories?: { name?: unknown; default_branch?: unknown; owner?: { login?: unknown } }[];
+    } | null;
+    if (body === null || !Array.isArray(body.repositories)) return null;
+
+    for (const held of body.repositories) {
+      const owner = held?.owner?.login;
+      if (typeof owner !== 'string' || owner === '' || typeof held?.name !== 'string') continue;
+
+      found.push({
+        owner,
+        name: held.name,
+        defaultBranch: typeof held.default_branch === 'string' ? held.default_branch : 'main',
+      });
+    }
+
+    url = nextPage(response.headers.get('link'));
   }
 
   return found;
