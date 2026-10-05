@@ -17,6 +17,7 @@ import { Icon } from '@astryxdesign/core/Icon';
 import { IconButton } from '@astryxdesign/core/IconButton';
 import { Selector } from '@astryxdesign/core/Selector';
 import { Text } from '@astryxdesign/core/Text';
+import { TextArea } from '@astryxdesign/core/TextArea';
 import { VStack } from '@astryxdesign/core/VStack';
 import { colorVars, spacingVars } from '@astryxdesign/core/theme/tokens.stylex';
 import * as stylex from '@stylexjs/stylex';
@@ -403,12 +404,13 @@ export function ChangesTab({
           })}
 
           <VStack gap={2}>
-            <textarea
-              {...stylex.props(styles.commitMessage)}
-              aria-label="Commit message"
+            <TextArea
+              label="Commit message"
+              isLabelHidden
               placeholder="Commit message"
+              rows={3}
               value={commitMessage}
-              onChange={(event) => setCommitMessage(event.currentTarget.value)}
+              onChange={setCommitMessage}
             />
             <HStack justify="between" align="center">
               <Text type="supporting" color="secondary">
@@ -544,19 +546,6 @@ const styles = stylex.create({
   },
   pathOn: {
     backgroundColor: colorVars['--color-background-muted'],
-  },
-  commitMessage: {
-    width: '100%',
-    minHeight: 64,
-    resize: 'vertical',
-    padding: spacingVars['--spacing-2'],
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: colorVars['--color-border'],
-    borderRadius: 'var(--radius-element)',
-    color: colorVars['--color-text-primary'],
-    backgroundColor: colorVars['--color-background-surface'],
-    font: 'inherit',
   },
   hunk: {
     display: 'flex',

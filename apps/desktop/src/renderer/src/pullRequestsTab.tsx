@@ -16,6 +16,7 @@ import { Icon } from '@astryxdesign/core/Icon';
 import { IconButton } from '@astryxdesign/core/IconButton';
 import { Selector } from '@astryxdesign/core/Selector';
 import { Text } from '@astryxdesign/core/Text';
+import { TextInput } from '@astryxdesign/core/TextInput';
 import { VStack } from '@astryxdesign/core/VStack';
 import { colorVars, spacingVars } from '@astryxdesign/core/theme/tokens.stylex';
 import * as stylex from '@stylexjs/stylex';
@@ -206,6 +207,7 @@ export function PullRequestsTab({ chatId, visits }: { chatId: string; visits: nu
       <HStack gap={2} align="center">
         <Selector
           label="State"
+          isLabelHidden
           options={[
             { value: 'open', label: 'Open' },
             { value: 'all', label: 'All' },
@@ -216,16 +218,19 @@ export function PullRequestsTab({ chatId, visits }: { chatId: string; visits: nu
           variant="ghost"
           size="sm"
         />
-        <label {...stylex.props(styles.search)}>
-          <Icon icon={Search} size="sm" />
-          <input
-            {...stylex.props(styles.searchInput)}
-            aria-label="Search pull requests"
-            placeholder="Search pull requests…"
+        <div {...stylex.props(styles.searchBox)}>
+          <TextInput
+            label="Search pull requests"
+            isLabelHidden
+            placeholder="Search"
+            size="sm"
+            startIcon={Search}
+            hasClear
+            width="100%"
             value={query}
-            onChange={(event) => setQuery(event.currentTarget.value)}
+            onChange={setQuery}
           />
-        </label>
+        </div>
       </HStack>
       {loading ? (
         <Text type="supporting" color="secondary">
@@ -318,29 +323,5 @@ const styles = stylex.create({
     whiteSpace: 'pre-wrap',
     color: colorVars['--color-text-primary'],
   },
-  search: {
-    display: 'flex',
-    flex: 1,
-    alignItems: 'center',
-    gap: spacingVars['--spacing-2'],
-    minHeight: 30,
-    minWidth: 0,
-    paddingInline: spacingVars['--spacing-2'],
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: colorVars['--color-border'],
-    borderRadius: 'var(--radius-element)',
-    color: colorVars['--color-text-secondary'],
-    backgroundColor: colorVars['--color-background-muted'],
-  },
-  searchInput: {
-    width: '100%',
-    minWidth: 0,
-    border: 0,
-    outline: 0,
-    color: colorVars['--color-text-primary'],
-    backgroundColor: 'transparent',
-    font: 'inherit',
-    '::placeholder': { color: colorVars['--color-text-secondary'] },
-  },
+  searchBox: { flex: 1, minWidth: 0 },
 });
