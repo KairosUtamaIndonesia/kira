@@ -692,6 +692,7 @@ export const GIT_CHANNELS = {
   connect: 'git:connect',
   disconnect: 'git:disconnect',
   githubConnect: 'git:github-connect',
+  connectionRepositories: 'git:connection-repositories',
 } as const;
 
 /**
@@ -926,6 +927,13 @@ export interface RepositoryInput {
   name: string;
   provider?: string;
   defaultBranch?: string;
+}
+
+/** A repository a GitHub App installation can see, as the server reports it. */
+export interface InstallationRepository {
+  owner: string;
+  name: string;
+  defaultBranch: string;
 }
 
 /** A pull request reviewing a ticket, as its host states it. */
@@ -1586,6 +1594,8 @@ export interface KiraBridge {
   attachRepository(projectId: string, input: RepositoryInput): Promise<Result<Repository>>;
   /** Take a repository off a project. */
   detachRepository(projectId: string, id: string): Promise<Result<null>>;
+  /** The repositories a GitHub App installation can see, for attaching by name. */
+  listConnectionRepositories(connectionId: string): Promise<Result<InstallationRepository[]>>;
   /** The methods a project works by. */
   loadSkills(projectId: string): Promise<Result<ProjectSkill[]>>;
   /** Write a skill the project works by, refused when its name is taken. */

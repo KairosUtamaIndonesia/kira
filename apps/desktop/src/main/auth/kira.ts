@@ -27,6 +27,7 @@ import {
   TICKET_STATUSES,
   type ProjectSummary,
   type Repository,
+  type InstallationRepository,
   type Ticket,
   type TicketComment,
   type TicketPullRequest,
@@ -481,6 +482,12 @@ export function kiraFor({ server, scheme }: { server: string; scheme: string }):
     githubConnect: async (key) =>
       asked(() => kira.api.git.github.connect.get({ headers: bearerFor(key) }), asGitHubConnect),
 
+    connectionRepositories: async (key, id) =>
+      asked(
+        () => kira.api.git.connections({ id }).repositories.get({ headers: bearerFor(key) }),
+        (data) => asInstallationRepositories((data as { repositories: unknown }).repositories),
+      ),
+
     markBreakdownReady: async (key, specTicketId) =>
       asked(
         () =>
@@ -669,6 +676,29 @@ function asRepositories(body: unknown): Repository[] | null {
   const repositories = body.map(asRepository);
 
   return repositories.some((each) => each === null) ? null : (repositories as Repository[]);
+}
+
+function asInstallationRepository(body: unknown): InstallationRepository | null {
+  const held = body as { owner?: unknown; name?: unknown; defaultBranch?: unknown };
+  if (
+    typeof held?.owner !== 'string' ||
+    typeof held.name !== 'string' ||
+    typeof held.defaultBranch !== 'string'
+  ) {
+    return null;
+  }
+
+  return { owner: held.owner, name: held.name, defaultBranch: held.defaultBranch };
+}
+
+function asInstallationRepositories(body: unknown): InstallationRepository[] | null {
+  if (!Array.isArray(body)) return null;
+
+  const repositories = body.map(asInstallationRepository);
+
+  return repositories.some((each) => each === null)
+    ? null
+    : (repositories as InstallationRepository[]);
 }
 
 function asPullRequests(body: unknown): TicketPullRequest[] | null {

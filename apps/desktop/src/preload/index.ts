@@ -23,6 +23,7 @@ import {
   type GitConnection,
   type GitConnectionCreated,
   type GitHubConnect,
+  type InstallationRepository,
   type KiraBridge,
   type GlossaryEntry,
   type MagicPrompt,
@@ -185,6 +186,9 @@ const bridge: KiraBridge = {
   disconnectGitHost: (id) => ask<null>(GIT_CHANNELS.disconnect, id),
 
   loadGitHubConnect: () => ask<GitHubConnect>(GIT_CHANNELS.githubConnect),
+
+  listConnectionRepositories: (connectionId) =>
+    ask<InstallationRepository[]>(GIT_CHANNELS.connectionRepositories, connectionId),
 
   undoGlossary: (workspaceId, entryId, version, chatId) =>
     ask<GlossaryEntry>(TRACKER_CHANNELS.undoGlossary, workspaceId, entryId, version, chatId),

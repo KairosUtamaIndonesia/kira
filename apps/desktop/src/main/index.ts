@@ -392,12 +392,16 @@ function registerGitChannels(): void {
     connect: (input) => tracker.connectGitHost(input),
     disconnect: (id) => tracker.disconnectGitHost(id),
     githubConnect: () => tracker.loadGitHubConnect(),
+    connectionRepositories: (id) => tracker.connectionRepositories(id),
   });
 
   ipcMain.handle(GIT_CHANNELS.connections, () => handlers.connections());
   ipcMain.handle(GIT_CHANNELS.connect, (_event, input: unknown) => handlers.connect(input));
   ipcMain.handle(GIT_CHANNELS.disconnect, (_event, id: unknown) => handlers.disconnect(id));
   ipcMain.handle(GIT_CHANNELS.githubConnect, () => handlers.githubConnect());
+  ipcMain.handle(GIT_CHANNELS.connectionRepositories, (_event, id: unknown) =>
+    handlers.connectionRepositories(id),
+  );
 }
 
 /**

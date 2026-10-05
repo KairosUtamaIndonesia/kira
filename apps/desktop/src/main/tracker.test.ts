@@ -205,6 +205,10 @@ function wire(calls: string[], answers: Partial<TrackerWire> = {}): TrackerWire 
       calls.push(`githubConnect ${key}`);
       return { kind: 'ok', body: { configured: false, url: null } };
     },
+    connectionRepositories: async (key, id) => {
+      calls.push(`connectionRepositories ${key} ${id}`);
+      return { kind: 'ok', body: [] };
+    },
     readTicket: async (key, ref) => {
       calls.push(`readTicket ${key} ${ref}`);
       return { kind: 'ok', body: ticket };

@@ -65,6 +65,7 @@ export const copy = {
     namePlaceholder: 'api',
     attach: 'Attach repository',
     attaching: 'Attaching',
+    installation: 'Or pick one the GitHub App can see.',
     defaultBranch: (branch: string) => `default branch ${branch}`,
   },
 

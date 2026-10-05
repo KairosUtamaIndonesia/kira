@@ -17,7 +17,7 @@ import { spacingVars } from '@astryxdesign/core/theme/tokens.stylex';
 import * as stylex from '@stylexjs/stylex';
 import { GitBranch, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
-import type { Repository } from '../../preload/bridge.ts';
+import type { InstallationRepository, Repository } from '../../preload/bridge.ts';
 import { FlushDialogHeader } from './dialogHeader.tsx';
 import { copy } from './workCopy.ts';
 
@@ -48,6 +48,8 @@ export function RepositoriesDialog({
   const [owner, setOwner] = useState('');
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
+  const [available, setAvailable] = useState<InstallationRepository[] | null>(null);
+  const [availableTrouble, setAvailableTrouble] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const answer = await window.kira.loadRepositories(projectId);
@@ -59,8 +61,28 @@ export function RepositoriesDialog({
     }
   }, [projectId]);
 
+  /** What the connected GitHub App can see, offered as names to pick from. */
+  const loadAvailable = useCallback(async () => {
+    const connections = await window.kira.loadGitConnections();
+    if (!connections.ok) return;
+
+    const app = connections.value.find(
+      (each) => each.provider === 'github' && each.authKind === 'app',
+    );
+    if (app === undefined) return;
+
+    const answer = await window.kira.listConnectionRepositories(app.id);
+    if (answer.ok) {
+      setAvailable(answer.value);
+      setAvailableTrouble(null);
+    } else {
+      setAvailableTrouble(answer.error);
+    }
+  }, []);
+
   useOnce(() => {
     void load();
+    void loadAvailable();
   });
 
   async function attach(): Promise<void> {
@@ -151,6 +173,37 @@ export function RepositoriesDialog({
           </ul>
         )}
 
+        {availableTrouble !== null && (
+          <Text type="supporting" color="secondary">
+            {availableTrouble}
+          </Text>
+        )}
+
+        {available !== null && available.length > 0 && (
+          <div {...stylex.props(ui.pick)}>
+            <Text type="supporting" color="secondary">
+              {copy.repositories.installation}
+            </Text>
+            <ul {...stylex.props(ui.available)}>
+              {available.map((each) => (
+                <li key={`${each.owner}/${each.name}`}>
+                  <Button
+                    label={`${each.owner}/${each.name}`}
+                    size="sm"
+                    variant="ghost"
+                    isDisabled={busy}
+                    onClick={() => {
+                      setProvider('github');
+                      setOwner(each.owner);
+                      setName(each.name);
+                    }}
+                  />
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         <div {...stylex.props(ui.form)}>
           <Selector
             label={copy.repositories.provider}
@@ -221,5 +274,21 @@ const ui = stylex.create({
   formActions: {
     display: 'flex',
     justifyContent: 'flex-end',
+  },
+  pick: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: spacingVars['--spacing-2'],
+  },
+  available: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: spacingVars['--spacing-1'],
+    margin: 0,
+    padding: 0,
+    listStyle: 'none',
+    maxHeight: 160,
+    overflowY: 'auto',
   },
 });

@@ -23,6 +23,7 @@ import type {
   GitConnectionCreated,
   GitConnectionInput,
   GitHubConnect,
+  InstallationRepository,
   JoinRequest,
   ProjectSummary,
   Ticket,
@@ -192,6 +193,8 @@ export interface TrackerWire {
   disconnectHost(key: string, id: string): Promise<TrackerAnswer<true>>;
   /** Where to install this server's GitHub App, or that none is configured. */
   githubConnect(key: string): Promise<TrackerAnswer<GitHubConnect>>;
+  /** The repositories a GitHub App installation can see. */
+  connectionRepositories(key: string, id: string): Promise<TrackerAnswer<InstallationRepository[]>>;
   /** Publish proposed children and dependency gates in one server transaction. */
   publishBreakdown?(
     key: string,
@@ -298,6 +301,8 @@ export interface Tracker {
   disconnectGitHost(id: string): Promise<null>;
   /** Where to install this server's GitHub App, or that none is configured. */
   loadGitHubConnect(): Promise<GitHubConnect>;
+  /** The repositories a GitHub App installation can see. */
+  connectionRepositories(id: string): Promise<InstallationRepository[]>;
   publishBreakdown(specTicketId: string, children: BreakdownSlice[]): Promise<BreakdownResult>;
   markBreakdownReady(specTicketId: string): Promise<BreakdownResult>;
   projects(): Promise<ProjectSummary[]>;
@@ -577,6 +582,12 @@ export function trackerFor({
       const held = await key();
 
       return await asked(() => wire.githubConnect(held));
+    },
+
+    async connectionRepositories(id) {
+      const held = await key();
+
+      return await asked(() => wire.connectionRepositories(held, id));
     },
 
     async publishBreakdown(specTicketId, children) {

@@ -31,6 +31,7 @@ function deps(
       calls.push('githubConnect');
       return { configured: false, url: null };
     },
+    connectionRepositories: async () => [],
     ...overrides,
   };
 }
@@ -108,4 +109,26 @@ test('disconnect checks the id, and the server refusal is preserved', async () =
     error: 'A host needs an id to disconnect.',
   });
   assert.deepEqual(calls, ['disconnect conn-1']);
+});
+
+test('connectionRepositories checks the id, then forwards it', async () => {
+  const calls: string[] = [];
+  const handlers = gitHandlers(
+    deps(calls, {
+      connectionRepositories: async (id: string) => {
+        calls.push(`connectionRepositories ${id}`);
+        return [{ owner: 'acme', name: 'api', defaultBranch: 'main' }];
+      },
+    }),
+  );
+
+  assert.deepEqual(await handlers.connectionRepositories('conn-1'), {
+    ok: true,
+    value: [{ owner: 'acme', name: 'api', defaultBranch: 'main' }],
+  });
+  assert.deepEqual(await handlers.connectionRepositories(''), {
+    ok: false,
+    error: 'A host needs an id to list its repositories.',
+  });
+  assert.deepEqual(calls, ['connectionRepositories conn-1']);
 });

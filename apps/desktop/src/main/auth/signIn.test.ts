@@ -175,6 +175,10 @@ function kira(calls: string[], quirks: Quirks = {}): Kira {
       calls.push('read the github app install');
       return { kind: 'unavailable' };
     },
+    connectionRepositories: async () => {
+      calls.push('read the repositories a connection can see');
+      return { kind: 'unavailable' };
+    },
     readTicket: async () => {
       calls.push('read a ticket');
       return { kind: 'unavailable' };

@@ -12,6 +12,7 @@ import {
   type GitConnectionInput,
   type GitHubConnect,
   GIT_CHANNELS,
+  type InstallationRepository,
   type Result,
 } from '../../preload/bridge.ts';
 import { envelope } from './result.ts';
@@ -26,6 +27,7 @@ export interface GitDeps {
   connect(input: GitConnectionInput): Promise<GitConnectionCreated>;
   disconnect(id: string): Promise<null>;
   githubConnect(): Promise<GitHubConnect>;
+  connectionRepositories(id: string): Promise<InstallationRepository[]>;
 }
 
 export interface GitHandlers {
@@ -33,6 +35,7 @@ export interface GitHandlers {
   connect(input: unknown): Promise<Result<GitConnectionCreated>>;
   disconnect(id: unknown): Promise<Result<null>>;
   githubConnect(): Promise<Result<GitHubConnect>>;
+  connectionRepositories(id: unknown): Promise<Result<InstallationRepository[]>>;
 }
 
 export function gitHandlers({
@@ -40,11 +43,23 @@ export function gitHandlers({
   connect,
   disconnect,
   githubConnect,
+  connectionRepositories,
 }: GitDeps): GitHandlers {
   return {
     connections: () => envelope(() => connections()),
 
     githubConnect: () => envelope(() => githubConnect()),
+
+    connectionRepositories: (id) => {
+      if (typeof id !== 'string' || id === '') {
+        return Promise.resolve({
+          ok: false,
+          error: 'A host needs an id to list its repositories.',
+        });
+      }
+
+      return envelope(() => connectionRepositories(id));
+    },
 
     connect: (input) => {
       const asked = connectionIn(input);
