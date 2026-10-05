@@ -11,6 +11,9 @@ import {
   isolatedCheckout,
   insideFolder,
   listedByGit,
+  parseRemote,
+  providerOf,
+  remoteOf,
   splitListing,
 } from './git.ts';
 import { tempDir } from '../test-support/temp.ts';
@@ -321,3 +324,148 @@ test('branchesOf refuses a folder that is not a checkout', { skip: !gitRuns() },
   isolatedGit();
   await assert.rejects(branchesOf(tempDir('kira-not-a-checkout-')));
 });
+
+interface RemoteCase {
+  name: string;
+  url: string;
+  want: { host: string; owner: string; name: string } | null;
+}
+
+/**
+ * What a checkout's remote says about which repository it is. git writes a URL
+ * in several shapes for the same repository, and the folder is the only thing
+ * that knows — so all of them have to read the same way, and anything that names
+ * no repository has to read as nothing rather than as a guess.
+ */
+const REMOTE_CASES: RemoteCase[] = [
+  {
+    name: 'an https remote, with the .git git writes',
+    url: 'https://github.com/KairosUtamaIndonesia/kira.git',
+    want: { host: 'github.com', owner: 'KairosUtamaIndonesia', name: 'kira' },
+  },
+  {
+    name: 'an https remote without it',
+    url: 'https://github.com/KairosUtamaIndonesia/kira',
+    want: { host: 'github.com', owner: 'KairosUtamaIndonesia', name: 'kira' },
+  },
+  {
+    name: 'the scp form git clones with, which is not a URL and does not parse as one',
+    url: 'git@github.com:KairosUtamaIndonesia/kira.git',
+    want: { host: 'github.com', owner: 'KairosUtamaIndonesia', name: 'kira' },
+  },
+  {
+    name: 'the ssh:// form',
+    url: 'ssh://git@github.com/KairosUtamaIndonesia/kira.git',
+    want: { host: 'github.com', owner: 'KairosUtamaIndonesia', name: 'kira' },
+  },
+  {
+    name: 'a remote carrying credentials',
+    url: 'https://user:token@github.com/KairosUtamaIndonesia/kira.git',
+    want: { host: 'github.com', owner: 'KairosUtamaIndonesia', name: 'kira' },
+  },
+  {
+    name: 'a host that is named in another case',
+    url: 'https://GitHub.com/KairosUtamaIndonesia/kira.git',
+    want: { host: 'github.com', owner: 'KairosUtamaIndonesia', name: 'kira' },
+  },
+  {
+    name: 'a nested group, read owner-first the way the GitLab adapter reads it',
+    url: 'https://gitlab.com/group/subgroup/project.git',
+    want: { host: 'gitlab.com', owner: 'group', name: 'subgroup/project' },
+  },
+  { name: 'a path that names no repository', url: 'https://github.com/onlyone', want: null },
+  { name: 'nothing at all', url: '', want: null },
+  { name: 'something that is neither form', url: 'not a remote', want: null },
+];
+
+for (const testCase of REMOTE_CASES) {
+  test(`parseRemote reads ${testCase.name}`, () => {
+    assert.deepEqual(parseRemote(testCase.url), testCase.want);
+  });
+}
+
+test('providerOf names the hosts Kira can watch by itself, and nothing else', () => {
+  assert.equal(providerOf('github.com'), 'github');
+  assert.equal(providerOf('gitlab.com'), 'gitlab');
+  assert.equal(providerOf('git.acme.dev'), null);
+});
+
+test(
+  'remoteOf reads the origin a checkout was cloned from',
+  { skip: !gitRuns() },
+  async () => {
+    const root = tempDir('kira-remote-');
+    execFileSync('git', ['-C', root, 'init'], { stdio: 'ignore' });
+    execFileSync(
+      'git',
+      ['-C', root, 'remote', 'add', 'origin', 'git@github.com:KairosUtamaIndonesia/kira.git'],
+      { stdio: 'ignore' },
+    );
+
+    assert.deepEqual(await remoteOf(root), {
+      host: 'github.com',
+      owner: 'KairosUtamaIndonesia',
+      name: 'kira',
+      provider: 'github',
+    });
+  },
+);
+
+test(
+  'remoteOf answers nothing for no remote, no checkout, or an unreadable URL',
+  { skip: !gitRuns() },
+  async () => {
+    const bare = tempDir('kira-no-remote-');
+    execFileSync('git', ['-C', bare, 'init'], { stdio: 'ignore' });
+
+    const odd = tempDir('kira-odd-remote-');
+    execFileSync('git', ['-C', odd, 'init'], { stdio: 'ignore' });
+    execFileSync('git', ['-C', odd, 'remote', 'add', 'origin', 'not a remote'], {
+      stdio: 'ignore',
+    });
+
+    assert.equal(await remoteOf(bare), null);
+    assert.equal(await remoteOf(odd), null);
+    assert.equal(await remoteOf(tempDir('kira-not-a-checkout-')), null);
+  },
+);
+
+test(
+  'remoteOf keeps a repository on a host Kira does not name, so the person can be asked',
+  { skip: !gitRuns() },
+  async () => {
+    const root = tempDir('kira-other-host-');
+    execFileSync('git', ['-C', root, 'init'], { stdio: 'ignore' });
+    execFileSync(
+      'git',
+      ['-C', root, 'remote', 'add', 'origin', 'https://git.acme.dev/team/api.git'],
+      { stdio: 'ignore' },
+    );
+
+    assert.deepEqual(await remoteOf(root), {
+      host: 'git.acme.dev',
+      owner: 'team',
+      name: 'api',
+      provider: null,
+    });
+  },
+);
+
+test(
+  'remoteOf will not choose between two remotes that are not origin',
+  { skip: !gitRuns() },
+  async () => {
+    const root = tempDir('kira-two-remotes-');
+    execFileSync('git', ['-C', root, 'init'], { stdio: 'ignore' });
+    execFileSync(
+      'git',
+      ['-C', root, 'remote', 'add', 'upstream', 'https://github.com/acme/api.git'],
+      { stdio: 'ignore' },
+    );
+    execFileSync('git', ['-C', root, 'remote', 'add', 'fork', 'https://github.com/me/api.git'], {
+      stdio: 'ignore',
+    });
+
+    assert.equal(await remoteOf(root), null);
+  },
+);

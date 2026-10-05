@@ -134,6 +134,96 @@ export async function hasRemote(folder: string): Promise<boolean | null> {
   }
 }
 
+/** A remote a checkout was cloned from, as git names it. */
+export interface RepositoryRemote {
+  host: string;
+  owner: string;
+  name: string;
+  /** The host Kira can watch this from by itself, or null when it is not one. */
+  provider: 'github' | 'gitlab' | null;
+}
+
+/** The provider Kira can watch `host` from by itself, or null when it is not one it names. */
+export function providerOf(host: string): 'github' | 'gitlab' | null {
+  if (host === 'github.com') return 'github';
+  if (host === 'gitlab.com') return 'gitlab';
+
+  return null;
+}
+
+/**
+ * The host, owner and name a remote URL names, or null when it names no repository.
+ *
+ * git writes the same repository in several shapes — `git@github.com:owner/name.git`,
+ * `ssh://git@github.com/owner/name.git`, `https://user:token@github.com/owner/name.git` —
+ * and the scp-like one is not a URL, so it does not parse as one and is read by hand.
+ * Anything left over that names no repository is nothing rather than a guess (ADR 0029).
+ *
+ * The owner is the first path segment and the name is everything after it, which is how
+ * the GitLab adapter already splits a `path_with_namespace`; a nested group has to read
+ * the same way in both places, or one repository would be attached twice under two names.
+ */
+export function parseRemote(url: string): { host: string; owner: string; name: string } | null {
+  const trimmed = url.trim();
+  if (trimmed === '') return null;
+
+  const held = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? fromUrl(trimmed) : fromScp(trimmed);
+  if (held === null) return null;
+
+  const [owner, ...rest] = held.path.split('/').filter((each) => each !== '');
+  const name = rest.join('/').replace(/\.git$/i, '');
+  if (owner === undefined || name === '') return null;
+
+  return { host: held.host.toLowerCase(), owner, name };
+}
+
+function fromUrl(value: string): { host: string; path: string } | null {
+  try {
+    const parsed = new URL(value);
+
+    return parsed.hostname === '' ? null : { host: parsed.hostname, path: parsed.pathname };
+  } catch {
+    return null;
+  }
+}
+
+/** `git@github.com:owner/name.git`, which is how git clones over ssh and is no URL. */
+function fromScp(value: string): { host: string; path: string } | null {
+  const match = /^(?:[^@/]+@)?([^:/]+):(.+)$/.exec(value);
+  const host = match?.[1];
+  const path = match?.[2];
+  if (host === undefined || path === undefined) return null;
+
+  return { host, path };
+}
+
+/**
+ * The remote a checkout was cloned from, or null when it has none, has more than one
+ * and no origin, or git cannot answer.
+ *
+ * Preferring `origin` is what keeps two remotes answerable: a fork cloned with its
+ * upstream still has one origin. A checkout with two remotes and no origin is the case
+ * ADR 0010 refused to guess at, and it is refused here too.
+ */
+export async function remoteOf(folder: string): Promise<RepositoryRemote | null> {
+  try {
+    const git = simpleGit(folder);
+    const named = (await git.raw(['remote']))
+      .split('\n')
+      .map((each) => each.trim())
+      .filter((each) => each !== '');
+    const chosen = named.includes('origin') ? 'origin' : named.length === 1 ? named[0] : undefined;
+    if (chosen === undefined) return null;
+
+    const parsed = parseRemote(await git.raw(['remote', 'get-url', chosen]));
+    if (parsed === null) return null;
+
+    return { ...parsed, provider: providerOf(parsed.host) };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * The paths of git's status answer as paths from the folder it was asked about.
  *
