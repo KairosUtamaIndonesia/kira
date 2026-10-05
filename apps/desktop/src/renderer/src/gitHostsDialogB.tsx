@@ -30,6 +30,7 @@ import {
   useSecretGuard,
   type DialogProps,
 } from './gitHostsDialogParts';
+import { HOST_MARKS } from './gitHostIcons';
 import { PROVIDERS, addressOf, needsAddress } from './gitHostsModel';
 
 export function DialogB(props: DialogProps) {
@@ -103,7 +104,12 @@ export function DialogB(props: DialogProps) {
             isFullBleed
           >
             {PROVIDERS.map((each) => (
-              <Tab key={each.value} value={each.value} label={each.label} />
+              <Tab
+                key={each.value}
+                value={each.value}
+                label={each.label}
+                icon={<Icon icon={HOST_MARKS[each.value]!} size="sm" />}
+              />
             ))}
           </TabList>
           <div {...stylex.props(ui.body, ui.bodyTop)}>
