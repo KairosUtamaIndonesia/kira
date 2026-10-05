@@ -7,9 +7,10 @@ import type { SessionManager } from '@earendil-works/pi-coding-agent';
 import { ThreadStore } from '../db/threads.ts';
 import { Questionnaires } from '../questionnaires.ts';
 import { tempDir } from '../test-support/temp.ts';
-import { resumeConversation } from './conversations.ts';
+import { resumeConversation, subagentTranscriptIn } from './conversations.ts';
 import { subagentTool } from './extension/subagentTool.ts';
 import { kiraModels, type Models } from './models.ts';
+import { openChats } from './openChats.ts';
 import { createThread } from './storage.ts';
 import type { SubagentManager } from './subagents.ts';
 
@@ -30,22 +31,35 @@ function models(server = 'http://localhost:4100'): Models {
   });
 }
 
-async function subagentProvider(options: { childAsksQuestion?: boolean } = {}): Promise<{
+async function subagentProvider(options: {
+  childAsksQuestion?: boolean;
+  holdChild?: boolean;
+} = {}): Promise<{
   url: string;
   requests: {
     tools?: { function?: { name?: string } }[];
     messages?: { role?: string; content?: unknown }[];
   }[];
+  childStarted: Promise<void>;
+  releaseChild(): void;
   stop(): Promise<void>;
 }> {
   const requests: {
     tools?: { function?: { name?: string } }[];
     messages?: { role?: string; content?: unknown }[];
   }[] = [];
+  let childStarted!: () => void;
+  const childRequestStarted = new Promise<void>((resolve) => {
+    childStarted = resolve;
+  });
+  let releaseChild!: () => void;
+  const childGate = new Promise<void>((resolve) => {
+    releaseChild = resolve;
+  });
   const server = createServer((request, response) => {
     let body = '';
     request.on('data', (chunk: Buffer) => (body += chunk.toString()));
-    request.on('end', () => {
+    request.on('end', async () => {
       const asked = JSON.parse(body) as {
         tools?: { function?: { name?: string } }[];
         messages?: { role?: string; content?: unknown }[];
@@ -69,6 +83,10 @@ async function subagentProvider(options: { childAsksQuestion?: boolean } = {}): 
         !hasToolResult;
       const delegates = isParent && !hasToolResult && !asksParent;
       const asksQuestion = Boolean(asksPerson);
+      if (options.holdChild === true && !isParent) {
+        childStarted();
+        await childGate;
+      }
       const frame = {
         id: 'chatcmpl-test',
         object: 'chat.completion',
@@ -158,6 +176,8 @@ async function subagentProvider(options: { childAsksQuestion?: boolean } = {}): 
   return {
     url: `http://127.0.0.1:${address.port}`,
     requests,
+    childStarted: childRequestStarted,
+    releaseChild: () => releaseChild(),
     stop: () =>
       new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),
@@ -223,9 +243,11 @@ test('a child report in a chat reads as its own message, not Kira’s', async ()
 
 test('a real parent session runs a real child turn and publishes its report separately', async () => {
   const provider = await subagentProvider();
-  const store = new ThreadStore(join(tempDir('kira-subagent-real-turn-'), 'threads.db'));
+  const databasePath = join(tempDir('kira-subagent-real-turn-'), 'threads.db');
+  const store = new ThreadStore(databasePath);
   const thread = createThread(store, tempDir('kira-subagent-real-work-'));
   const conversation = await resumeConversation(store, thread.threadId, models(provider.url));
+  let childId: string | null = null;
   let unsubscribe = () => {};
   const settled = new Promise<void>((resolve) => {
     unsubscribe = conversation.subscribe((event) => {
@@ -238,6 +260,7 @@ test('a real parent session runs a real child turn and publishes its report sepa
     await settled;
     const child = conversation.subagents()[0];
     assert.ok(child);
+    childId = child.id;
     assert.equal(child.state, 'complete');
     assert.equal(child.outcome, 'Retry uses three attempts.');
     assert.ok(
@@ -255,6 +278,63 @@ test('a real parent session runs a real child turn and publishes its report sepa
   } finally {
     unsubscribe();
     conversation.close();
+    store.close();
+    await provider.stop();
+  }
+
+  assert.ok(childId);
+  const reopened = new ThreadStore(databasePath);
+  try {
+    assert.equal(reopened.getThread(childId).subagent?.response, 'Retry uses three attempts.');
+    assert.ok(
+      subagentTranscriptIn(reopened, thread.threadId, childId).messages.some((message) =>
+        message.parts.some(
+          (part) => part.type === 'text' && part.text === 'Retry uses three attempts.',
+        ),
+      ),
+    );
+  } finally {
+    reopened.close();
+  }
+});
+
+test('closing a chat stops its running child and settles its stored state', async () => {
+  const provider = await subagentProvider({ holdChild: true });
+  const store = new ThreadStore(join(tempDir('kira-subagent-close-'), 'threads.db'));
+  const thread = createThread(store, tempDir('kira-subagent-close-work-'));
+  const otherThread = createThread(store, tempDir('kira-subagent-close-other-work-'));
+  const chats = openChats(
+    store,
+    () => {},
+    () => tempDir('kira-subagent-close-new-work-'),
+    models(provider.url),
+  );
+
+  try {
+    await chats.open(thread.threadId);
+    await chats.send('Delegate this bounded investigation.');
+    await provider.childStarted;
+
+    const child = chats.state().subagents?.[0];
+    assert.ok(child);
+    assert.equal(child.state, 'running');
+    assert.ok(chats.state().running.includes(thread.threadId));
+
+    await chats.open(otherThread.threadId);
+    assert.equal(chats.state().currentId, otherThread.threadId);
+    assert.ok(chats.state().chats.some((chat) => chat.id === thread.threadId));
+    assert.ok(chats.state().running.includes(thread.threadId));
+
+    await chats.open(thread.threadId);
+    await assert.rejects(chats.archiveChat(thread.threadId), /Kira is writing/);
+
+    chats.closeAll();
+
+    assert.equal(store.getThread(child.id).subagent?.status, 'stopped');
+    assert.equal(store.getThread(child.id).subagent?.activity, 'Stopped');
+  } finally {
+    chats.closeAll();
+    provider.releaseChild();
     store.close();
     await provider.stop();
   }
@@ -312,5 +392,130 @@ test('a real child asks its owning Kira before opening a person questionnaire', 
     conversation.close();
     store.close();
     await provider.stop();
+  }
+});
+
+test('a pending child questionnaire is included in its parent chat state', async () => {
+  const store = new ThreadStore(join(tempDir('kira-subagent-question-state-'), 'threads.db'));
+  const thread = createThread(store, tempDir('kira-subagent-question-state-work-'));
+  const child = store.createThread(thread.cwd, {
+    parentThreadId: thread.threadId,
+    subagent: {
+      role: 'explore',
+      prompt: 'Choose a cache based on the project requirements.',
+      context: 'task',
+      modelId: 'served-model',
+      status: 'stopped',
+      response: '',
+      error: null,
+      activity: 'Stopped',
+      startedAt: new Date().toISOString(),
+      endedAt: new Date().toISOString(),
+    },
+  });
+  const secondChild = store.createThread(thread.cwd, {
+    parentThreadId: thread.threadId,
+    subagent: {
+      role: 'explore',
+      prompt: 'Choose a cache based on the project requirements.',
+      context: 'task',
+      modelId: 'served-model',
+      status: 'stopped',
+      response: '',
+      error: null,
+      activity: 'Stopped',
+      startedAt: new Date().toISOString(),
+      endedAt: new Date().toISOString(),
+    },
+  });
+  const questionnaires = new Questionnaires(() => {});
+  const chats = openChats(
+    store,
+    () => {},
+    () => tempDir('kira-subagent-question-state-new-work-'),
+    models(),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    questionnaires,
+  );
+
+  try {
+    await chats.open(thread.threadId);
+    const params = {
+      questions: [
+        {
+          question: 'Which cache should this use?',
+          header: 'Cache',
+          options: [
+            { label: 'Memory', description: 'Local only.' },
+            { label: 'Redis', description: 'Shared.' },
+          ],
+        },
+      ],
+    };
+    const answers = new Map([
+      [child.id, questionnaires.ask(child.id, params)],
+      [secondChild.id, questionnaires.ask(secondChild.id, params)],
+    ]);
+
+    const request = chats.state().questionnaire;
+    assert.ok(request);
+    assert.ok(answers.has(request.threadId));
+    assert.equal(
+      questionnaires.submit(child.id, request.requestId, {
+        cancelled: false,
+        answers: [
+          {
+            questionIndex: 0,
+            question: request.questions[0]?.question,
+            kind: 'option',
+            answer: 'Redis',
+          },
+        ],
+      }),
+      request.threadId === child.id,
+    );
+    if (request.threadId !== child.id) {
+      assert.equal(
+        questionnaires.submit(secondChild.id, request.requestId, {
+          cancelled: false,
+          answers: [
+            {
+              questionIndex: 0,
+              question: request.questions[0]?.question,
+              kind: 'option',
+              answer: 'Redis',
+            },
+          ],
+        }),
+        true,
+      );
+    }
+    assert.equal((await answers.get(request.threadId))?.cancelled, false);
+
+    const next = chats.state().questionnaire;
+    assert.ok(next);
+    assert.notEqual(next.threadId, request.threadId);
+    assert.equal(
+      questionnaires.submit(next.threadId, next.requestId, {
+        cancelled: false,
+        answers: [
+          {
+            questionIndex: 0,
+            question: next.questions[0]?.question,
+            kind: 'option',
+            answer: 'Redis',
+          },
+        ],
+      }),
+      true,
+    );
+    assert.equal((await answers.get(next.threadId))?.cancelled, false);
+  } finally {
+    chats.closeAll();
+    questionnaires.closeAll();
+    store.close();
   }
 });

@@ -344,6 +344,7 @@ async function boot(
       if (disposed) return;
       disposed = true;
       cleanupMcpSubscription?.();
+      manager?.dispose();
       activeSession.dispose();
     },
   };

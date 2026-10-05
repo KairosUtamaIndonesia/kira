@@ -564,6 +564,16 @@ export function openChats(
         throw new Error('No chat is open.');
       }
 
+      const questionnaire =
+        conversation === null || questionnaires === undefined
+          ? null
+          : (questionnaires.current(conversation.threadId) ??
+            conversation
+              .subagents()
+              .map((child) => questionnaires.current(child.id))
+              .find((request) => request !== null) ??
+            null);
+
       return {
         chats: listChats(store),
         workspaces: listWorkspaces(store),
@@ -602,10 +612,7 @@ export function openChats(
         subagents: conversation?.subagents() ?? [],
         shaping: conversation === null ? noShaping() : shapingFor(conversation.threadId),
         commands: conversation?.commands() ?? [],
-        questionnaire:
-          conversation === null || questionnaires === undefined
-            ? null
-            : questionnaires.current(conversation.threadId),
+        questionnaire,
       };
     },
 

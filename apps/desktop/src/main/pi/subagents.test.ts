@@ -50,6 +50,40 @@ test('a delegated child is its own thread, from a clean brief', async () => {
   store.close();
 });
 
+test('a child left running by an app exit is settled when its chat reopens', () => {
+  const store = new ThreadStore(storePath());
+  const chat = store.createThread(tmpdir());
+  const child = store.createThread(chat.cwd, {
+    parentThreadId: chat.id,
+    subagent: {
+      role: 'explore',
+      prompt: 'Find the retry.',
+      context: 'task',
+      modelId: 'served-model',
+      status: 'running',
+      response: '',
+      error: null,
+      activity: 'Working',
+      startedAt: new Date().toISOString(),
+      endedAt: null,
+    },
+  });
+
+  const manager = subagents({
+    store,
+    parentThreadId: chat.id,
+    cwd: chat.cwd,
+    modelId: 'served-model',
+    run: async () => driver(async () => ({ kind: 'reported', report: 'done' })),
+  });
+
+  assert.equal(store.getThread(child.id).subagent?.status, 'stopped');
+  assert.equal(store.getThread(child.id).subagent?.activity, 'Stopped');
+  assert.ok(store.getThread(child.id).subagent?.endedAt);
+  manager.dispose();
+  store.close();
+});
+
 test('a child that reports writes its outcome down and hands it back', async () => {
   const store = new ThreadStore(storePath());
   const chat = store.createThread(tmpdir());
@@ -213,6 +247,56 @@ test('a chat refuses a fourth simultaneous child clearly', async () => {
     manager.list().map((child) => child.state),
     ['stopped', 'stopped', 'stopped'],
   );
+  store.close();
+});
+
+test('disposing a chat stops its running children and closes their sessions', async () => {
+  const store = new ThreadStore(storePath());
+  const chat = store.createThread(tmpdir());
+  let started!: () => void;
+  const childStarted = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  let release!: () => void;
+  const heldTurn = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let stopped = false;
+  let disposed = false;
+  const manager = subagents({
+    store,
+    parentThreadId: chat.id,
+    cwd: chat.cwd,
+    modelId: 'served-model',
+    run: async () => ({
+      turn: async () => {
+        started();
+        await heldTurn;
+        return { kind: 'reported', report: 'late report' };
+      },
+      steer: async () => {},
+      stop: async () => {
+        stopped = true;
+      },
+      dispose: () => {
+        disposed = true;
+      },
+    }),
+  });
+
+  const childId = manager.spawn({ role: 'explore', prompt: 'Read the project notes.' });
+  await childStarted;
+  manager.dispose();
+
+  const child = store.getThread(childId).subagent;
+  assert.equal(child?.status, 'stopped');
+  assert.equal(child?.activity, 'Stopped');
+  assert.equal(stopped, true);
+  assert.equal(disposed, true);
+
+  release();
+  await manager.settle();
+  assert.equal(store.getThread(childId).subagent?.status, 'stopped');
   store.close();
 });
 

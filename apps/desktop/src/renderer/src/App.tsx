@@ -247,6 +247,7 @@ export default function App() {
   /** What the chat on screen has used, or null when there is no session in it yet. */
   const [chatUsage, setChatUsage] = useState<ChatUsage | null>(null);
   const [subagents, setSubagents] = useState<SubagentSummary[]>([]);
+  const subagentsRef = useRef<SubagentSummary[]>([]);
   const [selectedSubagentByChat, setSelectedSubagentByChat] = useState<Record<string, string>>({});
   const [subagentTranscriptsByChat, setSubagentTranscriptsByChat] = useState<
     Record<string, Record<string, ChatTranscript>>
@@ -361,6 +362,7 @@ export default function App() {
       setModelId(result.value.modelId);
       setChatUsage(result.value.chatUsage);
       setSubagents(result.value.subagents ?? []);
+      subagentsRef.current = result.value.subagents ?? [];
       const nextShaping = result.value.shaping ?? NO_SHAPING;
       setShaping(nextShaping);
       setQuestionnaire(result.value.questionnaire ?? null);
@@ -476,9 +478,29 @@ export default function App() {
           const { [event.requestId]: _closed, ...remaining } = drafts;
           return remaining;
         });
+        setQuestionnaire((open) => (open?.requestId === event.requestId ? null : open));
+        if (
+          event.threadId === currentIdRef.current ||
+          subagentsRef.current.some((child) => child.id === event.threadId)
+        ) {
+          void refresh();
+        }
+        return;
+      }
+      if (event.type === 'questionnaire-opened') {
+        if (
+          event.threadId === currentIdRef.current ||
+          subagentsRef.current.some((child) => child.id === event.threadId)
+        ) {
+          setQuestionnaire((open) => open ?? event);
+        }
+        return;
       }
       if (event.type === 'subagents') {
-        if (event.threadId === currentIdRef.current) setSubagents(event.subagents);
+        if (event.threadId === currentIdRef.current) {
+          subagentsRef.current = event.subagents;
+          setSubagents(event.subagents);
+        }
         const selectedId = selectedSubagentRef.current[event.threadId];
         if (selectedId && event.subagents.some((agent) => agent.id === selectedId)) {
           void readSubagentTranscript(event.threadId, selectedId);
@@ -544,16 +566,6 @@ export default function App() {
 
       if (event.type === 'shaping') {
         setShaping(event.shaping);
-        return;
-      }
-
-      if (event.type === 'questionnaire-opened') {
-        setQuestionnaire(event);
-        return;
-      }
-
-      if (event.type === 'questionnaire-closed') {
-        setQuestionnaire((open) => (open?.requestId === event.requestId ? null : open));
         return;
       }
 

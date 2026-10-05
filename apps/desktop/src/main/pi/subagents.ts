@@ -128,6 +128,19 @@ export function subagents(options: {
   const listeners = new Set<(summary: SubagentSummary) => void>();
   let disposed = false;
 
+  // A manager belongs to one in-memory chat session. Any run already stored when
+  // that session boots was interrupted by an app exit, so it cannot still be
+  // running and must not consume the chat's child limit forever.
+  for (const thread of store.listSubagents(parentThreadId)) {
+    if (thread.subagent?.status === 'running') {
+      store.updateSubagent(thread.id, {
+        status: 'stopped',
+        activity: 'Stopped',
+        endedAt: new Date().toISOString(),
+      });
+    }
+  }
+
   const summaryOfChild = (childThreadId: string): SubagentSummary => {
     const record = store.getThread(childThreadId).subagent;
     if (record === null) throw new Error(`Thread ${childThreadId} is not a subagent.`);
@@ -306,9 +319,21 @@ export function subagents(options: {
     activity: updateActivity,
 
     dispose: () => {
+      if (disposed) return;
       disposed = true;
-      following.clear();
-      for (const driver of drivers.values()) driver.dispose();
+      for (const thread of store.listSubagents(parentThreadId)) {
+        if (thread.subagent?.status !== 'running') continue;
+        generations.set(thread.id, (generations.get(thread.id) ?? 0) + 1);
+        store.updateSubagent(thread.id, {
+          status: 'stopped',
+          activity: 'Stopped',
+          endedAt: new Date().toISOString(),
+        });
+      }
+      for (const driver of drivers.values()) {
+        void driver.stop().catch(() => {});
+        driver.dispose();
+      }
       drivers.clear();
     },
   };
