@@ -1,6 +1,6 @@
 import { Button } from '@astryxdesign/core/Button';
 import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog';
-import { DropdownMenu } from '@astryxdesign/core/DropdownMenu';
+import { DropdownMenu, DropdownMenuItem } from '@astryxdesign/core/DropdownMenu';
 import {
   ChatComposer,
   ChatComposerDrawer,
@@ -17,6 +17,7 @@ import { Selector } from '@astryxdesign/core/Selector';
 import { AgentStateMark } from './agentState';
 import { Text } from '@astryxdesign/core/Text';
 import { Popover } from '@astryxdesign/core/Popover';
+import { Tooltip } from '@astryxdesign/core/Tooltip';
 import { VStack } from '@astryxdesign/core/VStack';
 import {
   borderVars,
@@ -420,12 +421,12 @@ export function Composer({
         {/*
          * The mode is one dropdown: the trigger names the mode the next turn runs
          * in, and the menu offers the other with a tick on the chosen one. What
-         * each mode promises is the trigger's `tooltip`, not a description under
-         * every row — the menu stays two short labels, and the promise is read on
-         * hover. Asked for as the trigger's own `tooltip` so the control shows it,
-         * rather than swallowing an outer one, the same lesson the model picker's
-         * `disabledMessage` records. While Kira is writing the trigger is disabled
-         * and its tooltip with it; the label still names the mode in force.
+         * each mode promises is a tooltip rather than a description under every
+         * row, so the menu stays two short labels and the promise is read on
+         * hover — on the trigger for the mode in force, and on each row for the
+         * mode it would switch to. The trigger's tooltip is the control's own
+         * `tooltip` so the control shows it rather than swallowing an outer one,
+         * the same lesson the model picker's `disabledMessage` records.
          */}
         <DropdownMenu
           placement="above"
@@ -436,12 +437,17 @@ export function Composer({
             variant: 'ghost',
             isDisabled: isRunning || onChooseMode === undefined,
           }}
-          items={MODE_ORDER.map((value) => ({
-            label: MODES[value].label,
-            endContent: value === mode ? <Icon icon={Check} size="sm" /> : undefined,
-            onClick: () => onChooseMode?.(value),
-          }))}
-        />
+        >
+          {MODE_ORDER.map((value) => (
+            <Tooltip key={value} content={MODES[value].says} placement="above">
+              <DropdownMenuItem
+                label={MODES[value].label}
+                endContent={value === mode ? <Icon icon={Check} size="sm" /> : undefined}
+                onClick={() => onChooseMode?.(value)}
+              />
+            </Tooltip>
+          ))}
+        </DropdownMenu>
       </div>
     ),
     // The same button, in its other state: while Kira is writing there is
