@@ -62,6 +62,7 @@ import {
   valueOf,
 } from './workbenchTabs';
 import { WorkspaceTab } from './workspaceTab';
+import { SubagentsPrototype } from './subagentsPrototype';
 import { fileKindOf } from './filePreview';
 import { copy } from './workCopy.ts';
 
@@ -315,12 +316,22 @@ export function Workbench({
           className="workbench-tab"
           hidden={showing !== AGENTS}
         >
-          <AgentsTab
-            agents={subagents}
-            selectedId={selectedSubagentId}
-            transcript={selectedSubagentTranscript}
-            onSelect={onSelectSubagent}
-          />
+          {import.meta.env.DEV ? (
+            <SubagentsPrototype
+              agents={subagents}
+              selectedId={selectedSubagentId}
+              transcript={selectedSubagentTranscript}
+              onSelect={onSelectSubagent}
+              isVisible={showing === AGENTS && !region.isCollapsed}
+            />
+          ) : (
+            <AgentsTab
+              agents={subagents}
+              selectedId={selectedSubagentId}
+              transcript={selectedSubagentTranscript}
+              onSelect={onSelectSubagent}
+            />
+          )}
         </div>
         <div
           id={panelOf(CONTEXT)}
