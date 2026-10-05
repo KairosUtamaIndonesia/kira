@@ -1,5 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
+import type { RepositoryRemote } from './workspace/git.ts';
 import type {
   GlossaryEdit,
   GlossaryEntry,
@@ -218,7 +219,12 @@ function wire(calls: string[], answers: Partial<TrackerWire> = {}): TrackerWire 
 }
 
 /** The tracker over that wire, with a key and a folder that works a project. */
-function tracker(calls: string[], answers: Partial<TrackerWire> = {}, held: string | null = 'key') {
+function tracker(
+  calls: string[],
+  answers: Partial<TrackerWire> = {},
+  held: string | null = 'key',
+  checkoutRepository: (folder: string) => Promise<RepositoryRemote | null> = async () => null,
+) {
   const joined: WorkspaceSummary[] = [];
 
   return {
@@ -232,6 +238,7 @@ function tracker(calls: string[], answers: Partial<TrackerWire> = {}, held: stri
         joined.push(next);
         return next;
       },
+      checkoutRepository,
       wire: wire(calls, answers),
     }),
   };
@@ -558,6 +565,61 @@ test('joining a folder that is no longer open says so rather than failing oddly'
   assert.equal(
     await tried(() => held.held.join('gone', { kind: 'existing', projectId: project.id })),
     'refused That folder is no longer open.',
+  );
+});
+
+test('joining a project records the repository the folder was cloned from', async () => {
+  const calls: string[] = [];
+  const held = tracker(calls, {}, 'key', async () => ({
+    host: 'github.com',
+    owner: 'acme',
+    name: 'api',
+    provider: 'github',
+  }));
+
+  assert.deepEqual(
+    await held.held.join(workspace.id, { kind: 'existing', projectId: project.id }),
+    { ...workspace, projectId: project.id },
+  );
+  assert.deepEqual(calls, [`attachRepository key ${project.id} acme/api`]);
+});
+
+test('joining a folder that names no repository, or one Kira cannot watch, attaches nothing', async () => {
+  const none: string[] = [];
+  const nothing = tracker(none, {}, 'key', async () => null);
+  await nothing.held.join(workspace.id, { kind: 'existing', projectId: project.id });
+  assert.deepEqual(none, []);
+
+  const unnameable: string[] = [];
+  const other = tracker(unnameable, {}, 'key', async () => ({
+    host: 'git.acme.dev',
+    owner: 'team',
+    name: 'api',
+    provider: null,
+  }));
+  await other.held.join(workspace.id, { kind: 'existing', projectId: project.id });
+  assert.deepEqual(unnameable, []);
+});
+
+test('a repository another project holds is refused, and the folder joins anyway', async () => {
+  const calls: string[] = [];
+  const held = tracker(
+    calls,
+    {
+      attachRepository: async () => ({
+        kind: 'refused',
+        message: 'acme/api is already watched by Kira.',
+      }),
+    },
+    'key',
+    async () => ({ host: 'github.com', owner: 'acme', name: 'api', provider: 'github' }),
+  );
+
+  // The folder's own work is not the repository's business: the join stands, and
+  // which project watches the repository is answered by the project that does.
+  assert.deepEqual(
+    await held.held.join(workspace.id, { kind: 'existing', projectId: project.id }),
+    { ...workspace, projectId: project.id },
   );
 });
 

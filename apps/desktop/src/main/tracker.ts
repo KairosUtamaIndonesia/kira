@@ -14,6 +14,7 @@
  * refusals are shown in its own words, because it is the party that knows why a
  * blocker cannot be added or a ticket cannot be changed.
  */
+import type { RepositoryRemote } from './workspace/git.ts';
 import type {
   GlossaryEdit,
   GlossaryEntry,
@@ -320,6 +321,7 @@ export function trackerFor({
   joinLocally,
   wire,
   checkoutHasRemote = async () => null,
+  checkoutRepository = async () => null,
 }: {
   /** The key this device holds, or null when nobody has signed in. */
   token: () => Promise<string | null>;
@@ -330,6 +332,8 @@ export function trackerFor({
   wire: TrackerWire;
   /** Read Git's local remote configuration; null fails closed for Needs review. */
   checkoutHasRemote?: (folder: string) => Promise<boolean | null>;
+  /** The repository a folder was cloned from, or null when it names none. */
+  checkoutRepository?: (folder: string) => Promise<RepositoryRemote | null>;
 }): Tracker {
   /** The key, or the sentence a window shows when there is none. */
   async function key(): Promise<string> {
@@ -634,9 +638,31 @@ export function trackerFor({
       const joined = joinLocally(workspaceId, projectId);
       if (joined === undefined) throw new Error('That folder is no longer open.');
 
+      await recordRepository(held, projectId, joined.folder);
+
       return joined;
     },
   };
+
+  /**
+   * Record the repository a folder was cloned from, when it names one Kira can watch.
+   *
+   * A repository is watched from a checkout (ADR 0029), and joining a project is when
+   * the folder's answer becomes worth keeping. A folder that names no repository, or
+   * names a host Kira cannot watch, attaches nothing. A refusal — the repository
+   * already belongs to another project — leaves the join standing: the folder's work
+   * is not the repository's business, and one project watching it is the point.
+   */
+  async function recordRepository(held: string, projectId: string, folder: string): Promise<void> {
+    const remote = await checkoutRepository(folder);
+    if (remote === null || remote.provider === null) return;
+
+    await wire.attachRepository(held, projectId, {
+      owner: remote.owner,
+      name: remote.name,
+      provider: remote.provider,
+    });
+  }
 }
 
 /** What the server answered, as a value, or a sentence saying why there is none. */
