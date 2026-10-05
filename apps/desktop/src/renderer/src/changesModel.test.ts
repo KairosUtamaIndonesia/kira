@@ -2,35 +2,81 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import type { WorkspaceGitStatus } from '../../preload/bridge.ts';
 import {
-  changeRows,
+  ageOf,
+  blocksOf,
+  changedFiles,
+  committingCount,
+  hunkLabel,
   hunksOf,
   hunkPatch,
-  canRevert,
-  rowKey,
-  stagedCount,
   statusWord,
+  totalsOf,
   watchedFoldersOf,
 } from './changesModel.ts';
 
 const status: WorkspaceGitStatus = {
   branch: 'main',
-  staged: [{ path: 'a.txt', status: 'M' }],
-  unstaged: [{ path: 'b.txt', status: 'M' }],
+  ahead: null,
+  behind: null,
+  staged: [{ path: 'a.txt', status: 'M', added: 2, removed: 1 }],
+  unstaged: [{ path: 'b.txt', status: 'M', added: 4, removed: 0 }],
   untracked: [{ path: 'c.txt', status: '?' }],
 };
 
-test('changed rows are staged first, then unstaged, then untracked', () => {
-  assert.deepEqual(changeRows(status), [
-    { group: 'staged', path: 'a.txt', status: 'M' },
-    { group: 'unstaged', path: 'b.txt', status: 'M' },
-    { group: 'untracked', path: 'c.txt', status: '?' },
+test('every changed path is one file, in path order, with its state', () => {
+  assert.deepEqual(changedFiles(status), [
+    { path: 'a.txt', status: 'M', state: 'staged', isUntracked: false, added: 2, removed: 1 },
+    { path: 'b.txt', status: 'M', state: 'unstaged', isUntracked: false, added: 4, removed: 0 },
+    {
+      path: 'c.txt',
+      status: '?',
+      state: 'unstaged',
+      isUntracked: true,
+      added: null,
+      removed: null,
+    },
   ]);
-  assert.equal(stagedCount(status), 1);
+});
+
+test('a file edited after it was staged is one partial file, counted across both', () => {
+  const both: WorkspaceGitStatus = {
+    branch: 'main',
+    ahead: null,
+    behind: null,
+    staged: [{ path: 'a.txt', status: 'A', added: 5, removed: 0 }],
+    unstaged: [{ path: 'a.txt', status: 'M', added: 1, removed: 2 }],
+    untracked: [],
+  };
+
+  assert.deepEqual(changedFiles(both), [
+    { path: 'a.txt', status: 'A', state: 'partial', isUntracked: false, added: 6, removed: 2 },
+  ]);
+});
+
+test('a file git cannot count has no counts rather than zero', () => {
+  const binary: WorkspaceGitStatus = {
+    branch: 'main',
+    ahead: null,
+    behind: null,
+    staged: [],
+    unstaged: [{ path: 'logo.png', status: 'M' }],
+    untracked: [],
+  };
+
+  assert.equal(changedFiles(binary)[0]?.added, null);
+});
+
+test('a commit would hold every file with something staged', () => {
+  const files = changedFiles(status);
+  assert.equal(committingCount(files), 1);
+  assert.deepEqual(totalsOf(files), { added: 6, removed: 1 });
 });
 
 test('the watched levels are the root and each changed file’s folder', () => {
   const nested: WorkspaceGitStatus = {
     branch: 'main',
+    ahead: null,
+    behind: null,
     staged: [{ path: 'src/auth/login.ts', status: 'M' }],
     unstaged: [{ path: 'src/auth/session.ts', status: 'M' }],
     untracked: [
@@ -41,18 +87,6 @@ test('the watched levels are the root and each changed file’s folder', () => {
   // The root, then each changed file's folder once, with the top-level file adding none.
   assert.deepEqual(watchedFoldersOf(nested), ['', 'src/auth', 'src/deep']);
   assert.deepEqual(watchedFoldersOf(null), ['']);
-});
-
-test('a file staged and unstaged at once has two rows with different identities', () => {
-  const both: WorkspaceGitStatus = {
-    branch: 'main',
-    staged: [{ path: 'a.txt', status: 'M' }],
-    unstaged: [{ path: 'a.txt', status: 'M' }],
-    untracked: [],
-  };
-  const rows = changeRows(both);
-  assert.equal(rows.length, 2);
-  assert.notEqual(rowKey(rows[0]!), rowKey(rows[1]!));
 });
 
 test('a row says git’s code in a person’s words', () => {
@@ -67,12 +101,6 @@ test('a row says git’s code in a person’s words', () => {
     { code: 'X', want: 'Changed' },
   ];
   for (const each of cases) assert.equal(statusWord(each.code), each.want, each.code);
-});
-
-test('only a tracked row can be reverted', () => {
-  assert.equal(canRevert({ group: 'staged', path: 'a', status: 'M' }), true);
-  assert.equal(canRevert({ group: 'unstaged', path: 'a', status: 'M' }), true);
-  assert.equal(canRevert({ group: 'untracked', path: 'a', status: '?' }), false);
 });
 
 const PATCH = [
@@ -137,4 +165,67 @@ test('a patch with no hunks is all header', () => {
     hunks: [],
   });
   assert.equal(hunkPatch('diff --git a/bin b/bin\nBinary files differ\n', 0), null);
+});
+
+test('a hunk is named for its section, else the line it starts on', () => {
+  const cases: { hunk: string; want: string }[] = [
+    {
+      hunk: '@@ -12,6 +14,9 @@ export function load() {\n context',
+      want: 'export function load() {',
+    },
+    { hunk: '@@ -1 +1 @@\n-a\n+b', want: 'Line 1' },
+    { hunk: '@@ -0,0 +1,3 @@\n+a', want: 'Line 1' },
+    { hunk: '@@ -40,2 +42,3 @@\n x', want: 'Line 42' },
+    { hunk: 'not a hunk', want: 'Changes' },
+  ];
+  for (const each of cases) assert.equal(hunkLabel(each.hunk), each.want, each.hunk);
+});
+
+test('a commit’s age is as short as a chat’s', () => {
+  const now = Date.parse('2026-10-05T12:00:00Z');
+  const cases: { date: string; want: string }[] = [
+    { date: '2026-10-05T11:59:40Z', want: 'now' },
+    { date: '2026-10-05T11:55:00Z', want: '5m' },
+    { date: '2026-10-05T09:00:00Z', want: '3h' },
+    { date: '2026-10-03T12:00:00Z', want: '2d' },
+    { date: '2026-08-24T12:00:00Z', want: '6w' },
+    { date: 'garbage', want: '' },
+  ];
+  for (const each of cases) assert.equal(ageOf(each.date, now), each.want, each.date);
+});
+
+test('a patch is split into blocks that stage on their own', () => {
+  const patch = [
+    'diff --git a/x b/x',
+    '--- a/x',
+    '+++ b/x',
+    '@@ -1,2 +1,2 @@ first()',
+    '-a',
+    '+b',
+    '@@ -20,2 +20,2 @@',
+    '-c',
+    '+d',
+    '',
+  ].join('\n');
+
+  const blocks = blocksOf(patch, false);
+  assert.deepEqual(
+    blocks.map((block) => [block.label, block.staged, block.isWhole]),
+    [
+      ['first()', false, false],
+      ['Line 20', false, false],
+    ],
+  );
+  assert.match(
+    blocks[1]!.patch,
+    /^diff --git a\/x b\/x\n--- a\/x\n\+\+\+ b\/x\n@@ -20,2 \+20,2 @@\n-c\n\+d\n$/,
+  );
+  assert.deepEqual(blocksOf(null, false), []);
+  assert.deepEqual(blocksOf('  \n', true), []);
+
+  const binary = 'diff --git a/i.png b/i.png\nBinary files differ\n';
+  assert.deepEqual(
+    blocksOf(binary, true).map((block) => [block.staged, block.isWhole]),
+    [[true, true]],
+  );
 });

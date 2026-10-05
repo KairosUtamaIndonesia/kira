@@ -1,49 +1,41 @@
 /**
  * The Changes view: the chat's own checkout, read beside the conversation.
  *
- * It lists what git reports changed — grouped staged, unstaged and untracked —
- * draws one file's diff, stages a file or a hunk, commits what is staged, reverts
- * a file, switches branch, reads history and syncs with the remote. Every write
- * goes to the main process, where one queue per checkout keeps them from
- * interleaving with the tree's status reads.
+ * It lists what git reports changed as one file list, stages a file or a hunk,
+ * commits what is staged, reverts a file, switches branch, reads history and
+ * syncs with the remote. A file opens in a review — its diff given the whole
+ * pane, stepped through file by file — because a diff does not fit beside a list
+ * in a pane this narrow. Every write goes to the main process, where one queue
+ * per checkout keeps them from interleaving with the tree's status reads.
  *
  * The view is the chat's: it reads the folder the chat is filed under, and a
  * chat with no workspace or a folder that is not a checkout says so in a
  * sentence rather than showing an empty list.
  */
 import { Button } from '@astryxdesign/core/Button';
-import { HStack } from '@astryxdesign/core/HStack';
+import { DropdownMenu } from '@astryxdesign/core/DropdownMenu';
 import { Icon } from '@astryxdesign/core/Icon';
-import { IconButton } from '@astryxdesign/core/IconButton';
+import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl';
 import { Selector } from '@astryxdesign/core/Selector';
 import { Text } from '@astryxdesign/core/Text';
 import { TextArea } from '@astryxdesign/core/TextArea';
 import { VStack } from '@astryxdesign/core/VStack';
-import { colorVars, spacingVars } from '@astryxdesign/core/theme/tokens.stylex';
+import { borderVars, colorVars, spacingVars } from '@astryxdesign/core/theme/tokens.stylex';
 import * as stylex from '@stylexjs/stylex';
-import { GitBranch, Plus, RotateCcw, Undo2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Ellipsis, GitBranch } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { ChangedPath, CommitSummary, Result, WorkspaceGitStatus } from '../../preload/bridge';
+import { ChangesList, HistoryList } from './changesList';
 import {
-  type ChangeGroup,
-  type ChangeRow,
-  canRevert,
-  changeRows,
-  hunksOf,
-  hunkPatch,
-  type PatchHunks,
-  rowKey,
-  stagedCount,
-  statusWord,
+  type ChangedFile,
+  changedFiles,
+  committingCount,
+  totalsOf,
   watchedFoldersOf,
 } from './changesModel';
-import { DiffPatch, type DiffStyle } from './diffView';
-
-const GROUPS: { key: ChangeGroup; label: string }[] = [
-  { key: 'staged', label: 'Staged' },
-  { key: 'unstaged', label: 'Changes' },
-  { key: 'untracked', label: 'Untracked' },
-];
+import { parts } from './changesParts';
+import { ReviewScreen, type ReviewPatches } from './changesReview';
+import type { DiffStyle } from './diffView';
 
 export function ChangesTab({
   chatId,
@@ -63,12 +55,10 @@ export function ChangesTab({
   const [trouble, setTrouble] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const [changes, setChanges] = useState(0);
-  const [selected, setSelected] = useState<ChangeRow | null>(null);
-  const [loadedPatch, setLoadedPatch] = useState<{
-    key: string;
-    patch: string | null;
-    trouble: string | null;
-  } | null>(null);
+  const [reviewing, setReviewing] = useState<string | null>(null);
+  const [loadedPatches, setLoadedPatches] = useState<(ReviewPatches & { path: string }) | null>(
+    null,
+  );
   const [diffStyle, setDiffStyle] = useState<DiffStyle>('unified');
   const [wrap, setWrap] = useState(false);
   const [commitMessage, setCommitMessage] = useState('');
@@ -86,6 +76,10 @@ export function ChangesTab({
   );
   const reading = useRef(0);
   const patchReading = useRef(0);
+
+  const files = status === null ? [] : changedFiles(status);
+  const reviewed = reviewing === null ? undefined : files.find((file) => file.path === reviewing);
+  const reviewedState = reviewed?.state ?? null;
 
   /** Re-read the checkout and tell the tree to follow. */
   function mutated(): void {
@@ -128,21 +122,29 @@ export function ChangesTab({
     });
   }, [chatId, visits, tick]);
 
+  /*
+   * A file with changes in the index is read from the index, and one with changes in
+   * the working tree is read from the tree; a partly staged file is both. Reading
+   * again when the file's state changes keeps a staged hunk from lingering as unstaged.
+   */
   useEffect(() => {
-    if (selected === null) return;
-    const key = rowKey(selected);
+    if (reviewing === null || reviewedState === null) return;
+    const path = reviewing;
     const mine = (patchReading.current += 1);
-    void window.kira
-      .workspaceGitPatch(chatId, selected.path, selected.group === 'staged')
-      .then((answer) => {
-        if (mine !== patchReading.current) return;
-        setLoadedPatch({
-          key,
-          patch: answer.ok ? answer.value : null,
-          trouble: answer.ok ? null : answer.error,
-        });
+    const none: Result<string | null> = { ok: true, value: null };
+    void Promise.all([
+      reviewedState === 'unstaged' ? none : window.kira.workspaceGitPatch(chatId, path, true),
+      reviewedState === 'staged' ? none : window.kira.workspaceGitPatch(chatId, path, false),
+    ]).then(([staged, unstaged]) => {
+      if (mine !== patchReading.current) return;
+      setLoadedPatches({
+        path,
+        staged: staged.ok ? staged.value : null,
+        unstaged: unstaged.ok ? unstaged.value : null,
+        trouble: !staged.ok ? staged.error : !unstaged.ok ? unstaged.error : null,
       });
-  }, [chatId, selected, tick, changes]);
+    });
+  }, [chatId, reviewing, reviewedState, tick, changes]);
 
   useEffect(() => {
     if (view !== 'history' || visits === 0) return;
@@ -189,30 +191,40 @@ export function ChangesTab({
     };
   }, [chatId, showing, watchedKey]);
 
-  async function stage(row: ChangeRow): Promise<void> {
-    if (await run(() => window.kira.stageWorkspacePaths(chatId, [row.path]))) {
-      setSelected(null);
-      mutated();
-    }
+  async function stage(paths: string[]): Promise<boolean> {
+    if (!(await run(() => window.kira.stageWorkspacePaths(chatId, paths)))) return false;
+    mutated();
+
+    return true;
   }
 
-  async function unstage(row: ChangeRow): Promise<void> {
-    if (await run(() => window.kira.unstageWorkspacePaths(chatId, [row.path]))) {
-      setSelected(null);
-      mutated();
-    }
+  async function unstage(paths: string[]): Promise<void> {
+    if (await run(() => window.kira.unstageWorkspacePaths(chatId, paths))) mutated();
   }
 
-  async function revert(row: ChangeRow): Promise<void> {
-    if (await run(() => window.kira.revertWorkspacePath(chatId, row.path))) {
-      setSelected(null);
+  function toggle(file: ChangedFile): void {
+    if (file.state === 'staged') void unstage([file.path]);
+    else void stage([file.path]);
+  }
+
+  /** Stage the open file, then open the one after it, or go back to the list from the last. */
+  async function stageAndNext(file: ChangedFile): Promise<void> {
+    const next = files[files.findIndex((each) => each.path === file.path) + 1];
+    if (!(await stage([file.path]))) return;
+    setReviewing(next?.path ?? null);
+  }
+
+  async function revert(file: ChangedFile): Promise<void> {
+    const next = files[files.findIndex((each) => each.path === file.path) + 1];
+    if (await run(() => window.kira.revertWorkspacePath(chatId, file.path))) {
+      setReviewing(next?.path ?? null);
       setMessage('Reverted.');
       mutated();
     }
   }
 
-  async function applyHunk(part: string, reverse: boolean): Promise<void> {
-    if (await run(() => window.kira.applyWorkspaceHunk(chatId, part, reverse))) {
+  async function applyHunk(patch: string, reverse: boolean): Promise<void> {
+    if (await run(() => window.kira.applyWorkspaceHunk(chatId, patch, reverse))) {
       setMessage(reverse ? 'Unstaged the hunk.' : 'Staged the hunk.');
       mutated();
     }
@@ -221,6 +233,7 @@ export function ChangesTab({
   async function commit(): Promise<void> {
     if (await run(() => window.kira.commitWorkspace(chatId, commitMessage))) {
       setCommitMessage('');
+      setReviewing(null);
       setMessage('Committed.');
       mutated();
     }
@@ -228,7 +241,7 @@ export function ChangesTab({
 
   async function switchTo(branch: string): Promise<void> {
     if (await run(() => window.kira.checkoutWorkspaceBranch(chatId, branch))) {
-      setSelected(null);
+      setReviewing(null);
       setMessage(`On ${branch}.`);
       mutated();
     }
@@ -240,6 +253,46 @@ export function ChangesTab({
       mutated();
     }
   }
+
+  function move(by: number): void {
+    if (reviewed === undefined) return;
+    const next = files[files.indexOf(reviewed) + by];
+    if (next !== undefined) setReviewing(next.path);
+  }
+
+  /*
+   * The keys read the latest handlers without re-listening on every render. They
+   * are the review's alone, and never fire while a field has focus.
+   */
+  const keys = useRef({ move, stage: () => {} });
+  useEffect(() => {
+    keys.current = {
+      move,
+      stage: () => {
+        if (reviewed !== undefined && reviewed.state !== 'staged' && !busy) {
+          void stageAndNext(reviewed);
+        }
+      },
+    };
+  });
+  const isReviewing = reviewed !== undefined;
+  useEffect(() => {
+    if (!isReviewing || !showing) return;
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (
+        (event.target as HTMLElement | null)?.closest('input, textarea, select, [contenteditable]')
+      ) {
+        return;
+      }
+      if (event.key === 'j') keys.current.move(1);
+      else if (event.key === 'k') keys.current.move(-1);
+      else if (event.key === 's') keys.current.stage();
+    };
+    window.addEventListener('keydown', onKey);
+
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isReviewing, showing]);
 
   if (trouble !== null) {
     return (
@@ -261,264 +314,203 @@ export function ChangesTab({
 
   if (status === null) return null;
 
-  const rows = changeRows(status);
-  const staged = stagedCount(status);
-  const heldPatch = selected !== null && loadedPatch?.key === rowKey(selected) ? loadedPatch : null;
-  const patch = heldPatch?.patch ?? null;
-  const patchTrouble = heldPatch?.trouble ?? null;
-  const hunkParts: PatchHunks = patch === null ? { header: '', hunks: [] } : hunksOf(patch);
-  const diffParts: string[] =
-    patch === null
-      ? []
-      : hunkParts.hunks.length === 0
-        ? [patch]
-        : hunkParts.hunks
-            .map((_, at) => hunkPatch(patch, at))
-            .filter((part): part is string => part !== null);
+  if (reviewed !== undefined) {
+    const position = files.indexOf(reviewed);
+    const heldPatches = loadedPatches?.path === reviewed.path ? loadedPatches : null;
+
+    return (
+      <div {...stylex.props(styles.tab)}>
+        {message !== null && (
+          <Text type="supporting" color="secondary">
+            {message}
+          </Text>
+        )}
+        <ReviewScreen
+          key={reviewed.path}
+          file={reviewed}
+          position={position}
+          total={files.length}
+          patches={heldPatches}
+          isBusy={busy}
+          diffStyle={diffStyle}
+          wrap={wrap}
+          isLast={position === files.length - 1}
+          onBack={() => setReviewing(null)}
+          onMove={move}
+          onHunk={(patch, reverse) => void applyHunk(patch, reverse)}
+          onStage={() => void stageAndNext(reviewed)}
+          onUnstage={() => void unstage([reviewed.path])}
+          onRevert={() => void revert(reviewed)}
+          onDiffStyle={setDiffStyle}
+          onWrap={setWrap}
+        />
+      </div>
+    );
+  }
+
+  const totals = totalsOf(files);
+  const committing = committingCount(files);
+  const allStaged = files.length > 0 && files.every((file) => file.state === 'staged');
 
   return (
     <div {...stylex.props(styles.tab)}>
-      <HStack justify="between" align="center" gap={2}>
-        {branches !== null && branches.branches.length > 0 ? (
-          <Selector
-            label="Branch"
-            options={branches.branches.map((branch) => ({ value: branch, label: branch }))}
-            value={branches.current ?? undefined}
-            onChange={(branch) => void switchTo(branch)}
-            isDisabled={busy}
-            variant="ghost"
-            size="sm"
-            hasSearch
-            searchPlaceholder="Search branches…"
-            startIcon={GitBranch}
-          />
-        ) : (
-          <Text type="label">{status.branch ?? 'detached'}</Text>
-        )}
-        <HStack gap={1} align="center">
-          <Button
-            label="Fetch"
-            size="sm"
-            variant="ghost"
-            isDisabled={busy}
-            onClick={() => void sync('fetch')}
-          />
-          <Button
-            label="Pull"
-            size="sm"
-            variant="ghost"
-            isDisabled={busy}
-            onClick={() => void sync('pull')}
-          />
-          <Button
-            label="Push"
-            size="sm"
-            variant="ghost"
-            isDisabled={busy}
-            onClick={() => void sync('push')}
-          />
-        </HStack>
-      </HStack>
-
-      {message !== null ? (
-        <Text type="supporting" color="secondary">
-          {message}
-        </Text>
-      ) : null}
-
-      <HStack gap={1} align="center">
-        <Button
-          label="Changes"
-          size="sm"
-          variant={view === 'changes' ? 'primary' : 'ghost'}
-          onClick={() => setView('changes')}
-        />
-        <Button
-          label="History"
-          size="sm"
-          variant={view === 'history' ? 'primary' : 'ghost'}
-          onClick={() => setView('history')}
-        />
-      </HStack>
-
-      {view === 'changes' ? (
-        <VStack gap={3}>
-          {rows.length === 0 ? (
-            <Text type="supporting" color="secondary">
-              Nothing has changed in this checkout.
-            </Text>
-          ) : null}
-          {GROUPS.map((group) => {
-            const held = rows.filter((row) => row.group === group.key);
-            if (held.length === 0) return null;
-
-            return (
-              <VStack key={group.key} gap={1}>
-                <Text type="supporting" weight="medium">
-                  {group.label} ({held.length})
-                </Text>
-                {held.map((row) => (
-                  <HStack key={rowKey(row)} justify="between" align="center" gap={2}>
-                    <button
-                      type="button"
-                      {...stylex.props(
-                        styles.path,
-                        selected !== null && rowKey(selected) === rowKey(row) && styles.pathOn,
-                      )}
-                      onClick={() => setSelected(row)}
-                    >
-                      {row.path}
-                    </button>
-                    <HStack gap={1} align="center">
-                      <Text type="supporting" color="secondary">
-                        {statusWord(row.status)}
-                      </Text>
-                      {row.group === 'staged' ? (
-                        <IconButton
-                          label="Unstage file"
-                          icon={<Icon icon={Undo2} size="sm" />}
-                          isDisabled={busy}
-                          onClick={() => void unstage(row)}
-                        />
-                      ) : (
-                        <IconButton
-                          label="Stage file"
-                          icon={<Icon icon={Plus} size="sm" />}
-                          isDisabled={busy}
-                          onClick={() => void stage(row)}
-                        />
-                      )}
-                      {canRevert(row) ? (
-                        <IconButton
-                          label="Revert file"
-                          icon={<Icon icon={RotateCcw} size="sm" />}
-                          isDisabled={busy}
-                          onClick={() => void revert(row)}
-                        />
-                      ) : null}
-                    </HStack>
-                  </HStack>
-                ))}
-              </VStack>
-            );
-          })}
-
-          <VStack gap={2}>
-            <TextArea
-              label="Commit message"
+      <div {...stylex.props(styles.top)}>
+        <div {...stylex.props(styles.branch)}>
+          {branches !== null && branches.branches.length > 0 ? (
+            <Selector
+              label="Branch"
               isLabelHidden
-              placeholder="Commit message"
-              rows={3}
-              value={commitMessage}
-              onChange={setCommitMessage}
+              width="100%"
+              options={branches.branches.map((branch) => ({ value: branch, label: branch }))}
+              value={branches.current ?? undefined}
+              onChange={(branch) => void switchTo(branch)}
+              isDisabled={busy}
+              variant="ghost"
+              size="sm"
+              hasSearch
+              searchPlaceholder="Search branches…"
+              startIcon={GitBranch}
             />
-            <HStack justify="between" align="center">
-              <Text type="supporting" color="secondary">
-                {staged} staged
-              </Text>
-              <Button
-                label="Commit"
-                size="sm"
-                isDisabled={busy || staged === 0 || commitMessage.trim() === ''}
-                onClick={() => void commit()}
-              />
-            </HStack>
-          </VStack>
+          ) : (
+            <Text type="label">{status.branch ?? 'detached'}</Text>
+          )}
+        </div>
+        <div {...stylex.props(styles.topEnd)}>
+          {(status.behind ?? 0) > 0 && (
+            <Button
+              label={String(status.behind)}
+              tooltip={`Pull ${status.behind} commits`}
+              size="sm"
+              variant="ghost"
+              icon={<Icon icon={ArrowDown} size="sm" />}
+              isDisabled={busy}
+              onClick={() => void sync('pull')}
+            />
+          )}
+          {status.ahead !== 0 && (
+            <Button
+              label={status.ahead === null ? 'Push' : String(status.ahead)}
+              tooltip={status.ahead === null ? 'Push this branch' : `Push ${status.ahead} commits`}
+              size="sm"
+              variant="ghost"
+              icon={<Icon icon={ArrowUp} size="sm" />}
+              isDisabled={busy}
+              onClick={() => void sync('push')}
+            />
+          )}
+          <DropdownMenu
+            button={{
+              label: 'More',
+              size: 'sm',
+              variant: 'ghost',
+              isIconOnly: true,
+              icon: <Icon icon={Ellipsis} size="sm" />,
+            }}
+            items={[
+              { label: 'Fetch', isDisabled: busy, onClick: () => void sync('fetch') },
+              { label: 'Pull', isDisabled: busy, onClick: () => void sync('pull') },
+              { type: 'divider' },
+              {
+                label: 'Stage all',
+                isDisabled: busy || files.length === 0 || allStaged,
+                onClick: () =>
+                  void stage(
+                    files.filter((file) => file.state !== 'staged').map((file) => file.path),
+                  ),
+              },
+              {
+                label: 'Unstage all',
+                isDisabled: busy || committing === 0,
+                onClick: () =>
+                  void unstage(
+                    files.filter((file) => file.state !== 'unstaged').map((file) => file.path),
+                  ),
+              },
+            ]}
+          />
+        </div>
+      </div>
 
-          {selected !== null ? (
-            <VStack gap={2}>
-              <HStack justify="between" align="center" gap={2}>
-                <Text type="label">{selected.path}</Text>
-                <HStack gap={1} align="center">
-                  <Button
-                    label="Inline"
-                    size="sm"
-                    variant={diffStyle === 'unified' ? 'primary' : 'ghost'}
-                    onClick={() => setDiffStyle('unified')}
-                  />
-                  <Button
-                    label="Side by side"
-                    size="sm"
-                    variant={diffStyle === 'split' ? 'primary' : 'ghost'}
-                    onClick={() => setDiffStyle('split')}
-                  />
-                  <Button
-                    label={wrap ? 'Wrapped' : 'Wrap'}
-                    size="sm"
-                    variant={wrap ? 'primary' : 'ghost'}
-                    onClick={() => setWrap((held) => !held)}
-                  />
-                </HStack>
-              </HStack>
-              {patchTrouble !== null ? (
-                <Text type="supporting" color="secondary">
-                  {patchTrouble}
-                </Text>
-              ) : null}
-              {patch !== null && patch.trim() === '' ? (
-                <Text type="supporting" color="secondary">
-                  This file has no changes to show.
-                </Text>
-              ) : null}
-              {diffParts.map((part, at) => (
-                <div key={at} {...stylex.props(styles.hunk)}>
-                  {hunkParts.hunks.length > 0 ? (
-                    <Button
-                      label={selected.group === 'staged' ? 'Unstage hunk' : 'Stage hunk'}
-                      size="sm"
-                      variant="secondary"
-                      isDisabled={busy}
-                      onClick={() => void applyHunk(part, selected.group === 'staged')}
-                    />
-                  ) : null}
-                  <DiffPatch patch={part} path={selected.path} diffStyle={diffStyle} wrap={wrap} />
-                </div>
-              ))}
-            </VStack>
-          ) : null}
-        </VStack>
+      <SegmentedControl
+        label="View"
+        value={view}
+        onChange={(value) => setView(value as 'changes' | 'history')}
+        size="sm"
+        layout="fill"
+      >
+        <SegmentedControlItem
+          value="changes"
+          label={files.length === 0 ? 'Changes' : `Changes ${files.length}`}
+        />
+        <SegmentedControlItem value="history" label="History" />
+      </SegmentedControl>
+
+      {view === 'history' ? (
+        <HistoryList
+          history={history}
+          trouble={historyTrouble}
+          openCommit={openCommit}
+          openFiles={loadedFiles?.hash === openCommit ? loadedFiles.files : null}
+          onToggle={(hash) => setOpenCommit((held) => (held === hash ? null : hash))}
+        />
+      ) : files.length === 0 ? (
+        <Text type="supporting" color={message === null ? 'secondary' : 'primary'}>
+          {message ?? 'Nothing has changed in this checkout.'}
+        </Text>
       ) : (
-        <VStack gap={2}>
-          {historyTrouble !== null ? (
+        <>
+          <div {...stylex.props(styles.summaryRow)}>
+            <span {...stylex.props(styles.summary)}>
+              <Text type="supporting" color="secondary">
+                {files.length === 1 ? '1 file' : `${files.length} files`}
+              </Text>
+              {(totals.added > 0 || totals.removed > 0) && (
+                <span {...stylex.props(parts.mono)}>
+                  <span {...stylex.props(parts.added)}>+{totals.added}</span>{' '}
+                  <span {...stylex.props(parts.removed)}>−{totals.removed}</span>
+                </span>
+              )}
+            </span>
+            <Button
+              label="Review"
+              size="sm"
+              variant="secondary"
+              onClick={() => setReviewing(files[0]!.path)}
+            />
+          </div>
+          <ChangesList files={files} isBusy={busy} onOpen={setReviewing} onToggle={toggle} />
+        </>
+      )}
+
+      <div {...stylex.props(styles.grow)} />
+      {view === 'changes' && files.length > 0 && (
+        <div {...stylex.props(styles.foot)}>
+          {message !== null && (
             <Text type="supporting" color="secondary">
-              {historyTrouble}
+              {message}
             </Text>
-          ) : null}
-          {history !== null && history.length === 0 ? (
+          )}
+          <TextArea
+            label="Commit message"
+            isLabelHidden
+            placeholder="Commit message"
+            rows={3}
+            value={commitMessage}
+            onChange={setCommitMessage}
+          />
+          <div {...stylex.props(styles.commitRow)}>
             <Text type="supporting" color="secondary">
-              This branch has no commits yet.
+              {committing} of {files.length} staged
             </Text>
-          ) : null}
-          {history?.map((commit) => (
-            <VStack key={commit.hash} gap={1}>
-              <button
-                type="button"
-                {...stylex.props(styles.commitRow)}
-                onClick={() => setOpenCommit((held) => (held === commit.hash ? null : commit.hash))}
-              >
-                <Text type="label">{commit.subject}</Text>
-                <Text type="supporting" color="secondary">
-                  {commit.short} · {commit.author} · {commit.date}
-                </Text>
-              </button>
-              {openCommit === commit.hash ? (
-                <VStack gap={0.5}>
-                  {loadedFiles?.hash === commit.hash ? (
-                    loadedFiles.files.map((file) => (
-                      <Text key={file.path} type="supporting" color="secondary">
-                        {file.path} · {statusWord(file.status)}
-                      </Text>
-                    ))
-                  ) : (
-                    <Text type="supporting" color="secondary">
-                      Reading…
-                    </Text>
-                  )}
-                </VStack>
-              ) : null}
-            </VStack>
-          ))}
-        </VStack>
+            <Button
+              label="Commit"
+              size="sm"
+              variant="primary"
+              isDisabled={busy || committing === 0 || commitMessage.trim() === ''}
+              onClick={() => void commit()}
+            />
+          </div>
+        </div>
       )}
     </div>
   );
@@ -529,40 +521,44 @@ const styles = stylex.create({
     display: 'flex',
     flexDirection: 'column',
     gap: spacingVars['--spacing-3'],
+    minHeight: '100%',
   },
-  path: {
-    minWidth: 0,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    borderWidth: 0,
-    borderRadius: 'var(--radius-inner)',
-    paddingInline: spacingVars['--spacing-1'],
-    color: colorVars['--color-text-primary'],
-    backgroundColor: 'transparent',
-    font: 'inherit',
-    textAlign: 'start',
-    cursor: 'pointer',
+  top: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacingVars['--spacing-2'],
   },
-  pathOn: {
-    backgroundColor: colorVars['--color-background-muted'],
+  branch: { flex: 1, minWidth: 0 },
+  topEnd: { display: 'flex', alignItems: 'center', flexShrink: 0, gap: spacingVars['--spacing-1'] },
+  summaryRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacingVars['--spacing-2'],
   },
-  hunk: {
+  summary: { display: 'flex', alignItems: 'baseline', gap: spacingVars['--spacing-3'] },
+  grow: { flex: 1 },
+  foot: {
+    position: 'sticky',
+    insetBlockEnd: 'calc(-1 * var(--spacing-4))',
     display: 'flex',
     flexDirection: 'column',
-    gap: spacingVars['--spacing-1'],
-    alignItems: 'flex-start',
+    gap: spacingVars['--spacing-2'],
+    marginBlockStart: 'auto',
+    marginBlockEnd: 'calc(-1 * var(--spacing-4))',
+    marginInline: 'calc(-1 * var(--spacing-4))',
+    paddingBlock: spacingVars['--spacing-3'],
+    paddingInline: spacingVars['--spacing-4'],
+    borderBlockStartWidth: borderVars['--border-width'],
+    borderBlockStartStyle: 'solid',
+    borderBlockStartColor: colorVars['--color-border'],
+    backgroundColor: colorVars['--color-background-surface'],
   },
   commitRow: {
     display: 'flex',
-    flexDirection: 'column',
-    gap: spacingVars['--spacing-1'],
-    width: '100%',
-    borderWidth: 0,
-    padding: spacingVars['--spacing-1'],
-    borderRadius: 'var(--radius-inner)',
-    backgroundColor: 'transparent',
-    textAlign: 'start',
-    cursor: 'pointer',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacingVars['--spacing-2'],
   },
 });

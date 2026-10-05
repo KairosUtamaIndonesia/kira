@@ -5,6 +5,8 @@ import { type WorkspaceGitDeps, workspaceGitHandlers } from './workspaceGit.ts';
 
 const status: WorkspaceGitStatus = {
   branch: 'main',
+  ahead: null,
+  behind: null,
   staged: [],
   unstaged: [{ path: 'a.txt', status: 'M' }],
   untracked: [],

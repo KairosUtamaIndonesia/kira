@@ -17,6 +17,7 @@ import {
   insideFolder,
   listedByGit,
   logOf,
+  parseNumstat,
   parseRemote,
   patchOf,
   providerOf,
@@ -57,6 +58,47 @@ const CASES: Case[] = [
 for (const testCase of CASES) {
   test(testCase.name, () => {
     assert.deepEqual(splitListing(testCase.output), testCase.want);
+  });
+}
+
+interface NumstatCase {
+  name: string;
+  output: string;
+  want: [string, { added: number; removed: number }][];
+}
+
+/**
+ * `--numstat -z` writes `added TAB removed TAB path NUL`; a rename writes the path
+ * as nothing and then both names, each NUL-ended. A binary file writes `-` for
+ * both counts and has none to give.
+ */
+const NUMSTAT: NumstatCase[] = [
+  { name: 'no change has no counts', output: '', want: [] },
+  {
+    name: 'one file',
+    output: '3\t1\tsrc/a.ts\0',
+    want: [['src/a.ts', { added: 3, removed: 1 }]],
+  },
+  {
+    name: 'a binary file is left out and the rest are kept',
+    output: '-\t-\timg.png\0' + '2\t0\tb.ts\0',
+    want: [['b.ts', { added: 2, removed: 0 }]],
+  },
+  {
+    name: 'a rename is counted under its new name',
+    output: '4\t2\t\0old.ts\0new.ts\0',
+    want: [['new.ts', { added: 4, removed: 2 }]],
+  },
+  {
+    name: 'a path holding a tab is one path',
+    output: '1\t1\ta\tb.ts\0',
+    want: [['a\tb.ts', { added: 1, removed: 1 }]],
+  },
+];
+
+for (const testCase of NUMSTAT) {
+  test(`parseNumstat: ${testCase.name}`, () => {
+    assert.deepEqual([...parseNumstat(testCase.output)], testCase.want);
   });
 }
 
@@ -568,9 +610,31 @@ test('statusOf groups what changed and names the branch', { skip: !gitRuns() }, 
   const status = await statusOf(root);
 
   assert.equal(status.branch, 'main');
-  assert.deepEqual(status.staged, [{ path: 'a.txt', status: 'M' }]);
-  assert.deepEqual(status.unstaged, [{ path: 'a.txt', status: 'M' }]);
+  assert.deepEqual(status.staged, [{ path: 'a.txt', status: 'M', added: 1, removed: 1 }]);
+  assert.deepEqual(status.unstaged, [{ path: 'a.txt', status: 'M', added: 1, removed: 1 }]);
   assert.deepEqual(status.untracked, [{ path: 'new.ts', status: '?' }]);
+  assert.equal(status.ahead, null, 'a branch with no upstream has no ahead count');
+  assert.equal(status.behind, null);
+});
+
+test('statusOf counts the commits ahead of the upstream', { skip: !gitRuns() }, async () => {
+  isolatedGit();
+  const origin = committedCheckout();
+  const landed = await cloneInto(origin, tempDir('kira-ahead-'), 'api');
+  const git = (...args: string[]): void => {
+    execFileSync('git', ['-C', landed, ...args], { stdio: 'ignore' });
+  };
+  git('config', 'user.email', 'kira@test');
+  git('config', 'user.name', 'Kira');
+  assert.equal((await statusOf(landed)).ahead, 0);
+
+  writeFileSync(join(landed, 'later.txt'), 'later\n');
+  git('add', 'later.txt');
+  git('commit', '-m', 'later');
+
+  const status = await statusOf(landed);
+  assert.equal(status.ahead, 1);
+  assert.equal(status.behind, 0);
 });
 
 test('statusOf refuses a folder that is not a checkout', { skip: !gitRuns() }, async () => {
@@ -616,13 +680,13 @@ test('staging and unstaging moves one file between the groups', { skip: !gitRuns
 
   await stagePaths(root, ['a.txt']);
   let status = await statusOf(root);
-  assert.deepEqual(status.staged, [{ path: 'a.txt', status: 'M' }]);
+  assert.deepEqual(status.staged, [{ path: 'a.txt', status: 'M', added: 1, removed: 1 }]);
   assert.deepEqual(status.unstaged, []);
 
   await unstagePaths(root, ['a.txt']);
   status = await statusOf(root);
   assert.deepEqual(status.staged, []);
-  assert.deepEqual(status.unstaged, [{ path: 'a.txt', status: 'M' }]);
+  assert.deepEqual(status.unstaged, [{ path: 'a.txt', status: 'M', added: 1, removed: 1 }]);
 });
 
 test('a single hunk can be staged while the file’s other hunks stay out', async (t) => {
@@ -648,8 +712,8 @@ test('a single hunk can be staged while the file’s other hunks stay out', asyn
   await applyPatchToIndex(root, `${header}\n${hunks[0]}\n`, false);
 
   const status = await statusOf(root);
-  assert.deepEqual(status.staged, [{ path: 'wide.txt', status: 'M' }]);
-  assert.deepEqual(status.unstaged, [{ path: 'wide.txt', status: 'M' }]);
+  assert.deepEqual(status.staged, [{ path: 'wide.txt', status: 'M', added: 1, removed: 1 }]);
+  assert.deepEqual(status.unstaged, [{ path: 'wide.txt', status: 'M', added: 1, removed: 1 }]);
 
   const staged = await patchOf(root, 'wide.txt', true);
   assert.match(staged, /LINE 1/);

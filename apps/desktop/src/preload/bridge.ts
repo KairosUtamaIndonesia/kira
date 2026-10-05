@@ -462,12 +462,19 @@ export interface ChangedPath {
   status: string;
   /** The path it had, when git reports a rename or a copy. */
   from?: string;
+  /** Lines added and removed, when git can count them: not for an untracked or binary file. */
+  added?: number;
+  removed?: number;
 }
 
 /** What git says about a chat's checkout, grouped the way a person reads it. */
 export interface WorkspaceGitStatus {
   /** The branch HEAD is on, or null when HEAD is detached or there are no commits. */
   branch: string | null;
+  /** Commits on the branch the upstream does not have, or null when it has no upstream. */
+  ahead: number | null;
+  /** Commits on the upstream the branch does not have, or null when it has no upstream. */
+  behind: number | null;
   /** Tracked changes already in the index. */
   staged: ChangedPath[];
   /** Tracked changes not yet in the index. */

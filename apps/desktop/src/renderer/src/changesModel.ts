@@ -6,29 +6,82 @@
  * shape the tree's rows take. Nothing here talks to the main process: it decides
  * what a status means once it has arrived.
  */
-import type { ChangedPath, WorkspaceGitStatus } from '../../preload/bridge.ts';
+import type { WorkspaceGitStatus } from '../../preload/bridge.ts';
 
-/** Which group of the changed list a row belongs to. */
-export type ChangeGroup = 'staged' | 'unstaged' | 'untracked';
+/** Whether a file has nothing, some, or all of its changes in the index. */
+export type FileState = 'staged' | 'partial' | 'unstaged';
 
-/** One changed path, with the group it is drawn under. */
-export interface ChangeRow extends ChangedPath {
-  group: ChangeGroup;
+/** One changed path, however many places git lists it. */
+export interface ChangedFile {
+  path: string;
+  /** git's code for it: the index's when something is staged, else the working tree's. */
+  status: string;
+  state: FileState;
+  isUntracked: boolean;
+  /** Lines added and removed, or null when git cannot count them (untracked, binary). */
+  added: number | null;
+  removed: number | null;
 }
 
-/** Every changed path as one ordered list, staged first, the way the pane draws them. */
-export function changeRows(status: WorkspaceGitStatus): ChangeRow[] {
-  const rows: ChangeRow[] = [];
-  for (const file of status.staged) rows.push({ group: 'staged', ...file });
-  for (const file of status.unstaged) rows.push({ group: 'unstaged', ...file });
-  for (const file of status.untracked) rows.push({ group: 'untracked', ...file });
+/**
+ * Every changed path once, in path order.
+ *
+ * git lists a file in the index and in the working tree separately, so a file
+ * edited after it was staged comes twice; here that is one file whose state is
+ * `partial`. The order is the path's, not the state's, so staging a file never
+ * moves its row.
+ */
+export function changedFiles(status: WorkspaceGitStatus): ChangedFile[] {
+  const files = new Map<string, ChangedFile>();
 
-  return rows;
+  for (const file of status.untracked) {
+    files.set(file.path, {
+      path: file.path,
+      status: '?',
+      state: 'unstaged',
+      isUntracked: true,
+      added: null,
+      removed: null,
+    });
+  }
+
+  const staged = new Map(status.staged.map((file) => [file.path, file]));
+  const unstaged = new Map(status.unstaged.map((file) => [file.path, file]));
+  for (const path of new Set([...staged.keys(), ...unstaged.keys()])) {
+    const inIndex = staged.get(path);
+    const inTree = unstaged.get(path);
+    const held = [inIndex, inTree].filter((file) => file !== undefined);
+
+    files.set(path, {
+      path,
+      status: (inIndex ?? inTree)!.status,
+      state: inIndex === undefined ? 'unstaged' : inTree === undefined ? 'staged' : 'partial',
+      isUntracked: false,
+      added: sumOf(held.map((file) => file.added)),
+      removed: sumOf(held.map((file) => file.removed)),
+    });
+  }
+
+  return [...files.values()].sort((one, other) => (one.path < other.path ? -1 : 1));
 }
 
-/** How many files a commit would hold. */
-export function stagedCount(status: WorkspaceGitStatus): number {
-  return status.staged.length;
+function sumOf(counts: (number | undefined)[]): number | null {
+  const known = counts.filter((count) => count !== undefined);
+
+  return known.length === 0 ? null : known.reduce((sum, count) => sum + count, 0);
+}
+
+/** How many files a commit would hold: any with something in the index. */
+export function committingCount(files: readonly ChangedFile[]): number {
+  return files.filter((file) => file.state !== 'unstaged').length;
+}
+
+/** The lines added and removed across the files git could count. */
+export function totalsOf(files: readonly ChangedFile[]): { added: number; removed: number } {
+  return {
+    added: files.reduce((sum, file) => sum + (file.added ?? 0), 0),
+    removed: files.reduce((sum, file) => sum + (file.removed ?? 0), 0),
+  };
 }
 
 /**
@@ -54,16 +107,6 @@ export function statusWord(code: string): string {
     default:
       return 'Changed';
   }
-}
-
-/** Whether a row can be put back the way HEAD has it. An untracked file has no such state. */
-export function canRevert(row: ChangeRow): boolean {
-  return row.group !== 'untracked';
-}
-
-/** The identity of a row: one path can be staged and unstaged at once. */
-export function rowKey(row: ChangeRow): string {
-  return `${row.group}:${row.path}`;
 }
 
 /**
@@ -123,4 +166,60 @@ export function hunkPatch(patch: string, index: number): string | null {
 /** A hunk as it was read, without the empty tail one trailing newline leaves. */
 function trimHunk(hunk: string): string {
   return hunk.endsWith('\n') ? hunk.slice(0, -1) : hunk;
+}
+
+/**
+ * What a hunk is called: the function or section git found it in, which it
+ * writes after the second `@@`, else the line it starts on.
+ */
+export function hunkLabel(hunk: string): string {
+  const match = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@ ?(.*)$/m.exec(hunk);
+  if (match === null) return 'Changes';
+  const [, start = '1', section = ''] = match;
+
+  return section.trim() === '' ? `Line ${start}` : section.trim();
+}
+
+/** How long ago a commit was made, as short as a chat's age: `now`, `5m`, `3h`, `2d`, `6w`. */
+export function ageOf(date: string, now: number): string {
+  const then = Date.parse(date);
+  if (Number.isNaN(then)) return '';
+
+  const minutes = Math.floor(Math.max(0, now - then) / 60_000);
+  if (minutes < 1) return 'now';
+  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 60 * 24) return `${Math.floor(minutes / 60)}h`;
+  if (minutes < 60 * 24 * 7) return `${Math.floor(minutes / (60 * 24))}d`;
+
+  return `${Math.floor(minutes / (60 * 24 * 7))}w`;
+}
+
+/** One piece of a file's diff that can be staged or unstaged on its own. */
+export interface DiffBlock {
+  key: string;
+  label: string;
+  /** A patch git can apply: the file header and this one hunk. */
+  patch: string;
+  /** Whether it is in the index already, so acting on it takes it back out. */
+  staged: boolean;
+  /** Whether it is the file's whole patch because git found no hunks in it (binary, mode). */
+  isWhole: boolean;
+}
+
+/** A patch as the blocks the review stages one by one; nothing when there is no patch. */
+export function blocksOf(patch: string | null, staged: boolean): DiffBlock[] {
+  if (patch === null || patch.trim() === '') return [];
+
+  const { hunks } = hunksOf(patch);
+  if (hunks.length === 0) {
+    return [{ key: `${staged}:whole`, label: 'Changes', patch, staged, isWhole: true }];
+  }
+
+  return hunks.map((hunk, at) => ({
+    key: `${staged}:${at}:${hunk}`,
+    label: hunkLabel(hunk),
+    patch: hunkPatch(patch, at) ?? patch,
+    staged,
+    isWhole: false,
+  }));
 }

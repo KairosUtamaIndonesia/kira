@@ -376,7 +376,12 @@ export async function statusOf(folder: string): Promise<WorkspaceGitStatus> {
 
 async function readStatus(folder: string): Promise<WorkspaceGitStatus> {
   const git = simpleGit(folder);
-  const [status, prefix] = await Promise.all([git.status(['.']), git.revparse(['--show-prefix'])]);
+  const [status, prefix, worktreeCounts, indexCounts] = await Promise.all([
+    git.status(['.']),
+    git.revparse(['--show-prefix']),
+    git.raw(['diff', '--numstat', '-z', '--', '.']).then(parseNumstat),
+    git.raw(['diff', '--cached', '--numstat', '-z', '--', '.']).then(parseNumstat),
+  ]);
   const cut = prefix.trim();
   const staged: ChangedPath[] = [];
   const unstaged: ChangedPath[] = [];
@@ -395,19 +400,64 @@ async function readStatus(folder: string): Promise<WorkspaceGitStatus> {
     }
 
     if (index !== ' ' && index !== '') {
-      staged.push({ path, status: index, ...(from === undefined ? {} : { from }) });
+      staged.push({
+        path,
+        status: index,
+        ...(from === undefined ? {} : { from }),
+        ...indexCounts.get(file.path),
+      });
     }
     if (working !== ' ' && working !== '') {
-      unstaged.push({ path, status: working, ...(from === undefined ? {} : { from }) });
+      unstaged.push({
+        path,
+        status: working,
+        ...(from === undefined ? {} : { from }),
+        ...worktreeCounts.get(file.path),
+      });
     }
   }
 
+  const tracked = status.tracking !== null;
+
   return {
     branch: status.detached || status.current === '' ? null : status.current,
+    ahead: tracked ? status.ahead : null,
+    behind: tracked ? status.behind : null,
     staged,
     unstaged,
     untracked,
   };
+}
+
+/**
+ * The lines each path added and removed, read from `git diff --numstat -z`.
+ *
+ * Each record is `added TAB removed TAB path NUL`. A rename or copy writes its
+ * path as nothing and follows with the old and the new name, each NUL-ended; it
+ * is counted under the new one. A binary file writes `-` for both counts, has no
+ * lines to count, and is left out. Paths are the repository root's, as git
+ * writes them, so a caller looking one up uses the path status gave it.
+ */
+export function parseNumstat(output: string): Map<string, { added: number; removed: number }> {
+  const counts = new Map<string, { added: number; removed: number }>();
+  const records = output.split('\0');
+
+  for (let at = 0; at < records.length; at += 1) {
+    const match = /^(\d+|-)\t(\d+|-)\t([\s\S]*)$/.exec(records[at] ?? '');
+    if (match === null) continue;
+
+    const [, added = '-', removed = '-', named = ''] = match;
+    let path = named;
+    if (named === '') {
+      path = records[at + 2] ?? '';
+      at += 2;
+    }
+    if (added === '-' || removed === '-' || path === '') continue;
+
+    counts.set(path, { added: Number(added), removed: Number(removed) });
+  }
+
+  return counts;
 }
 
 /**
