@@ -17,7 +17,6 @@ import { Selector } from '@astryxdesign/core/Selector';
 import { AgentStateMark } from './agentState';
 import { Text } from '@astryxdesign/core/Text';
 import { Popover } from '@astryxdesign/core/Popover';
-import { Tooltip } from '@astryxdesign/core/Tooltip';
 import { VStack } from '@astryxdesign/core/VStack';
 import {
   borderVars,
@@ -28,6 +27,7 @@ import {
 } from '@astryxdesign/core/theme/tokens.stylex';
 import { useAui, useAuiState } from '@assistant-ui/react';
 import {
+  Check,
   ChevronDown,
   FileText,
   Gauge,
@@ -418,44 +418,30 @@ export function Composer({
           <ContextGauge usage={usage} chatUsage={chatUsage} />
         )}
         {/*
-         * One choice drawn two ways. Side by side the modes are two buttons; when
-         * the composer is too narrow for them (styles.css) they are one menu,
-         * which keeps the row from running out of the box. Whichever is hidden is
-         * `display: none`, so it is out of the tab order and the accessibility tree.
+         * The mode is one dropdown: the trigger names the mode the next turn runs
+         * in, and the menu offers the other with a tick on the chosen one. The
+         * tooltip the two buttons each carried is kept, but asked for as the
+         * trigger's own `tooltip` — the control shows it, rather than swallowing
+         * an outer one, the same lesson the model picker's `disabledMessage`
+         * records. While Kira is writing the trigger is disabled and its tooltip
+         * with it; the label still names the mode in force.
          */}
-        <fieldset className="chat-mode-switcher" aria-label="Chat mode">
-          {MODES.map((each) => (
-            <Tooltip key={each.value} content={each.says} placement="above">
-              <Button
-                label={each.label}
-                size="sm"
-                variant={mode === each.value ? 'primary' : 'ghost'}
-                aria-pressed={mode === each.value}
-                isDisabled={isRunning || onChooseMode === undefined}
-                onClick={() => onChooseMode?.(each.value)}
-              />
-            </Tooltip>
-          ))}
-        </fieldset>
-        <div className="chat-mode-menu">
-          <Selector
-            label="Chat mode"
-            isLabelHidden
-            size="sm"
-            variant="ghost"
-            options={MODES.map((each) => ({
-              value: each.value,
-              label: each.label,
-              description: each.says,
-            }))}
-            value={mode}
-            onChange={(chosen) => {
-              const next = MODES.find((each) => each.value === chosen);
-              if (next !== undefined) onChooseMode?.(next.value);
-            }}
-            isDisabled={isRunning || onChooseMode === undefined}
-          />
-        </div>
+        <DropdownMenu
+          placement="above"
+          button={{
+            label: MODES[mode].label,
+            tooltip: MODES[mode].says,
+            size: 'sm',
+            variant: 'ghost',
+            isDisabled: isRunning || onChooseMode === undefined,
+          }}
+          items={MODE_ORDER.map((value) => ({
+            label: MODES[value].label,
+            description: MODES[value].says,
+            endContent: value === mode ? <Icon icon={Check} size="sm" /> : undefined,
+            onClick: () => onChooseMode?.(value),
+          }))}
+        />
       </div>
     ),
     // The same button, in its other state: while Kira is writing there is
@@ -662,18 +648,19 @@ export function Composer({
 }
 
 /** What each chat mode is called, and what it promises. */
-const MODES: { value: ChatMode; label: string; says: string }[] = [
-  {
-    value: 'build',
+const MODES: Record<ChatMode, { label: string; says: string }> = {
+  build: {
     label: 'Build',
     says: 'Build mode: Kira makes the requested changes in your workspace.',
   },
-  {
-    value: 'spec',
+  spec: {
     label: 'Spec',
     says: 'Spec mode: Kira helps shape and plan the work before building it.',
   },
-];
+};
+
+/** The order the modes are offered in, since a record keeps no order of its own. */
+const MODE_ORDER: ChatMode[] = ['build', 'spec'];
 
 function commandItems(commands: readonly ChatCommand[], query: string): SelectorItem[] {
   return matchingCommands(commands, query).map((command) => ({

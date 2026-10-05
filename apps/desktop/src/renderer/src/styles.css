@@ -199,41 +199,10 @@
   min-width: 0;
 }
 
-.chat-mode-switcher {
-  display: flex;
-  flex-shrink: 0;
-  gap: var(--spacing-1);
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
 .composer-send-actions {
   display: flex;
   align-items: center;
   gap: var(--spacing-1);
-}
-
-/*
- * The modes are two buttons beside the send button until the composer is too
- * narrow to hold them, and one menu after that. The width asked is the
- * composer's own (`.composer-stack` is its container), not the window's: the
- * workbench can take half the window, so the same window holds composers of
- * very different widths.
- */
-.chat-mode-menu {
-  display: none;
-}
-
-@container composer (max-width: 27rem) {
-  .chat-mode-switcher {
-    display: none;
-  }
-
-  .chat-mode-menu {
-    display: block;
-  }
 }
 
 /*
