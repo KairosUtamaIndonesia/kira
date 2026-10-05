@@ -77,10 +77,21 @@ ticket belongs to.
 _Avoid_: Project (the word it replaces), checkout, working directory
 
 **Repository**:
-A body of code Kira watches, named by a provider, an owner and a name, and attached to exactly
+A body of code Kira watches, named by a Git host, an owner and a name, and attached to exactly
 one project. It is what a project's pull requests are recognised by, and it is named from a
 checkout: a folder's remote says which repository it is. A project may hold several.
 _Avoid_: Repo, codebase (a repository is not a project, and a project is not one repository)
+
+**Git host**:
+A service that holds repositories — GitHub, GitLab, Forgejo or Gitea. Kira connects to one to
+watch the pull requests on a project's repositories; its kind is called a provider in the Git
+code, which is not the model Provider of this glossary.
+_Avoid_: Forge, remote, origin
+
+**Pull request**:
+A change proposed to a repository's code, opened and reviewed on its Git host, and named by its
+repository and number. Kira reads it; a ticket's pull request link points at one.
+_Avoid_: PR, MR, merge request
 
 **Workbench**:
 The part of the window where a chat's own things are looked at: what Kira is holding for it, and
