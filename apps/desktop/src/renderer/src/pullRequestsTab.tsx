@@ -14,6 +14,7 @@ import { Button } from '@astryxdesign/core/Button';
 import { HStack } from '@astryxdesign/core/HStack';
 import { Icon } from '@astryxdesign/core/Icon';
 import { IconButton } from '@astryxdesign/core/IconButton';
+import { Selector } from '@astryxdesign/core/Selector';
 import { Text } from '@astryxdesign/core/Text';
 import { VStack } from '@astryxdesign/core/VStack';
 import { colorVars, spacingVars } from '@astryxdesign/core/theme/tokens.stylex';
@@ -203,16 +204,18 @@ export function PullRequestsTab({ chatId, visits }: { chatId: string; visits: nu
         />
       </HStack>
       <HStack gap={2} align="center">
-        <select
-          {...stylex.props(styles.filter)}
-          aria-label="Pull request state"
+        <Selector
+          label="State"
+          options={[
+            { value: 'open', label: 'Open' },
+            { value: 'all', label: 'All' },
+            { value: 'closed', label: 'Closed' },
+          ]}
           value={state}
-          onChange={(event) => setState(event.currentTarget.value as PullRequestState)}
-        >
-          <option value="open">Open</option>
-          <option value="all">All</option>
-          <option value="closed">Closed</option>
-        </select>
+          onChange={(next) => setState(next as PullRequestState)}
+          variant="ghost"
+          size="sm"
+        />
         <label {...stylex.props(styles.search)}>
           <Icon icon={Search} size="sm" />
           <input
@@ -314,13 +317,6 @@ const styles = stylex.create({
   body: {
     whiteSpace: 'pre-wrap',
     color: colorVars['--color-text-primary'],
-  },
-  filter: {
-    paddingInline: spacingVars['--spacing-1'],
-    borderWidth: 0,
-    color: colorVars['--color-text-primary'],
-    backgroundColor: 'transparent',
-    font: 'inherit',
   },
   search: {
     display: 'flex',

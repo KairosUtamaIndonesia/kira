@@ -15,6 +15,7 @@ import { Button } from '@astryxdesign/core/Button';
 import { HStack } from '@astryxdesign/core/HStack';
 import { Icon } from '@astryxdesign/core/Icon';
 import { IconButton } from '@astryxdesign/core/IconButton';
+import { Selector } from '@astryxdesign/core/Selector';
 import { Text } from '@astryxdesign/core/Text';
 import { VStack } from '@astryxdesign/core/VStack';
 import { colorVars, spacingVars } from '@astryxdesign/core/theme/tokens.stylex';
@@ -277,27 +278,22 @@ export function ChangesTab({
   return (
     <div {...stylex.props(styles.tab)}>
       <HStack justify="between" align="center" gap={2}>
-        <HStack gap={1} align="center">
-          <Icon icon={GitBranch} size="sm" />
-          {branches !== null && branches.branches.length > 0 ? (
-            <select
-              {...stylex.props(styles.branch)}
-              aria-label="Branch"
-              value={branches.current ?? ''}
-              disabled={busy}
-              onChange={(event) => void switchTo(event.currentTarget.value)}
-            >
-              {branches.current === null ? <option value="">detached</option> : null}
-              {branches.branches.map((branch) => (
-                <option key={branch} value={branch}>
-                  {branch}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <Text type="label">{status.branch ?? 'detached'}</Text>
-          )}
-        </HStack>
+        {branches !== null && branches.branches.length > 0 ? (
+          <Selector
+            label="Branch"
+            options={branches.branches.map((branch) => ({ value: branch, label: branch }))}
+            value={branches.current ?? undefined}
+            onChange={(branch) => void switchTo(branch)}
+            isDisabled={busy}
+            variant="ghost"
+            size="sm"
+            hasSearch
+            searchPlaceholder="Search branches…"
+            startIcon={GitBranch}
+          />
+        ) : (
+          <Text type="label">{status.branch ?? 'detached'}</Text>
+        )}
         <HStack gap={1} align="center">
           <Button
             label="Fetch"
@@ -531,14 +527,6 @@ const styles = stylex.create({
     display: 'flex',
     flexDirection: 'column',
     gap: spacingVars['--spacing-3'],
-  },
-  branch: {
-    maxWidth: 160,
-    paddingInline: spacingVars['--spacing-1'],
-    borderWidth: 0,
-    color: colorVars['--color-text-primary'],
-    backgroundColor: 'transparent',
-    font: 'inherit',
   },
   path: {
     minWidth: 0,
