@@ -21,6 +21,7 @@ import { handoffToken, signIn, type SignIn } from './auth/signIn.ts';
 import { ThreadStore } from './db/threads.ts';
 import { AUTH_CHANNELS, authHandlers } from './ipc/auth.ts';
 import { FILE_CHANNELS, fileHandlers } from './ipc/files.ts';
+import { WORKSPACE_GIT_CHANNELS, workspaceGitHandlers } from './ipc/workspaceGit.ts';
 import { MAGIC_PROMPT_CHANNELS, magicPromptHandlers } from './ipc/magicPrompts.ts';
 import { MCP_CHANNELS, mcpHandlers } from './ipc/mcp.ts';
 import { MEMORY_CHANNELS, memoryHandlers } from './ipc/memory.ts';
@@ -37,7 +38,24 @@ import { trackerFor, type Tracker } from './tracker.ts';
 import { usageFor, type UsageKeeper } from './usage.ts';
 import { type OpenChats, openChats } from './pi/openChats.ts';
 import { listFolder, searchWorkspaceFiles } from './workspace/listing.ts';
-import { cloneInto, cloneUrl, hasRemote, remoteOf } from './workspace/git.ts';
+import {
+  applyPatchToIndex,
+  branchesOf,
+  cloneInto,
+  cloneUrl,
+  commitFilesOf,
+  commitStaged,
+  hasRemote,
+  logOf,
+  patchOf,
+  remoteOf,
+  revertPath,
+  stagePaths,
+  statusOf,
+  switchBranch,
+  syncRemote,
+  unstagePaths,
+} from './workspace/git.ts';
 import {
   createWorkspaceItem,
   readWorkspaceAsset,
@@ -509,6 +527,74 @@ function registerFileChannels(): void {
     });
   });
   ipcMain.handle(FILE_CHANNELS.unwatch, (event) => handlers.unwatch(event.sender.id));
+}
+
+/**
+ * The local-git channels, over the chats this process already holds.
+ *
+ * The folder a chat works in is read from the chat's own record, the same way
+ * the file channels resolve one, so the window never says where a checkout is.
+ * Every one of these is handed the workspace functions, which put each command
+ * behind the per-checkout queue; the tree's own status reads share that queue,
+ * so a stage and a watcher burst cannot interleave (workspace/gitQueue.ts).
+ */
+function registerWorkspaceGitChannels(): void {
+  const handlers = workspaceGitHandlers({
+    workspaceOf: (chatId) => store.findThread(chatId)?.cwd ?? null,
+    status: statusOf,
+    patch: patchOf,
+    stage: stagePaths,
+    unstage: unstagePaths,
+    applyHunk: applyPatchToIndex,
+    commit: commitStaged,
+    revert: revertPath,
+    branches: branchesOf,
+    checkout: switchBranch,
+    log: logOf,
+    commitFiles: commitFilesOf,
+    sync: syncRemote,
+  });
+
+  ipcMain.handle(WORKSPACE_GIT_CHANNELS.status, (_event, chatId: unknown) =>
+    handlers.status(chatId),
+  );
+  ipcMain.handle(
+    WORKSPACE_GIT_CHANNELS.patch,
+    (_event, chatId: unknown, path: unknown, staged: unknown) =>
+      handlers.patch(chatId, path, staged),
+  );
+  ipcMain.handle(WORKSPACE_GIT_CHANNELS.stage, (_event, chatId: unknown, paths: unknown) =>
+    handlers.stage(chatId, paths),
+  );
+  ipcMain.handle(WORKSPACE_GIT_CHANNELS.unstage, (_event, chatId: unknown, paths: unknown) =>
+    handlers.unstage(chatId, paths),
+  );
+  ipcMain.handle(
+    WORKSPACE_GIT_CHANNELS.applyHunk,
+    (_event, chatId: unknown, patch: unknown, reverse: unknown) =>
+      handlers.applyHunk(chatId, patch, reverse),
+  );
+  ipcMain.handle(WORKSPACE_GIT_CHANNELS.commit, (_event, chatId: unknown, message: unknown) =>
+    handlers.commit(chatId, message),
+  );
+  ipcMain.handle(WORKSPACE_GIT_CHANNELS.revert, (_event, chatId: unknown, path: unknown) =>
+    handlers.revert(chatId, path),
+  );
+  ipcMain.handle(WORKSPACE_GIT_CHANNELS.branches, (_event, chatId: unknown) =>
+    handlers.branches(chatId),
+  );
+  ipcMain.handle(WORKSPACE_GIT_CHANNELS.checkout, (_event, chatId: unknown, branch: unknown) =>
+    handlers.checkout(chatId, branch),
+  );
+  ipcMain.handle(WORKSPACE_GIT_CHANNELS.log, (_event, chatId: unknown, limit: unknown) =>
+    handlers.log(chatId, limit),
+  );
+  ipcMain.handle(WORKSPACE_GIT_CHANNELS.commitFiles, (_event, chatId: unknown, hash: unknown) =>
+    handlers.commitFiles(chatId, hash),
+  );
+  ipcMain.handle(WORKSPACE_GIT_CHANNELS.sync, (_event, chatId: unknown, action: unknown) =>
+    handlers.sync(chatId, action),
+  );
 }
 
 /** Browser guest commands are tied to the renderer that created each guest. */
@@ -1040,6 +1126,7 @@ if (claimTheScheme()) {
       registerTrackerChannels();
       registerGitChannels();
       registerFileChannels();
+      registerWorkspaceGitChannels();
       registerAuthChannels(auth);
       registerUpdateChannels();
       registerShellChannels();

@@ -453,6 +453,42 @@ export interface FolderListing {
 }
 
 /**
+ * One path git reports as changed in a chat's checkout, named from the chat's
+ * workspace exactly as the tree names it.
+ */
+export interface ChangedPath {
+  path: string;
+  /** git's own code for what happened: `M`, `A`, `D`, `R`, `?`, and so on. */
+  status: string;
+  /** The path it had, when git reports a rename or a copy. */
+  from?: string;
+}
+
+/** What git says about a chat's checkout, grouped the way a person reads it. */
+export interface WorkspaceGitStatus {
+  /** The branch HEAD is on, or null when HEAD is detached or there are no commits. */
+  branch: string | null;
+  /** Tracked changes already in the index. */
+  staged: ChangedPath[];
+  /** Tracked changes not yet in the index. */
+  unstaged: ChangedPath[];
+  /** Paths git does not track. */
+  untracked: ChangedPath[];
+}
+
+/** One commit of a checkout, as history draws it. */
+export interface CommitSummary {
+  hash: string;
+  short: string;
+  subject: string;
+  author: string;
+  date: string;
+}
+
+/** Which way a checkout is synced with its remote. */
+export type GitSyncAction = 'fetch' | 'pull' | 'push';
+
+/**
  * Words waiting to be read, and when Kira will read them.
  *
  * A chat is a session, and a session answers one thing at a time, so words
@@ -1104,6 +1140,34 @@ export const FILE_CHANNELS = {
 } as const;
 
 /**
+ * The local-git channels: the chat's own checkout, one folder at a time.
+ *
+ * Distinct from `GIT_CHANNELS`, which means the Git hosts this server is
+ * connected to. A local stage or commit is not a host's, and one word has one
+ * meaning everywhere: `git:` stays "which host is connected", and the local
+ * surface names itself separately.
+ *
+ * The window names a chat and paths relative to that chat's workspace, and the
+ * folder comes from the chat's own record in the main process, the same way the
+ * file channels resolve one. Every index write runs through one queue per
+ * checkout, so two writes never interleave and a status read never overlaps one.
+ */
+export const WORKSPACE_GIT_CHANNELS = {
+  status: 'workspace-git:status',
+  patch: 'workspace-git:patch',
+  stage: 'workspace-git:stage',
+  unstage: 'workspace-git:unstage',
+  applyHunk: 'workspace-git:apply-hunk',
+  commit: 'workspace-git:commit',
+  revert: 'workspace-git:revert',
+  branches: 'workspace-git:branches',
+  checkout: 'workspace-git:checkout',
+  log: 'workspace-git:log',
+  commitFiles: 'workspace-git:commit-files',
+  sync: 'workspace-git:sync',
+} as const;
+
+/**
  * Who the app is signed in as.
  *
  * The window is told this much and no more. The key that proves it never
@@ -1695,6 +1759,36 @@ export interface KiraBridge {
    * function. Nothing is carried: a change means "read what is on screen again".
    */
   onWorkspaceChanged(listener: () => void): () => void;
+  /**
+   * What git says changed in the chat's checkout, grouped staged / unstaged /
+   * untracked. A folder that is not a checkout, or a machine with no git, is
+   * refused with a sentence rather than shown as a clean tree.
+   */
+  workspaceGitStatus(chatId: string): Promise<Result<WorkspaceGitStatus>>;
+  /** One path's unified patch: in the index when `staged`, in the working tree otherwise. */
+  workspaceGitPatch(chatId: string, path: string, staged: boolean): Promise<Result<string>>;
+  /** Put paths in the index. */
+  stageWorkspacePaths(chatId: string, paths: string[]): Promise<Result<null>>;
+  /** Take paths back out of the index, keeping what is in the working tree. */
+  unstageWorkspacePaths(chatId: string, paths: string[]): Promise<Result<null>>;
+  /** Apply one hunk of a patch to the index, or reverse it back out. */
+  applyWorkspaceHunk(chatId: string, patch: string, reverse: boolean): Promise<Result<null>>;
+  /** Commit what is staged, with this message. */
+  commitWorkspace(chatId: string, message: string): Promise<Result<null>>;
+  /** Put one path back the way HEAD has it, index and working tree together. */
+  revertWorkspacePath(chatId: string, path: string): Promise<Result<null>>;
+  /** The checkout's local branches and the one it has out. */
+  workspaceGitBranches(
+    chatId: string,
+  ): Promise<Result<{ branches: string[]; current: string | null }>>;
+  /** Switch the checkout to another branch, refusing a tree with uncommitted changes. */
+  checkoutWorkspaceBranch(chatId: string, branch: string): Promise<Result<null>>;
+  /** Recent commits of the checkout's current branch, newest first. */
+  workspaceGitLog(chatId: string, limit: number): Promise<Result<CommitSummary[]>>;
+  /** The paths one commit changed. */
+  workspaceCommitFiles(chatId: string, hash: string): Promise<Result<ChangedPath[]>>;
+  /** Fetch, pull or push against the checkout's remote, showing git's own refusal. */
+  syncWorkspaceRemote(chatId: string, action: GitSyncAction): Promise<Result<string>>;
   /**
    * Approve a proposal in the chat on screen as a person, writing it to the
    * tracker. A breakdown is published and marked ready in one step.

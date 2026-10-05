@@ -19,7 +19,7 @@ import { Tab, TabList } from '@astryxdesign/core/TabList';
 import { Text } from '@astryxdesign/core/Text';
 import { VStack } from '@astryxdesign/core/VStack';
 import { Tooltip } from '@astryxdesign/core/Tooltip';
-import { Bot, Brain, FileText, FolderTree, Globe, ListChecks, X } from 'lucide-react';
+import { Bot, Brain, FileText, FolderTree, GitBranch, Globe, ListChecks, X } from 'lucide-react';
 import * as stylex from '@stylexjs/stylex';
 import { useRef, useState, type KeyboardEvent } from 'react';
 import type {
@@ -49,6 +49,7 @@ import { styles as browserStyles } from './browser/styles';
 import {
   type ByChat,
   BROWSER,
+  CHANGES,
   CONTEXT,
   SPEC,
   TICKETS,
@@ -64,6 +65,7 @@ import {
   valueOf,
 } from './workbenchTabs';
 import { WorkspaceTab } from './workspaceTab';
+import { ChangesTab } from './changesTab';
 import { SubagentsPrototype } from './subagentsPrototype';
 import { fileKindOf } from './filePreview';
 import { copy } from './workCopy.ts';
@@ -150,6 +152,7 @@ export function Workbench({
   // time after it is what re-reads the folder the pane names, so a tab that was
   // away comes back showing what is there now rather than what was there then.
   const [workspaceVisits, setWorkspaceVisits] = useState(0);
+  const [changesVisits, setChangesVisits] = useState(0);
   const [browsers, setBrowsers] = useState<BrowsersByChat>(() => {
     try {
       const saved = localStorage.getItem(BROWSER_STORAGE_KEY);
@@ -182,6 +185,7 @@ export function Workbench({
     ...(available.tickets ? [{ value: TICKETS, label: 'Tickets', icon: ListChecks }] : []),
     ...(subagents.length > 0 ? [{ value: AGENTS, label: 'Agents', icon: Bot }] : []),
     { value: WORKSPACE, label: 'Workspace', icon: FolderTree },
+    { value: CHANGES, label: 'Changes', icon: GitBranch },
     { value: BROWSER, label: 'Browser', icon: Globe },
   ];
 
@@ -248,6 +252,7 @@ export function Workbench({
       onSelectSubagent(subagents.at(-1)?.id ?? null);
     } else if (value !== AGENTS) onSelectSubagent(null);
     if (value === WORKSPACE) setWorkspaceVisits((visits) => visits + 1);
+    if (value === CHANGES) setChangesVisits((visits) => visits + 1);
     if (value === BROWSER) {
       const browserId = browsersOf(browsers, chatId).activeId;
       if (browserId) void window.kira.activateBrowser(chatId, browserId);
@@ -475,6 +480,21 @@ export function Workbench({
               />
             ) : null}
           </section>
+        </div>
+        <div
+          id={panelOf(CHANGES)}
+          role="tabpanel"
+          aria-label="Changes"
+          className="workbench-tab"
+          hidden={showing !== CHANGES}
+        >
+          <ChangesTab
+            key={chatId}
+            chatId={chatId}
+            visits={changesVisits}
+            showing={showing === CHANGES && !region.isCollapsed}
+            onChanged={() => setWorkspaceVisits((visits) => visits + 1)}
+          />
         </div>
         <div
           id={panelOf(BROWSER)}

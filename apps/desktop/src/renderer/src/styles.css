@@ -385,6 +385,32 @@
 }
 
 /*
+ * A diff, drawn by @pierre/diffs inside a shadow root. Kira's theme cannot reach
+ * inside with a style rule, so the host is handed the code font and the surface
+ * colours as custom properties — which do cross a shadow boundary — and the
+ * library reads them. This is the one place a theme is bridged rather than
+ * declared, and it names the library's own host and nothing else.
+ */
+.workbench-diff {
+  width: 100%;
+  min-width: 0;
+  --diffs-font-family: var(--font-family-code);
+  --diffs-font-size: var(--font-size-sm);
+  --diffs-line-height: 1.5;
+  --diffs-light-bg: var(--color-background-surface);
+  --diffs-dark-bg: var(--color-background-surface);
+  --diffs-light: var(--color-text-primary);
+  --diffs-dark: var(--color-text-primary);
+}
+
+.workbench-diff diffs-container {
+  display: block;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-inner);
+  overflow: hidden;
+}
+
+/*
  * An open file, as it is written. Lines are not wrapped, because a wrapped line
  * of code says something the file does not — so the pane scrolls sideways
  * instead, and the text is monospaced by Astryx's own code type.

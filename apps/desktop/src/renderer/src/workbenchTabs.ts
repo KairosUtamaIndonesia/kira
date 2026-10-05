@@ -17,6 +17,8 @@ export const CONTEXT = 'context';
 
 /** The chat's own workspace, which is where its files are opened from. */
 export const WORKSPACE = 'workspace';
+/** The chat's checkout: what changed, its diff, staging, history and sync. */
+export const CHANGES = 'changes';
 /** The agreed spec, rendered as Markdown rather than a plain-text draft. */
 export const SPEC = 'spec';
 /** Tickets under the agreed spec, with their server-derived bands. */

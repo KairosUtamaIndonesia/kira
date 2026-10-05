@@ -5,18 +5,29 @@ import { devNull } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import {
+  applyPatchToIndex,
   branchesOf,
   changedByGit,
   cloneInto,
   cloneUrl,
+  commitFilesOf,
+  commitStaged,
   hasRemote,
   isolatedCheckout,
   insideFolder,
   listedByGit,
+  logOf,
   parseRemote,
+  patchOf,
   providerOf,
   remoteOf,
+  revertPath,
   splitListing,
+  stagePaths,
+  statusOf,
+  switchBranch,
+  syncRemote,
+  unstagePaths,
 } from './git.ts';
 import { tempDir } from '../test-support/temp.ts';
 import { listFolder } from './listing.ts';
@@ -511,4 +522,210 @@ test('cloneInto raises what git said when it will not clone', { skip: !gitRuns()
   const parent = tempDir('kira-clone-fail-');
 
   await assert.rejects(cloneInto(join(parent, 'nowhere'), parent, 'gone'));
+});
+
+/** A checkout with one commit, and git configured so committing is allowed. */
+function localCheckout(): string {
+  const root = tempDir('kira-local-');
+  const git = (...args: string[]): void => {
+    execFileSync('git', ['-C', root, ...args], { stdio: 'ignore' });
+  };
+  git('init', '-b', 'main');
+  git('config', 'user.email', 'kira@test');
+  git('config', 'user.name', 'Kira');
+  writeFileSync(join(root, 'a.txt'), 'one\ntwo\nthree\n');
+  writeFileSync(join(root, 'b.txt'), 'bee\n');
+  git('add', '-A');
+  git('commit', '-m', 'first');
+
+  return root;
+}
+
+/** Split a patch into its file header and its hunks, the way the pane does. */
+function hunksOf(patch: string): { header: string; hunks: string[] } {
+  const lines = patch.split('\n');
+  const first = lines.findIndex((line) => line.startsWith('@@'));
+  if (first === -1) return { header: patch, hunks: [] };
+
+  const hunks: string[] = [];
+  for (const line of lines.slice(first)) {
+    if (line.startsWith('@@')) hunks.push(line);
+    else if (hunks.length > 0) hunks[hunks.length - 1] += `\n${line}`;
+  }
+
+  return { header: lines.slice(0, first).join('\n'), hunks: hunks.map((h) => h.trimEnd()) };
+}
+
+test('statusOf groups what changed and names the branch', { skip: !gitRuns() }, async () => {
+  isolatedGit();
+  const root = localCheckout();
+
+  writeFileSync(join(root, 'a.txt'), 'one\nTWO\nthree\n');
+  writeFileSync(join(root, 'new.ts'), 'fresh\n');
+  execFileSync('git', ['-C', root, 'add', 'a.txt'], { stdio: 'ignore' });
+  writeFileSync(join(root, 'a.txt'), 'one\nTWO!\nthree\n');
+
+  const status = await statusOf(root);
+
+  assert.equal(status.branch, 'main');
+  assert.deepEqual(status.staged, [{ path: 'a.txt', status: 'M' }]);
+  assert.deepEqual(status.unstaged, [{ path: 'a.txt', status: 'M' }]);
+  assert.deepEqual(status.untracked, [{ path: 'new.ts', status: '?' }]);
+});
+
+test('statusOf refuses a folder that is not a checkout', { skip: !gitRuns() }, async () => {
+  await assert.rejects(statusOf(tempDir('kira-not-a-checkout-')), /not a git checkout/);
+});
+
+test('patchOf draws an unstaged change, a staged change and a new file', async (t) => {
+  if (!gitRuns()) {
+    t.skip('git is required to read a patch');
+    return;
+  }
+  isolatedGit();
+  const root = localCheckout();
+  writeFileSync(join(root, 'a.txt'), 'one\nTWO\nthree\n');
+
+  const unstaged = await patchOf(root, 'a.txt', false);
+  assert.match(unstaged, /-two/);
+  assert.match(unstaged, /\+TWO/);
+
+  execFileSync('git', ['-C', root, 'add', 'a.txt'], { stdio: 'ignore' });
+  const staged = await patchOf(root, 'a.txt', true);
+  assert.match(staged, /\+TWO/);
+
+  writeFileSync(join(root, 'new.ts'), 'fresh\nline\n');
+  const untracked = await patchOf(root, 'new.ts', false);
+  assert.match(untracked, /new file mode 100644/);
+  assert.match(untracked, /\+fresh/);
+  assert.match(untracked, /\+line/);
+});
+
+test('patchOf refuses a diff over the cap with a sentence', { skip: !gitRuns() }, async () => {
+  isolatedGit();
+  const root = localCheckout();
+  writeFileSync(join(root, 'big.txt'), `${'x'.repeat(1024 * 1024 + 10)}\n`);
+
+  await assert.rejects(patchOf(root, 'big.txt', false), /larger than the 1 MB/);
+});
+
+test('staging and unstaging moves one file between the groups', { skip: !gitRuns() }, async () => {
+  isolatedGit();
+  const root = localCheckout();
+  writeFileSync(join(root, 'a.txt'), 'one\nTWO\nthree\n');
+
+  await stagePaths(root, ['a.txt']);
+  let status = await statusOf(root);
+  assert.deepEqual(status.staged, [{ path: 'a.txt', status: 'M' }]);
+  assert.deepEqual(status.unstaged, []);
+
+  await unstagePaths(root, ['a.txt']);
+  status = await statusOf(root);
+  assert.deepEqual(status.staged, []);
+  assert.deepEqual(status.unstaged, [{ path: 'a.txt', status: 'M' }]);
+});
+
+test('a single hunk can be staged while the file’s other hunks stay out', async (t) => {
+  if (!gitRuns()) {
+    t.skip('git is required to stage a hunk');
+    return;
+  }
+  isolatedGit();
+  const root = localCheckout();
+  const lines = Array.from({ length: 20 }, (_, at) => `line ${at + 1}`);
+  writeFileSync(join(root, 'wide.txt'), `${lines.join('\n')}\n`);
+  execFileSync('git', ['-C', root, 'add', 'wide.txt'], { stdio: 'ignore' });
+  execFileSync('git', ['-C', root, 'commit', '-m', 'wide'], { stdio: 'ignore' });
+
+  const changed = [...lines];
+  changed[0] = 'LINE 1';
+  changed[19] = 'LINE 20';
+  writeFileSync(join(root, 'wide.txt'), `${changed.join('\n')}\n`);
+
+  const { header, hunks } = hunksOf(await patchOf(root, 'wide.txt', false));
+  assert.equal(hunks.length, 2, 'two edits far apart are two hunks');
+
+  await applyPatchToIndex(root, `${header}\n${hunks[0]}\n`, false);
+
+  const status = await statusOf(root);
+  assert.deepEqual(status.staged, [{ path: 'wide.txt', status: 'M' }]);
+  assert.deepEqual(status.unstaged, [{ path: 'wide.txt', status: 'M' }]);
+
+  const staged = await patchOf(root, 'wide.txt', true);
+  assert.match(staged, /LINE 1/);
+  assert.doesNotMatch(staged, /LINE 20/);
+});
+
+test('committing records what is staged and empties the index', { skip: !gitRuns() }, async () => {
+  isolatedGit();
+  const root = localCheckout();
+  writeFileSync(join(root, 'a.txt'), 'one\nTWO\nthree\n');
+
+  await assert.rejects(commitStaged(root, '   '), /needs a message/);
+
+  await stagePaths(root, ['a.txt']);
+  await commitStaged(root, 'change a');
+
+  const status = await statusOf(root);
+  assert.deepEqual(status.staged, []);
+  assert.equal((await logOf(root, 5))[0]?.subject, 'change a');
+});
+
+test('reverting a path puts it back the way HEAD has it', { skip: !gitRuns() }, async () => {
+  isolatedGit();
+  const root = localCheckout();
+  writeFileSync(join(root, 'a.txt'), 'one\nTWO\nthree\n');
+  execFileSync('git', ['-C', root, 'add', 'a.txt'], { stdio: 'ignore' });
+
+  await revertPath(root, 'a.txt');
+
+  const status = await statusOf(root);
+  assert.deepEqual(status.staged, []);
+  assert.deepEqual(status.unstaged, []);
+  assert.equal(readFileSync(join(root, 'a.txt'), 'utf8'), 'one\ntwo\nthree\n');
+});
+
+test('switching branch refuses a dirty tree and otherwise moves HEAD', async (t) => {
+  if (!gitRuns()) {
+    t.skip('git is required to switch branch');
+    return;
+  }
+  isolatedGit();
+  const root = localCheckout();
+  execFileSync('git', ['-C', root, 'branch', 'develop'], { stdio: 'ignore' });
+
+  writeFileSync(join(root, 'a.txt'), 'one\nTWO\nthree\n');
+  await assert.rejects(switchBranch(root, 'develop'), /uncommitted changes/);
+  assert.equal((await statusOf(root)).branch, 'main', 'nothing moved');
+
+  execFileSync('git', ['-C', root, 'checkout', '--', 'a.txt'], { stdio: 'ignore' });
+  await switchBranch(root, 'develop');
+  assert.equal((await statusOf(root)).branch, 'develop');
+});
+
+test('history lists commits newest first and names a commit’s files', async (t) => {
+  if (!gitRuns()) {
+    t.skip('git is required to read history');
+    return;
+  }
+  isolatedGit();
+  const root = localCheckout();
+  writeFileSync(join(root, 'a.txt'), 'one\nTWO\nthree\n');
+  execFileSync('git', ['-C', root, 'add', 'a.txt'], { stdio: 'ignore' });
+  execFileSync('git', ['-C', root, 'commit', '-m', 'second'], { stdio: 'ignore' });
+
+  const history = await logOf(root, 5);
+  assert.equal(history[0]?.subject, 'second');
+  assert.equal(history[1]?.subject, 'first');
+  assert.equal(history[0]?.hash.slice(0, 7), history[0]?.short);
+
+  const files = await commitFilesOf(root, history[0]!.hash);
+  assert.deepEqual(files, [{ path: 'a.txt', status: 'M' }]);
+});
+
+test('syncRemote says so when a checkout has no remote', { skip: !gitRuns() }, async () => {
+  isolatedGit();
+  const root = localCheckout();
+
+  await assert.rejects(syncRemote(root, 'fetch'), /no remote to sync with/);
 });

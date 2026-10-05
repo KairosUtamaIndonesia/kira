@@ -12,6 +12,7 @@ import {
   TRACKER_CHANNELS,
   UPDATE_CHANNELS,
   SHELL_CHANNELS,
+  WORKSPACE_GIT_CHANNELS,
   WORKSPACE_CHANNELS,
   USAGE_CHANNELS,
   type AuthState,
@@ -24,6 +25,10 @@ import {
   type GitConnectionCreated,
   type GitHubConnect,
   type InstallationRepository,
+  type ChangedPath,
+  type CommitSummary,
+  type GitSyncAction,
+  type WorkspaceGitStatus,
   type KiraBridge,
   type GlossaryEntry,
   type MagicPrompt,
@@ -227,6 +232,38 @@ const bridge: KiraBridge = {
       ipcRenderer.off(FILE_CHANNELS.changed, handler);
     };
   },
+
+  workspaceGitStatus: (chatId) => ask<WorkspaceGitStatus>(WORKSPACE_GIT_CHANNELS.status, chatId),
+
+  workspaceGitPatch: (chatId, path, staged) =>
+    ask<string>(WORKSPACE_GIT_CHANNELS.patch, chatId, path, staged),
+
+  stageWorkspacePaths: (chatId, paths) => ask<null>(WORKSPACE_GIT_CHANNELS.stage, chatId, paths),
+
+  unstageWorkspacePaths: (chatId, paths) =>
+    ask<null>(WORKSPACE_GIT_CHANNELS.unstage, chatId, paths),
+
+  applyWorkspaceHunk: (chatId, patch, reverse) =>
+    ask<null>(WORKSPACE_GIT_CHANNELS.applyHunk, chatId, patch, reverse),
+
+  commitWorkspace: (chatId, message) => ask<null>(WORKSPACE_GIT_CHANNELS.commit, chatId, message),
+
+  revertWorkspacePath: (chatId, path) => ask<null>(WORKSPACE_GIT_CHANNELS.revert, chatId, path),
+
+  workspaceGitBranches: (chatId) =>
+    ask<{ branches: string[]; current: string | null }>(WORKSPACE_GIT_CHANNELS.branches, chatId),
+
+  checkoutWorkspaceBranch: (chatId, branch) =>
+    ask<null>(WORKSPACE_GIT_CHANNELS.checkout, chatId, branch),
+
+  workspaceGitLog: (chatId, limit) =>
+    ask<CommitSummary[]>(WORKSPACE_GIT_CHANNELS.log, chatId, limit),
+
+  workspaceCommitFiles: (chatId, hash) =>
+    ask<ChangedPath[]>(WORKSPACE_GIT_CHANNELS.commitFiles, chatId, hash),
+
+  syncWorkspaceRemote: (chatId, action: GitSyncAction) =>
+    ask<string>(WORKSPACE_GIT_CHANNELS.sync, chatId, action),
 
   loadAuth: () => ask<AuthState>(AUTH_CHANNELS.load),
 

@@ -19,9 +19,19 @@
  */
 import { simpleGit } from 'simple-git';
 import { randomUUID } from 'node:crypto';
-import { copyFile, mkdir, mkdtemp, rmdir, unlink, writeFile } from 'node:fs/promises';
+import {
+  copyFile,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rmdir,
+  stat,
+  unlink,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, relative } from 'node:path';
+import { gitOperations } from './gitQueue.ts';
 
 /**
  * Give a write-capable child its own git worktree, seeded with the parent's
@@ -106,21 +116,25 @@ export async function listedByGit(folder: string): Promise<string[] | null> {
  */
 export async function changedByGit(folder: string): Promise<string[] | null> {
   try {
-    const git = simpleGit(folder);
-    const [status, prefix] = await Promise.all([
-      git.status(['.']),
-      git.revparse(['--show-prefix']),
-    ]);
-    // Every entry git reports is a change, untracked files included — they are
-    // in `files` with `?` in the working directory column, which is why nothing
-    // is added from `not_added` beside them. Sorted, so the same folder is
-    // described the same way twice running rather than in git's own order.
-    const paths = status.files.map((file) => file.path).sort();
-
-    return insideFolder(paths, prefix.trim());
+    // Serialised against every other command for this folder: `git status`
+    // writes the index, and the tree asks for it on every watcher burst, so an
+    // index write must not overlap one of these reads (workspace/gitQueue.ts).
+    return await gitOperations(folder, () => readChanged(folder));
   } catch {
     return null;
   }
+}
+
+async function readChanged(folder: string): Promise<string[]> {
+  const git = simpleGit(folder);
+  const [status, prefix] = await Promise.all([git.status(['.']), git.revparse(['--show-prefix'])]);
+  // Every entry git reports is a change, untracked files included — they are
+  // in `files` with `?` in the working directory column, which is why nothing
+  // is added from `not_added` beside them. Sorted, so the same folder is
+  // described the same way twice running rather than in git's own order.
+  const paths = status.files.map((file) => file.path).sort();
+
+  return insideFolder(paths, prefix.trim());
 }
 
 /** Whether this checkout has a configured remote, or null when git cannot answer. */
@@ -258,9 +272,20 @@ export async function cloneInto(url: string, parent: string, name: string): Prom
  * pathspec already prevents and this does not take on trust.
  */
 export function insideFolder(paths: readonly string[], prefix: string): string[] {
-  if (prefix === '') return [...paths];
+  return paths
+    .map((path) => insideOne(path, prefix))
+    .filter((path): path is string => path !== null);
+}
 
-  return paths.filter((path) => path.startsWith(prefix)).map((path) => path.slice(prefix.length));
+/**
+ * One path of git's answer as a path from the folder it was asked about, or null
+ * when it is not in that folder. `prefix` is where the folder sits in the
+ * checkout, `''` for its root.
+ */
+export function insideOne(path: string, prefix: string): string | null {
+  if (prefix === '') return path;
+
+  return path.startsWith(prefix) ? path.slice(prefix.length) : null;
 }
 
 /**
@@ -292,4 +317,289 @@ export async function branchesOf(
     branches: summary.all,
     current: summary.detached || summary.current === '' ? null : summary.current,
   };
+}
+
+/** One path git reports as changed, named from the folder it was asked about. */
+export interface ChangedPath {
+  path: string;
+  /** git's own code for what happened: `M`, `A`, `D`, `R`, `?`, and so on. */
+  status: string;
+  /** The path it had, when git reports a rename or a copy. */
+  from?: string;
+}
+
+/** Everything git knows about a checkout's changes, grouped the way a person reads them. */
+export interface CheckoutStatus {
+  /** The branch HEAD is on, or null when HEAD is detached or there are no commits yet. */
+  branch: string | null;
+  /** Tracked changes already in the index. */
+  staged: ChangedPath[];
+  /** Tracked changes not yet in the index. */
+  unstaged: ChangedPath[];
+  /** Paths git does not track. */
+  untracked: ChangedPath[];
+}
+
+/** One commit as history draws it. */
+export interface CommitSummary {
+  hash: string;
+  short: string;
+  subject: string;
+  author: string;
+  date: string;
+}
+
+/** Which way a checkout is synced with its remote. */
+export type SyncAction = 'fetch' | 'pull' | 'push';
+
+/** How large a patch the workbench will render: larger than any worth reading here. */
+const DIFF_SIZE_CAP = 1024 * 1024;
+
+/**
+ * What git says about the checkout at `folder`: its branch and every changed
+ * path, grouped staged, unstaged and untracked, named relative to the folder.
+ *
+ * Thrown rather than answered with an empty list when git cannot read the
+ * folder, so a folder that is not a checkout never looks like a clean one.
+ */
+export async function statusOf(folder: string): Promise<CheckoutStatus> {
+  try {
+    return await gitOperations(folder, () => readStatus(folder));
+  } catch {
+    throw new Error('That folder is not a git checkout, or git could not read it.');
+  }
+}
+
+async function readStatus(folder: string): Promise<CheckoutStatus> {
+  const git = simpleGit(folder);
+  const [status, prefix] = await Promise.all([git.status(['.']), git.revparse(['--show-prefix'])]);
+  const cut = prefix.trim();
+  const staged: ChangedPath[] = [];
+  const unstaged: ChangedPath[] = [];
+  const untracked: ChangedPath[] = [];
+
+  for (const file of status.files) {
+    const path = insideOne(file.path, cut);
+    if (path === null) continue;
+    const from = file.from === undefined ? undefined : (insideOne(file.from, cut) ?? undefined);
+    const index = file.index;
+    const working = file.working_dir;
+
+    if (index === '?' || working === '?') {
+      untracked.push({ path, status: '?' });
+      continue;
+    }
+
+    if (index !== ' ' && index !== '') {
+      staged.push({ path, status: index, ...(from === undefined ? {} : { from }) });
+    }
+    if (working !== ' ' && working !== '') {
+      unstaged.push({ path, status: working, ...(from === undefined ? {} : { from }) });
+    }
+  }
+
+  return {
+    branch: status.detached || status.current === '' ? null : status.current,
+    staged,
+    unstaged,
+    untracked,
+  };
+}
+
+/**
+ * The unified patch for one path — what is in the index when `staged`, what is
+ * in the working tree otherwise. An untracked file has no patch of its own, so
+ * one is written for it as a new file, which is what the diff pane draws and
+ * what staging a hunk applies.
+ *
+ * A patch larger than the cap is refused with a sentence rather than sent to be
+ * rendered, because a generated file's diff can dwarf anything worth reading.
+ */
+export async function patchOf(folder: string, path: string, staged: boolean): Promise<string> {
+  return gitOperations(folder, async () => {
+    const git = simpleGit(folder);
+    const patch = staged
+      ? await git.raw(['diff', '--cached', '--', path])
+      : await git.raw(['diff', '--', path]);
+    const held = patch === '' && !staged ? await untrackedPatch(folder, path) : patch;
+
+    if (Buffer.byteLength(held, 'utf8') > DIFF_SIZE_CAP) {
+      throw new Error('This diff is larger than the 1 MB the workbench renders.');
+    }
+
+    return held;
+  });
+}
+
+/** An untracked file drawn as a new file, or nothing when it is tracked. */
+async function untrackedPatch(folder: string, path: string): Promise<string> {
+  const git = simpleGit(folder);
+  try {
+    await git.raw(['ls-files', '--error-unmatch', '--', path]);
+    return '';
+  } catch {
+    // Not tracked, so the patch is the file itself.
+  }
+
+  const file = join(folder, path);
+  const info = await stat(file);
+  if (info.size > DIFF_SIZE_CAP) {
+    throw new Error('This diff is larger than the 1 MB the workbench renders.');
+  }
+
+  const bytes = await readFile(file);
+  if (bytes.includes(0)) throw new Error('This file is not text.');
+
+  const text = bytes.toString('utf8');
+  const lines = text === '' ? [] : text.split('\n');
+  // A file's final newline ends its last line rather than adding an empty one.
+  if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+
+  const header = [
+    `diff --git a/${path} b/${path}`,
+    'new file mode 100644',
+    '--- /dev/null',
+    `+++ b/${path}`,
+  ];
+  if (lines.length === 0) return header.join('\n');
+
+  return [...header, `@@ -0,0 +1,${lines.length} @@`, ...lines.map((line) => `+${line}`)].join(
+    '\n',
+  );
+}
+
+/** Put these paths in the index. */
+export async function stagePaths(folder: string, paths: readonly string[]): Promise<void> {
+  if (paths.length === 0) return;
+
+  await gitOperations(folder, () => simpleGit(folder).raw(['add', '--', ...paths]));
+}
+
+/**
+ * Take these paths back out of the index, keeping what is in the working tree.
+ *
+ * `git restore --staged` needs a commit to restore from, so a repository with no
+ * commits yet falls back to dropping the paths from the index directly.
+ */
+export async function unstagePaths(folder: string, paths: readonly string[]): Promise<void> {
+  if (paths.length === 0) return;
+
+  await gitOperations(folder, async () => {
+    const git = simpleGit(folder);
+    try {
+      await git.raw(['restore', '--staged', '--', ...paths]);
+    } catch {
+      await git.raw(['rm', '--cached', '--quiet', '--ignore-unmatch', '--', ...paths]);
+    }
+  });
+}
+
+/**
+ * Apply one hunk — a file header and a single `@@` block — to the index, or take
+ * it back out when `reverse`. Written to a patch file because git reads a patch
+ * from a path, and the file is removed whatever git does with it.
+ */
+export async function applyPatchToIndex(
+  folder: string,
+  patch: string,
+  reverse: boolean,
+): Promise<void> {
+  await gitOperations(folder, async () => {
+    const temporary = join(tmpdir(), `kira-hunk-${randomUUID()}.patch`);
+    await writeFile(temporary, patch);
+
+    try {
+      await simpleGit(folder).raw([
+        'apply',
+        '--cached',
+        '--recount',
+        ...(reverse ? ['--reverse'] : []),
+        temporary,
+      ]);
+    } finally {
+      await unlink(temporary);
+    }
+  });
+}
+
+/** Record the index as a commit. */
+export async function commitStaged(folder: string, message: string): Promise<void> {
+  const subject = message.trim();
+  if (subject === '') throw new Error('A commit needs a message.');
+
+  await gitOperations(folder, () => simpleGit(folder).raw(['commit', '-m', subject]));
+}
+
+/** Put one path back the way HEAD has it, index and working tree together. */
+export async function revertPath(folder: string, path: string): Promise<void> {
+  await gitOperations(folder, () =>
+    simpleGit(folder).raw(['restore', '--source=HEAD', '--staged', '--worktree', '--', path]),
+  );
+}
+
+/**
+ * Switch the checkout to another branch, refusing a tree with uncommitted
+ * tracked changes rather than letting a checkout lose them or leave them behind.
+ * Kira does not stash or commit on the person's behalf.
+ */
+export async function switchBranch(folder: string, branch: string): Promise<void> {
+  await gitOperations(folder, async () => {
+    const status = await readStatus(folder);
+    if (status.staged.length > 0 || status.unstaged.length > 0) {
+      throw new Error(
+        'There are uncommitted changes. Commit or revert them before switching branch.',
+      );
+    }
+
+    await simpleGit(folder).raw(['checkout', branch]);
+  });
+}
+
+/** Recent commits of the current branch, newest first. */
+export async function logOf(folder: string, limit: number): Promise<CommitSummary[]> {
+  const capped = Math.max(1, Math.min(limit, 200));
+  const result = await simpleGit(folder).log({ maxCount: capped });
+
+  return result.all.map((entry) => ({
+    hash: entry.hash,
+    short: entry.hash.slice(0, 7),
+    subject: entry.message,
+    author: entry.author_name,
+    date: entry.date,
+  }));
+}
+
+/** The paths one commit changed, named as the status names them. */
+export async function commitFilesOf(folder: string, hash: string): Promise<ChangedPath[]> {
+  const git = simpleGit(folder);
+  const [named, prefix] = await Promise.all([
+    git.raw(['show', '--name-status', '--format=', '--no-renames', hash, '--', '.']),
+    git.revparse(['--show-prefix']),
+  ]);
+  const cut = prefix.trim();
+
+  return named
+    .split('\n')
+    .filter((line) => line !== '')
+    .map((line) => {
+      const [status = 'M', ...rest] = line.split('\t');
+      return { path: rest.join('\t'), status: status.slice(0, 1) };
+    })
+    .filter((change) => change.path !== '' && insideOne(change.path, cut) !== null);
+}
+
+/**
+ * Fetch, pull or push against the checkout's remote, as the person and with no
+ * way to prompt: the machine's credentials answer, and a host that refuses is
+ * git's own refusal rather than a prompt that hangs the app. A checkout with no
+ * remote says so instead.
+ */
+export async function syncRemote(folder: string, action: SyncAction): Promise<string> {
+  return gitOperations(folder, async () => {
+    const git = simpleGit(folder).env('GIT_TERMINAL_PROMPT', '0');
+    const remotes = (await git.raw(['remote'])).trim();
+    if (remotes === '') throw new Error('This checkout has no remote to sync with.');
+
+    return await git.raw([action]);
+  });
 }

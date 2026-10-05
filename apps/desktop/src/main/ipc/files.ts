@@ -126,7 +126,7 @@ export function fileHandlers({
 
     const root = rootOf(chatId);
 
-    return root === null ? null : { root, path: inside(root, path) };
+    return root === null ? null : { root, path: insideWorkspace(root, path) };
   }
 
   return {
@@ -232,7 +232,7 @@ export function fileHandlers({
 
             // Resolved against the root, because a level is watched as a folder
             // and the root itself is named by the empty path.
-            return resolve(root, inside(root, path));
+            return resolve(root, insideWorkspace(root, path));
           }),
           changed,
         );
@@ -261,7 +261,7 @@ export function fileHandlers({
  * followed, because a path is not a boundary here (ADR 0001); what this keeps
  * out is the window naming a path of its own.
  */
-function inside(root: string, path: string): string {
+export function insideWorkspace(root: string, path: string): string {
   const folder = resolve(root);
   const asked = resolve(folder, path);
   const below = folder.endsWith(sep) ? folder : folder + sep;
