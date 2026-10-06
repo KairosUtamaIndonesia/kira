@@ -667,10 +667,6 @@ button {
 .ask-review-answer.is-empty {
   font-style: italic;
 }
-.ask-partial-note {
-  color: var(--color-text-secondary);
-  font-size: 11px;
-}
 .ask-transcript {
   display: grid;
   gap: 14px;

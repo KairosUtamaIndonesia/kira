@@ -213,12 +213,6 @@ export function AskUserPrototype() {
             </button>
           </div>
         ))}
-        {unanswered ? (
-          <p className="ask-partial-note">
-            {unanswered} {unanswered === 1 ? 'question is' : 'questions are'} unanswered. You can
-            still send partial answers.
-          </p>
-        ) : null}
         <div className="ask-field">
           <TextArea
             label="Anything else for Kira?"
