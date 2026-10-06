@@ -1,6 +1,9 @@
 # An admin is a Kira role, granted out of band once and changed in the console
 
 Date: 2026-09-18
+Amended 2026-10-06: the console changes the role and guards the last admin; suspension, sessions,
+Keys and impersonation are its surface, its actions are audited, and it is authority over Users and
+the Pool rather than a second board.
 
 ## Context
 
@@ -39,8 +42,8 @@ cannot promote themselves, and the ordinary update path cannot promote anyone by
 **The first admin is granted out of band**, by `admin.ts` — `bun run --cwd apps/server admin
 <email>`. Nobody holds the role until someone says so, and the only thing that can say so
 is a role. Ungating that one write is smaller and more visible than any seed, and the same
-command is what gets an administrator back in after the last one is gone: the console can
-take the role away from everyone, including whoever took it. The runbook is in
+command is what gets an administrator back in if the role is ever lost: the console guards
+against taking it from its last holder, but the guard is not the only way back. The runbook is in
 [`../internal/server-development.md`](../internal/server-development.md).
 
 **Not an Entra group.** The company already has a group for the people who run internal
@@ -59,15 +62,21 @@ ordinary one. So `role` is either a value or absent, and both mean the same for 
 an admin; a reader that treats "no role" as a third state would show a distinction that does
 not exist. Rows created since carry `user` explicitly.
 
-The plugin's `set-role` has no guard against removing the last admin. A console can therefore
-lock everyone out, including itself, and the out-of-band command is what makes that
-survivable rather than fatal. If the console grows a guard of its own, this stops being the
-only way back.
+The plugin's `set-role` has no guard against removing the last admin, so the console adds one
+of its own: it refuses to remove or suspend the last administrator. The out-of-band command
+remains the recovery if the role is lost outside the console, but it is no longer the only
+thing standing between the console and locking itself out.
 
 The server gains the plugin's own surface at `/api/auth/admin/*` — list users, set a role,
-ban, revoke sessions, impersonate — gated by the same role. It shares the prefix with
-Better Auth's other routes because it is the library's surface; Kira's own administrative
-routes are a separate thing at `/api/admin/*`.
+ban, revoke sessions, impersonate — gated by the same role. The console now draws all of it:
+a User page sets and clears the role, suspends and reactivates (Kira's word for a ban),
+revokes sessions, lists and revokes Keys, and impersonates with the session marked. It shares
+the prefix with Better Auth's other routes because it is the library's surface; Kira's own
+administrative routes are a separate thing at `/api/admin/*`.
+
+Every one of those actions, and every change to an allowance, is written to an append-only
+`admin_audit` table beside the Pool's own audit, because an action taken on someone else's
+access has to be readable afterwards.
 
 The role is one column, so it holds one word at a time. The plugin also accepts several,
 comma-joined, which is where a second grade (support, read-only) would go when someone needs

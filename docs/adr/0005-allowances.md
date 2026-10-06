@@ -1,8 +1,9 @@
 # A user's allowance is tokens per month, counted by Kira
 
 Date: 2026-09-17
-Amended: 2026-09-20, 2026-09-21
+Amended: 2026-09-20, 2026-09-21, 2026-10-06
 Amended by ADR 0028: a chat's subagents spend the same allowance and count under the same cap.
+Amended 2026-10-06: the default allowance is a row the console edits, not a config value.
 
 ## Context
 
@@ -46,8 +47,9 @@ the server's config, so it turns over at Jakarta midnight, which is when the
 people subject to it expect it; Indonesia has no daylight saving, so the boundary
 is a fixed offset rather than a moving one. A default applies to every user and a
 per-user row overrides it, so nobody is ever unbudgeted and "how much does this
-person get" is one editable number — the default from config beside the boundary,
-the override a row, and clearing the row is how someone returns to the default.
+person get" is one editable number — the default a row an administrator edits in
+the console, the override a per-user row, and clearing the override is how someone
+returns to the default.
 Not dollars: inside a subscription pool no unit price is real, so a dollar figure
 would be an invented exchange rate. Not a share of the pool either, because the
 pool's remaining capacity is not something Kira can see reliably — absolute
@@ -105,10 +107,11 @@ to act on — and the console shows an operator the same reading for a person, w
 their override beside it.
 
 **An operator sees anyone's, and sets the overrides.** Kira's own admin routes
-answer a person's usage and their refusals and set or clear an override,
-authorized by the console's Better Auth session carrying the `admin` role — the
-credential the console already holds, where the desktop holds a key. Two kinds of
-credential on one server is honest: they are different callers.
+answer a person's usage and their refusals, set or clear an override, and change
+the default that applies where no override does, authorized by the console's
+Better Auth session carrying the `admin` role — the credential the console
+already holds, where the desktop holds a key. Two kinds of credential on one
+server is honest: they are different callers.
 
 **One database, two owners.** Better Auth reads and writes the user, session,
 account and verification tables; Kira writes the ledger. They share one

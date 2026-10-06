@@ -16,6 +16,31 @@ What the desktop presents to Kira to prove which user it is, issued by the serve
 after sign-in.
 _Avoid_: Token, API key, session, credential
 
+**Suspended**:
+A User an administrator has cut off from Kira: their Key is refused and they cannot
+sign in until they are reactivated. It is a fact about a person, unlike a spent
+allowance or a spent pool, which refuse a request.
+_Avoid_: Banned, disabled, blocked
+
+**Suspend**:
+The act of cutting a User off; its inverse is reactivate.
+_Avoid_: Ban, deactivate
+
+**Reactivate**:
+Restoring a suspended User, whose Key works again.
+_Avoid_: Unban, restore
+
+**Admin**:
+A User who may run Kira rather than only use it: the role that admits someone to
+the console and lets them act on other people's access. There is no separate admin
+account and no second sign-in (ADR 0007).
+_Avoid_: Administrator account, superuser, owner
+
+**Impersonation**:
+An administrator acting in the console as another User, with the session marked so
+it is visible on screen and recorded when it starts and ends.
+_Avoid_: Login as, act as
+
 **Provider**:
 A company whose models are served through Kira — Anthropic, OpenAI. Kira holds a
 provider's subscription login as a credential, and the desktop holds none.
@@ -106,7 +131,7 @@ activity and conversation are shown in that chat's Workbench, and Kira receives 
 _Avoid_: Worker, Run
 
 **Role**:
-The kind of subagent Kira delegates, naming what it is allowed to do and the model it runs on. A chat picks the role when it delegates.
+The kind of subagent Kira delegates, naming what it is allowed to do and the model it runs on. A chat picks the role when it delegates. It is not an Admin's authority, which is a fact about a User.
 _Avoid_: Agent type, agent, profile
 
 **Context**:
