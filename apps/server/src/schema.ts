@@ -638,6 +638,30 @@ export const poolAudit = pgTable(
 );
 
 /**
+ * An append-only record of an administrator's change to somebody else's access.
+ *
+ * Separate from the Pool's own audit because it is about people rather than
+ * providers: `targetId`/`targetLabel` name the User acted on, and `action` is one
+ * of the console's own words (docs/adr/0007). `actorId` is cleared if the
+ * administrator leaves, but the label is kept so the row still reads.
+ */
+export const adminAudit = pgTable(
+  'admin_audit',
+  {
+    id: text('id').primaryKey(),
+    actorId: text('actorId').references(() => user.id, { onDelete: 'set null' }),
+    actorLabel: text('actorLabel').notNull(),
+    action: text('action').notNull(),
+    targetId: text('targetId').references(() => user.id, { onDelete: 'set null' }),
+    targetLabel: text('targetLabel'),
+    outcome: text('outcome').notNull(),
+    detail: text('detail'),
+    createdAt: timestamp('createdAt', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('admin_audit_by_created_at').on(table.createdAt)],
+);
+
+/**
  * Something said on a ticket, by a person or by Kira.
  *
  * A reply names its root with `parentId`, so a thread is one level deep: Kira's
@@ -810,4 +834,5 @@ export const schema = {
   ticketRelationship,
   gitConnection,
   poolAudit,
+  adminAudit,
 };

@@ -13,6 +13,7 @@ import type { Readings } from './api/allowances';
 import { type Who, signOut } from './api/auth';
 import type { ListedUser } from './api/users';
 import AllowanceCell from './allowanceCell';
+import Audit from './audit';
 import EditAllowance from './editAllowance';
 import Pool from './pool';
 
@@ -114,7 +115,9 @@ export default function People({
 }) {
   const [readings, setReadings] = useState(read);
   const [editing, setEditing] = useState<ListedUser | null>(null);
-  const isPoolPage = new URLSearchParams(window.location.search).get('page') === 'pool';
+  const page = new URLSearchParams(window.location.search).get('page');
+  const isPoolPage = page === 'pool';
+  const isAuditPage = page === 'audit';
 
   const open = editing === null ? undefined : readings[editing.id];
 
@@ -141,34 +144,41 @@ export default function People({
             />
           }
         >
-          <SideNavItem label="People" href="/admin/" isSelected={!isPoolPage} />
+          <SideNavItem label="People" href="/admin/" isSelected={page === null} />
           <SideNavItem label="Pool" href="/admin/?page=pool" isSelected={isPoolPage} />
+          <SideNavItem label="Audit" href="/admin/?page=audit" isSelected={isAuditPage} />
         </SideNav>
       }
     >
-      {isPoolPage ? <Pool users={users} readings={readings} /> : <div {...stylex.props(styles.page)}>
-        <header {...stylex.props(styles.pageHeader)}>
-          <Heading level={1}>People</Heading>
-          <Text color="secondary">
-            Everyone who has signed in to Kira. Signing in says who someone is, never what they
-            may do, so this list is the whole company until a role says otherwise — and an
-            allowance is what one person may spend of the shared pool in a month.
-          </Text>
-        </header>
-        <div {...stylex.props(styles.peopleTable)}>
-          <Table
-            data={users}
-            idKey="id"
-            columns={columnsFor(readings, setEditing)}
-            emptyState={
-              <EmptyState
-                title="Nobody has signed in yet"
-                description="A person appears here once they have signed in from the desktop."
-              />
-            }
-          />
+      {isPoolPage ? (
+        <Pool users={users} readings={readings} />
+      ) : isAuditPage ? (
+        <Audit />
+      ) : (
+        <div {...stylex.props(styles.page)}>
+          <header {...stylex.props(styles.pageHeader)}>
+            <Heading level={1}>People</Heading>
+            <Text color="secondary">
+              Everyone who has signed in to Kira. Signing in says who someone is, never what they
+              may do, so this list is the whole company until a role says otherwise — and an
+              allowance is what one person may spend of the shared pool in a month.
+            </Text>
+          </header>
+          <div {...stylex.props(styles.peopleTable)}>
+            <Table
+              data={users}
+              idKey="id"
+              columns={columnsFor(readings, setEditing)}
+              emptyState={
+                <EmptyState
+                  title="Nobody has signed in yet"
+                  description="A person appears here once they have signed in from the desktop."
+                />
+              }
+            />
+          </div>
         </div>
-      </div>}
+      )}
       {editing === null || open === undefined || !open.ok ? null : (
         <EditAllowance
           person={editing}
