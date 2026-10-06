@@ -36,7 +36,7 @@ export function AppearanceSection() {
   const [problem, setProblem] = useState<string | null>(null);
 
   const lightOptions = [
-    { value: '', label: 'OpenChamber default' },
+    { value: '', label: 'Default' },
     ...appearance.preferences.themes
       .filter((theme) => theme.variant === 'light')
       .map((theme) => ({
@@ -45,7 +45,7 @@ export function AppearanceSection() {
       })),
   ];
   const darkOptions = [
-    { value: '', label: 'OpenChamber default' },
+    { value: '', label: 'Default' },
     ...appearance.preferences.themes
       .filter((theme) => theme.variant === 'dark')
       .map((theme) => ({
@@ -139,10 +139,7 @@ export function AppearanceSection() {
           />
           <Text color="secondary" size="sm">
             Currently showing the {appearance.mode} theme
-            {appearance.activeTheme
-              ? ` · ${appearance.activeTheme.name}`
-              : ' · OpenChamber default'}
-            .
+            {appearance.activeTheme ? ` · ${appearance.activeTheme.name}` : ' · Default'}.
           </Text>
         </VStack>
       </Section>
