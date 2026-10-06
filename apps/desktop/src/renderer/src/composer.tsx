@@ -172,6 +172,13 @@ export function Composer({
   const [isLinkTicketOpen, setIsLinkTicketOpen] = useState(false);
   const [magicPrompts, setMagicPrompts] = useState<MagicPrompt[]>([]);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
+  const [skillPickerVariant, setSkillPickerVariant] = useState(() => {
+    if (!import.meta.env.DEV) return 'compact';
+    const requested = new URLSearchParams(window.location.search).get('skill-picker');
+    return requested === 'names' || requested === 'summary' || requested === 'roomy'
+      ? requested
+      : 'summary';
+  });
   const isShellDraft = !isEditing && text.startsWith('!');
   const shellRefusal =
     isShellDraft && isRunning
@@ -214,15 +221,30 @@ export function Composer({
           : payload?.kind === 'prompt' && payload.prompt.aliases.length > 0
             ? `Aliases: ${payload.prompt.aliases.join(', ')}`
             : null;
+      const commandCategory = payload?.kind === 'command' ? payload.command.category : null;
+      const variant = import.meta.env.DEV ? skillPickerVariant : 'summary';
+      const widthStyle =
+        variant === 'names'
+          ? styles.pickerPrototype_names
+          : variant === 'roomy'
+            ? styles.pickerPrototype_roomy
+            : styles.pickerPrototype_summary;
       return (
-        <VStack gap={0.5}>
-          <Text>{item.label}</Text>
-          {detail ? (
-            <Text color="secondary" size="sm">
+        <div {...stylex.props(styles.pickerPrototypeRow, widthStyle)}>
+          <div {...stylex.props(styles.pickerPrototypeHeading)}>
+            <Text>{item.label}</Text>
+            {variant === 'names' && commandCategory ? (
+              <Text color="secondary" size="sm">
+                {commandCategory}
+              </Text>
+            ) : null}
+          </div>
+          {detail && variant !== 'names' ? (
+            <Text color="secondary" size="sm" maxLines={variant === 'roomy' ? 2 : 1}>
               {detail}
             </Text>
           ) : null}
-        </VStack>
+        </div>
       );
     };
 
@@ -596,6 +618,17 @@ export function Composer({
           </div>
         }
       />
+      {import.meta.env.DEV ? (
+        <SkillPickerPrototypeSwitch
+          current={skillPickerVariant}
+          onChange={(variant) => {
+            setSkillPickerVariant(variant);
+            const url = new URL(window.location.href);
+            url.searchParams.set('skill-picker', variant);
+            window.history.replaceState(window.history.state, '', url);
+          }}
+        />
+      ) : null}
       <Dialog
         isOpen={isLinkTicketOpen}
         onOpenChange={setIsLinkTicketOpen}
@@ -707,6 +740,48 @@ function useMountEffect(effect: () => void | (() => void)): void {
   useEffect(effect, []);
 }
 
+/** PROTOTYPE: compare three bounded skill-picker row layouts on the live composer. */
+function SkillPickerPrototypeSwitch({
+  current,
+  onChange,
+}: {
+  current: string;
+  onChange: (variant: 'names' | 'summary' | 'roomy') => void;
+}): ReactNode {
+  const variants = [
+    { key: 'names', label: 'Names · narrow' },
+    { key: 'summary', label: 'Summary · balanced' },
+    { key: 'roomy', label: 'Detail · bounded' },
+  ] as const;
+  const index = variants.findIndex((variant) => variant.key === current);
+  const cycle = (step: number): void => {
+    const next = variants[(index + step + variants.length) % variants.length];
+    if (next) onChange(next.key);
+  };
+
+  return (
+    <nav {...stylex.props(styles.pickerPrototypeSwitch)} aria-label="Skill picker prototype">
+      <button
+        {...stylex.props(styles.pickerPrototypeButton)}
+        type="button"
+        onClick={() => cycle(-1)}
+        aria-label="Previous picker layout"
+      >
+        ←
+      </button>
+      <span>{variants[index]?.label ?? variants[1].label}</span>
+      <button
+        {...stylex.props(styles.pickerPrototypeButton)}
+        type="button"
+        onClick={() => cycle(1)}
+        aria-label="Next picker layout"
+      >
+        →
+      </button>
+    </nav>
+  );
+}
+
 function ShellCommandActivity({
   chatId,
   run,
@@ -759,6 +834,50 @@ function ShellCommandActivity({
  */
 /** The meter fills its tooltip, not the composer around it. */
 const styles = stylex.create({
+  pickerPrototypeRow: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: spacingVars['--spacing-1'],
+    width: '100%',
+    boxSizing: 'border-box',
+    minWidth: 0,
+  },
+  pickerPrototype_names: { maxWidth: 'min(320px, 72vw)' },
+  pickerPrototype_summary: { maxWidth: 'min(440px, 72vw)' },
+  pickerPrototype_roomy: { maxWidth: 'min(500px, 72vw)' },
+  pickerPrototypeHeading: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacingVars['--spacing-3'],
+    minWidth: 0,
+  },
+  pickerPrototypeSwitch: {
+    position: 'fixed',
+    zIndex: 1000,
+    insetBlockEnd: '88px',
+    insetInlineStart: '50%',
+    transform: 'translateX(-50%)',
+    display: 'flex',
+    alignItems: 'center',
+    gap: spacingVars['--spacing-3'],
+    padding: spacingVars['--spacing-2'],
+    border: `${borderVars['--border-width']} solid ${colorVars['--color-border']}`,
+    borderRadius: radiusVars['--radius-full'],
+    backgroundColor: colorVars['--color-background-surface'],
+    color: colorVars['--color-text-primary'],
+    boxShadow: '0 4px 16px rgb(0 0 0 / 24%)',
+    whiteSpace: 'nowrap',
+  },
+  pickerPrototypeButton: {
+    border: 0,
+    borderRadius: radiusVars['--radius-full'],
+    padding: `${spacingVars['--spacing-1']} ${spacingVars['--spacing-2']}`,
+    backgroundColor: 'transparent',
+    color: 'inherit',
+    cursor: 'pointer',
+    ':hover': { backgroundColor: colorVars['--color-background-muted'] },
+  },
   agents: {
     display: 'flex',
     flexWrap: 'wrap',
