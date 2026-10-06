@@ -5,6 +5,7 @@ import type { Config } from './config';
 import type { Database } from './database';
 import { createAllowances } from './allowance';
 import { createAdminAudit } from './admin-audit';
+import { createAdminConsole } from './admin-console';
 import { createAdminImpersonation } from './admin-impersonation';
 import { createAdminKeys } from './admin-keys';
 import { createAdminUsers } from './admin-users';
@@ -158,6 +159,7 @@ export function createApp({
       .use(createAdminUsers({ auth, database }))
       .use(createAdminKeys({ auth, database }))
       .use(createAdminImpersonation({ auth, database }))
+      .use(createAdminConsole())
   );
 }
 
