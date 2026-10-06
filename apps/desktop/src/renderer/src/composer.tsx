@@ -321,7 +321,7 @@ export function Composer({
         },
       },
     ];
-  }, [chatId, commands, magicPrompts, onOpenMagicPrompts]);
+  }, [chatId, commands, magicPrompts, onOpenMagicPrompts, skillPickerVariant]);
   const attachedTicketRows = attachedTicketIds.map((ticketId) => {
     const ticket = workTicketDetails[ticketId];
     const ticketName = ticket?.name ?? `Ticket ${ticketId.slice(0, 8)}`;
