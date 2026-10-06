@@ -1124,3 +1124,12 @@
   border: 0;
   border-block-start: 1px solid var(--color-border);
 }
+.questionnaire-card .astryx-text-area-counter {
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-leading);
+}
+
+.questionnaire-card .astryx-field-label > span {
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-leading);
+}

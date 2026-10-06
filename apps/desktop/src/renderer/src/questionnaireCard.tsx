@@ -58,15 +58,25 @@ const styles = stylex.create({
     borderColor: colorVars['--color-accent'],
   },
   optionCopy: { display: 'grid', gap: spacingVars['--spacing-1'] },
-  optionTitle: { fontSize: '12px', fontWeight: 550 },
+  optionTitle: {
+    fontSize: 'var(--text-body-size)',
+    lineHeight: 'var(--text-body-leading)',
+    fontWeight: 550,
+  },
   optionDescription: {
     color: colorVars['--color-text-secondary'],
-    fontSize: '11px',
-    lineHeight: 1.45,
+    fontSize: 'var(--text-body-size)',
+    lineHeight: 'var(--text-body-leading)',
+  },
+  badge: {
+    fontSize: 'var(--text-body-size)',
+    lineHeight: 'var(--text-body-leading)',
   },
   textArea: {
     borderColor: 'transparent',
     backgroundColor: 'var(--color-background-surface)',
+    fontSize: 'var(--text-body-size)',
+    lineHeight: 'var(--text-body-leading)',
   },
   preview: {
     padding: spacingVars['--spacing-3'],
@@ -80,6 +90,8 @@ const styles = stylex.create({
     width: '100%',
     gap: spacingVars['--spacing-1'],
     paddingBlock: spacingVars['--spacing-2'],
+    fontSize: 'var(--text-body-size)',
+    lineHeight: 'var(--text-body-leading)',
     borderWidth: 0,
     backgroundColor: 'transparent',
     color: colorVars['--color-text-secondary'],
@@ -308,7 +320,7 @@ export function QuestionnaireCard({
   }
 
   return (
-    <Card padding={3} xstyle={styles.root}>
+    <Card className="questionnaire-card" padding={3} xstyle={styles.root}>
       <VStack gap={3}>
         <HStack justify="between" align="center" gap={2}>
           <Text type="label" weight="medium">
@@ -317,6 +329,7 @@ export function QuestionnaireCard({
           <Badge
             label={reviewing ? 'Review' : `${tab + 1} of ${request.questions.length}`}
             variant="info"
+            xstyle={styles.badge}
           />
         </HStack>
         <nav aria-label="Question steps" {...stylex.props(styles.tabNav)}>
@@ -342,7 +355,7 @@ export function QuestionnaireCard({
             <Text type="body" weight="medium">
               {question.question}
             </Text>
-            <Text type="supporting" color="secondary">
+            <Text type="body" color="secondary">
               {question.multiSelect
                 ? 'Choose any that fit.'
                 : 'Choose one, or write your own answer.'}
@@ -442,12 +455,12 @@ export function QuestionnaireCard({
         )}
 
         {error ? (
-          <Text type="supporting" color="secondary">
+          <Text type="body" color="secondary">
             {error}
           </Text>
         ) : null}
         <HStack gap={2} xstyle={styles.actions}>
-          <Text type="supporting" color="secondary">
+          <Text type="body" color="secondary">
             {unanswered > 0
               ? `${unanswered} unanswered · partial answers are okay`
               : 'All questions answered'}
