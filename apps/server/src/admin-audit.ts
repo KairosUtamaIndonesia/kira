@@ -1,8 +1,9 @@
 import { desc } from 'drizzle-orm';
 import { Elysia, t } from 'elysia';
+import { adminGuard } from './admin-guard';
 import type { Auth } from './auth';
 import type { Database } from './database';
-import { REFUSAL, refusal } from './refusals';
+import { REFUSAL } from './refusals';
 import { adminAudit } from './schema';
 
 /** The words an administrator's own actions are recorded under. */
@@ -79,18 +80,7 @@ export async function recentAdminAudit(database: Database) {
 export function createAdminAudit({ auth, database }: { auth: Auth; database: Database }) {
   return new Elysia()
     .guard({
-      beforeHandle: async ({ request, status }) => {
-        const session = await auth.api.getSession({ headers: request.headers });
-        if (session === null) {
-          return status(
-            401,
-            refusal('NOT_SIGNED_IN', "This route is the console's; sign in to the console."),
-          );
-        }
-        if ((session.user as { role?: string | null }).role !== 'admin') {
-          return status(403, refusal('NOT_AN_ADMIN', 'Only an administrator can read the audit.'));
-        }
-      },
+      beforeHandle: adminGuard(auth, 'Only an administrator can read the audit.'),
     })
     .get('/api/admin/audit', async () => ({ events: await recentAdminAudit(database) }), {
       response: {

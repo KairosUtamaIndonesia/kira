@@ -1,9 +1,12 @@
 import { treaty } from '@elysiajs/eden';
 import type { App } from '@kira/server/contract';
+import { mergeAuditEvents } from '../auditMerge';
 import { readPoolAudit } from './pool';
 import { type Loaded, reasonFor } from './result';
 
 const kira = treaty<App>(window.location.origin);
+
+export type { AuditEvent } from '../auditMerge';
 
 /** One action an administrator took, as the server records it. */
 export interface AdminAuditEvent {
@@ -14,17 +17,6 @@ export interface AdminAuditEvent {
   outcome: string;
   detail: string | null;
   createdAt: string;
-}
-
-/** One event as the Audit screen draws it, whatever its source. */
-export interface AuditEvent {
-  id: string;
-  at: string;
-  actor: string;
-  action: string;
-  target: string | null;
-  outcome: string;
-  detail: string | null;
 }
 
 export async function readAdminAudit(): Promise<Loaded<AdminAuditEvent[]>> {
@@ -49,31 +41,10 @@ export async function readAdminAudit(): Promise<Loaded<AdminAuditEvent[]>> {
  * provider's Credential — but one question for an operator: who did what. The
  * merge is here rather than on the server so each route stays about its own table.
  */
-export async function readAudit(): Promise<Loaded<AuditEvent[]>> {
+export async function readAudit(): Promise<Loaded<ReturnType<typeof mergeAuditEvents>>> {
   const [admin, pool] = await Promise.all([readAdminAudit(), readPoolAudit()]);
   if (!admin.ok) return { ok: false, message: admin.message };
   if (!pool.ok) return { ok: false, message: pool.message };
 
-  const events: AuditEvent[] = [
-    ...admin.value.map((event) => ({
-      id: `admin:${event.id}`,
-      at: event.createdAt,
-      actor: event.actorLabel,
-      action: event.action,
-      target: event.targetLabel,
-      outcome: event.outcome,
-      detail: event.detail,
-    })),
-    ...pool.value.map((event) => ({
-      id: `pool:${event.id}`,
-      at: event.createdAt,
-      actor: event.actorLabel,
-      action: event.action,
-      target: event.credentialLabel ?? event.provider,
-      outcome: event.outcome,
-      detail: event.detail,
-    })),
-  ].sort((left, right) => right.at.localeCompare(left.at));
-
-  return { ok: true, value: events };
+  return { ok: true, value: mergeAuditEvents(admin.value, pool.value) };
 }

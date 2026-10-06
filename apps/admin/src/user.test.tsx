@@ -206,6 +206,18 @@ describe('the User page access control', () => {
 
     expect(host.textContent).toContain('Kira would be left with no administrator.');
   });
+
+  test('shows the standing of an active person', async () => {
+    await render('user');
+
+    expect(host.textContent).toContain('Active');
+  });
+
+  test('shows the standing of a suspended person', async () => {
+    await render('user', true);
+
+    expect(host.textContent).toContain('Suspended');
+  });
 });
 
 describe('the User page sessions', () => {

@@ -106,8 +106,7 @@ function authOptions(config: Config, database: Database) {
       // (docs/adr/0035): a suspended User reads the word the console and the
       // glossary use.
       admin({
-        bannedUserMessage:
-          'Your access to Kira is suspended. Ask an administrator to restore it.',
+        bannedUserMessage: 'Your access to Kira is suspended. Ask an administrator to restore it.',
       }),
     ],
     // The desktop presents requests from its own scheme as the origin, and the

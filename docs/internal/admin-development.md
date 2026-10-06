@@ -43,10 +43,10 @@ Every request the console makes is a relative `/api` path, in both environments:
 Nothing in the build knows Kira's address, and the base path is `/admin/` because that is
 where it will be served.
 
-**Not built yet:** the server does not serve `apps/admin/dist`. Production serving — and the
-cache headers and CSP that go with it — is the next step. Today the console runs only on its
-dev server, and the address it will answer on is a decision already made rather than one
-already implemented.
+**Serving it.** The server serves the built console under `/admin/*` with an SPA fallback, a
+content-security policy and cache headers (`apps/server/src/admin-console.ts`). The dev server is
+still where it runs while it is being worked on; production uses the address it was always going
+to answer on, and nothing in the build knows Kira's address.
 
 ## Signing in
 
@@ -77,18 +77,22 @@ driven, and they could not run it anyway. The command is documented in
 
 ```
 apps/admin/src/
-  main.tsx    reads everything, then draws; the theme is applied here
-  App.tsx     one value in, one of four screens out
-  api/        the only place that calls the server
+  main.tsx          reads everything, then draws; the theme is applied here
+  App.tsx           one value in, one of four screens out
+  console.tsx       the router, and the opening data every screen reads
+  consoleData.tsx   the opening data as React context
+  api/              the only place that calls the server
 ```
 
 Folders are kinds of code, as in the desktop ([`desktop-conventions.md`](./desktop-conventions.md)):
 `api/` is the web's answer to the desktop's `ipc/`, and nothing else in the app reaches for the
 network.
 
-A screen is added by giving `api/` a module for its route group, adding its outcome to `Opening`
-in `api/opening.ts`, and giving `App.tsx` a case that draws it. The switch is exhaustive —
-adding an outcome without a screen for it stops the build rather than drawing nothing.
+A screen is added as a route in `console.tsx`, reading the opening data from `consoleData.tsx`.
+`App.tsx` still switches on the `Opening` value for the four states a person can be in — signed
+out, refused, failed, administrator — and the switch is exhaustive, so adding an outcome without a
+screen for it stops the build rather than drawing nothing. Once inside the console, the router
+owns which screen is drawn.
 
 ## Checks
 

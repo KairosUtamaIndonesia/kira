@@ -6,6 +6,8 @@ import { Text } from '@astryxdesign/core/Text';
 import { spacingVars } from '@astryxdesign/core/theme/tokens.stylex';
 import { Link } from '@tanstack/react-router';
 import * as stylex from '@stylexjs/stylex';
+import { useState } from 'react';
+import { isAdminRole } from './adminRole';
 import type { Readings } from './api/allowances';
 import type { ListedUser } from './api/users';
 import AllowanceCell from './allowanceCell';
@@ -37,17 +39,9 @@ const styles = stylex.create({
   },
 });
 
-/** The role that runs Kira, as the server's own plugin spells it. */
-const ADMIN_ROLE = 'admin';
-
-/**
- * Whether the ordinary role, or the one that runs Kira.
- *
- * A badge because this is the column the rest of the console is built on: it is
- * what decides whether someone sees more than this page.
- */
+/** The role, badged as the one that runs Kira or the ordinary one. */
 function Role({ role }: { role: string }) {
-  return <Badge label={role} variant={role === ADMIN_ROLE ? 'info' : 'neutral'} />;
+  return <Badge label={role} variant={isAdminRole(role) ? 'info' : 'neutral'} />;
 }
 
 function columnsFor(readings: Readings): TableColumn<ListedUser>[] {
@@ -93,11 +87,28 @@ function columnsFor(readings: Readings): TableColumn<ListedUser>[] {
  * The console: everyone who has signed in, what they may do, and what they have
  * spent of the pool.
  *
- * A row opens that person's own page, where every lever lives — the role, access,
- * their sessions and Keys, and the allowance editor.
+ * A row opens that person's own page, where every lever lives. The default
+ * allowance sits above the list it governs, and changing it moves every row that
+ * has no override of its own — which is what the screen must show, not just what
+ * the server did.
  */
 export default function People() {
-  const { users, readings } = useConsoleData();
+  const { users, readings: opened } = useConsoleData();
+  const [readings, setReadings] = useState(opened);
+
+  /** A new default moves every reading that has no number of its own. */
+  function applyDefault(tokens: number) {
+    setReadings((current) =>
+      Object.fromEntries(
+        Object.entries(current).map(([id, reading]) => [
+          id,
+          reading.ok && reading.value.override === null
+            ? { ok: true, value: { ...reading.value, allowance: tokens } }
+            : reading,
+        ]),
+      ),
+    );
+  }
 
   return (
     <div {...stylex.props(styles.page)}>
@@ -109,7 +120,7 @@ export default function People() {
           what they may do, or what they may spend of the shared pool.
         </Text>
       </header>
-      <DefaultAllowance />
+      <DefaultAllowance onChanged={applyDefault} />
       <div {...stylex.props(styles.peopleTable)}>
         <Table
           data={users}

@@ -1,32 +1,64 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { JSDOM } from 'jsdom';
+import type { ReactNode } from 'react';
 import type { Root } from 'react-dom/client';
 import type { Reading } from './api/allowances';
+import type { Who } from './api/auth';
 import type { Loaded } from './api/result';
+import type { ListedUser } from './api/users';
 
-const api = {
+mock.module('@tanstack/react-router', () => ({
+  Link: ({
+    to,
+    params,
+    children,
+  }: {
+    to: string;
+    params?: { id?: string };
+    children: ReactNode;
+  }) => <a href={to.replace('$id', params?.id ?? '')}>{children}</a>,
+}));
+
+mock.module('@stylexjs/stylex', () => ({
+  create: (styles: Record<string, unknown>) => styles,
+  props: () => ({}),
+}));
+
+const allowances = {
   readAllowance: mock<() => Promise<Loaded<Reading>>>(),
   setAllowance: mock<(userId: string, tokens: number | null) => Promise<Loaded<Reading>>>(),
   readDefaultAllowance: mock<() => Promise<Loaded<number>>>(),
   setDefaultAllowance: mock<(tokensPerMonth: number) => Promise<Loaded<number>>>(),
 };
 
-mock.module('./api/allowances', () => api);
-mock.module('@stylexjs/stylex', () => ({
-  create: (styles: Record<string, unknown>) => styles,
-  props: () => ({}),
-}));
+mock.module('./api/allowances', () => allowances);
+
+const who: Who = {
+  name: 'Ada Lovelace',
+  email: 'ada@company.example',
+  admin: true,
+  impersonated: false,
+};
+
+const grace: ListedUser = {
+  id: 'grace',
+  name: 'Grace Hopper',
+  email: 'grace@company.example',
+  role: 'user',
+  banned: false,
+};
 
 let dom: JSDOM;
 let root: Root;
 let act: typeof import('react').act;
 let createRoot: typeof import('react-dom/client').createRoot;
 let host: HTMLDivElement;
-let DefaultAllowance: (typeof import('./defaultAllowance'))['default'];
+let People: (typeof import('./people'))['default'];
+let ConsoleDataProvider: (typeof import('./consoleData'))['ConsoleDataProvider'];
 
 beforeEach(async () => {
   mock.clearAllMocks();
-  api.readDefaultAllowance.mockResolvedValue({ ok: true, value: 1_000_000 });
+  allowances.readDefaultAllowance.mockResolvedValue({ ok: true, value: 1_000_000 });
   dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
     url: 'https://kira.example/admin/',
     pretendToBeVisual: true,
@@ -46,7 +78,8 @@ beforeEach(async () => {
   ({ createRoot } = await import('react-dom/client'));
   host = dom.window.document.querySelector<HTMLDivElement>('#root')!;
   root = createRoot(host);
-  DefaultAllowance = (await import('./defaultAllowance')).default;
+  People = (await import('./people')).default;
+  ({ ConsoleDataProvider } = await import('./consoleData'));
 });
 
 afterEach(async () => {
@@ -63,9 +96,26 @@ afterEach(async () => {
   Reflect.deleteProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT');
 });
 
-async function render(onChanged = mock()) {
-  await act(async () => root.render(<DefaultAllowance onChanged={onChanged} />));
-  return onChanged;
+async function render() {
+  const value = {
+    who,
+    users: [grace],
+    readings: {
+      grace: {
+        ok: true as const,
+        value: { allowance: 1_000_000, used: 0, warned: false, override: null, refusals: [] },
+      },
+    },
+    updateUser: mock(),
+  };
+
+  await act(async () =>
+    root.render(
+      <ConsoleDataProvider value={value}>
+        <People />
+      </ConsoleDataProvider>,
+    ),
+  );
 }
 
 function button(label: string): HTMLButtonElement {
@@ -76,12 +126,18 @@ function button(label: string): HTMLButtonElement {
   return found;
 }
 
-describe('the default allowance control', () => {
-  test('shows what everyone gets and saves a new number', async () => {
-    api.setDefaultAllowance.mockResolvedValue({ ok: true, value: 2_500_000 });
-    const onChanged = await render();
+describe('the People table', () => {
+  test('lists a person and links their row to their page', async () => {
+    await render();
 
-    expect(host.textContent).toContain('Everyone without a number of their own gets');
+    expect(host.textContent).toContain('Grace Hopper');
+    expect(host.querySelector('a[href="/users/grace"]')?.textContent).toContain('Grace Hopper');
+  });
+
+  test('moves every override-less row when the default allowance changes', async () => {
+    allowances.setDefaultAllowance.mockResolvedValue({ ok: true, value: 2_000_000 });
+    await render();
+    expect(host.textContent).toContain('0 of 1.0M');
 
     const input = host.querySelector<HTMLInputElement>('input')!;
     await act(async () => {
@@ -89,35 +145,12 @@ describe('the default allowance control', () => {
         dom.window.HTMLInputElement.prototype,
         'value',
       )?.set;
-      setter?.call(input, '2500000');
+      setter?.call(input, '2000000');
       input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
       input.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     });
     await act(async () => button('Save').click());
 
-    expect(api.setDefaultAllowance).toHaveBeenCalledWith(2_500_000);
-    expect(onChanged).toHaveBeenCalledWith(2_500_000);
-  });
-
-  test('shows the server sentence when it cannot be changed', async () => {
-    api.setDefaultAllowance.mockResolvedValue({
-      ok: false,
-      message: 'Kira would not change the default allowance.',
-    });
-    await render();
-
-    await act(async () => button('Save').click());
-
-    expect(host.textContent).toContain('Kira would not change the default allowance.');
-  });
-
-  test('shows the server sentence when it cannot be read', async () => {
-    api.readDefaultAllowance.mockResolvedValue({
-      ok: false,
-      message: 'Kira would not say what the default allowance is.',
-    });
-    await render();
-
-    expect(host.textContent).toContain('Kira would not say what the default allowance is.');
+    expect(host.textContent).toContain('0 of 2.0M');
   });
 });

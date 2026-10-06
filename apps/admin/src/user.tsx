@@ -6,6 +6,7 @@ import { Text } from '@astryxdesign/core/Text';
 import { spacingVars } from '@astryxdesign/core/theme/tokens.stylex';
 import * as stylex from '@stylexjs/stylex';
 import { useEffect, useState } from 'react';
+import { isAdminRole } from './adminRole';
 import { type Reading, readAllowance, setAllowance } from './api/allowances';
 import type { Loaded } from './api/result';
 import {
@@ -81,9 +82,6 @@ const styles = stylex.create({
     minWidth: 0,
   },
 });
-
-/** The role that runs Kira, as the server's own plugin spells it. */
-const ADMIN_ROLE = 'admin';
 
 function describeSession(session: ConsoleSession): string {
   const where = session.userAgent ?? session.ipAddress ?? 'An unknown device';
@@ -186,7 +184,7 @@ export default function User({ userId }: { userId: string }) {
     );
   }
 
-  const isAdmin = person.role.split(',').includes(ADMIN_ROLE);
+  const isAdmin = isAdminRole(person.role);
 
   async function change(to: 'admin' | 'user') {
     setBusy(true);

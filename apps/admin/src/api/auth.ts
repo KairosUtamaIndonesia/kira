@@ -1,5 +1,6 @@
 import { createAuthClient } from 'better-auth/client';
 import { adminClient } from 'better-auth/client/plugins';
+import { isAdminRole } from '../adminRole';
 import { type Loaded, reasonFor } from './result';
 
 /**
@@ -24,18 +25,6 @@ export type Who = {
 };
 
 /**
- * Whether a user row's role admits someone to the console.
- *
- * Kira has one administrator role, so this is the plugin's own comparison with
- * `defaultRoles` spelled out. It is a screen choice, not a gate: every read below
- * is refused by the server for a user who is not an administrator, whatever this
- * answers.
- */
-function isAdmin(role: string | null | undefined): boolean {
-  return (role ?? '').split(',').includes('admin');
-}
-
-/**
  * Who is signed in, or null when nobody is.
  *
  * The client is the library's own, so the session shape is the server's schema
@@ -52,7 +41,7 @@ export async function who(): Promise<Loaded<Who | null>> {
     value: {
       name: data.user.name,
       email: data.user.email,
-      admin: isAdmin(data.user.role),
+      admin: isAdminRole(data.user.role),
       impersonated:
         (data.session as { impersonatedBy?: string | null } | null)?.impersonatedBy != null,
     },

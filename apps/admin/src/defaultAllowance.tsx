@@ -30,7 +30,7 @@ const styles = stylex.create({
  * every person without an override, which is why it sits above the list it
  * governs rather than hidden behind a deploy (docs/adr/0005-allowances.md).
  */
-export default function DefaultAllowance() {
+export default function DefaultAllowance({ onChanged }: { onChanged?: (tokens: number) => void }) {
   const [tokens, setTokens] = useState<number | null>(null);
   const [saved, setSaved] = useState<number | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -65,6 +65,7 @@ export default function DefaultAllowance() {
 
     setSaved(result.value);
     setTokens(result.value);
+    onChanged?.(result.value);
   }
 
   return (

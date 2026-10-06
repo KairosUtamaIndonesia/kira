@@ -1,5 +1,6 @@
 import { and, eq, gte, lt, type SQL, sql } from 'drizzle-orm';
 import { Elysia, t } from 'elysia';
+import { adminGuard } from './admin-guard';
 import { recordAdminAudit } from './admin-audit';
 import type { Auth } from './auth';
 import type { Config } from './config';
@@ -312,27 +313,7 @@ export function createAllowances({
       // is the one Better Auth's admin plugin writes for an administrator, and the
       // one `grantAdmin` grants out of band (docs/adr/0007-admins.md).
       .guard({
-        beforeHandle: async ({ request, status }) => {
-          const session = await auth.api.getSession({ headers: request.headers });
-          if (session === null) {
-            return status(
-              401,
-              refusal('NOT_SIGNED_IN', "This route is the console's; sign in to the console."),
-            );
-          }
-
-          // The plugin's own `role` field, which the session's inferred type does
-          // not carry: the auth instance is deliberately left unannotated, so
-          // widening it cannot erase what Better Auth itself types (ADR 0008). The
-          // field is on the user table and is what `grantAdmin` writes (ADR 0007).
-          const role = (session.user as { role?: string | null }).role;
-          if (role !== 'admin') {
-            return status(
-              403,
-              refusal('NOT_AN_ADMIN', "Only an administrator can look at another person's usage."),
-            );
-          }
-        },
+        beforeHandle: adminGuard(auth, "Only an administrator can look at another person's usage."),
       })
       .get(
         '/api/admin/usage/:userId',
