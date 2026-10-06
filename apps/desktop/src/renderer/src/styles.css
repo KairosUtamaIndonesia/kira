@@ -934,9 +934,16 @@
   gap: var(--spacing-1);
 }
 
+/* The agent's details lead the row and its actions close it, so the space between
+   them stays open rather than the two running together. */
+.line-meta {
+  margin-inline-end: auto;
+}
+
 /* Keep message actions quiet until their message is being inspected. Focus keeps
    the same controls reachable without a pointer. */
 .line-actions {
+  justify-content: flex-end;
   opacity: 0;
 }
 

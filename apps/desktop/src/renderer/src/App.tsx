@@ -98,6 +98,7 @@ import { messagesShowingActions } from './lineActions';
 import { CompactionBoundary, type Boundary } from './compactionBoundary';
 import { Work } from './workTrace';
 import { runningTurnMessages, workPartsByMessage } from './workPresentation';
+import { replyMetaByMessage } from './replyMeta';
 import { QuestionnaireCard, type QuestionnaireDraft } from './questionnaireCard';
 import { WorkSurface } from './work';
 import { WorkHome } from './workHome';
@@ -145,6 +146,7 @@ const PARKED_PANE: ComponentProps<typeof ChatPane> = {
   questionnaire: null,
   actionRows: new Set<string>(),
   workingMessages: new Set<string>(),
+  replyMetaOf: new Map<string, string>(),
   isRunning: false,
   error: null,
   onNew: NOTHING,
@@ -820,6 +822,16 @@ export default function App() {
   );
 
   /**
+   * What each reply was written with — model, duration, time — by message id, as
+   * the line beside its actions reads it. Absent for questions, for a reply still
+   * being drawn, and for anything the main process could not date.
+   */
+  const replyMetaOf = useMemo(
+    () => replyMetaByMessage(drawn.messages, models),
+    [drawn, models],
+  );
+
+  /**
    * Do something to the stored surface, and read it back. A failure is shown in
    * the chat it happened to, which is not always the chat on screen — a row can
    * be acted on while another chat is being read. A success says nothing, because
@@ -1210,6 +1222,7 @@ export default function App() {
     trailing: drawn.trailing,
     actionRows,
     workingMessages,
+    replyMetaOf,
     questionnaire,
     questionnaireDraft: questionnaire ? questionnaireDrafts[questionnaire.requestId] : undefined,
     onQuestionnaireDraftChange: (requestId, draft) =>
@@ -1630,6 +1643,7 @@ function ChatPane({
   onQuestionnaireDraftChange,
   actionRows,
   workingMessages,
+  replyMetaOf,
   isRunning,
   error,
   onNew,
@@ -1683,6 +1697,8 @@ function ChatPane({
   actionRows: Set<string>;
   /** The messages the running turn is writing into, by id. */
   workingMessages: ReadonlySet<string>;
+  /** Each reply's metadata line, by message id. */
+  replyMetaOf: ReadonlyMap<string, string>;
   isRunning: boolean;
   error: string | null;
   /** What this person has used of their allowance this month, or no reading. */
@@ -1772,6 +1788,7 @@ function ChatPane({
                     parts={parts}
                     isWorking={isRunning && message.isLast}
                     isLive={workingMessages.has(message.id)}
+                    meta={replyMetaOf.get(message.id) ?? null}
                     isEditing={message.composer.isEditing}
                     showsActions={showsActions && !parts.some((part) => part.type === 'shell')}
                     onFork={onFork}
@@ -1890,6 +1907,7 @@ function Line({
   messageId,
   isWorking,
   isLive,
+  meta,
   parts,
   isEditing,
   showsActions,
@@ -1900,6 +1918,8 @@ function Line({
   messageId: string;
   isWorking: boolean;
   isLive: boolean;
+  /** What this reply was written with — model, duration, time — or null. */
+  meta: string | null;
   parts: readonly ChatPart[];
   isEditing: boolean;
   /** Whether this message is where its turn's branch picker and actions go. */
@@ -1945,6 +1965,12 @@ function Line({
 
       {showsActions && (
         <div className="line-actions">
+          {isKira && meta !== null && (
+            <Text type="supporting" color="secondary" className="line-meta">
+              {meta}
+            </Text>
+          )}
+
           <BranchPickerPrimitive.Root hideWhenSingleBranch className="branches">
             <BranchPickerPrimitive.Previous asChild>
               <Button

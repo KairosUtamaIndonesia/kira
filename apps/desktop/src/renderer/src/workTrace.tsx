@@ -12,6 +12,7 @@ import {
   focusVars,
   spacingVars,
 } from '@astryxdesign/core/theme/tokens.stylex';
+import { formatDuration } from './chatTiming';
 import { useId, type ReactNode } from 'react';
 import * as stylex from '@stylexjs/stylex';
 import type { ChatPart, ToolImage, ToolRun } from '../../preload/bridge';
@@ -101,7 +102,7 @@ export function Work({
   const label = running
     ? 'Working…'
     : part.calls.length > 0
-      ? `Worked for ${spent(part.durationMs ?? 0)}`
+      ? `Worked for ${formatDuration(part.durationMs ?? 0)}`
       : 'Thought for a moment';
 
   return (
@@ -204,7 +205,7 @@ function toolCall(call: ToolRun, index: number): ChatToolCallItem {
     name: call.name,
     status: call.status,
     target,
-    duration: call.durationMs === null ? undefined : spent(call.durationMs),
+    duration: call.durationMs === null ? undefined : formatDuration(call.durationMs),
     additions: call.additions ?? undefined,
     deletions: call.deletions ?? undefined,
     resultDetail:
@@ -273,24 +274,4 @@ function imageResult(image: ToolImage, index: number) {
       {...stylex.props(styles.image)}
     />
   );
-}
-
-/**
- * How long a tool took, as it reads beside the call: milliseconds while that is
- * still the useful unit, then seconds, and minutes once there are enough of them.
- */
-function spent(ms: number): string {
-  if (ms < 1000) {
-    return `${ms}ms`;
-  }
-
-  const seconds = ms / 1000;
-
-  if (seconds < 60) {
-    return `${seconds < 10 ? seconds.toFixed(1) : Math.round(seconds)}s`;
-  }
-
-  const minutes = Math.floor(seconds / 60);
-
-  return `${minutes}m ${Math.round(seconds - minutes * 60)}s`;
 }

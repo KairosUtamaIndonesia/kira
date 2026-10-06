@@ -273,6 +273,8 @@
   the tools and the answer that follows them — and closes when that turn ends, so a
   step read as history stays out of the way; click it to read the thinking, markdown
   and all, and the tools that came from it.
+- A reply says what wrote it: pointing at one shows the model, how long its turn took,
+  and the time it finished, beside its actions.
 - A chat's row can be right-clicked: Archive takes it out of the sidebar and keeps
   everything it holds, and Delete asks first and takes the conversation and everything
   said in it with it. The folder it worked in is left where it is, and neither can be

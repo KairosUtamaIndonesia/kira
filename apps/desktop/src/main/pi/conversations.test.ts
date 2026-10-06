@@ -1172,6 +1172,27 @@ for (const testCase of TRANSCRIPT_CASES) {
   });
 }
 
+test('a reply says what wrote it, how long the turn took, and when it finished', async () => {
+  const path = join(tempDir('kira-chat-store-'), 'threads.db');
+  const store = new ThreadStore(path);
+  const thread = createThread(store, tempDir('kira-chat-space-'));
+
+  // The question is stamped 1 and the reply 2, and the model the fixture writes
+  // in is what the session ran on, so the turn is the gap between the two stamps.
+  ask('Do it')(thread);
+  reply({ type: 'text', text: 'Done.' })(thread);
+
+  store.close();
+
+  const reopened = new ThreadStore(path);
+  const conversation = await resumeConversation(reopened, thread.threadId, MODELS);
+  const answer = conversation.transcript().messages.find((message) => message.role === 'kira');
+  conversation.close();
+  reopened.close();
+
+  assert.deepEqual(answer?.reply, { model: 'gpt-5.6-luna', at: 2, durationMs: 1 });
+});
+
 for (const testCase of LIST_CASES) {
   test(testCase.name, () => {
     assert.deepEqual(listedChats(testCase.threads), testCase.want);

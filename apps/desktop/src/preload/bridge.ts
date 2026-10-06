@@ -269,6 +269,26 @@ export interface ChatMessage {
   parentId: string | null;
   role: 'you' | 'kira' | 'subagent';
   parts: ChatPart[];
+  /**
+   * What a reply was written with, shown beside its actions: the model that
+   * wrote it, when it finished, and how long the turn took. Absent on a question,
+   * on a reply still being drawn, and on anything the main process cannot date —
+   * the metadata line then says less rather than saying something wrong.
+   */
+  reply?: ReplyMeta;
+}
+
+/** What a reply was written with, as the line beside its actions reads it. */
+export interface ReplyMeta {
+  /** The model that wrote it, as the pool ids it, or null when the session named none. */
+  model: string | null;
+  /** When the reply was written, in epoch milliseconds. */
+  at: number;
+  /**
+   * How long the turn took, from the question to this reply, or null when there
+   * was no question above it to measure from.
+   */
+  durationMs: number | null;
 }
 
 /** A command the active Pi session can invoke, or a skill it can load. */

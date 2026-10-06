@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { formatRunDuration } from './chatTiming.ts';
+import { formatDuration, formatRunDuration } from './chatTiming.ts';
 
 const cases = [
   { name: 'less than a second', milliseconds: 999, want: '0s' },
@@ -13,5 +13,18 @@ const cases = [
 for (const { name, milliseconds, want } of cases) {
   test(`run duration: ${name}`, () => {
     assert.equal(formatRunDuration(milliseconds), want);
+  });
+}
+
+const stepCases = [
+  { name: 'milliseconds while they are the useful unit', milliseconds: 250, want: '250ms' },
+  { name: 'a tenth of a second under ten', milliseconds: 2_340, want: '2.3s' },
+  { name: 'whole seconds past ten', milliseconds: 45_600, want: '46s' },
+  { name: 'minutes and the seconds left over', milliseconds: 425_000, want: '7m 5s' },
+];
+
+for (const { name, milliseconds, want } of stepCases) {
+  test(`step duration: ${name}`, () => {
+    assert.equal(formatDuration(milliseconds), want);
   });
 }

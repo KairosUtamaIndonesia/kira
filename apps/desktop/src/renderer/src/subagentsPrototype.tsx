@@ -41,6 +41,7 @@ import type {
   SubagentSummary,
 } from '../../preload/bridge';
 import { AGENT_STATE_WORD, AgentStateMark } from './agentState';
+import { modelName } from './replyMeta';
 import { Work } from './workTrace';
 
 const VARIANTS = [
@@ -612,11 +613,6 @@ function Section({ label, children }: { label: string; children: ReactNode }) {
 
 function Dot({ agent }: { agent: SubagentSummary }) {
   return <AgentStateMark state={agent.state} />;
-}
-
-/** The name the pool gives a model, or its id when the pool no longer offers it. */
-function modelName(models: readonly ModelOption[], id: string): string {
-  return models.find((model) => model.id === id)?.name ?? id;
 }
 
 function textOf(message: ChatMessage): string {

@@ -444,6 +444,7 @@ function conversationOf(
         },
         live.headId,
         answersOf(kira.session.sessionManager.getEntries()),
+        null,
       );
       emit({
         type: 'progress',
@@ -1019,6 +1020,9 @@ export function transcriptForSessionManager(sessionManager: SessionManager): Cha
   // inherits the boundaries standing above its parent, a compaction adds itself,
   // and the message it hands over to consumes them.
   const standingAbove = new Map<string, readonly ChatPart[]>();
+  // Where each entry's turn began, so a reply can say how long it took. Memoised
+  // because the walk above a reply is shared with the replies beside it.
+  const questionAt = new Map<string, number | null>();
 
   for (const entry of entries) {
     const parentId = nearestMessage(entry.parentId, messageAbove);
@@ -1027,7 +1031,7 @@ export function transcriptForSessionManager(sessionManager: SessionManager): Cha
 
     standingAbove.set(entry.id, boundary === null ? inherited : [...inherited, boundary]);
 
-    const message = messageOf(entry, parentId, answers);
+    const message = messageOf(entry, parentId, answers, questionAtOf(entry.id, entryById, questionAt));
 
     if (message) {
       messages.push(
@@ -1497,6 +1501,37 @@ function shellRunInProgress(id: string, command: string, output: string): ShellC
 }
 
 /**
+ * When the question a reply answers was asked: the timestamp of the nearest user
+ * message above it, or null when the branch has none. Walked up pi's own parent
+ * links rather than read from the entry before, because the chain runs through
+ * entries that are not messages — model changes, thinking levels, compaction.
+ */
+function questionAtOf(
+  id: string,
+  entryById: Map<string, SessionEntry>,
+  known: Map<string, number | null>,
+): number | null {
+  const cached = known.get(id);
+  if (cached !== undefined) return cached;
+
+  const parent = entryById.get(id)?.parentId ?? null;
+  let at: number | null = null;
+
+  if (parent !== null) {
+    const above = entryById.get(parent);
+    if (above !== undefined) {
+      at =
+        above.type === 'message' && above.message.role === 'user'
+          ? above.message.timestamp
+          : questionAtOf(parent, entryById, known);
+    }
+  }
+
+  known.set(id, at);
+  return at;
+}
+
+/**
  * One stored entry as a message, or nothing when it is not a turn's own words —
  * model changes, compaction summaries, thinking, tool results. An assistant
  * entry with no text and no tool calls is nothing to show either.
@@ -1505,6 +1540,7 @@ function messageOf(
   entry: FileEntry,
   parentId: string | null,
   answers: Map<string, ToolAnswer>,
+  questionAt: number | null,
 ): ChatMessage | null {
   if (entry.type !== 'message') {
     return null;
@@ -1582,7 +1618,25 @@ function messageOf(
       }
     }
 
-    return parts.length > 0 ? { id, parentId, role: 'kira', parts } : null;
+    return parts.length > 0
+      ? {
+          id,
+          parentId,
+          role: 'kira',
+          parts,
+          // Nothing above the reply to measure from means no duration to claim;
+          // the model and the time it finished are still worth saying.
+          ...(questionAt === null
+            ? { reply: { model: message.model, at: message.timestamp, durationMs: null } }
+            : {
+                reply: {
+                  model: message.model,
+                  at: message.timestamp,
+                  durationMs: message.timestamp - questionAt,
+                },
+              }),
+        }
+      : null;
   }
 
   if (message.role === 'bashExecution') {
