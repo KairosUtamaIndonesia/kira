@@ -5,6 +5,7 @@ import type { Config } from './config';
 import type { Database } from './database';
 import { createAllowances } from './allowance';
 import { createAdminAudit } from './admin-audit';
+import { createAdminKeys } from './admin-keys';
 import { createAdminUsers } from './admin-users';
 import { createComments } from './comments';
 import { createGit } from './git';
@@ -154,6 +155,7 @@ export function createApp({
       .use(createPoolManagement({ auth, config, database }))
       .use(createAdminAudit({ auth, database }))
       .use(createAdminUsers({ auth, database }))
+      .use(createAdminKeys({ auth, database }))
   );
 }
 

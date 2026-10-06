@@ -3,7 +3,7 @@ import { JSDOM } from 'jsdom';
 import type { Root } from 'react-dom/client';
 import type { Who } from './api/auth';
 import type { Loaded } from './api/result';
-import type { ListedUser, ConsoleSession } from './api/users';
+import type { ListedUser, ConsoleSession, DeviceKey } from './api/users';
 
 const api = {
   setRole:
@@ -21,6 +21,8 @@ const api = {
   readSessions: mock<() => Promise<Loaded<ConsoleSession[]>>>(),
   revokeSession: mock<(userId: string, sessionId: string) => Promise<Loaded<{ id: string }>>>(),
   revokeSessions: mock<(userId: string) => Promise<Loaded<{ id: string }>>>(),
+  readKeys: mock<() => Promise<Loaded<DeviceKey[]>>>(),
+  revokeKey: mock<(userId: string, keyId: string) => Promise<Loaded<{ id: string }>>>(),
 };
 
 mock.module('./api/users', () => api);
@@ -46,6 +48,7 @@ let ConsoleDataProvider: (typeof import('./consoleData'))['ConsoleDataProvider']
 beforeEach(async () => {
   mock.clearAllMocks();
   api.readSessions.mockResolvedValue({ ok: true, value: [] });
+  api.readKeys.mockResolvedValue({ ok: true, value: [] });
   dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
     url: 'https://kira.example/admin/users/grace',
     pretendToBeVisual: true,
@@ -220,5 +223,27 @@ describe('the User page sessions', () => {
     await render('user');
 
     expect(host.textContent).toContain("Kira could not read this person's sessions.");
+  });
+});
+
+describe('the User page Keys', () => {
+  const key: DeviceKey = {
+    id: 'key-1',
+    name: 'workstation',
+    createdAt: '2026-10-01T09:00:00.000Z',
+    lastUsedAt: '2026-10-05T09:00:00.000Z',
+    expiresAt: '2026-12-30T09:00:00.000Z',
+  };
+
+  test("lists a person's Keys and revokes one", async () => {
+    api.readKeys.mockResolvedValueOnce({ ok: true, value: [key] });
+    api.revokeKey.mockResolvedValue({ ok: true, value: { id: 'key-1' } });
+    await render('user');
+
+    expect(host.textContent).toContain('workstation');
+    await act(async () => button('Revoke').click());
+
+    expect(api.revokeKey).toHaveBeenCalledWith('grace', 'key-1');
+    expect(api.readKeys).toHaveBeenCalledTimes(2);
   });
 });

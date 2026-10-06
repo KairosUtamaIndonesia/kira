@@ -7,7 +7,10 @@ import * as stylex from '@stylexjs/stylex';
 import { useEffect, useState } from 'react';
 import {
   type ConsoleSession,
+  type DeviceKey,
+  readKeys,
   readSessions,
+  revokeKey,
   revokeSession,
   revokeSessions,
   setRole,
@@ -66,6 +69,12 @@ const styles = stylex.create({
     border: '1px solid var(--astryx-color-border-default)',
     borderRadius: 'var(--astryx-radius-md)',
   },
+  keyDetails: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: spacingVars['--spacing-1'],
+    minWidth: 0,
+  },
 });
 
 /** The role that runs Kira, as the server's own plugin spells it. */
@@ -74,6 +83,19 @@ const ADMIN_ROLE = 'admin';
 function describeSession(session: ConsoleSession): string {
   const where = session.userAgent ?? session.ipAddress ?? 'An unknown device';
   return `${where} · signed in ${new Date(session.createdAt).toLocaleString()}`;
+}
+
+function describeKey(key: DeviceKey): string {
+  const created = `created ${new Date(key.createdAt).toLocaleDateString()}`;
+  const used =
+    key.lastUsedAt === null
+      ? 'never used'
+      : `last used ${new Date(key.lastUsedAt).toLocaleDateString()}`;
+  const expires =
+    key.expiresAt === null
+      ? 'no expiry'
+      : `expires ${new Date(key.expiresAt).toLocaleDateString()}`;
+  return `${created} · ${used} · ${expires}`;
 }
 
 /**
@@ -93,6 +115,8 @@ export default function User({ userId }: { userId: string }) {
   const [reason, setReason] = useState('');
   const [sessions, setSessions] = useState<ConsoleSession[] | null>(null);
   const [sessionProblem, setSessionProblem] = useState<string | null>(null);
+  const [keys, setKeys] = useState<DeviceKey[] | null>(null);
+  const [keyProblem, setKeyProblem] = useState<string | null>(null);
 
   async function refreshSessions() {
     const result = await readSessions(userId);
@@ -104,9 +128,20 @@ export default function User({ userId }: { userId: string }) {
     }
   }
 
+  async function refreshKeys() {
+    const result = await readKeys(userId);
+    if (result.ok) {
+      setKeys(result.value);
+      setKeyProblem(null);
+    } else {
+      setKeyProblem(result.message);
+    }
+  }
+
   useEffect(() => {
     void refreshSessions();
-    // Read once per person: what changes it is a revocation, which reloads it.
+    void refreshKeys();
+    // Read once per person: what changes them is a revocation, which reloads them.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
@@ -177,6 +212,19 @@ export default function User({ userId }: { userId: string }) {
     }
 
     await refreshSessions();
+  }
+
+  async function revokeOneKey(keyId: string) {
+    setBusy(true);
+    const result = await revokeKey(userId, keyId);
+    setBusy(false);
+
+    if (!result.ok) {
+      setKeyProblem(result.message);
+      return;
+    }
+
+    await refreshKeys();
   }
 
   return (
@@ -293,6 +341,36 @@ export default function User({ userId }: { userId: string }) {
               />
             </div>
           </>
+        )}
+      </section>
+      <section aria-labelledby="user-keys-heading" {...stylex.props(styles.section)}>
+        <Heading level={2} id="user-keys-heading">
+          Keys
+        </Heading>
+        <Text color="secondary">The devices holding a Kira Key for this person.</Text>
+        {keyProblem && <Text role="alert">{keyProblem}</Text>}
+        {keys !== null && keys.length === 0 && (
+          <Text color="secondary">No device holds a Key for this person.</Text>
+        )}
+        {keys !== null && keys.length > 0 && (
+          <ul {...stylex.props(styles.list)}>
+            {keys.map((key) => (
+              <li {...stylex.props(styles.item)} key={key.id}>
+                <div {...stylex.props(styles.keyDetails)}>
+                  <Text weight="semibold">{key.name ?? 'Unnamed device'}</Text>
+                  <Text color="secondary" size="sm">
+                    {describeKey(key)}
+                  </Text>
+                </div>
+                <Button
+                  label="Revoke"
+                  variant="secondary"
+                  isDisabled={busy}
+                  onClick={() => void revokeOneKey(key.id)}
+                />
+              </li>
+            ))}
+          </ul>
         )}
       </section>
       {problem && <Text role="alert">{problem}</Text>}

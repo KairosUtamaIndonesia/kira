@@ -160,3 +160,42 @@ export async function revokeSessions(userId: string): Promise<Loaded<{ id: strin
 
   return { ok: true, value: data };
 }
+
+/** One device Key, as the server lists it. */
+export interface DeviceKey {
+  id: string;
+  name: string | null;
+  createdAt: string;
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+}
+
+export async function readKeys(userId: string): Promise<Loaded<DeviceKey[]>> {
+  const { data, error } = await kira.api.admin.users({ id: userId }).keys.get();
+  if (error) {
+    return {
+      ok: false,
+      message: reasonFor(
+        error.value as { message?: string } | null,
+        "Kira could not read this person's Keys.",
+      ),
+    };
+  }
+
+  return { ok: true, value: data.keys };
+}
+
+export async function revokeKey(userId: string, keyId: string): Promise<Loaded<{ id: string }>> {
+  const { data, error } = await kira.api.admin.users({ id: userId }).keys({ keyId }).delete();
+  if (error) {
+    return {
+      ok: false,
+      message: reasonFor(
+        error.value as { message?: string } | null,
+        'Kira could not revoke that Key.',
+      ),
+    };
+  }
+
+  return { ok: true, value: data };
+}
