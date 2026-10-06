@@ -28,6 +28,7 @@ import {
 } from '@astryxdesign/core/theme/tokens.stylex';
 import { useAui, useAuiState } from '@assistant-ui/react';
 import {
+  BookOpen,
   Check,
   ChevronDown,
   FileText,
@@ -273,7 +274,15 @@ export function Composer({
         emptySearchResultsText: 'No available commands or skills.',
         onSelect: (item: SearchableItem) => {
           const payload = (item.auxiliaryData as SelectorItem['auxiliaryData'])?.payload;
-          return payload?.kind === 'command' ? `${payload.command.invocation} ` : item.label;
+          if (payload?.kind !== 'command') return item.label;
+          if (payload.command.category !== 'Skills') return `${payload.command.invocation} `;
+          return skillToken(payload.command);
+        },
+        deserialize: (value: string) => {
+          const skill = commands.find(
+            (command) => command.category === 'Skills' && command.invocation === value,
+          );
+          return skill ? skillToken(skill) : null;
         },
       },
       {
@@ -689,6 +698,15 @@ function commandItems(commands: readonly ChatCommand[], query: string): Selector
       payload: { kind: 'command', command },
     },
   }));
+}
+
+function skillToken(command: ChatCommand) {
+  return {
+    value: command.invocation,
+    label: command.label.replace(/^\//u, ''),
+    variant: 'neutral' as const,
+    icon: <Icon icon={BookOpen} size="sm" />,
+  };
 }
 
 function promptItems(

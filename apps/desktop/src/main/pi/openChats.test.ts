@@ -152,8 +152,12 @@ test('the active chat exposes only commands and skills loaded into its Pi sessio
     const implement = commands.find((command) => command.invocation === '/skill:implement');
 
     assert.deepEqual(
-      implement && { label: implement.label, category: implement.category },
-      { label: '/skill:implement', category: 'Skills' },
+      implement && {
+        label: implement.label,
+        invocation: implement.invocation,
+        category: implement.category,
+      },
+      { label: '/implement', invocation: '/skill:implement', category: 'Skills' },
     );
     assert.equal(commands.some((command) => command.invocation === '/skill:personal-tool'), false);
   } finally {

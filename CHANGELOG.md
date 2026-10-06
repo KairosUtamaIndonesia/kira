@@ -8,7 +8,7 @@
 
 ### Fixed
 
-- The slash picker keeps descriptions to one line within a bounded width; skill rows no longer repeat “Skills” before their description.
+- The slash picker keeps descriptions to one line within a bounded width, shows skills without the internal `skill:` command prefix, and inserts a skill as a book-marked pill.
 
 - A GitHub App install link expires an hour after Kira hands it out, and uninstalling the App on GitHub removes its connection, so Settings cannot keep a host GitHub no longer backs.
 

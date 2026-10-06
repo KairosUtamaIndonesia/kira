@@ -608,7 +608,7 @@ function conversationOf(
         })),
         ...session.resourceLoader.getSkills().skills.map((skill) => ({
           id: `skill:${skill.name}`,
-          label: `/skill:${skill.name}`,
+          label: `/${skill.name}`,
           description: skill.description,
           invocation: `/skill:${skill.name}`,
           category: 'Skills' as const,
