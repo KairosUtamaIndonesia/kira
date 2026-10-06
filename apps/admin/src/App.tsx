@@ -1,8 +1,8 @@
 import { Text } from '@astryxdesign/core/Text';
 import { type ReactElement, use } from 'react';
 import type { Opening } from './api/opening';
+import Console from './console';
 import Notice from './notice';
-import People from './people';
 import Refused from './refused';
 import SignIn from './signIn';
 
@@ -21,7 +21,7 @@ export default function App({ opening }: { opening: Promise<Opening> }): ReactEl
     case 'refused':
       return <Refused who={found.who} />;
     case 'admin':
-      return <People who={found.who} users={found.users} readings={found.readings} />;
+      return <Console who={found.who} users={found.users} readings={found.readings} />;
     case 'failed':
       return (
         <Notice title="Kira administration">

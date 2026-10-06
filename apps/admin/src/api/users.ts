@@ -1,5 +1,9 @@
+import { treaty } from '@elysiajs/eden';
+import type { App } from '@kira/server/contract';
 import { auth } from './auth';
 import { type Loaded, reasonFor } from './result';
+
+const kira = treaty<App>(window.location.origin);
 
 /**
  * One person who has signed in, as much of them as the console lists.
@@ -42,4 +46,29 @@ export async function listUsers(): Promise<Loaded<ListedUser[]>> {
   }));
 
   return { ok: true, value: users };
+}
+
+/**
+ * Grant or remove a person's admin role.
+ *
+ * The console asks Kira rather than Better Auth directly: the write and its audit
+ * row are one act on the server, and the last-administrator guard is the server's
+ * too, so a refusal arrives as a sentence rather than as a button that did nothing.
+ */
+export async function setRole(
+  userId: string,
+  role: 'admin' | 'user',
+): Promise<Loaded<{ id: string; role: string }>> {
+  const { data, error } = await kira.api.admin.users({ id: userId }).role.put({ role });
+  if (error) {
+    return {
+      ok: false,
+      message: reasonFor(
+        error.value as { message?: string } | null,
+        'Kira would not change this role.',
+      ),
+    };
+  }
+
+  return { ok: true, value: data };
 }

@@ -1,21 +1,17 @@
-import { AppShell } from '@astryxdesign/core/AppShell';
 import { Badge } from '@astryxdesign/core/Badge';
-import { Button } from '@astryxdesign/core/Button';
 import { EmptyState } from '@astryxdesign/core/EmptyState';
 import { Heading } from '@astryxdesign/core/Heading';
-import { SideNav, SideNavHeading, SideNavItem } from '@astryxdesign/core/SideNav';
 import { proportional, Table, type TableColumn } from '@astryxdesign/core/Table';
 import { Text } from '@astryxdesign/core/Text';
 import { spacingVars } from '@astryxdesign/core/theme/tokens.stylex';
+import { Link } from '@tanstack/react-router';
 import * as stylex from '@stylexjs/stylex';
 import { useState } from 'react';
 import type { Readings } from './api/allowances';
-import { type Who, signOut } from './api/auth';
 import type { ListedUser } from './api/users';
 import AllowanceCell from './allowanceCell';
-import Audit from './audit';
+import { useConsoleData } from './consoleData';
 import EditAllowance from './editAllowance';
-import Pool from './pool';
 
 const styles = stylex.create({
   page: {
@@ -48,8 +44,8 @@ const ADMIN_ROLE = 'admin';
 /**
  * Whether the ordinary role, or the one that runs Kira.
  *
- * A badge because this is the column the rest of the console will be built on: it
- * is what decides whether someone sees more than this page.
+ * A badge because this is the column the rest of the console is built on: it is
+ * what decides whether someone sees more than this page.
  */
 function Role({ role }: { role: string }) {
   return <Badge label={role} variant={role === ADMIN_ROLE ? 'info' : 'neutral'} />;
@@ -64,7 +60,11 @@ function columnsFor(
       key: 'name',
       header: 'Name',
       width: proportional(1, { minWidth: 140 }),
-      renderCell: (user) => user.name,
+      renderCell: (user) => (
+        <Link to="/users/$id" params={{ id: user.id }}>
+          {user.name}
+        </Link>
+      ),
     },
     {
       key: 'email',
@@ -99,86 +99,40 @@ function columnsFor(
  * The console: everyone who has signed in, what they may do, and what they have
  * spent of the pool.
  *
- * Signing out reloads rather than redraws, because what is on screen was read
- * before the page drew. Changing an allowance is the one thing that does not: the
- * server answers with the person's month as it now stands, and that answer is what
- * the row shows.
+ * A row opens that person's own page, where the rest of the levers live. Changing
+ * an allowance still happens here for now, and the server's answer is what the row
+ * then shows.
  */
-export default function People({
-  who,
-  users,
-  readings: read,
-}: {
-  who: Who;
-  users: ListedUser[];
-  readings: Readings;
-}) {
+export default function People() {
+  const { users, readings: read } = useConsoleData();
   const [readings, setReadings] = useState(read);
   const [editing, setEditing] = useState<ListedUser | null>(null);
-  const page = new URLSearchParams(window.location.search).get('page');
-  const isPoolPage = page === 'pool';
-  const isAuditPage = page === 'audit';
 
   const open = editing === null ? undefined : readings[editing.id];
 
   return (
-    <AppShell
-      contentPadding={0}
-      variant="wash"
-      sideNav={
-        <SideNav
-          header={<SideNavHeading heading="Kira" />}
-          topContent={
-            <Text color="secondary" size="sm">
-              {who.email}
-            </Text>
-          }
-          footer={
-            <Button
-              label="Sign out"
-              variant="ghost"
-              width="100%"
-              onClick={() => {
-                void signOut().then(() => window.location.reload());
-              }}
+    <div {...stylex.props(styles.page)}>
+      <header {...stylex.props(styles.pageHeader)}>
+        <Heading level={1}>People</Heading>
+        <Text color="secondary">
+          Everyone who has signed in to Kira. Signing in says who someone is, never what they may
+          do, so this list is the whole company until a role says otherwise — and an allowance is
+          what one person may spend of the shared pool in a month.
+        </Text>
+      </header>
+      <div {...stylex.props(styles.peopleTable)}>
+        <Table
+          data={users}
+          idKey="id"
+          columns={columnsFor(readings, setEditing)}
+          emptyState={
+            <EmptyState
+              title="Nobody has signed in yet"
+              description="A person appears here once they have signed in from the desktop."
             />
           }
-        >
-          <SideNavItem label="People" href="/admin/" isSelected={page === null} />
-          <SideNavItem label="Pool" href="/admin/?page=pool" isSelected={isPoolPage} />
-          <SideNavItem label="Audit" href="/admin/?page=audit" isSelected={isAuditPage} />
-        </SideNav>
-      }
-    >
-      {isPoolPage ? (
-        <Pool />
-      ) : isAuditPage ? (
-        <Audit />
-      ) : (
-        <div {...stylex.props(styles.page)}>
-          <header {...stylex.props(styles.pageHeader)}>
-            <Heading level={1}>People</Heading>
-            <Text color="secondary">
-              Everyone who has signed in to Kira. Signing in says who someone is, never what they
-              may do, so this list is the whole company until a role says otherwise — and an
-              allowance is what one person may spend of the shared pool in a month.
-            </Text>
-          </header>
-          <div {...stylex.props(styles.peopleTable)}>
-            <Table
-              data={users}
-              idKey="id"
-              columns={columnsFor(readings, setEditing)}
-              emptyState={
-                <EmptyState
-                  title="Nobody has signed in yet"
-                  description="A person appears here once they have signed in from the desktop."
-                />
-              }
-            />
-          </div>
-        </div>
-      )}
+        />
+      </div>
       {editing === null || open === undefined || !open.ok ? null : (
         <EditAllowance
           person={editing}
@@ -190,6 +144,6 @@ export default function People({
           onClose={() => setEditing(null)}
         />
       )}
-    </AppShell>
+    </div>
   );
 }
