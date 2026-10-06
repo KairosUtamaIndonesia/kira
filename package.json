@@ -11,6 +11,7 @@
   "scripts": {
     "postinstall": "node scripts/patch-pi-config-dir.mjs && node apps/desktop/node_modules/electron/install.js",
     "dev:desktop": "bun run --cwd apps/desktop dev -- --remoteDebuggingPort 1987",
+    "dev:ui-playground": "bun run --cwd apps/desktop ui-playground",
     "dev:admin": "bun run --cwd apps/admin dev",
     "dev:server": "bun run --cwd apps/server dev",
     "dev:cliproxyapi": "bun run scripts/dev-cliproxyapi.ts",

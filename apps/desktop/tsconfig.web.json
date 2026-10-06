@@ -13,5 +13,5 @@
     "types": ["vite/client", "node"],
     "noEmit": true
   },
-  "include": ["src/renderer/src", "src/preload/bridge.ts"]
+  "include": ["src/renderer/src", "src/preload/bridge.ts", "ui-playground/src"]
 }
