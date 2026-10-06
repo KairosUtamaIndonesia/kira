@@ -4,6 +4,8 @@ Date: 2026-10-05
 
 Amends ADR 0026 (a repository is attached from a checkout, not named on its own).
 
+A sandbox chat clones with a server-minted token instead; see ADR 0032.
+
 ## Context
 
 ADR 0026 made a project hold its repositories — *"a provider, an owner and a name, attached to a project"* — and called a repository *"the thing a run will clone from"*. The desktop's **Repositories** dialog was how a person attached one: typing an owner and a name, or picking from the repositories a connected GitHub App can see.
