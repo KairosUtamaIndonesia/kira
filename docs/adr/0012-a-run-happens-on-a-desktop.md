@@ -4,6 +4,8 @@ Date: 2026-09-21
 
 Superseded by ADR 0024: work is a store, and a ticket being worked is `running`; there is no worker, claim or lease.
 
+Its revisit clause about a remote sandbox is answered by ADR 0031.
+
 ## Context
 
 ADR 0010 puts the queue on the server and ADR 0011 says what a run owes. Neither says
