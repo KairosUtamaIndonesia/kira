@@ -100,3 +100,63 @@ export async function setSuspended(
 
   return { ok: true, value: data };
 }
+
+/** One console session, as the server lists it. The token itself never arrives. */
+export interface ConsoleSession {
+  id: string;
+  createdAt: string;
+  expiresAt: string;
+  ipAddress: string | null;
+  userAgent: string | null;
+}
+
+export async function readSessions(userId: string): Promise<Loaded<ConsoleSession[]>> {
+  const { data, error } = await kira.api.admin.users({ id: userId }).sessions.get();
+  if (error) {
+    return {
+      ok: false,
+      message: reasonFor(
+        error.value as { message?: string } | null,
+        "Kira could not read this person's sessions.",
+      ),
+    };
+  }
+
+  return { ok: true, value: data.sessions };
+}
+
+export async function revokeSession(
+  userId: string,
+  sessionId: string,
+): Promise<Loaded<{ id: string }>> {
+  const { data, error } = await kira.api.admin
+    .users({ id: userId })
+    .sessions({ sessionId })
+    .delete();
+  if (error) {
+    return {
+      ok: false,
+      message: reasonFor(
+        error.value as { message?: string } | null,
+        'Kira could not sign that session out.',
+      ),
+    };
+  }
+
+  return { ok: true, value: data };
+}
+
+export async function revokeSessions(userId: string): Promise<Loaded<{ id: string }>> {
+  const { data, error } = await kira.api.admin.users({ id: userId }).sessions.delete();
+  if (error) {
+    return {
+      ok: false,
+      message: reasonFor(
+        error.value as { message?: string } | null,
+        'Kira could not sign this person out everywhere.',
+      ),
+    };
+  }
+
+  return { ok: true, value: data };
+}

@@ -4,8 +4,15 @@ import { Heading } from '@astryxdesign/core/Heading';
 import { Text } from '@astryxdesign/core/Text';
 import { spacingVars } from '@astryxdesign/core/theme/tokens.stylex';
 import * as stylex from '@stylexjs/stylex';
-import { useState } from 'react';
-import { setRole, setSuspended } from './api/users';
+import { useEffect, useState } from 'react';
+import {
+  type ConsoleSession,
+  readSessions,
+  revokeSession,
+  revokeSessions,
+  setRole,
+  setSuspended,
+} from './api/users';
 import { useConsoleData } from './consoleData';
 
 const styles = stylex.create({
@@ -42,17 +49,40 @@ const styles = stylex.create({
     borderRadius: 'var(--astryx-radius-sm)',
     font: 'inherit',
   },
+  list: {
+    display: 'grid',
+    gap: spacingVars['--spacing-2'],
+    listStyle: 'none',
+    margin: 0,
+    padding: 0,
+  },
+  item: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacingVars['--spacing-2'],
+    padding: spacingVars['--spacing-3'],
+    border: '1px solid var(--astryx-color-border-default)',
+    borderRadius: 'var(--astryx-radius-md)',
+  },
 });
 
 /** The role that runs Kira, as the server's own plugin spells it. */
 const ADMIN_ROLE = 'admin';
 
+function describeSession(session: ConsoleSession): string {
+  const where = session.userAgent ?? session.ipAddress ?? 'An unknown device';
+  return `${where} · signed in ${new Date(session.createdAt).toLocaleString()}`;
+}
+
 /**
  * One person, and what may be done to their access.
  *
- * Two levers: the role, which decides whether the console opens for them, and
- * suspension, which cuts off the desktop at once (docs/adr/0035). A refusal from
- * either is the server's sentence rather than a button that quietly did nothing.
+ * Three levers: the role, which decides whether the console opens for them;
+ * suspension, which cuts off the desktop at once (docs/adr/0035); and their
+ * console sessions, which can be ended one at a time or all together. A refusal
+ * from any is the server's sentence rather than a button that quietly did nothing.
  */
 export default function User({ userId }: { userId: string }) {
   const { users, updateUser } = useConsoleData();
@@ -61,6 +91,24 @@ export default function User({ userId }: { userId: string }) {
   const [busy, setBusy] = useState(false);
   const [askingReason, setAskingReason] = useState(false);
   const [reason, setReason] = useState('');
+  const [sessions, setSessions] = useState<ConsoleSession[] | null>(null);
+  const [sessionProblem, setSessionProblem] = useState<string | null>(null);
+
+  async function refreshSessions() {
+    const result = await readSessions(userId);
+    if (result.ok) {
+      setSessions(result.value);
+      setSessionProblem(null);
+    } else {
+      setSessionProblem(result.message);
+    }
+  }
+
+  useEffect(() => {
+    void refreshSessions();
+    // Read once per person: what changes it is a revocation, which reloads it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
 
   if (!person) {
     return (
@@ -103,6 +151,32 @@ export default function User({ userId }: { userId: string }) {
     setAskingReason(false);
     setReason('');
     updateUser({ id: userId, banned: result.value.suspended });
+  }
+
+  async function signOutSession(sessionId: string) {
+    setBusy(true);
+    const result = await revokeSession(userId, sessionId);
+    setBusy(false);
+
+    if (!result.ok) {
+      setSessionProblem(result.message);
+      return;
+    }
+
+    await refreshSessions();
+  }
+
+  async function signOutEverywhere() {
+    setBusy(true);
+    const result = await revokeSessions(userId);
+    setBusy(false);
+
+    if (!result.ok) {
+      setSessionProblem(result.message);
+      return;
+    }
+
+    await refreshSessions();
   }
 
   return (
@@ -184,6 +258,41 @@ export default function User({ userId }: { userId: string }) {
           <div {...stylex.props(styles.actions)}>
             <Button label="Suspend" variant="secondary" onClick={() => setAskingReason(true)} />
           </div>
+        )}
+      </section>
+      <section aria-labelledby="user-sessions-heading" {...stylex.props(styles.section)}>
+        <Heading level={2} id="user-sessions-heading">
+          Sessions
+        </Heading>
+        <Text color="secondary">Where this person is signed into the console.</Text>
+        {sessionProblem && <Text role="alert">{sessionProblem}</Text>}
+        {sessions !== null && sessions.length === 0 && (
+          <Text color="secondary">No console sessions are open.</Text>
+        )}
+        {sessions !== null && sessions.length > 0 && (
+          <>
+            <ul {...stylex.props(styles.list)}>
+              {sessions.map((session) => (
+                <li {...stylex.props(styles.item)} key={session.id}>
+                  <Text color="secondary">{describeSession(session)}</Text>
+                  <Button
+                    label="Sign out"
+                    variant="secondary"
+                    isDisabled={busy}
+                    onClick={() => void signOutSession(session.id)}
+                  />
+                </li>
+              ))}
+            </ul>
+            <div {...stylex.props(styles.actions)}>
+              <Button
+                label="Sign out everywhere"
+                variant="secondary"
+                isDisabled={busy}
+                onClick={() => void signOutEverywhere()}
+              />
+            </div>
+          </>
         )}
       </section>
       {problem && <Text role="alert">{problem}</Text>}

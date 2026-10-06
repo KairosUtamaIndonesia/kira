@@ -176,3 +176,80 @@ describe('suspending a person', () => {
     }
   });
 });
+
+describe("a person's sessions", () => {
+  async function signedInAdmin(server: Awaited<ReturnType<typeof listening>>) {
+    const cookie = await consoleSession(server.origin);
+    await grantAdmin(server.auth, ADA.email);
+    const context = await server.auth.$context;
+    const found = await context.internalAdapter.findUserByEmail(ADA.email);
+
+    return { cookie, id: found!.user.id };
+  }
+
+  test('an administrator lists them and signs one out', async () => {
+    const server = await listening(ADA);
+    try {
+      const { cookie, id } = await signedInAdmin(server);
+
+      const listed = await fetch(`${server.origin}/api/admin/users/${id}/sessions`, {
+        headers: { cookie },
+      });
+      expect(listed.status).toBe(200);
+      const { sessions } = (await listed.json()) as { sessions: { id: string }[] };
+      expect(sessions).toHaveLength(1);
+
+      const revoked = await fetch(
+        `${server.origin}/api/admin/users/${id}/sessions/${sessions[0]!.id}`,
+        { method: 'DELETE', headers: { cookie } },
+      );
+      expect(revoked.status).toBe(200);
+
+      // The session the cookie carried is the one just taken away.
+      const after = await fetch(`${server.origin}/api/admin/users/${id}/sessions`, {
+        headers: { cookie },
+      });
+      expect(after.status).toBe(401);
+
+      const events = await recentAdminAudit(server.database);
+      expect(events.find((event) => event.action === 'revoke-session')).toBeDefined();
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test('an administrator signs them all out', async () => {
+    const server = await listening(ADA);
+    try {
+      const { cookie, id } = await signedInAdmin(server);
+
+      const response = await fetch(`${server.origin}/api/admin/users/${id}/sessions`, {
+        method: 'DELETE',
+        headers: { cookie },
+      });
+
+      expect(response.status).toBe(200);
+      const events = await recentAdminAudit(server.database);
+      expect(events.find((event) => event.action === 'revoke-sessions')).toBeDefined();
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test('refuses a session that has already ended', async () => {
+    const server = await listening(ADA);
+    try {
+      const { cookie, id } = await signedInAdmin(server);
+
+      const response = await fetch(`${server.origin}/api/admin/users/${id}/sessions/nope`, {
+        method: 'DELETE',
+        headers: { cookie },
+      });
+
+      expect(response.status).toBe(404);
+      expect((await response.json()).error.code).toBe('SESSION_NOT_FOUND');
+    } finally {
+      await server.stop();
+    }
+  });
+});

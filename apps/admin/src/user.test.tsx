@@ -3,7 +3,7 @@ import { JSDOM } from 'jsdom';
 import type { Root } from 'react-dom/client';
 import type { Who } from './api/auth';
 import type { Loaded } from './api/result';
-import type { ListedUser } from './api/users';
+import type { ListedUser, ConsoleSession } from './api/users';
 
 const api = {
   setRole:
@@ -18,6 +18,9 @@ const api = {
         reason?: string,
       ) => Promise<Loaded<{ id: string; suspended: boolean }>>
     >(),
+  readSessions: mock<() => Promise<Loaded<ConsoleSession[]>>>(),
+  revokeSession: mock<(userId: string, sessionId: string) => Promise<Loaded<{ id: string }>>>(),
+  revokeSessions: mock<(userId: string) => Promise<Loaded<{ id: string }>>>(),
 };
 
 mock.module('./api/users', () => api);
@@ -42,6 +45,7 @@ let ConsoleDataProvider: (typeof import('./consoleData'))['ConsoleDataProvider']
 
 beforeEach(async () => {
   mock.clearAllMocks();
+  api.readSessions.mockResolvedValue({ ok: true, value: [] });
   dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
     url: 'https://kira.example/admin/users/grace',
     pretendToBeVisual: true,
@@ -174,5 +178,47 @@ describe('the User page access control', () => {
     await act(async () => button('Suspend').click());
 
     expect(host.textContent).toContain('Kira would be left with no administrator.');
+  });
+});
+
+describe('the User page sessions', () => {
+  const session: ConsoleSession = {
+    id: 'session-1',
+    createdAt: '2026-10-06T09:00:00.000Z',
+    expiresAt: '2027-01-04T09:00:00.000Z',
+    ipAddress: '203.0.113.7',
+    userAgent: 'Mozilla/5.0',
+  };
+
+  test('lists the console sessions and signs one out', async () => {
+    api.readSessions.mockResolvedValueOnce({ ok: true, value: [session] });
+    api.revokeSession.mockResolvedValue({ ok: true, value: { id: 'session-1' } });
+    await render('user');
+
+    expect(host.textContent).toContain('Mozilla/5.0');
+    await act(async () => button('Sign out').click());
+
+    expect(api.revokeSession).toHaveBeenCalledWith('grace', 'session-1');
+    expect(api.readSessions).toHaveBeenCalledTimes(2);
+  });
+
+  test('signs a person out everywhere', async () => {
+    api.readSessions.mockResolvedValue({ ok: true, value: [session] });
+    api.revokeSessions.mockResolvedValue({ ok: true, value: { id: 'grace' } });
+    await render('user');
+
+    await act(async () => button('Sign out everywhere').click());
+
+    expect(api.revokeSessions).toHaveBeenCalledWith('grace');
+  });
+
+  test('shows the server sentence when sessions cannot be read', async () => {
+    api.readSessions.mockResolvedValue({
+      ok: false,
+      message: "Kira could not read this person's sessions.",
+    });
+    await render('user');
+
+    expect(host.textContent).toContain("Kira could not read this person's sessions.");
   });
 });

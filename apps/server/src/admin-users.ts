@@ -154,5 +154,143 @@ export function createAdminUsers({ auth, database }: { auth: Auth; database: Dat
         },
         detail: { summary: 'Suspend or reactivate a person' },
       },
+    )
+    .get(
+      '/api/admin/users/:id/sessions',
+      async ({ params, status }) => {
+        const [target] = await database
+          .select({ id: user.id })
+          .from(user)
+          .where(eq(user.id, params.id));
+        if (!target) return status(404, refusal('USER_NOT_FOUND', 'No such person.'));
+
+        return { sessions: await sessionsOf(auth, params.id) };
+      },
+      {
+        response: {
+          200: t.Object({ sessions: t.Array(SESSION) }),
+          401: REFUSAL,
+          403: REFUSAL,
+          404: REFUSAL,
+        },
+        detail: { summary: 'The sessions signed into the console for a person' },
+      },
+    )
+    .delete(
+      '/api/admin/users/:id/sessions/:sessionId',
+      async ({ params, request, status }) => {
+        const session = await auth.api.getSession({ headers: request.headers });
+        if (session === null) {
+          return status(
+            401,
+            refusal('NOT_SIGNED_IN', "This route is the console's; sign in to the console."),
+          );
+        }
+
+        const [target] = await database
+          .select({ id: user.id, email: user.email })
+          .from(user)
+          .where(eq(user.id, params.id));
+        if (!target) return status(404, refusal('USER_NOT_FOUND', 'No such person.'));
+
+        const context = await auth.$context;
+        const found = (await context.internalAdapter.listSessions(params.id)).find(
+          (each) => each.id === params.sessionId,
+        );
+        if (!found) {
+          return status(404, refusal('SESSION_NOT_FOUND', 'That session has already ended.'));
+        }
+
+        await context.internalAdapter.deleteSession(found.token);
+
+        await recordAdminAudit(database, {
+          actorId: session.user.id,
+          actorLabel: session.user.email,
+          action: 'revoke-session',
+          targetId: params.id,
+          targetLabel: target.email,
+          outcome: 'succeeded',
+        });
+
+        return { id: params.sessionId };
+      },
+      {
+        params: t.Object({
+          id: t.String({ minLength: 1, maxLength: 512 }),
+          sessionId: t.String({ minLength: 1, maxLength: 512 }),
+        }),
+        response: {
+          200: t.Object({ id: t.String() }),
+          401: REFUSAL,
+          403: REFUSAL,
+          404: REFUSAL,
+        },
+        detail: { summary: 'Sign one console session out' },
+      },
+    )
+    .delete(
+      '/api/admin/users/:id/sessions',
+      async ({ params, request, status }) => {
+        const session = await auth.api.getSession({ headers: request.headers });
+        if (session === null) {
+          return status(
+            401,
+            refusal('NOT_SIGNED_IN', "This route is the console's; sign in to the console."),
+          );
+        }
+
+        const [target] = await database
+          .select({ id: user.id, email: user.email })
+          .from(user)
+          .where(eq(user.id, params.id));
+        if (!target) return status(404, refusal('USER_NOT_FOUND', 'No such person.'));
+
+        const context = await auth.$context;
+        await context.internalAdapter.deleteUserSessions(params.id);
+
+        await recordAdminAudit(database, {
+          actorId: session.user.id,
+          actorLabel: session.user.email,
+          action: 'revoke-sessions',
+          targetId: params.id,
+          targetLabel: target.email,
+          outcome: 'succeeded',
+        });
+
+        return { id: params.id };
+      },
+      {
+        params: t.Object({ id: t.String({ minLength: 1, maxLength: 512 }) }),
+        response: {
+          200: t.Object({ id: t.String() }),
+          401: REFUSAL,
+          403: REFUSAL,
+          404: REFUSAL,
+        },
+        detail: { summary: 'Sign every console session out' },
+      },
     );
+}
+
+/** A session as the console draws it. The token itself is never sent. */
+const SESSION = t.Object({
+  id: t.String(),
+  createdAt: t.String(),
+  expiresAt: t.String(),
+  ipAddress: t.Nullable(t.String()),
+  userAgent: t.Nullable(t.String()),
+});
+
+/** A person's console sessions, without the secret that would let one be resumed. */
+async function sessionsOf(auth: Auth, userId: string) {
+  const context = await auth.$context;
+  const sessions = await context.internalAdapter.listSessions(userId);
+
+  return sessions.map((session) => ({
+    id: session.id,
+    createdAt: session.createdAt.toISOString(),
+    expiresAt: session.expiresAt.toISOString(),
+    ipAddress: session.ipAddress ?? null,
+    userAgent: session.userAgent ?? null,
+  }));
 }
