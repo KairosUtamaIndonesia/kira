@@ -1,7 +1,15 @@
 import { afterAll, describe, expect, test } from 'bun:test';
 import { grantAdmin } from './admin';
 import { recentAdminAudit } from './admin-audit';
-import { closeDatabases, consoleSession, listening, user } from './test-support/server';
+import {
+  bearer,
+  closeDatabases,
+  consoleSession,
+  issue,
+  listening,
+  send,
+  user,
+} from './test-support/server';
 
 /** The person the stand-in Microsoft signs in as. */
 const ADA = {
@@ -92,6 +100,77 @@ describe('changing a role', () => {
 
       expect(response.status).toBe(404);
       expect((await response.json()).error.code).toBe('USER_NOT_FOUND');
+    } finally {
+      await server.stop();
+    }
+  });
+});
+
+describe('suspending a person', () => {
+  async function setSuspended(
+    origin: string,
+    cookie: string,
+    userId: string,
+    suspended: boolean,
+    reason?: string,
+  ): Promise<Response> {
+    return fetch(`${origin}/api/admin/users/${userId}/suspension`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ suspended, ...(reason === undefined ? {} : { reason }) }),
+    });
+  }
+
+  test('cuts off their Key and records the reason; reactivating restores it', async () => {
+    const server = await listening(ADA);
+    try {
+      const grace = await user(server.auth, 'grace@company.example');
+      const key = await issue(server.auth, grace.id, 'workstation');
+      const cookie = await consoleSession(server.origin);
+      await grantAdmin(server.auth, ADA.email);
+
+      const suspended = await setSuspended(
+        server.origin,
+        cookie,
+        grace.id,
+        true,
+        'left the company',
+      );
+      expect(suspended.status).toBe(200);
+      expect(await suspended.json()).toEqual({ id: grace.id, suspended: true });
+
+      const refused = await send(server.app, '/api/me', { headers: bearer(key.key) });
+      expect(refused.status).toBe(401);
+      expect((await refused.json()).error.code).toBe('USER_SUSPENDED');
+
+      const reactivated = await setSuspended(server.origin, cookie, grace.id, false);
+      expect(reactivated.status).toBe(200);
+
+      const restored = await send(server.app, '/api/me', { headers: bearer(key.key) });
+      expect(restored.status).toBe(200);
+
+      const events = await recentAdminAudit(server.database);
+      expect(events.find((event) => event.action === 'suspend')).toMatchObject({
+        detail: 'left the company',
+      });
+      expect(events.find((event) => event.action === 'reactivate')).toBeDefined();
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test('the last administrator cannot be suspended', async () => {
+    const server = await listening(ADA);
+    try {
+      const cookie = await consoleSession(server.origin);
+      await grantAdmin(server.auth, ADA.email);
+      const context = await server.auth.$context;
+      const found = await context.internalAdapter.findUserByEmail(ADA.email);
+
+      const response = await setSuspended(server.origin, cookie, found!.user.id, true);
+
+      expect(response.status).toBe(409);
+      expect((await response.json()).error.code).toBe('LAST_ADMIN');
     } finally {
       await server.stop();
     }

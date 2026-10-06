@@ -80,5 +80,79 @@ export function createAdminUsers({ auth, database }: { auth: Auth; database: Dat
         },
         detail: { summary: "Grant or remove a person's admin role" },
       },
+    )
+    .put(
+      '/api/admin/users/:id/suspension',
+      async ({ params, body, request, status }) => {
+        const session = await auth.api.getSession({ headers: request.headers });
+        if (session === null) {
+          return status(
+            401,
+            refusal('NOT_SIGNED_IN', "This route is the console's; sign in to the console."),
+          );
+        }
+
+        const [target] = await database
+          .select({ id: user.id, email: user.email, role: user.role })
+          .from(user)
+          .where(eq(user.id, params.id));
+        if (!target) return status(404, refusal('USER_NOT_FOUND', 'No such person.'));
+
+        // Suspending the last administrator locks the console out of itself just
+        // as removing the role does, so the same guard covers both (docs/adr/0007).
+        if (body.suspended && target.role === 'admin' && (await adminCount(database)) <= 1) {
+          return status(
+            409,
+            refusal(
+              'LAST_ADMIN',
+              'Kira would be left with no administrator. Grant the role to somebody else first.',
+            ),
+          );
+        }
+
+        // The plugin's ban revokes the person's sessions and blocks new sign-ins;
+        // the Key is stopped separately, at the shared boundary (docs/adr/0035).
+        if (body.suspended) {
+          await auth.api.banUser({
+            body: {
+              userId: params.id,
+              ...(body.reason === undefined ? {} : { banReason: body.reason }),
+            },
+            headers: request.headers,
+          });
+        } else {
+          await auth.api.unbanUser({
+            body: { userId: params.id },
+            headers: request.headers,
+          });
+        }
+
+        await recordAdminAudit(database, {
+          actorId: session.user.id,
+          actorLabel: session.user.email,
+          action: body.suspended ? 'suspend' : 'reactivate',
+          targetId: params.id,
+          targetLabel: target.email,
+          outcome: 'succeeded',
+          // The reason is an operator's note; the suspended person is not shown it.
+          ...(body.suspended && body.reason !== undefined ? { detail: body.reason } : {}),
+        });
+
+        return { id: params.id, suspended: body.suspended };
+      },
+      {
+        body: t.Object({
+          suspended: t.Boolean(),
+          reason: t.Optional(t.String({ maxLength: 500 })),
+        }),
+        response: {
+          200: t.Object({ id: t.String(), suspended: t.Boolean() }),
+          401: REFUSAL,
+          403: REFUSAL,
+          404: REFUSAL,
+          409: REFUSAL,
+        },
+        detail: { summary: 'Suspend or reactivate a person' },
+      },
     );
 }

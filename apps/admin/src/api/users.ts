@@ -72,3 +72,31 @@ export async function setRole(
 
   return { ok: true, value: data };
 }
+
+/**
+ * Suspend a person or bring them back.
+ *
+ * The reason is the operator's note: it is recorded with the action and is not
+ * shown to the person, who is told only that access is suspended (docs/adr/0035).
+ */
+export async function setSuspended(
+  userId: string,
+  suspended: boolean,
+  reason?: string,
+): Promise<Loaded<{ id: string; suspended: boolean }>> {
+  const { data, error } = await kira.api.admin.users({ id: userId }).suspension.put({
+    suspended,
+    ...(reason === undefined || reason === '' ? {} : { reason }),
+  });
+  if (error) {
+    return {
+      ok: false,
+      message: reasonFor(
+        error.value as { message?: string } | null,
+        'Kira would not change this person.',
+      ),
+    };
+  }
+
+  return { ok: true, value: data };
+}

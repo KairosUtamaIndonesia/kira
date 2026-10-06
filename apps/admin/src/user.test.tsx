@@ -6,7 +6,18 @@ import type { Loaded } from './api/result';
 import type { ListedUser } from './api/users';
 
 const api = {
-  setRole: mock<(userId: string, role: 'admin' | 'user') => Promise<Loaded<{ id: string; role: string }>>>(),
+  setRole:
+    mock<
+      (userId: string, role: 'admin' | 'user') => Promise<Loaded<{ id: string; role: string }>>
+    >(),
+  setSuspended:
+    mock<
+      (
+        userId: string,
+        suspended: boolean,
+        reason?: string,
+      ) => Promise<Loaded<{ id: string; suspended: boolean }>>
+    >(),
 };
 
 mock.module('./api/users', () => api);
@@ -17,8 +28,8 @@ mock.module('@stylexjs/stylex', () => ({
 
 const who: Who = { name: 'Ada Lovelace', email: 'ada@company.example', admin: true };
 
-function person(role: string): ListedUser {
-  return { id: 'grace', name: 'Grace Hopper', email: 'grace@company.example', role, banned: false };
+function person(role: string, banned = false): ListedUser {
+  return { id: 'grace', name: 'Grace Hopper', email: 'grace@company.example', role, banned };
 }
 
 let dom: JSDOM;
@@ -64,8 +75,8 @@ afterEach(async () => {
   Reflect.deleteProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT');
 });
 
-async function render(role: string, updateUser = mock()) {
-  const value = { who, users: [person(role)], readings: {}, updateUser };
+async function render(role: string, banned = false, updateUser = mock()) {
+  const value = { who, users: [person(role, banned)], readings: {}, updateUser };
   await act(async () =>
     root.render(
       <ConsoleDataProvider value={value}>
@@ -83,6 +94,18 @@ function button(label: string): HTMLButtonElement {
   );
   if (!found) throw new Error(`Button not found: ${label}`);
   return found;
+}
+
+async function type(selector: string, value: string) {
+  const input = host.querySelector<HTMLInputElement>(selector)!;
+  await act(async () => {
+    const setter = Object.getOwnPropertyDescriptor(
+      dom.window.HTMLInputElement.prototype,
+      'value',
+    )?.set;
+    setter?.call(input, value);
+    input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  });
 }
 
 describe('the User page role control', () => {
@@ -113,6 +136,42 @@ describe('the User page role control', () => {
     await render('admin');
 
     await act(async () => button('Remove admin').click());
+
+    expect(host.textContent).toContain('Kira would be left with no administrator.');
+  });
+});
+
+describe('the User page access control', () => {
+  test('suspends with an optional reason and applies the answer', async () => {
+    api.setSuspended.mockResolvedValue({ ok: true, value: { id: 'grace', suspended: true } });
+    const updateUser = await render('user');
+
+    await act(async () => button('Suspend').click());
+    await type('#suspend-reason', 'left the company');
+    await act(async () => button('Suspend').click());
+
+    expect(api.setSuspended).toHaveBeenCalledWith('grace', true, 'left the company');
+    expect(updateUser).toHaveBeenCalledWith({ id: 'grace', banned: true });
+  });
+
+  test('reactivates a suspended person', async () => {
+    api.setSuspended.mockResolvedValue({ ok: true, value: { id: 'grace', suspended: false } });
+    await render('user', true);
+
+    await act(async () => button('Reactivate').click());
+
+    expect(api.setSuspended).toHaveBeenCalledWith('grace', false, undefined);
+  });
+
+  test('shows the server sentence when the last admin cannot be suspended', async () => {
+    api.setSuspended.mockResolvedValue({
+      ok: false,
+      message: 'Kira would be left with no administrator.',
+    });
+    await render('admin');
+
+    await act(async () => button('Suspend').click());
+    await act(async () => button('Suspend').click());
 
     expect(host.textContent).toContain('Kira would be left with no administrator.');
   });
