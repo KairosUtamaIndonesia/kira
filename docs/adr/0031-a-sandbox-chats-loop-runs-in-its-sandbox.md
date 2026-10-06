@@ -34,7 +34,7 @@ pi lets a chat's tools be redirected to a remote executor, so the loop could sta
 ## Consequences
 
 - **The server gains a durable copy of a sandbox chat and a way to push to the desktop.** It has no transcript store and no realtime channel today. What is stored, who is authoritative while the sandbox is alive, and how a chat resumes in a fresh sandbox are open (transcript and steering ticket on the map).
-- **The sandbox runs Node.** The runner uses `node:sqlite` for a sandbox-local `ThreadStore`; Bun's support for it is unverified.
+- **The sandbox runs Node.** The runner was to use `node:sqlite` for a sandbox-local `ThreadStore`; ADR 0033 replaced that with an in-memory store flushed to the server.
 - **Browser and MCP tools are not available in a sandbox chat**, so a ticket that needs `verify` against the desktop app cannot be cleared there yet.
 - **ADR 0012's revisit clause is answered.** The desktop stops being the only place a chat's loop runs, and the server is now a broker rather than only a queue and a model proxy. ADR 0024's rules about tickets and status hold unchanged.
 - **ADR 0001 is reopened for sandboxes** and is the subject of the trust-boundary ticket on the map.
