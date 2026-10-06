@@ -556,6 +556,11 @@ button {
 .ask-field {
   margin-top: 12px;
 }
+.ask-field textarea,
+.ask-review textarea {
+  font-size: 12px;
+  line-height: 1.45;
+}
 .ask-secondary,
 .ask-cancel,
 .ask-primary {

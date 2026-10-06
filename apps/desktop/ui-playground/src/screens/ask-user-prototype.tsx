@@ -66,7 +66,6 @@ export function AskUserPrototype() {
   const [questionIndex, setQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<number, Answer>>({ 0: 'The chat' });
   const [customDrafts, setCustomDrafts] = useState<Record<number, string>>({});
-  const [notes, setNotes] = useState<Record<number, string>>({});
   const [globalNote, setGlobalNote] = useState('');
   const [reviewing, setReviewing] = useState(false);
   const [status, setStatus] = useState('');
@@ -212,16 +211,6 @@ export function AskUserPrototype() {
             >
               {answerForDisplay(index)}
             </button>
-            <TextArea
-              label={`Note on ${question.header.toLowerCase()}`}
-              isOptional
-              xstyle={styles.textArea}
-              value={notes[index] ?? ''}
-              onChange={(value) =>
-                setNotes((currentNotes) => ({ ...currentNotes, [index]: value }))
-              }
-              rows={2}
-            />
           </div>
         ))}
         {unanswered ? (
@@ -232,7 +221,7 @@ export function AskUserPrototype() {
         ) : null}
         <div className="ask-field">
           <TextArea
-            label="Note for the whole questionnaire"
+            label="Anything else for Kira?"
             isOptional
             xstyle={styles.textArea}
             value={globalNote}
@@ -385,7 +374,6 @@ export function AskUserPrototype() {
               {isAnswered(index) ? (
                 <div className="ask-user-reply">
                   <span>{answerForDisplay(index)}</span>
-                  {notes[index] ? <small>{notes[index]}</small> : null}
                 </div>
               ) : null}
               {!reviewing && questionIndex === index ? (
@@ -433,7 +421,6 @@ export function AskUserPrototype() {
               <li key={question.header}>
                 <strong>{question.header}:</strong> {answerForDisplay(index)}
                 {customDrafts[index] ? <span> · written draft: {customDrafts[index]}</span> : null}
-                {notes[index] ? <span> · note: {notes[index]}</span> : null}
               </li>
             ))}
             <li>
