@@ -53,6 +53,7 @@ const questions = [
 const styles = stylex.create({
   textArea: {
     borderColor: 'transparent',
+    backgroundColor: 'var(--color-background-muted)',
   },
 });
 
