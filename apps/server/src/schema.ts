@@ -215,6 +215,19 @@ export const allowance = pgTable('allowance', {
 });
 
 /**
+ * The allowance everyone gets, when a person has no row of their own.
+ *
+ * One row, because Kira runs one organisation, and a number the console edits
+ * rather than a deployment setting: the same argument that moved the admin role
+ * into the database applies (docs/adr/0005-allowances.md). Until the console
+ * writes it, the configured default stands, so nobody is ever unbudgeted.
+ */
+export const allowanceDefault = pgTable('allowance_default', {
+  id: text('id').primaryKey(),
+  tokensPerMonth: integer('tokensPerMonth').notNull(),
+});
+
+/**
  * What one person decided about memory, when it is not the default.
  *
  * Two answers, either of which a row may hold on its own: a person may name a
@@ -816,6 +829,7 @@ export const schema = {
   apikey,
   usage,
   allowance,
+  allowanceDefault,
   memory,
   project,
   decision,

@@ -6,7 +6,13 @@ import type { Config } from './config';
 import type { Database } from './database';
 import { keyHolder } from './keys';
 import { REFUSAL, refusal } from './refusals';
-import { allowance, usage } from './schema';
+import { allowance, allowanceDefault, usage } from './schema';
+
+/**
+ * The one row that holds the default. A fixed id, because there is exactly one
+ * organisation and so exactly one default.
+ */
+const DEFAULT_ALLOWANCE_ID = 'default';
 
 /**
  * Kira's allowances: how much of the pool one person may spend in a month
@@ -59,7 +65,35 @@ export async function allowanceFor(
   userId: string,
   settings: AllowanceSettings,
 ): Promise<number> {
-  return (await overrideFor(database, userId)) ?? settings.defaultTokens;
+  return (await overrideFor(database, userId)) ?? (await defaultAllowanceFor(database, settings));
+}
+
+/**
+ * The allowance everyone gets: the console's row, or the configured default until
+ * the console writes one. The row is what makes it editable without a deploy; the
+ * config value is the seed a fresh database starts from.
+ */
+export async function defaultAllowanceFor(
+  database: Database,
+  settings: AllowanceSettings,
+): Promise<number> {
+  const [row] = await database
+    .select({ tokensPerMonth: allowanceDefault.tokensPerMonth })
+    .from(allowanceDefault)
+    .where(eq(allowanceDefault.id, DEFAULT_ALLOWANCE_ID));
+
+  return row?.tokensPerMonth ?? settings.defaultTokens;
+}
+
+/** Set the default everyone gets. The console is the only writer. */
+export async function setDefaultAllowance(
+  database: Database,
+  tokensPerMonth: number,
+): Promise<void> {
+  await database
+    .insert(allowanceDefault)
+    .values({ id: DEFAULT_ALLOWANCE_ID, tokensPerMonth })
+    .onConflictDoUpdate({ target: allowanceDefault.id, set: { tokensPerMonth } });
 }
 
 /** The number somebody was given, or null when the default applies to them. */
@@ -345,6 +379,48 @@ export function createAllowances({
           body: t.Object({ tokensPerMonth: t.Union([t.Integer({ minimum: 1 }), t.Null()]) }),
           response: { 200: USAGE, 401: REFUSAL, 403: REFUSAL, 404: REFUSAL },
           detail: { summary: "Set or clear somebody's allowance" },
+        },
+      )
+      .get(
+        '/api/admin/default-allowance',
+        async () => ({ tokensPerMonth: await defaultAllowanceFor(database, config.allowance) }),
+        {
+          response: {
+            200: t.Object({ tokensPerMonth: t.Number() }),
+            401: REFUSAL,
+            403: REFUSAL,
+          },
+          detail: { summary: 'The allowance everyone gets' },
+        },
+      )
+      .put(
+        '/api/admin/default-allowance',
+        async ({ body, request }) => {
+          await setDefaultAllowance(database, body.tokensPerMonth);
+
+          const session = await auth.api.getSession({ headers: request.headers });
+          if (session !== null) {
+            await recordAdminAudit(database, {
+              actorId: session.user.id,
+              actorLabel: session.user.email,
+              action: 'default-allowance',
+              targetId: null,
+              targetLabel: null,
+              outcome: 'succeeded',
+              detail: String(body.tokensPerMonth),
+            });
+          }
+
+          return { tokensPerMonth: body.tokensPerMonth };
+        },
+        {
+          body: t.Object({ tokensPerMonth: t.Integer({ minimum: 1 }) }),
+          response: {
+            200: t.Object({ tokensPerMonth: t.Number() }),
+            401: REFUSAL,
+            403: REFUSAL,
+          },
+          detail: { summary: 'Change the allowance everyone gets' },
         },
       )
   );

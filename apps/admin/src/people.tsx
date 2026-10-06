@@ -10,6 +10,7 @@ import type { Readings } from './api/allowances';
 import type { ListedUser } from './api/users';
 import AllowanceCell from './allowanceCell';
 import { useConsoleData } from './consoleData';
+import DefaultAllowance from './defaultAllowance';
 
 const styles = stylex.create({
   page: {
@@ -108,6 +109,7 @@ export default function People() {
           what they may do, or what they may spend of the shared pool.
         </Text>
       </header>
+      <DefaultAllowance />
       <div {...stylex.props(styles.peopleTable)}>
         <Table
           data={users}

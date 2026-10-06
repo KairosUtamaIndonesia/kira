@@ -62,6 +62,28 @@ export async function setAllowance(
   return { ok: true, value: readingOf(data) };
 }
 
+/** The allowance everyone gets, when they have none of their own. */
+export async function readDefaultAllowance(): Promise<Loaded<number>> {
+  const { data, error } = await kira.api.admin['default-allowance'].get();
+  if (error) {
+    return {
+      ok: false,
+      message: why(error, 'Kira would not say what the default allowance is.'),
+    };
+  }
+
+  return { ok: true, value: data.tokensPerMonth };
+}
+
+export async function setDefaultAllowance(tokensPerMonth: number): Promise<Loaded<number>> {
+  const { data, error } = await kira.api.admin['default-allowance'].put({ tokensPerMonth });
+  if (error) {
+    return { ok: false, message: why(error, 'Kira would not change the default allowance.') };
+  }
+
+  return { ok: true, value: data.tokensPerMonth };
+}
+
 /**
  * The sentence Kira answered with.
  *

@@ -29,6 +29,8 @@ const api = {
 const allowances = {
   readAllowance: mock<() => Promise<Loaded<Reading>>>(),
   setAllowance: mock<(userId: string, tokens: number | null) => Promise<Loaded<Reading>>>(),
+  readDefaultAllowance: mock<() => Promise<Loaded<number>>>(),
+  setDefaultAllowance: mock<(tokensPerMonth: number) => Promise<Loaded<number>>>(),
 };
 
 mock.module('./api/users', () => api);

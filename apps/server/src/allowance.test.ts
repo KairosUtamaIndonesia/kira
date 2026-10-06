@@ -250,4 +250,53 @@ describe('reading and changing an allowance', () => {
       await server.stop();
     }
   });
+
+  test('an operator changes the default, and overrides are left alone', async () => {
+    const server = await listening(ADA);
+    try {
+      const grace = await user(server.auth, 'grace@company.example');
+      const maya = await user(server.auth, 'maya@company.example');
+      const cookie = await consoleSession(server.origin);
+      await grantAdmin(server.auth, ADA.email);
+
+      // Grace has a number of her own before the default moves.
+      await fetch(`${server.origin}/api/admin/allowance/${grace.id}`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify({ tokensPerMonth: 9000 }),
+      });
+
+      const before = await fetch(`${server.origin}/api/admin/default-allowance`, {
+        headers: { cookie },
+      });
+      expect(await before.json()).toEqual({
+        tokensPerMonth: server.config.allowance.defaultTokens,
+      });
+
+      const changed = await fetch(`${server.origin}/api/admin/default-allowance`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify({ tokensPerMonth: 2500 }),
+      });
+      expect(changed.status).toBe(200);
+      expect(await changed.json()).toEqual({ tokensPerMonth: 2500 });
+
+      // Grace keeps her own number; somebody without one takes the new default.
+      const graceReading = await fetch(`${server.origin}/api/admin/usage/${grace.id}`, {
+        headers: { cookie },
+      });
+      expect(await graceReading.json()).toMatchObject({ allowance: 9000, override: 9000 });
+      const mayaReading = await fetch(`${server.origin}/api/admin/usage/${maya.id}`, {
+        headers: { cookie },
+      });
+      expect(await mayaReading.json()).toMatchObject({ allowance: 2500, override: null });
+
+      const events = await recentAdminAudit(server.database);
+      expect(events.find((event) => event.action === 'default-allowance')).toMatchObject({
+        detail: '2500',
+      });
+    } finally {
+      await server.stop();
+    }
+  });
 });
