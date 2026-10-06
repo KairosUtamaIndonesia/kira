@@ -4,6 +4,11 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   root: new URL('./ui-playground', import.meta.url).pathname,
+  optimizeDeps: {
+    // Let StyleX transform Astryx's package exports instead of freezing them in
+    // Vite's prebundle; this mirrors the desktop renderer configuration.
+    exclude: ['@astryxdesign/core'],
+  },
   plugins: [
     stylex({
       dev: true,
