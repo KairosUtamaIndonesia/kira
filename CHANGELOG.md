@@ -4,7 +4,7 @@
 
 ### Changed
 
-- Ask user questionnaires use compact question tabs with Review last, reveal the write-in field only when selected, collect an optional note once in Review, and use the transcript's body type size throughout.
+- Ask user questionnaires use compact question tabs with Review last, reveal the write-in field only when selected, collect an optional note once in Review, use the transcript's body type size throughout, and stretch text areas across the card.
 
 ### Fixed
 

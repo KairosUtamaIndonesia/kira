@@ -75,6 +75,7 @@ const styles = stylex.create({
   textArea: {
     borderColor: 'transparent',
     backgroundColor: 'var(--color-background-surface)',
+    width: '100%',
     fontSize: 'var(--text-body-size)',
     lineHeight: 'var(--text-body-leading)',
   },
@@ -109,10 +110,10 @@ const styles = stylex.create({
   reviewItem: { paddingBlock: spacingVars['--spacing-2'] },
   reviewNote: { marginTop: spacingVars['--spacing-2'] },
   tabNav: { display: 'flex', flexWrap: 'wrap', gap: spacingVars['--spacing-1'] },
-  section: { maxWidth: 650, width: '100%' },
+  section: { width: '100%' },
   questionOptions: { gap: 0 },
   questionPrompt: { marginBlockEnd: spacingVars['--spacing-2'] },
-  writeIn: { marginTop: spacingVars['--spacing-2'] },
+  writeIn: { width: '100%', marginTop: spacingVars['--spacing-2'] },
   review: { width: '100%' },
   actions: { justifyContent: 'space-between', flexWrap: 'wrap' },
 });
