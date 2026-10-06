@@ -844,11 +844,6 @@
 
 /*
  * The thread fills the chat pane: the messages scroll, the composer stays put.
- * Structure is Astryx/assistant-ui's, but the inset's own background is ours —
- * a flat --color-background-surface read as one uninterrupted hex with nothing
- * to anchor the eye, so a soft glow sits behind the whole pane (not just the
- * scrolling viewport, so it reaches the full inset width regardless of column
- * width) and fades out toward the bottom.
  */
 .thread {
   position: relative;
@@ -856,11 +851,7 @@
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  background: radial-gradient(
-    140% 100% at 50% -10%,
-    light-dark(#ffffff, #1c1a18) 0%,
-    var(--color-background-surface) 60%
-  );
+  background: var(--color-background-surface);
 }
 
 .thread::before {
