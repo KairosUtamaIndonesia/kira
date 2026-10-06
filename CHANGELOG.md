@@ -16,6 +16,8 @@
 
 ### Added
 
+- Settings → Appearance now uses OpenChamber's default light/dark themes and can import VS Code color themes from local JSON/JSONC files or Open VSX. Theme choices stay on this device and apply to the interface, file editor and diffs.
+
 - A chat's workbench gains a **Changes** view over its own checkout: what changed as one file list with each file's added and removed lines and whether it is staged; a review that gives a file's diff the whole pane and steps through the files (`j`, `k`, and `s` to stage and move on), inline or side by side; staging a file or a single hunk; commits ahead of and behind the upstream on the branch row; a commit message and commit; reverting a file; the branch list and switching; the commit history with the files each commit changed; and fetch, pull and push shown in git's own words. Every index write is serialised per checkout, so it never interleaves with the file tree's status reads.
 
 - A chat's workbench gains a **Pull requests** view: the checkout repository's pull requests read live from its connected Git host, each row showing its title, branch, state, checks rollup and age. Opening one reads it read-only across About, Files and Checks, and a changed file opens into the whole pane with its diff, stepped through with `j` and `k` like the Changes view. See [ADR 0030](docs/adr/0030-a-repositorys-pull-requests-are-read-from-its-host.md).
@@ -149,7 +151,7 @@
 
 ### Changed
 
-- Kira has a new color theme: warm, neutral ink and paper grays instead of rose-tinted ones, with Kira red as the single accent in both light and dark mode, plus matching code highlighting.
+- Kira's default theme now matches OpenChamber's warm ink and paper palette, orange accent and Vitesse syntax colors in light and dark modes.
 - A folder is a workspace, and it works a project. What you add a folder as was called a project,
   which is now the name for the shared body of work its tickets belong to: a workspace is where the
   work happens, several workspaces can work one project, and a chat stays filed under the folder it

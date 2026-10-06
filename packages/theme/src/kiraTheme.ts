@@ -14,16 +14,11 @@ import { neutralTheme } from '@astryxdesign/theme-neutral';
  * builds run against, not what ships.
  */
 
-// Kira red. Dark mode uses the brand color as-is with dark text on it
-// (#FFFFFF on #FF3859 is only 3.5:1); light mode deepens it so white text
-// clears 4.5:1 and it still reads as the same red on paper.
-const accent: [string, string] = ['#D4203F', '#FF3859'];
+// OpenChamber's signature orange, authored per mode for readable white text.
+const accent: [string, string] = ['#B35017', '#DA7C47'];
 
-// Colors are authored per role rather than seeded through `color.accent`:
-// the HCT seed bleeds the accent's hue into every neutral, which turned
-// Kira's grays pink. These are warm, low-chroma ink (dark) and paper
-// (light) neutrals with hover/press as translucent overlays, modeled on
-// OpenChamber's default theme.
+// Match OpenChamber's default warm paper and ink surfaces, with hover and
+// press as translucent overlays rather than accent-tinted neutrals.
 export const kiraTheme = defineTheme({
   name: 'kira',
   extends: neutralTheme,
@@ -53,7 +48,7 @@ export const kiraTheme = defineTheme({
 
     // Accent.
     '--color-accent': accent,
-    '--color-accent-muted': ['#D4203F24', '#FF38592E'],
+    '--color-accent-muted': ['#B3501780', '#DA7C4780'],
     '--color-on-accent': ['#FFFFFF', '#120F0E'],
 
     // Lines.

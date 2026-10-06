@@ -14,8 +14,10 @@
  */
 import * as diffs from '@pierre/diffs';
 import { PatchDiff } from '@pierre/diffs/react';
-import { Component, type ReactNode, useEffect, useState, useSyncExternalStore } from 'react';
+import { Component, type ReactNode, useEffect, useMemo, useState } from 'react';
+import { useKiraAppearance } from '@kira/theme';
 import { languageOf } from './filePreview';
+import { kiraShikiTheme, type KiraShikiTheme } from './kiraShikiTheme';
 
 /**
  * The library's highlighter preloader, read off its namespace rather than named
@@ -33,19 +35,6 @@ const preload = (
 /** Whether the pane draws its diff inline or in two columns. */
 export type DiffStyle = 'unified' | 'split';
 
-const DARK = '(prefers-color-scheme: dark)';
-
-function schemeNow(): 'light' | 'dark' {
-  return window.matchMedia(DARK).matches ? 'dark' : 'light';
-}
-
-function watchScheme(changed: () => void): () => void {
-  const media = window.matchMedia(DARK);
-  media.addEventListener('change', changed);
-
-  return () => media.removeEventListener('change', changed);
-}
-
 /**
  * `patch` is one file's unified diff, and `path` names the file it changed, so
  * the shiki language can be read from its name. `wrap` breaks long lines rather
@@ -62,16 +51,49 @@ export function DiffPatch({
   diffStyle: DiffStyle;
   wrap: boolean;
 }) {
-  const scheme = useSyncExternalStore(watchScheme, schemeNow);
-  const [loaded, setLoaded] = useState<string | null>(null);
-  const theme = scheme === 'dark' ? 'github-dark' : 'github-light';
+  const appearance = useKiraAppearance();
+  const theme = useMemo(
+    () => kiraShikiTheme(appearance.mode, appearance.activeTheme?.id, appearance.token),
+    [appearance.mode, appearance.activeTheme?.id, appearance.token],
+  );
   const language = languageOf(path) ?? 'text';
-  const key = `${theme}:${language}`;
+  const key = `${theme.name}:${language}`;
 
-  useEffect(() => {
+  return (
+    <LoadedDiff
+      key={key}
+      patch={patch}
+      diffStyle={diffStyle}
+      wrap={wrap}
+      language={language}
+      theme={theme}
+    />
+  );
+}
+
+function LoadedDiff({
+  patch,
+  diffStyle,
+  wrap,
+  language,
+  theme,
+}: {
+  patch: string;
+  diffStyle: DiffStyle;
+  wrap: boolean;
+  language: string;
+  theme: KiraShikiTheme;
+}) {
+  const [loaded, setLoaded] = useState<string | null>(null);
+  const key = `${theme.name}:${language}`;
+
+  useMountEffect(() => {
     let live = true;
+    diffs.registerCustomTheme(theme.name, async () => theme);
     const work =
-      preload === undefined ? Promise.resolve() : preload({ themes: [theme], langs: [language] });
+      preload === undefined
+        ? Promise.resolve()
+        : preload({ themes: [theme.name], langs: [language] });
     void work
       .catch(() => undefined)
       .then(() => {
@@ -81,17 +103,17 @@ export function DiffPatch({
     return () => {
       live = false;
     };
-  }, [key, theme, language]);
+  });
 
   return (
-    <div className="workbench-diff" data-scheme={scheme}>
+    <div className="workbench-diff">
       {loaded === key ? (
         <DiffBoundary key={patch}>
           <PatchDiff
             patch={patch}
             disableWorkerPool
             options={{
-              theme,
+              theme: theme.name,
               diffStyle,
               overflow: wrap ? 'wrap' : 'scroll',
               disableFileHeader: true,
@@ -101,6 +123,13 @@ export function DiffPatch({
       ) : null}
     </div>
   );
+}
+
+function useMountEffect(effect: () => void | (() => void)): void {
+  /* eslint-disable no-restricted-syntax */
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(effect, []);
+  /* eslint-enable no-restricted-syntax */
 }
 
 /**

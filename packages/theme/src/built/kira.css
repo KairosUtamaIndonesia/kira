@@ -230,8 +230,8 @@
     --color-background-card: light-dark(#F8F7F5, #181715);
     --color-background-popover: light-dark(#FFFFFF, #1E1C1A);
     --color-background-muted: light-dark(#3939340A, #FFFFFF08);
-    --color-accent: light-dark(#D4203F, #FF3859);
-    --color-accent-muted: light-dark(#D4203F24, #FF38592E);
+    --color-accent: light-dark(#B35017, #DA7C47);
+    --color-accent-muted: light-dark(#B3501780, #DA7C4780);
     --color-neutral: light-dark(#39393414, #C9C5BA1A);
     --color-overlay: light-dark(#1A181566, #00000099);
     --color-overlay-hover: light-dark(#0000000D, #FFFFFF12);

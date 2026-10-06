@@ -1560,6 +1560,28 @@ export const SHELL_CHANNELS = {
   save: 'shell:save',
 } as const;
 
+/** The Open VSX identity needed to fetch one color-theme extension. */
+export interface VSCodeThemeExtension {
+  namespace: string;
+  name: string;
+  version: string;
+  label: string;
+}
+
+/** One theme file resolved from an Open VSX extension package. */
+export interface VSCodeThemePackageItem {
+  path: string;
+  name: string;
+  text: string;
+  error: boolean;
+}
+
+/** Theme catalog requests stay in the main process; the renderer only gets validated data. */
+export const THEME_CATALOG_CHANNELS = {
+  search: 'themes:catalog-search',
+  package: 'themes:catalog-package',
+} as const;
+
 export interface ShellSettingsSnapshot {
   configuredPath: string | null;
   resolvedPath: string | null;
@@ -1964,4 +1986,8 @@ export interface KiraBridge {
   testShellPath(path: string | null): Promise<Result<ShellTestResult>>;
   /** Save an override or restore Pi's automatic shell detection. */
   saveShellPath(path: string | null): Promise<Result<null>>;
+  searchVSCodeThemes(query: string): Promise<Result<VSCodeThemeExtension[]>>;
+  readVSCodeThemePackage(
+    extension: VSCodeThemeExtension,
+  ): Promise<Result<VSCodeThemePackageItem[]>>;
 }

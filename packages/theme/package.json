@@ -5,7 +5,10 @@
   "description": "Kira's theme: what every surface of the product looks like",
   "type": "module",
   "exports": {
-    ".": "./src/index.tsx"
+    ".": "./src/index.tsx",
+    "./appearancePreferences": "./src/appearancePreferences.ts",
+    "./vscodeJson": "./src/vscodeJson.ts",
+    "./vscodeTheme": "./src/vscodeTheme.ts"
   },
   "scripts": {
     "theme:build": "astryx theme build ./src/kiraTheme.ts -o ./src/built/kira.css",

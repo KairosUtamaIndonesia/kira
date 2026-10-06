@@ -2,7 +2,7 @@
 name: Kira Desktop
 description: A calm, exact visual system for local-first coding work.
 colors:
-  primary: 'light-dark(#D4203F, #FF3859)'
+  primary: 'light-dark(#B35017, #DA7C47)'
   neutral-body: 'light-dark(#F7F6F4, #171615)'
   neutral-bg: 'light-dark(#FDFCFA, #120F0E)'
   neutral-surface: 'light-dark(#F8F7F5, #181715)'
@@ -108,12 +108,12 @@ components:
 
 Kira Desktop is calm and exact: a warm, low-glare workspace where project context, conversation, and the state of active work stay legible without decorative noise. The system pairs tonal surfaces and fine borders with restrained elevation; controls feel crisp and lightly lifted rather than glossy or ornamental.
 
-Kira red is the semantic action and focus accent, authored separately for light and dark themes with a foreground that clears 4.5:1 in each. Typography and spacing do the routine work of hierarchy; color is reserved for actions, focus, and meaningful state.
+OpenChamber orange is the semantic action and focus accent, authored separately for light and dark themes with a readable foreground in each. Typography and spacing do the routine work of hierarchy; color is reserved for actions, focus, and meaningful state.
 
 **Key Characteristics:**
 
 - Warm ink and warm paper neutrals with no accent hue in them.
-- Kira red for primary actions, selected states, and keyboard focus.
+- OpenChamber orange for primary actions, selected states, and keyboard focus.
 - Compact, keyboard-friendly controls inside a persistent desktop shell.
 
 ## Colors
@@ -122,7 +122,7 @@ The palette is warm ink (dark) and warm paper (light): low-chroma, faintly brown
 
 ### Primary
 
-- **Kira red** (`colors.primary`): the brand red `#FF3859` in dark mode with near-black text on it; a deeper `#D4203F` in light mode so white text clears 4.5:1. Used for primary actions, selected emphasis, and focus. Use the semantic accent token so its light/dark contrast pairing stays intact.
+- **OpenChamber orange** (`colors.primary`): `#B35017` in light mode and `#DA7C47` in dark mode, paired with white and near-black foregrounds. Used for primary actions, selected emphasis, and focus. Use the semantic accent token so its light/dark contrast pairing stays intact.
 
 ### Neutral
 
@@ -176,7 +176,7 @@ Components are crisp and lightly lifted. Prefer Astryx primitives and Kira theme
 ### Buttons
 
 - **Shape:** gently rounded controls (4px); standard height is 32px, with the shared small and large sizes at 28px and 36px.
-- **Primary:** semantic Kira red fill with the theme-selected on-accent text; standard horizontal padding is 12px.
+- **Primary:** semantic OpenChamber orange fill with the theme-selected on-accent text; standard horizontal padding is 12px.
 - **Hover / Focus:** use Astryx's restrained interaction overlay and the 2px accent focus outline with 3px offset.
 - **Secondary / Ghost / Destructive:** secondary uses a neutral fill, ghost stays transparent until interaction, and destructive is reserved for consequential removal or closure.
 - **Ghost at an edge:** a ghost button at the start or end of a header aligns its icon with the content beside it and lets its padding hang into the gutter, so it sits in line at rest and its hover background grows outward. How: `docs/internal/desktop-conventions.md` (Where a style goes).
@@ -184,7 +184,7 @@ Components are crisp and lightly lifted. Prefer Astryx primitives and Kira theme
 ### Chips
 
 - **Style:** compact, full-pill badges; use semantic status variants or neutral treatment for counts and supporting labels.
-- **State:** status color identifies meaning; selection and action emphasis use Kira red instead of introducing another brand accent.
+- **State:** status color identifies meaning; selection and action emphasis use OpenChamber orange instead of introducing another brand accent.
 
 ### Cards / Containers
 
@@ -211,7 +211,7 @@ The rail is a ledger, drawn the way Work is, and it shares the canvas rather tha
 - **Sections, not a tree.** A workspace is a ruled section: a hairline above and its name in the heading face. Chats are 32px rows with no indent and no tree lines. A section shows five chats, then "Show N more"; the chat on screen is never hidden behind it.
 - **Two columns.** The left gutter (16px) holds status: a chevron on a head, a ticket glyph or a live dot on a chat. The right column holds the age in short mono (`now`, `5m`, `2d`), replaced by the elapsed run time in the live dot's blue while Kira is working in that chat. Chat titles, section names and the account name start at one left edge.
 - **Hover tools.** A section's Work, new chat and menu, and a chat's menu, appear under the pointer or on focus at the right edge, drawn as dim as the gutter and brightened on hover. A project's Work is one click from the rail; the top Work button opens the project chooser.
-- **Red marks the chat on screen, and nothing else here.** The selected chat is a neutral row with a red dot in the gutter (or a red ticket glyph), and the section that holds it has a 1px red rule. Do not fill a rail row with the accent: a wash reads as a second selection beside Work's.
+- **Orange marks the chat on screen, and nothing else here.** The selected chat is a neutral row with an orange dot in the gutter (or an orange ticket glyph), and the section that holds it has a 1px orange rule. Do not fill a rail row with the accent: a wash reads as a second selection beside Work's.
 - **The account row** ends the rail below a hairline: initial in the gutter column, name where titles start, the disclosure chevron at the right edge. Settings' rail ends with the same row.
 - **Collapsed**, the rail is a column of tiles, one per workspace, with the actions above and the account initial below.
 
@@ -249,7 +249,7 @@ Work is the reference for how Kira draws dense, task-shaped UI. The rules below 
 
 **Ledger, not cards.** Work is ruled, not boxed: hairlines, rows, and columns carry structure. Rows have no corners and no resting shadow. The only raised things are floating layers (menus, dialogs, the row's hover strip, the ticket's floating box), and a raised surface takes no border, because its shadow's inset ring is the edge. Reach for a rule or spacing before a box.
 
-**Signal rose.** Kira red is for the one primary action, selection, and focus. Lane color (warning amber for Needs review, accent for Ready, blue Running, orange Blocked, muted Draft, green Done) marks status and nothing else. Kind is shape first (icon) and hue second (a dot), and kind hues avoid the status colors except bug's orange. Won't do is orange, never red or green; a blocker closed as won't do is a warning, not a success, and the blockers' progress bar turns orange to say so.
+**Signal orange.** The semantic accent is for the one primary action, selection, and focus. Lane color (warning amber for Needs review, accent for Ready, blue Running, orange Blocked, muted Draft, green Done) marks status and nothing else. Kind is shape first (icon) and hue second (a dot), and kind hues avoid the status colors except bug's orange. Won't do is orange, never red or green; a blocker closed as won't do is a warning, not a success, and the blockers' progress bar turns orange to say so.
 
 **Board.** Lanes are ruled columns: a hairline between lanes and a 2px status-colored rule under each header with a zero-padded mono count. The stored statuses and derived Blocked marker each have a lane. A ticket is a ruled row: kind icon, mono name, and short age on the top line with the assignee's initials at the right; the title; the one-line status in its lane's color; then small tags (kind dot, blocker progress, linked chats). A row's actions (move to the top of Ready, attach, drag handle) float in one raised strip on hover or focus. The whole row drags by pointer; the handle is the keyboard's way. The drawer sits beside the board on wide windows and covers it on narrow ones. Dropping in another status asks to change the stored status; dropping in Blocked edits blocker links.
 
@@ -284,7 +284,7 @@ Work is the reference for how Kira draws dense, task-shaped UI. The rules below 
 ### Do:
 
 - **Do** use Kira's semantic color, type, radius, and spacing tokens so light and dark themes stay coordinated.
-- **Do** reserve Kira red for primary actions, selection, and focus; use status colors only for status.
+- **Do** reserve the semantic accent for primary actions, selection, and focus; use status colors only for status.
 - **Do** preserve keyboard-visible focus, readable labels, and the shared compact control sizes.
 - **Do** keep Work's board interactions action-based; the server remains authoritative for ticket lanes.
 - **Do** measure alignment in the running app; spacing and cohesion are the point of this system.
@@ -292,7 +292,7 @@ Work is the reference for how Kira draws dense, task-shaped UI. The rules below 
 
 ### Don't:
 
-- **Don't** substitute Astryx Neutral's default blue accent for Kira's semantic red accent.
+- **Don't** substitute Astryx Neutral's default blue accent for OpenChamber orange.
 - **Don't** add shadows to every card; keep resting surfaces tonal and lightly bordered.
 - **Don't** copy Linear's visual identity into Work; use familiar issue-tracker interactions in Kira's own visual language.
 - **Don't** box Work rows in cards, add a border to a shadowed surface, or cycle a filter's value on click.

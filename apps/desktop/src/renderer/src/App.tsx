@@ -39,6 +39,7 @@ import {
   GitFork,
   PanelLeft,
   PanelRight,
+  Palette,
   Pencil,
   Plug,
   RotateCcw,
@@ -1336,6 +1337,12 @@ export default function App() {
                 icon={CircleUserRound}
                 isSelected={setting === 'account'}
                 onClick={() => setSetting('account')}
+              />
+              <SideNavItem
+                label="Appearance"
+                icon={Palette}
+                isSelected={setting === 'appearance'}
+                onClick={() => setSetting('appearance')}
               />
               <SideNavItem
                 label="Memory"

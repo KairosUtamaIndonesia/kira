@@ -73,6 +73,7 @@ import { Questionnaires } from './questionnaires.ts';
 import { desktopUpdates } from './updates-electron.ts';
 import { UPDATE_CHANNELS, updatesHandlers } from './ipc/updates.ts';
 import { SHELL_CHANNELS, shellHandlers } from './ipc/shell.ts';
+import { THEME_CATALOG_CHANNELS, themeCatalogHandlers } from './ipc/themes.ts';
 import { kiraShellSettings, type KiraShell } from './pi/shell.ts';
 
 /**
@@ -927,6 +928,15 @@ function registerShellChannels(): void {
   ipcMain.handle(SHELL_CHANNELS.save, (_event, path: unknown) => handlers.save(path));
 }
 
+/** Open VS Code theme packages only through the bounded, host-checked catalog. */
+function registerThemeCatalogChannels(): void {
+  const handlers = themeCatalogHandlers();
+  ipcMain.handle(THEME_CATALOG_CHANNELS.search, (_event, query: unknown) => handlers.search(query));
+  ipcMain.handle(THEME_CATALOG_CHANNELS.package, (_event, input: unknown) =>
+    handlers.readPackage(input),
+  );
+}
+
 /**
  * Which keyring answered, which is recorded beside the ciphertext so a file
  * written under another one is not read as if it were this app's.
@@ -1158,6 +1168,7 @@ if (claimTheScheme()) {
       registerAuthChannels(auth);
       registerUpdateChannels();
       registerShellChannels();
+      registerThemeCatalogChannels();
       await createWindow();
       void desktopUpdates.start();
 

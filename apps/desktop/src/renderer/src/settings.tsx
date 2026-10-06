@@ -28,6 +28,7 @@ import {
 import { canCheckDesktopUpdate, desktopUpdateStatusText } from './desktop-update-status';
 import { GitHostsSection } from './gitHostsSection';
 import { McpSection } from './mcpSection';
+import { AppearanceSection } from './appearanceSection';
 
 function useMountEffect(effect: () => void | (() => void)): void {
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -53,6 +54,7 @@ function PreferenceRow({ title, description }: { title: string; description: str
 /** Which part of Settings is on screen. The rail's rows are these, one apiece. */
 export type Setting =
   | 'account'
+  | 'appearance'
   | 'git-hosts'
   | 'memory'
   | 'magic-prompts'
@@ -86,6 +88,8 @@ export default function SettingsPage({
 
       {showing === 'account' ? (
         <AccountPane user={user} />
+      ) : showing === 'appearance' ? (
+        <AppearanceSection />
       ) : showing === 'git-hosts' ? (
         <GitHostsSection />
       ) : showing === 'memory' ? (

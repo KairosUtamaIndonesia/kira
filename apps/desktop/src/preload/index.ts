@@ -12,6 +12,7 @@ import {
   TRACKER_CHANNELS,
   UPDATE_CHANNELS,
   SHELL_CHANNELS,
+  THEME_CATALOG_CHANNELS,
   WORKSPACE_GIT_CHANNELS,
   WORKSPACE_CHANNELS,
   USAGE_CHANNELS,
@@ -55,6 +56,8 @@ import {
   type DesktopUpdateSnapshot,
   type ShellSettingsSnapshot,
   type ShellTestResult,
+  type VSCodeThemeExtension,
+  type VSCodeThemePackageItem,
   type Result,
 } from './bridge';
 
@@ -393,6 +396,11 @@ const bridge: KiraBridge = {
   testShellPath: (path) => ask<ShellTestResult>(SHELL_CHANNELS.test, path),
 
   saveShellPath: (path) => ask<null>(SHELL_CHANNELS.save, path),
+
+  searchVSCodeThemes: (query) => ask<VSCodeThemeExtension[]>(THEME_CATALOG_CHANNELS.search, query),
+
+  readVSCodeThemePackage: (extension) =>
+    ask<VSCodeThemePackageItem[]>(THEME_CATALOG_CHANNELS.package, extension),
 };
 
 contextBridge.exposeInMainWorld('kira', bridge);

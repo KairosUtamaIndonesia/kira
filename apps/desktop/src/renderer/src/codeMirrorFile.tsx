@@ -32,12 +32,12 @@ import {
   highlightActiveLineGutter,
 } from '@codemirror/view';
 import type { BundledLanguage, Highlighter, LanguageInput } from 'shiki';
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
+import { useKiraAppearance } from '@kira/theme';
 import { languageOf } from './filePreview';
+import { kiraShikiTheme, type KiraShikiTheme } from './kiraShikiTheme';
 
 let highlighter: Promise<Highlighter> | undefined;
-const SHIKI_THEME_LIGHT = 'catppuccin-latte';
-const SHIKI_THEME_DARK = 'catppuccin-mocha';
 const lineWrapping = new Compartment();
 
 export function CodeMirrorFile({
@@ -57,6 +57,46 @@ export function CodeMirrorFile({
   wrapLines?: boolean;
   onViewReady?: (view: EditorView | null) => void;
 }) {
+  const { mode, token, activeTheme } = useKiraAppearance();
+  const theme = useMemo(
+    () => kiraShikiTheme(mode, activeTheme?.id, token),
+    [mode, activeTheme?.id, token],
+  );
+
+  return (
+    <MountedCodeMirrorFile
+      key={theme.name}
+      path={path}
+      value={value}
+      readOnly={readOnly}
+      onChange={onChange}
+      onSave={onSave}
+      wrapLines={wrapLines}
+      onViewReady={onViewReady}
+      theme={theme}
+    />
+  );
+}
+
+function MountedCodeMirrorFile({
+  path,
+  value,
+  readOnly,
+  onChange,
+  onSave,
+  wrapLines,
+  onViewReady,
+  theme,
+}: {
+  path: string;
+  value: string;
+  readOnly: boolean;
+  onChange: (value: string) => void;
+  onSave?: () => void;
+  wrapLines: boolean;
+  onViewReady?: (view: EditorView | null) => void;
+  theme: KiraShikiTheme;
+}) {
   const host = useRef<HTMLDivElement>(null);
 
   useMountEffect(() => {
@@ -65,19 +105,21 @@ export function CodeMirrorFile({
     let cancelled = false;
     let view: EditorView | undefined;
 
-    void createEditor(path, value, readOnly, wrapLines, () => onSave?.()).then((extensions) => {
-      if (cancelled || !host.current) return;
-      extensions.push(
-        EditorView.updateListener.of((update) => {
-          if (update.docChanged) onChange(update.state.doc.toString());
-        }),
-      );
-      view = new EditorView({
-        state: EditorState.create({ doc: value, extensions }),
-        parent: host.current,
-      });
-      onViewReady?.(view);
-    });
+    void createEditor(path, value, readOnly, wrapLines, () => onSave?.(), theme).then(
+      (extensions) => {
+        if (cancelled || !host.current) return;
+        extensions.push(
+          EditorView.updateListener.of((update) => {
+            if (update.docChanged) onChange(update.state.doc.toString());
+          }),
+        );
+        view = new EditorView({
+          state: EditorState.create({ doc: value, extensions }),
+          parent: host.current,
+        });
+        onViewReady?.(view);
+      },
+    );
 
     return () => {
       cancelled = true;
@@ -95,13 +137,12 @@ async function createEditor(
   readOnly: boolean,
   wrapLines: boolean,
   save: () => void,
+  theme: KiraShikiTheme,
 ) {
   const filename = path.split('/').pop() ?? path;
   const extension = filename.split('.').pop()?.toLowerCase();
   const language = languageFor(extension);
   const shikiLanguage = languageOf(path);
-  const currentTheme = document.documentElement.getAttribute('data-theme');
-  const theme = currentTheme === 'light' ? SHIKI_THEME_LIGHT : SHIKI_THEME_DARK;
   const extensions: Extension[] = [
     lineNumbers(),
     highlightActiveLineGutter(),
@@ -219,7 +260,7 @@ const shikiDecorations = StateField.define<import('@codemirror/view').Decoration
   provide: (field) => EditorView.decorations.from(field),
 });
 
-function shikiDecorationExtension(language: string, theme: string) {
+function shikiDecorationExtension(language: string, theme: KiraShikiTheme) {
   return [
     shikiDecorations,
     ViewPlugin.fromClass(
@@ -245,15 +286,16 @@ function shikiDecorationExtension(language: string, theme: string) {
           const source = view.state.doc.toString();
           try {
             const shiki = await (highlighter ??= import('shiki').then(({ createHighlighter }) =>
-              createHighlighter({ themes: [SHIKI_THEME_LIGHT, SHIKI_THEME_DARK], langs: [] }),
+              createHighlighter({ themes: [theme], langs: [] }),
             ));
+            if (!shiki.getLoadedThemes().includes(theme.name)) await shiki.loadTheme(theme);
             if (!shiki.getLoadedLanguages().includes(language)) {
               await shiki.loadLanguage(language as unknown as LanguageInput);
             }
             if (!shiki.getLoadedLanguages().includes(language)) return;
             const result = await shiki.codeToTokens(source, {
               lang: language as unknown as BundledLanguage,
-              theme,
+              theme: theme.name,
             });
             if (generation !== this.generation || view.state.doc.toString() !== source) return;
             const builder = new RangeSetBuilder<Decoration>();
