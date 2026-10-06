@@ -11,6 +11,7 @@ import type { Loaded } from './api/result';
 import {
   type ConsoleSession,
   type DeviceKey,
+  impersonate,
   readKeys,
   readSessions,
   revokeKey,
@@ -256,6 +257,21 @@ export default function User({ userId }: { userId: string }) {
     await refreshKeys();
   }
 
+  async function act() {
+    setBusy(true);
+    setProblem(null);
+    const result = await impersonate(userId);
+    setBusy(false);
+
+    if (!result.ok) {
+      setProblem(result.message);
+      return;
+    }
+
+    // The browser now holds the other person's session, so the page re-reads Kira.
+    window.location.reload();
+  }
+
   return (
     <main {...stylex.props(styles.page)}>
       <header {...stylex.props(styles.header)}>
@@ -463,6 +479,23 @@ export default function User({ userId }: { userId: string }) {
             ))}
           </ul>
         )}
+      </section>
+      <section aria-labelledby="user-impersonate-heading" {...stylex.props(styles.section)}>
+        <Heading level={2} id="user-impersonate-heading">
+          Act as this person
+        </Heading>
+        <Text color="secondary">
+          See Kira as they see it. A marker stays on screen while you do, and one click returns you
+          to yourself.
+        </Text>
+        <div {...stylex.props(styles.actions)}>
+          <Button
+            label="Impersonate"
+            variant="secondary"
+            isDisabled={busy}
+            onClick={() => void act()}
+          />
+        </div>
       </section>
       {problem && <Text role="alert">{problem}</Text>}
     </main>

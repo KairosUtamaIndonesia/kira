@@ -1,6 +1,7 @@
 import { Button } from '@astryxdesign/core/Button';
 import { Text } from '@astryxdesign/core/Text';
 import type { Who } from './api/auth';
+import ImpersonationBar from './impersonation';
 import Notice from './notice';
 
 /**
@@ -19,19 +20,22 @@ import Notice from './notice';
  */
 export default function Refused({ who }: { who: Who }) {
   return (
-    <Notice title="Kira administration">
-      <Text color="secondary">
-        You are signed in as {who.email}. Signing in says who you are, not what you may do.
-      </Text>
-      <Text color="secondary">
-        This console is for the people who run Kira. Ask one of them for the administrator role.
-      </Text>
-      <Button
-        label="Check again"
-        onClick={() => {
-          window.location.reload();
-        }}
-      />
-    </Notice>
+    <>
+      {who.impersonated ? <ImpersonationBar name={who.name} /> : null}
+      <Notice title="Kira administration">
+        <Text color="secondary">
+          You are signed in as {who.email}. Signing in says who you are, not what you may do.
+        </Text>
+        <Text color="secondary">
+          This console is for the people who run Kira. Ask one of them for the administrator role.
+        </Text>
+        <Button
+          label="Check again"
+          onClick={() => {
+            window.location.reload();
+          }}
+        />
+      </Notice>
+    </>
   );
 }

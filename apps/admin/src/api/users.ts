@@ -101,7 +101,39 @@ export async function setSuspended(
   return { ok: true, value: data };
 }
 
-/** One console session, as the server lists it. The token itself never arrives. */
+/**
+ * Act as a person. The server mints their session and marks it; the browser then
+ * holds it, so the page reloads and reads Kira as they would.
+ */
+export async function impersonate(userId: string): Promise<Loaded<true>> {
+  const { error } = await kira.api.admin.users({ id: userId }).impersonate.post();
+  if (error) {
+    return {
+      ok: false,
+      message: reasonFor(
+        error.value as { message?: string } | null,
+        'Kira could not start impersonating.',
+      ),
+    };
+  }
+
+  return { ok: true, value: true };
+}
+
+export async function stopImpersonating(): Promise<Loaded<true>> {
+  const { error } = await kira.api.admin.impersonate.stop.post();
+  if (error) {
+    return {
+      ok: false,
+      message: reasonFor(
+        error.value as { message?: string } | null,
+        'Kira could not stop impersonating.',
+      ),
+    };
+  }
+
+  return { ok: true, value: true };
+}
 export interface ConsoleSession {
   id: string;
   createdAt: string;

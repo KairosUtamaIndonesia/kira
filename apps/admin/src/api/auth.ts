@@ -19,6 +19,8 @@ export type Who = {
   email: string;
   /** Whether the console will show them anything. The server decides; this chooses a screen. */
   admin: boolean;
+  /** True when this session is an administrator acting as somebody else. */
+  impersonated: boolean;
 };
 
 /**
@@ -47,7 +49,13 @@ export async function who(): Promise<Loaded<Who | null>> {
 
   return {
     ok: true,
-    value: { name: data.user.name, email: data.user.email, admin: isAdmin(data.user.role) },
+    value: {
+      name: data.user.name,
+      email: data.user.email,
+      admin: isAdmin(data.user.role),
+      impersonated:
+        (data.session as { impersonatedBy?: string | null } | null)?.impersonatedBy != null,
+    },
   };
 }
 

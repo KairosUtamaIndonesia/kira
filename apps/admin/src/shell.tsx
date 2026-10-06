@@ -5,6 +5,7 @@ import { Text } from '@astryxdesign/core/Text';
 import { Outlet, useLocation, useNavigate } from '@tanstack/react-router';
 import { signOut } from './api/auth';
 import { useConsoleData } from './consoleData';
+import ImpersonationBar from './impersonation';
 
 /** The frame every console screen is drawn in: the rail, and the screen beside it. */
 export default function Shell() {
@@ -53,6 +54,7 @@ export default function Shell() {
         </SideNav>
       }
     >
+      {who.impersonated ? <ImpersonationBar name={who.name} /> : null}
       <Outlet />
     </AppShell>
   );

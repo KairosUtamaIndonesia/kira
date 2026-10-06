@@ -306,8 +306,15 @@ export function bearer(key: string): Record<string, string> {
 
 /** The `name=value` of every cookie a response sets, as a request would send them. */
 export function cookieHeader(response: Response): string {
-  return response.headers
-    .getSetCookie()
-    .map((cookie) => cookie.split(';')[0])
-    .join('; ');
+  // A response may delete a cookie and set it again in the same breath — signing
+  // in as somebody else does exactly that — so the last value for a name is the
+  // one that counts, and an empty deletion never shadows the real value.
+  const byName = new Map<string, string>();
+  for (const cookie of response.headers.getSetCookie()) {
+    const pair = cookie.split(';')[0] ?? '';
+    const equals = pair.indexOf('=');
+    if (equals > 0) byName.set(pair.slice(0, equals), pair);
+  }
+
+  return [...byName.values()].join('; ');
 }

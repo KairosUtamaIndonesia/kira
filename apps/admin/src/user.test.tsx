@@ -24,6 +24,8 @@ const api = {
   revokeSessions: mock<(userId: string) => Promise<Loaded<{ id: string }>>>(),
   readKeys: mock<() => Promise<Loaded<DeviceKey[]>>>(),
   revokeKey: mock<(userId: string, keyId: string) => Promise<Loaded<{ id: string }>>>(),
+  impersonate: mock<(userId: string) => Promise<Loaded<true>>>(),
+  stopImpersonating: mock<() => Promise<Loaded<true>>>(),
 };
 
 const allowances = {
@@ -40,7 +42,12 @@ mock.module('@stylexjs/stylex', () => ({
   props: () => ({}),
 }));
 
-const who: Who = { name: 'Ada Lovelace', email: 'ada@company.example', admin: true };
+const who: Who = {
+  name: 'Ada Lovelace',
+  email: 'ada@company.example',
+  admin: true,
+  impersonated: false,
+};
 
 function person(role: string, banned = false): ListedUser {
   return { id: 'grace', name: 'Grace Hopper', email: 'grace@company.example', role, banned };
@@ -297,5 +304,42 @@ describe('the User page allowance', () => {
     await render('user');
 
     expect(host.textContent).toContain('the default everyone gets');
+  });
+});
+
+describe('the User page impersonation', () => {
+  test('starts acting as the person', async () => {
+    api.impersonate.mockResolvedValue({ ok: true, value: true });
+    await render('user');
+
+    await act(async () => button('Impersonate').click());
+
+    expect(api.impersonate).toHaveBeenCalledWith('grace');
+  });
+
+  test('shows the server sentence when it cannot start', async () => {
+    api.impersonate.mockResolvedValue({
+      ok: false,
+      message: 'Kira could not start impersonating.',
+    });
+    await render('user');
+
+    await act(async () => button('Impersonate').click());
+
+    expect(host.textContent).toContain('Kira could not start impersonating.');
+  });
+});
+
+describe('the impersonation marker', () => {
+  test('names the person and stops on one click', async () => {
+    api.stopImpersonating.mockResolvedValue({ ok: true, value: true });
+    const ImpersonationBar = (await import('./impersonation')).default;
+
+    await act(async () => root.render(<ImpersonationBar name="Grace Hopper" />));
+
+    expect(host.textContent).toContain('You are acting as Grace Hopper.');
+    await act(async () => button('Stop impersonating').click());
+
+    expect(api.stopImpersonating).toHaveBeenCalled();
   });
 });
