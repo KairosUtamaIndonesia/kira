@@ -1,10 +1,13 @@
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
 import { Heading } from '@astryxdesign/core/Heading';
+import { NumberInput } from '@astryxdesign/core/NumberInput';
 import { Text } from '@astryxdesign/core/Text';
 import { spacingVars } from '@astryxdesign/core/theme/tokens.stylex';
 import * as stylex from '@stylexjs/stylex';
 import { useEffect, useState } from 'react';
+import { type Reading, readAllowance, setAllowance } from './api/allowances';
+import type { Loaded } from './api/result';
 import {
   type ConsoleSession,
   type DeviceKey,
@@ -16,6 +19,7 @@ import {
   setRole,
   setSuspended,
 } from './api/users';
+import { formatWhen, summaryOf } from './allowanceText';
 import { useConsoleData } from './consoleData';
 
 const styles = stylex.create({
@@ -117,6 +121,30 @@ export default function User({ userId }: { userId: string }) {
   const [sessionProblem, setSessionProblem] = useState<string | null>(null);
   const [keys, setKeys] = useState<DeviceKey[] | null>(null);
   const [keyProblem, setKeyProblem] = useState<string | null>(null);
+  const [reading, setReading] = useState<Loaded<Reading> | null>(null);
+  const [tokens, setTokens] = useState<number | null>(null);
+  const [allowanceProblem, setAllowanceProblem] = useState<string | null>(null);
+
+  async function refreshAllowance() {
+    const result = await readAllowance(userId);
+    setReading(result);
+    if (result.ok) setTokens(result.value.override ?? result.value.allowance);
+  }
+
+  async function saveAllowance(wanted: number | null) {
+    setBusy(true);
+    setAllowanceProblem(null);
+    const result = await setAllowance(userId, wanted);
+    setBusy(false);
+
+    if (!result.ok) {
+      setAllowanceProblem(result.message);
+      return;
+    }
+
+    setReading({ ok: true, value: result.value });
+    setTokens(result.value.override ?? result.value.allowance);
+  }
 
   async function refreshSessions() {
     const result = await readSessions(userId);
@@ -141,6 +169,7 @@ export default function User({ userId }: { userId: string }) {
   useEffect(() => {
     void refreshSessions();
     void refreshKeys();
+    void refreshAllowance();
     // Read once per person: what changes them is a revocation, which reloads them.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
@@ -306,6 +335,68 @@ export default function User({ userId }: { userId: string }) {
           <div {...stylex.props(styles.actions)}>
             <Button label="Suspend" variant="secondary" onClick={() => setAskingReason(true)} />
           </div>
+        )}
+      </section>
+      <section aria-labelledby="user-allowance-heading" {...stylex.props(styles.section)}>
+        <Heading level={2} id="user-allowance-heading">
+          Allowance
+        </Heading>
+        {reading === null ? (
+          <Text color="secondary">Loading…</Text>
+        ) : !reading.ok ? (
+          <Text color="secondary">{reading.message}</Text>
+        ) : (
+          <>
+            <div {...stylex.props(styles.row)}>
+              <Text>{summaryOf(reading.value).text}</Text>
+              <Text color="secondary">
+                {reading.value.override === null
+                  ? 'the default everyone gets'
+                  : 'their own number, replacing the default'}
+              </Text>
+            </div>
+            {reading.value.refusals.length > 0 && (
+              <div {...stylex.props(styles.reasonForm)}>
+                <Text weight="semibold">Turned away this month</Text>
+                {reading.value.refusals.map((refusal, index) => (
+                  <Text key={`${refusal.at}-${String(index)}`} color="secondary" size="sm">
+                    {`${formatWhen(refusal.at)} — ${refusal.model} — ${refusal.reason}`}
+                  </Text>
+                ))}
+              </div>
+            )}
+            <NumberInput
+              label="Tokens per month"
+              value={tokens}
+              onChange={setTokens}
+              isDisabled={busy}
+              status={
+                allowanceProblem === null ? undefined : { type: 'error', message: allowanceProblem }
+              }
+            />
+            <div {...stylex.props(styles.actions)}>
+              <Button
+                label="Save"
+                isDisabled={busy}
+                onClick={() => {
+                  if (tokens === null || !Number.isInteger(tokens) || tokens <= 0) {
+                    setAllowanceProblem('An allowance is a positive whole number of tokens.');
+                    return;
+                  }
+
+                  void saveAllowance(tokens);
+                }}
+              />
+              {reading.value.override === null ? null : (
+                <Button
+                  label="Back to the default"
+                  variant="secondary"
+                  isDisabled={busy}
+                  onClick={() => void saveAllowance(null)}
+                />
+              )}
+            </div>
+          </>
         )}
       </section>
       <section aria-labelledby="user-sessions-heading" {...stylex.props(styles.section)}>

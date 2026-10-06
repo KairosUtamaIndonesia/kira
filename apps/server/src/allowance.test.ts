@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, test } from 'bun:test';
 import { grantAdmin } from './admin';
+import { recentAdminAudit } from './admin-audit';
 import { allowanceFor, type AllowanceSettings, setAllowance, standingFor } from './allowance';
 import {
   bearer,
@@ -221,6 +222,9 @@ describe('reading and changing an allowance', () => {
         allowance: server.config.allowance.defaultTokens,
         override: null,
       });
+
+      const events = await recentAdminAudit(server.database);
+      expect(events.filter((event) => event.action === 'allowance')).toHaveLength(2);
     } finally {
       await server.stop();
     }

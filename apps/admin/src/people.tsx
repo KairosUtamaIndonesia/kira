@@ -6,12 +6,10 @@ import { Text } from '@astryxdesign/core/Text';
 import { spacingVars } from '@astryxdesign/core/theme/tokens.stylex';
 import { Link } from '@tanstack/react-router';
 import * as stylex from '@stylexjs/stylex';
-import { useState } from 'react';
 import type { Readings } from './api/allowances';
 import type { ListedUser } from './api/users';
 import AllowanceCell from './allowanceCell';
 import { useConsoleData } from './consoleData';
-import EditAllowance from './editAllowance';
 
 const styles = stylex.create({
   page: {
@@ -51,10 +49,7 @@ function Role({ role }: { role: string }) {
   return <Badge label={role} variant={role === ADMIN_ROLE ? 'info' : 'neutral'} />;
 }
 
-function columnsFor(
-  readings: Readings,
-  onEdit: (user: ListedUser) => void,
-): TableColumn<ListedUser>[] {
+function columnsFor(readings: Readings): TableColumn<ListedUser>[] {
   return [
     {
       key: 'name',
@@ -82,9 +77,7 @@ function columnsFor(
       key: 'allowance',
       header: 'Allowance',
       width: proportional(1.25, { minWidth: 160 }),
-      renderCell: (user) => (
-        <AllowanceCell user={user} reading={readings[user.id]} onEdit={onEdit} />
-      ),
+      renderCell: (user) => <AllowanceCell reading={readings[user.id]} />,
     },
     {
       key: 'standing',
@@ -99,16 +92,11 @@ function columnsFor(
  * The console: everyone who has signed in, what they may do, and what they have
  * spent of the pool.
  *
- * A row opens that person's own page, where the rest of the levers live. Changing
- * an allowance still happens here for now, and the server's answer is what the row
- * then shows.
+ * A row opens that person's own page, where every lever lives — the role, access,
+ * their sessions and Keys, and the allowance editor.
  */
 export default function People() {
-  const { users, readings: read } = useConsoleData();
-  const [readings, setReadings] = useState(read);
-  const [editing, setEditing] = useState<ListedUser | null>(null);
-
-  const open = editing === null ? undefined : readings[editing.id];
+  const { users, readings } = useConsoleData();
 
   return (
     <div {...stylex.props(styles.page)}>
@@ -116,15 +104,15 @@ export default function People() {
         <Heading level={1}>People</Heading>
         <Text color="secondary">
           Everyone who has signed in to Kira. Signing in says who someone is, never what they may
-          do, so this list is the whole company until a role says otherwise — and an allowance is
-          what one person may spend of the shared pool in a month.
+          do, so this list is the whole company until a role says otherwise. Open a person to change
+          what they may do, or what they may spend of the shared pool.
         </Text>
       </header>
       <div {...stylex.props(styles.peopleTable)}>
         <Table
           data={users}
           idKey="id"
-          columns={columnsFor(readings, setEditing)}
+          columns={columnsFor(readings)}
           emptyState={
             <EmptyState
               title="Nobody has signed in yet"
@@ -133,17 +121,6 @@ export default function People() {
           }
         />
       </div>
-      {editing === null || open === undefined || !open.ok ? null : (
-        <EditAllowance
-          person={editing}
-          reading={open.value}
-          onChanged={(changed) => {
-            const id = editing.id;
-            setReadings((current) => ({ ...current, [id]: { ok: true, value: changed } }));
-          }}
-          onClose={() => setEditing(null)}
-        />
-      )}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { JSDOM } from 'jsdom';
 import type { Root } from 'react-dom/client';
+import type { Reading } from './api/allowances';
 import type { Who } from './api/auth';
 import type { Loaded } from './api/result';
 import type { ListedUser, ConsoleSession, DeviceKey } from './api/users';
@@ -25,7 +26,13 @@ const api = {
   revokeKey: mock<(userId: string, keyId: string) => Promise<Loaded<{ id: string }>>>(),
 };
 
+const allowances = {
+  readAllowance: mock<() => Promise<Loaded<Reading>>>(),
+  setAllowance: mock<(userId: string, tokens: number | null) => Promise<Loaded<Reading>>>(),
+};
+
 mock.module('./api/users', () => api);
+mock.module('./api/allowances', () => allowances);
 mock.module('@stylexjs/stylex', () => ({
   create: (styles: Record<string, unknown>) => styles,
   props: () => ({}),
@@ -49,6 +56,10 @@ beforeEach(async () => {
   mock.clearAllMocks();
   api.readSessions.mockResolvedValue({ ok: true, value: [] });
   api.readKeys.mockResolvedValue({ ok: true, value: [] });
+  allowances.readAllowance.mockResolvedValue({
+    ok: true,
+    value: { allowance: 1000, used: 0, warned: false, override: null, refusals: [] },
+  });
   dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
     url: 'https://kira.example/admin/users/grace',
     pretendToBeVisual: true,
@@ -60,6 +71,8 @@ beforeEach(async () => {
     HTMLElement: dom.window.HTMLElement,
     HTMLInputElement: dom.window.HTMLInputElement,
     Node: dom.window.Node,
+    requestAnimationFrame: dom.window.requestAnimationFrame.bind(dom.window),
+    cancelAnimationFrame: dom.window.cancelAnimationFrame.bind(dom.window),
     IS_REACT_ACT_ENVIRONMENT: true,
   });
   ({ act } = await import('react'));
@@ -79,6 +92,8 @@ afterEach(async () => {
   Reflect.deleteProperty(globalThis, 'HTMLElement');
   Reflect.deleteProperty(globalThis, 'HTMLInputElement');
   Reflect.deleteProperty(globalThis, 'Node');
+  Reflect.deleteProperty(globalThis, 'requestAnimationFrame');
+  Reflect.deleteProperty(globalThis, 'cancelAnimationFrame');
   Reflect.deleteProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT');
 });
 
@@ -245,5 +260,40 @@ describe('the User page Keys', () => {
 
     expect(api.revokeKey).toHaveBeenCalledWith('grace', 'key-1');
     expect(api.readKeys).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('the User page allowance', () => {
+  test('shows an override with refusals, and clears it back to the default', async () => {
+    allowances.readAllowance.mockResolvedValue({
+      ok: true,
+      value: {
+        allowance: 5000,
+        used: 100,
+        warned: false,
+        override: 5000,
+        refusals: [
+          { at: '2026-10-05T00:00:00.000Z', model: 'fake-model', reason: 'allowance_exceeded' },
+        ],
+      },
+    });
+    allowances.setAllowance.mockResolvedValue({
+      ok: true,
+      value: { allowance: 1000, used: 100, warned: false, override: null, refusals: [] },
+    });
+    await render('user');
+
+    expect(host.textContent).toContain('their own number, replacing the default');
+    expect(host.textContent).toContain('allowance_exceeded');
+
+    await act(async () => button('Back to the default').click());
+
+    expect(allowances.setAllowance).toHaveBeenCalledWith('grace', null);
+  });
+
+  test('says when the number is the default', async () => {
+    await render('user');
+
+    expect(host.textContent).toContain('the default everyone gets');
   });
 });

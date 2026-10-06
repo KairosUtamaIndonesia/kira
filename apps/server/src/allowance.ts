@@ -1,5 +1,6 @@
 import { and, eq, gte, lt, type SQL, sql } from 'drizzle-orm';
 import { Elysia, t } from 'elysia';
+import { recordAdminAudit } from './admin-audit';
 import type { Auth } from './auth';
 import type { Config } from './config';
 import type { Database } from './database';
@@ -315,14 +316,28 @@ export function createAllowances({
       )
       .put(
         '/api/admin/allowance/:userId',
-        async ({ params, body, status }) => {
-          if (!(await knownPerson(auth, params.userId))) {
+        async ({ params, body, request, status }) => {
+          const person = await knownPerson(auth, params.userId);
+          if (!person) {
             return status(404, refusal('USER_NOT_FOUND', 'No such person.'));
           }
 
           // Null is how an operator takes an override away, which is the only way
           // back to the default: no number means "ask the default".
           await setAllowance(database, params.userId, body.tokensPerMonth);
+
+          const session = await auth.api.getSession({ headers: request.headers });
+          if (session !== null) {
+            await recordAdminAudit(database, {
+              actorId: session.user.id,
+              actorLabel: session.user.email,
+              action: 'allowance',
+              targetId: params.userId,
+              targetLabel: person.email,
+              outcome: 'succeeded',
+              detail: body.tokensPerMonth === null ? 'default' : String(body.tokensPerMonth),
+            });
+          }
 
           return await readingFor(database, config, params.userId);
         },
@@ -346,8 +361,8 @@ async function readingFor(database: Database, config: Config, userId: string) {
   };
 }
 
-/** Whether Kira knows this person, so an allowance is never set on nobody. */
-async function knownPerson(auth: Auth, userId: string): Promise<boolean> {
+/** The person, when Kira knows them, so an allowance is never set on nobody. */
+async function knownPerson(auth: Auth, userId: string) {
   const context = await auth.$context;
-  return (await context.internalAdapter.findUserById(userId)) !== null;
+  return context.internalAdapter.findUserById(userId);
 }
