@@ -101,6 +101,12 @@ worked in from many folders, and a chat can be moved from one to another. It is 
 ticket belongs to.
 _Avoid_: Project (the word it replaces), checkout, working directory
 
+**Sandbox**:
+A remote, isolated environment a chat works in, instead of a folder on the person's machine. A
+chat in a sandbox, and the subagents it delegates, can carry on while the desktop is closed.
+Whether a sandbox is a kind of workspace is not settled yet.
+_Avoid_: Container, VM, runner, cloud workspace, Run
+
 **Repository**:
 A body of code Kira watches, named by a Git host, an owner and a name, and attached to exactly
 one project. It is what a project's pull requests are recognised by, and it is named from a
