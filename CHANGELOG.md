@@ -8,6 +8,8 @@
 
 ### Fixed
 
+- The slash picker keeps descriptions to one line within a bounded width; skill rows no longer repeat “Skills” before their description.
+
 - A GitHub App install link expires an hour after Kira hands it out, and uninstalling the App on GitHub removes its connection, so Settings cannot keep a host GitHub no longer backs.
 
 - Bundled workflow skills load correctly in the compiled development desktop, including chats in empty workspace folders.
