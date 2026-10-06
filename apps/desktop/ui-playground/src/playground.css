@@ -561,6 +561,11 @@ button {
   font-size: 12px;
   line-height: 1.45;
 }
+.ask-field label,
+.ask-review label {
+  font-size: 11px;
+  line-height: 1.4;
+}
 .ask-secondary,
 .ask-cancel,
 .ask-primary {
