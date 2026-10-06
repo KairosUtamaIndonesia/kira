@@ -500,14 +500,10 @@ button {
   width: 100%;
   padding: 10px 8px;
   border: 0;
-  border-bottom: 1px solid var(--color-border);
   background: transparent;
   color: inherit;
   text-align: left;
   cursor: pointer;
-}
-.ask-option:first-child {
-  border-top: 1px solid var(--color-border);
 }
 .ask-option:hover {
   background: var(--color-background-muted);
