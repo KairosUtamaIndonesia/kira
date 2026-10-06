@@ -97,6 +97,25 @@ describe('a chat through Kira', () => {
     await pool.stop();
   });
 
+  test('a suspended User is refused before the pool is contacted', async () => {
+    const pool = await startFakeUpstream();
+    const { app, auth } = await boot({}, { url: pool.url, key: 'pool-key' });
+    const ada = await user(auth);
+    const key = await issue(auth, ada.id, 'workstation');
+
+    const context = await auth.$context;
+    await context.internalAdapter.updateUser(ada.id, { banned: true });
+
+    const response = await send(app, '/v1/chat/completions', chat(key.key));
+
+    expect(response.status).toBe(401);
+    expect((await response.json()).error.code).toBe('USER_SUSPENDED');
+    // A suspended request spends nothing: the pool is never reached.
+    expect(pool.requests).toHaveLength(0);
+
+    await pool.stop();
+  });
+
   test('simultaneous model requests, including child sessions, share one per-person cap', async () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {

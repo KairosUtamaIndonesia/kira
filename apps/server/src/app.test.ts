@@ -158,6 +158,48 @@ describe('GET /api/me', () => {
   });
 });
 
+describe('a suspended User', () => {
+  /**
+   * Better Auth's ban revokes sessions but leaves Keys alone, and its key
+   * verification never reads the owner's flag. So the refusal is Kira's own, at
+   * the one boundary both the desktop and the model proxy ask (docs/adr/0035).
+   */
+  async function setBanned(auth: Auth, userId: string, banned: boolean) {
+    const context = await auth.$context;
+    await context.internalAdapter.updateUser(userId, { banned });
+  }
+
+  test('their Key is refused, and a live User is not', async () => {
+    const { app, auth } = await boot();
+    const ada = await user(auth);
+    const grace = await user(auth, 'grace@company.example');
+    const adaKey = await issue(auth, ada.id, 'laptop');
+    const graceKey = await issue(auth, grace.id, 'laptop');
+
+    await setBanned(auth, ada.id, true);
+
+    const refused = await send(app, '/api/me', { headers: bearer(adaKey.key) });
+    const allowed = await send(app, '/api/me', { headers: bearer(graceKey.key) });
+
+    expect(refused.status).toBe(401);
+    expect((await refused.json()).error.code).toBe('USER_SUSPENDED');
+    expect(allowed.status).toBe(200);
+  });
+
+  test('reactivating restores the same Key', async () => {
+    const { app, auth } = await boot();
+    const ada = await user(auth);
+    const key = await issue(auth, ada.id, 'laptop');
+
+    await setBanned(auth, ada.id, true);
+    await setBanned(auth, ada.id, false);
+
+    const response = await send(app, '/api/me', { headers: bearer(key.key) });
+
+    expect(response.status).toBe(200);
+  });
+});
+
 describe('sign-in', () => {
   test('serves a page that can start the flow', async () => {
     const { app } = await boot();

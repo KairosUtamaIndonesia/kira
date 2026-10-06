@@ -36,6 +36,17 @@ export async function keyHolder(auth: Auth, request: Request): Promise<KeyHolder
   const user = await context.internalAdapter.findUserById(verification.key.referenceId);
   if (!user) return refused('KEY_NOT_FOUND', 'That key belongs to a user who is gone.');
 
+  // The admin plugin's ban revokes sessions but leaves Keys alone, and its key
+  // verification never reads the owner's flag — so this is the one place
+  // suspension becomes real for both the desktop and the model proxy
+  // (docs/adr/0035). The flag is the plugin's own, on the user row.
+  if ((user as { banned?: boolean | null }).banned) {
+    return refused(
+      'USER_SUSPENDED',
+      'Your access to Kira is suspended. Ask an administrator to restore it.',
+    );
+  }
+
   return { user: { id: user.id, email: user.email, name: user.name } };
 }
 

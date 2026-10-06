@@ -101,7 +101,14 @@ function authOptions(config: Config, database: Database) {
       // second question the tenant cannot answer. The console gates on it and
       // sets it; the first admin is granted out of band — see `admin.ts` —
       // because nobody holds the role until someone says so.
-      admin(),
+      //
+      // The suspension wording is Kira's own rather than the plugin's "banned"
+      // (docs/adr/0035): a suspended User reads the word the console and the
+      // glossary use.
+      admin({
+        bannedUserMessage:
+          'Your access to Kira is suspended. Ask an administrator to restore it.',
+      }),
     ],
     // The desktop presents requests from its own scheme as the origin, and the
     // console one from the port its dev server listens on. The base URL's own
