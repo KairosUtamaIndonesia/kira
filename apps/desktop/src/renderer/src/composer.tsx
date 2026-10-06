@@ -221,8 +221,20 @@ export function Composer({
           : payload?.kind === 'prompt' && payload.prompt.aliases.length > 0
             ? `Aliases: ${payload.prompt.aliases.join(', ')}`
             : null;
+      if (!import.meta.env.DEV) {
+        return (
+          <VStack gap={0.5}>
+            <Text>{item.label}</Text>
+            {detail ? (
+              <Text color="secondary" size="sm">
+                {detail}
+              </Text>
+            ) : null}
+          </VStack>
+        );
+      }
       const commandCategory = payload?.kind === 'command' ? payload.command.category : null;
-      const variant = import.meta.env.DEV ? skillPickerVariant : 'summary';
+      const variant = skillPickerVariant;
       const widthStyle =
         variant === 'names'
           ? styles.pickerPrototype_names
