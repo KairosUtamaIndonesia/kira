@@ -230,8 +230,8 @@
     --color-background-card: light-dark(#F8F7F5, #181715);
     --color-background-popover: light-dark(#FFFFFF, #1E1C1A);
     --color-background-muted: light-dark(#3939340A, #FFFFFF08);
-    --color-accent: light-dark(#B35017, #DA7C47);
-    --color-accent-muted: light-dark(#B3501780, #DA7C4780);
+    --color-accent: light-dark(#FF315D, #FF315D);
+    --color-accent-muted: light-dark(#FF315D80, #FF315D80);
     --color-neutral: light-dark(#39393414, #C9C5BA1A);
     --color-overlay: light-dark(#1A181566, #00000099);
     --color-overlay-hover: light-dark(#0000000D, #FFFFFF12);
@@ -242,7 +242,7 @@
     --color-text-accent: var(--color-accent);
     --color-on-dark: #ffffff;
     --color-on-light: #111111;
-    --color-on-accent: light-dark(#FFFFFF, #120F0E);
+    --color-on-accent: #120F0E;
     --color-on-success: light-dark(#FFFFFF, #120F0E);
     --color-on-error: light-dark(#FFFFFF, #120F0E);
     --color-on-warning: light-dark(#FFFFFF, #120F0E);

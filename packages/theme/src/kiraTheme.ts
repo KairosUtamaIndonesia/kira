@@ -14,8 +14,8 @@ import { neutralTheme } from '@astryxdesign/theme-neutral';
  * builds run against, not what ships.
  */
 
-// OpenChamber's signature orange, authored per mode for readable white text.
-const accent: [string, string] = ['#B35017', '#DA7C47'];
+// Kira's primary accent, shared across both modes.
+const accent: [string, string] = ['#FF315D', '#FF315D'];
 
 // Match OpenChamber's default warm paper and ink surfaces, with hover and
 // press as translucent overlays rather than accent-tinted neutrals.
@@ -48,8 +48,8 @@ export const kiraTheme = defineTheme({
 
     // Accent.
     '--color-accent': accent,
-    '--color-accent-muted': ['#B3501780', '#DA7C4780'],
-    '--color-on-accent': ['#FFFFFF', '#120F0E'],
+    '--color-accent-muted': ['#FF315D80', '#FF315D80'],
+    '--color-on-accent': ['#120F0E', '#120F0E'],
 
     // Lines.
     '--color-border': ['#E5E1DE', '#242323'],
