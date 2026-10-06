@@ -20,8 +20,6 @@ import {
   startPoolLogin,
   setCredentialDisabled,
 } from './api/pool';
-import type { Readings } from './api/allowances';
-import type { ListedUser } from './api/users';
 
 const REFRESH_MS = 30_000;
 
@@ -71,7 +69,7 @@ const styles = stylex.create({
   },
 });
 
-export default function Pool({ users, readings }: { users: ListedUser[]; readings: Readings }) {
+export default function Pool() {
   const [reading, setReading] = useState<PoolReading | null>(null);
   const [audit, setAudit] = useState<PoolAuditEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -367,36 +365,6 @@ export default function Pool({ users, readings }: { users: ListedUser[]; reading
             ))}
           </ul>
         ))}
-      <section aria-labelledby="pool-usage-heading">
-        <Heading level={2} id="pool-usage-heading">
-          People's Usage and Allowances
-        </Heading>
-        {users.length === 0 ? (
-          <Text color="secondary">Nobody has signed in yet.</Text>
-        ) : (
-          <ul {...stylex.props(styles.list)}>
-            {users.map((user) => {
-              const result = readings[user.id];
-              return (
-                <li {...stylex.props(styles.item)} key={user.id}>
-                  <Text weight="semibold">{user.name}</Text>
-                  <Text color="secondary">{user.email}</Text>
-                  {!result ? (
-                    <Text color="secondary">Usage has not loaded.</Text>
-                  ) : result.ok ? (
-                    <Text>
-                      {result.value.used.toLocaleString()} /{' '}
-                      {result.value.allowance.toLocaleString()} tokens this month
-                    </Text>
-                  ) : (
-                    <Text color="secondary">{result.message}</Text>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
       <section aria-labelledby="pool-audit-heading">
         <Heading level={2} id="pool-audit-heading">
           Recent Pool changes

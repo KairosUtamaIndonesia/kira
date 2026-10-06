@@ -114,7 +114,7 @@ afterEach(async () => {
 
 async function render(credentials: PoolCredential[] = []) {
   api.readPool.mockResolvedValue({ ok: true, value: { status: 'ready', credentials } });
-  await act(async () => root.render(<Pool users={[]} readings={{}} />));
+  await act(async () => root.render(<Pool />));
 }
 
 function button(label: string): HTMLButtonElement {
@@ -173,7 +173,7 @@ describe('Pool admin interactions', () => {
 
   test('shows a pool management rejection and disables further add-login actions', async () => {
     api.readPool.mockResolvedValue({ ok: true, value: { status: 'rejected', credentials: [] } });
-    await act(async () => root.render(<Pool users={[]} readings={{}} />));
+    await act(async () => root.render(<Pool />));
 
     expect(host.textContent).toContain('Kira has stopped management requests');
     expect(button('Add Codex login').disabled).toBe(true);

@@ -151,7 +151,7 @@ export default function People({
       }
     >
       {isPoolPage ? (
-        <Pool users={users} readings={readings} />
+        <Pool />
       ) : isAuditPage ? (
         <Audit />
       ) : (
