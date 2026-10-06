@@ -17,7 +17,7 @@ export interface QuestionnaireDraft {
   tab: number;
   answers: Record<number, QuestionnaireAnswer>;
   customDrafts: Record<number, string>;
-  notes: Record<number, string>;
+  customSelected: Record<number, boolean>;
   globalNote: string;
 }
 
@@ -25,17 +25,17 @@ const styles = stylex.create({
   root: { maxWidth: 760, width: '100%', marginBlock: spacingVars['--spacing-3'] },
   option: {
     width: '100%',
-    display: 'block',
-    padding: spacingVars['--spacing-3'],
-    borderWidth: borderVars['--border-width'],
-    borderStyle: 'solid',
-    borderColor: colorVars['--color-border'],
-    borderRadius: 'var(--radius-container)',
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: spacingVars['--spacing-2'],
+    paddingBlock: spacingVars['--spacing-2'],
+    paddingInline: spacingVars['--spacing-2'],
+    borderWidth: 0,
     backgroundColor: 'transparent',
     color: colorVars['--color-text-primary'],
     textAlign: 'start',
     cursor: 'pointer',
-    ':hover': { backgroundColor: colorVars['--color-accent-muted'] },
+    ':hover': { backgroundColor: colorVars['--color-background-muted'] },
     ':focus-visible': {
       outlineWidth: '2px',
       outlineStyle: 'solid',
@@ -43,9 +43,30 @@ const styles = stylex.create({
       outlineOffset: '2px',
     },
   },
-  optionSelected: {
+  optionMark: {
+    width: 15,
+    height: 15,
+    flexShrink: 0,
+    marginTop: 2,
+    borderWidth: borderVars['--border-width'],
+    borderStyle: 'solid',
+    borderColor: colorVars['--color-border-emphasized'],
+    borderRadius: '50%',
+  },
+  optionMarkSelected: {
+    borderWidth: '4px',
     borderColor: colorVars['--color-accent'],
-    backgroundColor: colorVars['--color-accent-muted'],
+  },
+  optionCopy: { display: 'grid', gap: spacingVars['--spacing-1'] },
+  optionTitle: { fontSize: '12px', fontWeight: 550 },
+  optionDescription: {
+    color: colorVars['--color-text-secondary'],
+    fontSize: '11px',
+    lineHeight: 1.45,
+  },
+  textArea: {
+    borderColor: 'transparent',
+    backgroundColor: 'var(--color-background-surface)',
   },
   preview: {
     padding: spacingVars['--spacing-3'],
@@ -54,13 +75,33 @@ const styles = stylex.create({
     borderInlineStartColor: colorVars['--color-border'],
     color: colorVars['--color-text-secondary'],
   },
-  questionNav: { display: 'flex', flexWrap: 'wrap', gap: spacingVars['--spacing-1'] },
-  reviewItem: {
+  reviewAnswer: {
+    display: 'grid',
+    width: '100%',
+    gap: spacingVars['--spacing-1'],
     paddingBlock: spacingVars['--spacing-2'],
-    borderBlockEndWidth: borderVars['--border-width'],
-    borderBlockEndStyle: 'solid',
-    borderBlockEndColor: colorVars['--color-border'],
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    color: colorVars['--color-text-secondary'],
+    textAlign: 'start',
+    cursor: 'pointer',
+    ':hover': { color: colorVars['--color-text-primary'] },
+    ':focus-visible': {
+      outlineWidth: '2px',
+      outlineStyle: 'solid',
+      outlineColor: colorVars['--color-accent'],
+      outlineOffset: '2px',
+    },
   },
+  reviewQuestion: { color: colorVars['--color-text-primary'] },
+  reviewItem: { paddingBlock: spacingVars['--spacing-2'] },
+  reviewNote: { marginTop: spacingVars['--spacing-2'] },
+  tabNav: { display: 'flex', flexWrap: 'wrap', gap: spacingVars['--spacing-1'] },
+  section: { maxWidth: 650, width: '100%' },
+  questionOptions: { gap: 0 },
+  questionPrompt: { marginBlockEnd: spacingVars['--spacing-2'] },
+  writeIn: { marginTop: spacingVars['--spacing-2'] },
+  review: { width: '100%' },
   actions: { justifyContent: 'space-between', flexWrap: 'wrap' },
 });
 
@@ -101,7 +142,9 @@ export function QuestionnaireCard({
   const [customDrafts, setCustomDrafts] = useState<Record<number, string>>(
     () => draft?.customDrafts ?? {},
   );
-  const [notes, setNotes] = useState<Record<number, string>>(() => draft?.notes ?? {});
+  const [customSelected, setCustomSelected] = useState<Record<number, boolean>>(
+    () => draft?.customSelected ?? {},
+  );
   const [globalNote, setGlobalNote] = useState(() => draft?.globalNote ?? '');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -115,7 +158,7 @@ export function QuestionnaireCard({
     onDraftChange(request.requestId, {
       answers,
       customDrafts,
-      notes,
+      customSelected,
       globalNote,
       tab,
       ...change,
@@ -125,11 +168,6 @@ export function QuestionnaireCard({
   function goToTab(next: number): void {
     setTab(next);
     saveDraft({ tab: next });
-  }
-
-  function answerWithNotes(index: number, next: QuestionnaireAnswer): QuestionnaireAnswer {
-    const note = notes[index]?.trim();
-    return note ? { ...next, notes: note } : next;
   }
 
   function chooseOption(index: number, label: string): void {
@@ -154,75 +192,80 @@ export function QuestionnaireCard({
         )
         .filter((item): item is string => item !== undefined)
         .join('\n\n');
-      const updated = {
+      const updated: Record<number, QuestionnaireAnswer> = {
         ...answers,
-        [index]: answerWithNotes(index, {
+        [index]: {
           questionIndex: index,
           question: currentQuestion.question,
           kind: 'multi',
           answer: null,
           selected: next,
           ...(preview ? { preview } : {}),
-        }),
+        },
       };
+      const updatedCustomSelected = { ...customSelected, [index]: false };
       setAnswers(updated);
-      saveDraft({ answers: updated });
+      setCustomSelected(updatedCustomSelected);
+      saveDraft({ answers: updated, customSelected: updatedCustomSelected });
       return;
     }
     const option = currentQuestion.options.find((item) => item.label === label);
     if (!option) return;
-    const updated = {
+    const updated: Record<number, QuestionnaireAnswer> = {
       ...answers,
-      [index]: answerWithNotes(index, {
+      [index]: {
         questionIndex: index,
         question: currentQuestion.question,
         kind: 'option',
         answer: option.label,
         ...(option.preview ? { preview: option.preview } : {}),
-      }),
+      },
     };
+    const updatedCustomSelected = { ...customSelected, [index]: false };
     setAnswers(updated);
-    saveDraft({ answers: updated });
+    setCustomSelected(updatedCustomSelected);
+    saveDraft({ answers: updated, customSelected: updatedCustomSelected });
   }
 
   function chooseCustom(index: number): void {
     const currentQuestion = request.questions[index];
+    if (!currentQuestion) return;
+    const selected = !customSelected[index];
+    const updatedSelection = { ...customSelected, [index]: selected };
+    setCustomSelected(updatedSelection);
     const text = customDrafts[index]?.trim();
-    if (!currentQuestion || !text) return;
-    const updated = {
-      ...answers,
-      [index]: answerWithNotes(index, {
+    const updatedAnswers = { ...answers };
+    if (selected && text) {
+      updatedAnswers[index] = {
         questionIndex: index,
         question: currentQuestion.question,
         kind: 'custom',
         answer: customDrafts[index] ?? '',
-      }),
-    };
-    setAnswers(updated);
-    saveDraft({ answers: updated });
+      };
+    } else if (!selected || !text) {
+      delete updatedAnswers[index];
+    }
+    setAnswers(updatedAnswers);
+    saveDraft({ customSelected: updatedSelection, answers: updatedAnswers });
   }
 
   function updateCustomDraft(index: number, value: string): void {
     const updated = { ...customDrafts, [index]: value };
     setCustomDrafts(updated);
-    saveDraft({ customDrafts: updated });
-  }
-
-  function updateNote(index: number, value: string): void {
-    const updatedNotes = { ...notes, [index]: value };
-    setNotes(updatedNotes);
-    const previous = answers[index];
-    if (previous) {
-      const { notes: _notes, ...rest } = previous;
-      const updatedAnswers = {
-        ...answers,
-        [index]: value.trim() ? { ...rest, notes: value } : rest,
+    const currentQuestion = request.questions[index];
+    const updatedAnswers = { ...answers };
+    if (customSelected[index] && currentQuestion && value.trim()) {
+      updatedAnswers[index] = {
+        questionIndex: index,
+        question: currentQuestion.question,
+        kind: 'custom',
+        answer: value,
       };
-      setAnswers(updatedAnswers);
-      saveDraft({ notes: updatedNotes, answers: updatedAnswers });
-    } else {
-      saveDraft({ notes: updatedNotes });
+    } else if (customSelected[index]) {
+      delete updatedAnswers[index];
     }
+    setAnswers(updatedAnswers);
+    saveDraft({ customDrafts: updated, answers: updatedAnswers });
   }
 
   function updateGlobalNote(value: string): void {
@@ -276,30 +319,35 @@ export function QuestionnaireCard({
             variant="info"
           />
         </HStack>
-        <nav aria-label="Question steps" {...stylex.props(styles.questionNav)}>
+        <nav aria-label="Question steps" {...stylex.props(styles.tabNav)}>
           {request.questions.map((item, index) => (
             <Button
               key={`${index}:${item.header}`}
               label={item.header}
               size="sm"
-              variant={tab === index ? 'primary' : 'secondary'}
+              variant={tab === index ? 'primary' : 'ghost'}
               onClick={() => goToTab(index)}
             />
           ))}
           <Button
             label="Review"
             size="sm"
-            variant={reviewing ? 'primary' : 'secondary'}
+            variant={reviewing ? 'primary' : 'ghost'}
             onClick={() => goToTab(reviewTab)}
           />
         </nav>
 
         {question ? (
-          <VStack gap={2}>
+          <VStack gap={2} xstyle={styles.section}>
             <Text type="body" weight="medium">
               {question.question}
             </Text>
-            <VStack gap={1}>
+            <Text type="supporting" color="secondary">
+              {question.multiSelect
+                ? 'Choose any that fit.'
+                : 'Choose one, or write your own answer.'}
+            </Text>
+            <VStack gap={0}>
               {question.options.map((option) => {
                 const selected = selectedFor(answer, option.label);
                 return (
@@ -307,16 +355,17 @@ export function QuestionnaireCard({
                     key={option.label}
                     type="button"
                     aria-pressed={selected}
-                    {...stylex.props(styles.option, selected && styles.optionSelected)}
+                    {...stylex.props(styles.option)}
                     onClick={() => chooseOption(tab, option.label)}
                   >
-                    <Text type="label" weight="medium">
-                      {option.label}
-                      {selected ? ' · Selected' : ''}
-                    </Text>
-                    <Text type="supporting" color="secondary">
-                      {option.description}
-                    </Text>
+                    <span
+                      aria-hidden="true"
+                      {...stylex.props(styles.optionMark, selected && styles.optionMarkSelected)}
+                    />
+                    <span {...stylex.props(styles.optionCopy)}>
+                      <span {...stylex.props(styles.optionTitle)}>{option.label}</span>
+                      <span {...stylex.props(styles.optionDescription)}>{option.description}</span>
+                    </span>
                   </button>
                 );
               })}
@@ -326,61 +375,64 @@ export function QuestionnaireCard({
                 <Markdown>{answer.preview}</Markdown>
               </div>
             ) : null}
-            <VStack gap={1}>
-              <TextArea
-                label="Your own answer"
-                value={customDrafts[tab] ?? ''}
-                onChange={(value) => updateCustomDraft(tab, value)}
-                rows={3}
-                maxLength={MAX_ANSWER_LENGTH}
+            <button
+              type="button"
+              aria-pressed={customSelected[tab] ?? false}
+              {...stylex.props(styles.option)}
+              onClick={() => chooseCustom(tab)}
+            >
+              <span
+                aria-hidden="true"
+                {...stylex.props(
+                  styles.optionMark,
+                  customSelected[tab] && styles.optionMarkSelected,
+                )}
               />
-              <Button
-                label="Use written answer"
-                size="sm"
-                variant={answer?.kind === 'custom' ? 'primary' : 'secondary'}
-                isDisabled={!customDrafts[tab]?.trim()}
-                onClick={() => chooseCustom(tab)}
-              />
-            </VStack>
-            <TextArea
-              label="Note on this answer"
-              value={notes[tab] ?? ''}
-              onChange={(value) => updateNote(tab, value)}
-              rows={2}
-              maxLength={MAX_ANSWER_LENGTH}
-            />
+              <span {...stylex.props(styles.optionTitle)}>Your own answer</span>
+            </button>
+            {customSelected[tab] ? (
+              <div {...stylex.props(styles.writeIn)}>
+                <TextArea
+                  label="Your own answer"
+                  isLabelHidden
+                  placeholder="Type your answer…"
+                  xstyle={styles.textArea}
+                  value={customDrafts[tab] ?? ''}
+                  onChange={(value) => updateCustomDraft(tab, value)}
+                  rows={2}
+                  maxLength={MAX_ANSWER_LENGTH}
+                />
+              </div>
+            ) : null}
           </VStack>
         ) : (
-          <VStack gap={2}>
+          <VStack gap={2} xstyle={styles.review}>
             <Text type="body" weight="medium">
               Review your answers
             </Text>
             {request.questions.map((item, index) => (
-              <div key={`${index}:${item.question}`} {...stylex.props(styles.reviewItem)}>
-                <Text type="label" weight="medium">
-                  {item.question}
-                </Text>
-                <Text type="supporting" color="secondary">
+              <button
+                key={`${index}:${item.question}`}
+                type="button"
+                {...stylex.props(styles.reviewAnswer, styles.reviewItem)}
+                onClick={() => goToTab(index)}
+              >
+                <span {...stylex.props(styles.reviewQuestion)}>{item.question}</span>
+                <span>
                   {answers[index]
                     ? answers[index]?.kind === 'multi'
                       ? answers[index]?.selected?.join(', ')
                       : answers[index]?.answer
-                    : 'Not answered'}
-                </Text>
-                {notes[index] ? (
-                  <Text type="supporting" color="secondary">
-                    Note: {notes[index]}
-                  </Text>
-                ) : null}
-              </div>
+                    : customSelected[index]
+                      ? customDrafts[index]?.trim() || 'Your own answer · not answered'
+                      : 'Not answered'}
+                </span>
+              </button>
             ))}
-            {unanswered > 0 ? (
-              <Text type="supporting" color="secondary">
-                {unanswered} unanswered. You can submit partial answers.
-              </Text>
-            ) : null}
             <TextArea
-              label="Note for the whole questionnaire"
+              label="Anything else for Kira?"
+              isOptional
+              xstyle={styles.textArea}
               value={globalNote}
               onChange={updateGlobalNote}
               rows={3}
@@ -395,21 +447,11 @@ export function QuestionnaireCard({
           </Text>
         ) : null}
         <HStack gap={2} xstyle={styles.actions}>
-          <HStack gap={2}>
-            {!reviewing && tab > 0 ? (
-              <Button label="Previous" variant="secondary" onClick={() => goToTab(tab - 1)} />
-            ) : null}
-            {!reviewing && tab < reviewTab - 1 ? (
-              <Button label="Next" variant="secondary" onClick={() => goToTab(tab + 1)} />
-            ) : null}
-            {!reviewing ? (
-              <Button
-                label="Review answers"
-                variant="secondary"
-                onClick={() => goToTab(reviewTab)}
-              />
-            ) : null}
-          </HStack>
+          <Text type="supporting" color="secondary">
+            {unanswered > 0
+              ? `${unanswered} unanswered · partial answers are okay`
+              : 'All questions answered'}
+          </Text>
           <HStack gap={2}>
             <Button
               label="Cancel"

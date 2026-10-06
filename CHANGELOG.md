@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Ask user questionnaires use compact question tabs with Review last, reveal the write-in field only when selected, and collect an optional note once in Review.
+
 ### Fixed
 
 - A GitHub App install link expires an hour after Kira hands it out, and uninstalling the App on GitHub removes its connection, so Settings cannot keep a host GitHub no longer backs.
