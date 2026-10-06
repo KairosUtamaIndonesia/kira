@@ -508,7 +508,12 @@ function RunDetail({
           <VStack gap={2} xstyle={styles.activity}>
             {steps.map((part, index) =>
               part.type === 'work' ? (
-                <Work key={index} part={part} isWorking={working && index === steps.length - 1} />
+                <Work
+                  key={index}
+                  part={part}
+                  isWorking={working && index === steps.length - 1}
+                  isLive={working}
+                />
               ) : part.type === 'text' ? (
                 <Markdown key={index} density="compact">{part.text}</Markdown>
               ) : null,

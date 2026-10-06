@@ -78,18 +78,26 @@ const styles = stylex.create({
  * One step of Kira's work: what Kira thought, and what Kira ran because of it,
  * behind a single "Worked for" row.
  *
- * Open by default only while a tool in it is still running — a step read after
- * the fact is history, and stays out of the way of the answer that follows it;
- * a step read as it happens is the answer, for now, and stays in view.
+ * Open for the whole turn that wrote it — a step read as it happens is the
+ * answer, for now, and stays in view through its tools and the answer that
+ * follows them. It is put away once that turn settles, so a step read after the
+ * fact is history and stays out of the way; {@link TraceDisclosure} is keyed on
+ * `isLive` so it starts closed even if it was open while live.
  */
 export function Work({
   part,
   isWorking = false,
+  isLive = false,
 }: {
   part: Extract<ChatPart, { type: 'work' }>;
+  /** Whether this step is the one Kira is writing into right now. */
   isWorking?: boolean;
+  /** Whether the turn that wrote this step is still running. */
+  isLive?: boolean;
 }) {
-  const running = isWorking || part.calls.some((call) => call.status === 'running');
+  const someRunning = part.calls.some((call) => call.status === 'running');
+  const running = isWorking || someRunning;
+  const live = isLive || someRunning;
   const label = running
     ? 'Working…'
     : part.calls.length > 0
@@ -98,7 +106,10 @@ export function Work({
 
   return (
     <div {...stylex.props(styles.root)}>
-      <TraceDisclosure label={label} defaultIsOpen={running}>
+      {/* Remounting on `live` is what collapses a step when its turn settles:
+          the disclosure reads its default only at mount, so the change from live
+          to history has to arrive as a new one. */}
+      <TraceDisclosure key={live ? 'live' : 'history'} label={label} defaultIsOpen={live}>
         {part.reasoning !== null && (
           // Read as markdown, because that is what Kira thinks in: Kira's summaries
           // arrive bold and Kira's reasoning runs in lists, and the punctuation is

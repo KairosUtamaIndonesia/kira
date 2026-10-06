@@ -269,9 +269,10 @@
   reads as one step instead of four.
 - What she thought before acting or answering is shown too, behind the same step: a
   "Worked for" row when it ran anything, "Thought for a moment" when it was reasoning
-  alone. It opens on its own while something in it is still running, and stays out of
-  the way, collapsed, once it is history — click it to read the thinking, markdown and
-  all, and the tools that came from it.
+  alone. It opens on its own while the turn that wrote it is still running — through
+  the tools and the answer that follows them — and closes when that turn ends, so a
+  step read as history stays out of the way; click it to read the thinking, markdown
+  and all, and the tools that came from it.
 - A chat's row can be right-clicked: Archive takes it out of the sidebar and keeps
   everything it holds, and Delete asks first and takes the conversation and everything
   said in it with it. The folder it worked in is left where it is, and neither can be

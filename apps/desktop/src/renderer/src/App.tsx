@@ -97,7 +97,7 @@ import type {
 import { messagesShowingActions } from './lineActions';
 import { CompactionBoundary, type Boundary } from './compactionBoundary';
 import { Work } from './workTrace';
-import { workPartsByMessage } from './workPresentation';
+import { runningTurnMessages, workPartsByMessage } from './workPresentation';
 import { QuestionnaireCard, type QuestionnaireDraft } from './questionnaireCard';
 import { WorkSurface } from './work';
 import { WorkHome } from './workHome';
@@ -144,6 +144,7 @@ const PARKED_PANE: ComponentProps<typeof ChatPane> = {
   trailing: [],
   questionnaire: null,
   actionRows: new Set<string>(),
+  workingMessages: new Set<string>(),
   isRunning: false,
   error: null,
   onNew: NOTHING,
@@ -809,6 +810,16 @@ export default function App() {
   const actionRows = useMemo(() => messagesShowingActions(drawn.messages), [drawn]);
 
   /**
+   * Which messages the running turn is writing into. A step stays open for the
+   * whole turn — through its tools and through the answer that follows — rather
+   * than closing the moment its last tool returns.
+   */
+  const workingMessages = useMemo(
+    () => runningTurnMessages(drawn.messages, isRunning),
+    [drawn, isRunning],
+  );
+
+  /**
    * Do something to the stored surface, and read it back. A failure is shown in
    * the chat it happened to, which is not always the chat on screen — a row can
    * be acted on while another chat is being read. A success says nothing, because
@@ -1198,6 +1209,7 @@ export default function App() {
     partsOf,
     trailing: drawn.trailing,
     actionRows,
+    workingMessages,
     questionnaire,
     questionnaireDraft: questionnaire ? questionnaireDrafts[questionnaire.requestId] : undefined,
     onQuestionnaireDraftChange: (requestId, draft) =>
@@ -1617,6 +1629,7 @@ function ChatPane({
   questionnaireDraft,
   onQuestionnaireDraftChange,
   actionRows,
+  workingMessages,
   isRunning,
   error,
   onNew,
@@ -1668,6 +1681,8 @@ function ChatPane({
   trailing: readonly ChatPart[];
   /** Messages that draw the row of actions under them, by id. */
   actionRows: Set<string>;
+  /** The messages the running turn is writing into, by id. */
+  workingMessages: ReadonlySet<string>;
   isRunning: boolean;
   error: string | null;
   /** What this person has used of their allowance this month, or no reading. */
@@ -1756,6 +1771,7 @@ function ChatPane({
                     messageId={message.id}
                     parts={parts}
                     isWorking={isRunning && message.isLast}
+                    isLive={workingMessages.has(message.id)}
                     isEditing={message.composer.isEditing}
                     showsActions={showsActions && !parts.some((part) => part.type === 'shell')}
                     onFork={onFork}
@@ -1873,6 +1889,7 @@ function Line({
   isKira,
   messageId,
   isWorking,
+  isLive,
   parts,
   isEditing,
   showsActions,
@@ -1882,6 +1899,7 @@ function Line({
   isKira: boolean;
   messageId: string;
   isWorking: boolean;
+  isLive: boolean;
   parts: readonly ChatPart[];
   isEditing: boolean;
   /** Whether this message is where its turn's branch picker and actions go. */
@@ -1912,7 +1930,7 @@ function Line({
 
       {said.length > 0 &&
         (isLocalCommand ? (
-          <MessageBody parts={said} isKira={false} isWorking={isWorking} />
+          <MessageBody parts={said} isKira={false} isWorking={isWorking} isLive={isLive} />
         ) : (
           <ChatMessage sender={isKira ? 'assistant' : 'user'}>
             {/* Kira's answer is flat and fills the reading column; a question keeps its bubble. */}
@@ -1920,7 +1938,7 @@ function Line({
               variant={isKira ? 'ghost' : 'filled'}
               width={isKira ? '100%' : undefined}
             >
-              <MessageBody parts={said} isKira={isKira} isWorking={isWorking} />
+              <MessageBody parts={said} isKira={isKira} isWorking={isWorking} isLive={isLive} />
             </ChatMessageBubble>
           </ChatMessage>
         ))}
@@ -2130,10 +2148,12 @@ function MessageBody({
   parts,
   isKira,
   isWorking,
+  isLive,
 }: {
   parts: readonly SaidPart[];
   isKira: boolean;
   isWorking: boolean;
+  isLive: boolean;
 }) {
   return (
     <>
@@ -2149,7 +2169,7 @@ function MessageBody({
         ) : part.type === 'shell' ? (
           <ShellCommandTranscript key={part.run.id} run={part.run} />
         ) : (
-          <Work key={index} part={part} isWorking={isWorking} />
+          <Work key={index} part={part} isWorking={isWorking} isLive={isLive} />
         ),
       )}
     </>

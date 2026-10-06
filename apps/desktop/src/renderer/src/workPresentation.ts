@@ -1,6 +1,27 @@
 import type { ChatMessage, ChatPart } from '../../preload/bridge';
 
 /**
+ * Which drawn messages the running turn is writing into, by id.
+ *
+ * A turn is everything after the last thing the person said. A step of work
+ * belongs to all of it — through its tools and through the answer that follows
+ * them — because the turn has not finished until the answer has; a step that
+ * stopped being live when its last tool returned would put itself away mid-turn.
+ */
+export function runningTurnMessages(
+  messages: readonly ChatMessage[],
+  isRunning: boolean,
+): Set<string> {
+  if (!isRunning) return new Set();
+
+  const lastUser = messages.reduce(
+    (last, message, index) => (message.role === 'you' ? index : last),
+    -1,
+  );
+  return new Set(messages.slice(lastUser + 1).map((message) => message.id));
+}
+
+/**
  * Collect the reasoning and tools before an assistant starts its answer into
  * one visible disclosure. Keep the underlying message tree untouched.
  */
