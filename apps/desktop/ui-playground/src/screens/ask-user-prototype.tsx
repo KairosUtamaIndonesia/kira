@@ -1,6 +1,7 @@
 // Three chat-native Ask user layouts for the same questionnaire, switchable with ?variant=A|B|C.
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useState, type KeyboardEvent } from 'react';
+import { TextArea } from '@astryxdesign/core/TextArea';
 
 type Variant = 'A' | 'B' | 'C';
 type Answer = string | string[];
@@ -147,35 +148,26 @@ export function AskUserPrototype() {
             </button>
           ))}
         </div>
-        <label className="ask-field">
-          <span>Your own answer</span>
-          <textarea
-            aria-label="Your own answer"
-            onChange={(event) =>
-              setCustomDrafts((drafts) => ({ ...drafts, [index]: event.target.value }))
-            }
-            placeholder="Write a different answer…"
-            rows={2}
+        <div className="ask-field">
+          <TextArea
+            label="Your own answer"
             value={customDrafts[index] ?? ''}
+            onChange={(value) => setCustomDrafts((drafts) => ({ ...drafts, [index]: value }))}
+            rows={2}
           />
-        </label>
+        </div>
         <button className="ask-text-action" onClick={() => useWrittenAnswer(index)} type="button">
           Use written answer
         </button>
-        <label className="ask-field ask-note-field">
-          <span>
-            Note on this answer <span className="optional-label">Optional</span>
-          </span>
-          <textarea
-            aria-label="Note on this answer"
-            onChange={(event) =>
-              setNotes((currentNotes) => ({ ...currentNotes, [index]: event.target.value }))
-            }
-            placeholder="Add context for Kira…"
-            rows={2}
+        <div className="ask-field ask-note-field">
+          <TextArea
+            label="Note on this answer"
             value={notes[index] ?? ''}
+            onChange={(value) => setNotes((currentNotes) => ({ ...currentNotes, [index]: value }))}
+            rows={2}
           />
-        </label>
+          <span className="optional-label">Optional</span>
+        </div>
       </>
     );
   }
@@ -207,18 +199,15 @@ export function AskUserPrototype() {
             still send partial answers.
           </p>
         ) : null}
-        <label className="ask-field">
-          <span>
-            Note for the whole questionnaire <span className="optional-label">Optional</span>
-          </span>
-          <textarea
-            aria-label="Note for the whole questionnaire"
-            onChange={(event) => setGlobalNote(event.target.value)}
-            placeholder="Anything else Kira should know?"
-            rows={2}
+        <div className="ask-field">
+          <TextArea
+            label="Note for the whole questionnaire"
             value={globalNote}
+            onChange={setGlobalNote}
+            rows={2}
           />
-        </label>
+          <span className="optional-label">Optional</span>
+        </div>
       </div>
     );
   }

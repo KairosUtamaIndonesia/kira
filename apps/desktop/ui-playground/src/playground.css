@@ -543,33 +543,7 @@ button {
   line-height: 1.45;
 }
 .ask-field {
-  display: grid;
-  gap: 5px;
   margin-top: 12px;
-}
-.ask-field > span:first-child {
-  font-size: 11px;
-  font-weight: 550;
-}
-.ask-field textarea {
-  width: 100%;
-  min-height: 40px;
-  resize: vertical;
-  padding: 8px 9px;
-  border: 1px solid var(--color-border);
-  border-radius: 4px;
-  background: var(--color-background-surface);
-  color: var(--color-text-primary);
-  font-size: 12px;
-  line-height: 1.45;
-}
-.ask-field textarea::placeholder {
-  color: var(--color-text-secondary);
-}
-.ask-field textarea:focus-visible {
-  border-color: var(--color-accent);
-  outline: 2px solid var(--color-accent);
-  outline-offset: 1px;
 }
 .optional-label {
   margin-left: 5px;
@@ -662,9 +636,6 @@ button {
 }
 .ask-question-group h4 {
   margin-bottom: 4px;
-}
-.ask-question-group .ask-field textarea {
-  min-height: 35px;
 }
 .ask-review {
   margin-top: 16px;
