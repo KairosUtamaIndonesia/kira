@@ -6,6 +6,7 @@ import * as stylex from '@stylexjs/stylex';
 
 type Variant = 'A' | 'B' | 'C';
 type Answer = string | string[];
+const CUSTOM_ANSWER = '__custom__';
 
 const variants: { id: Variant; name: string }[] = [
   { id: 'A', name: 'One at a time' },
@@ -60,11 +61,6 @@ function variantFromUrl(): Variant {
   return variants.find((variant) => variant.id === value)?.id ?? 'A';
 }
 
-function answerText(answer: Answer | undefined): string {
-  if (Array.isArray(answer)) return answer.join(', ');
-  return answer ?? 'Not answered';
-}
-
 export function AskUserPrototype() {
   const [variant, setVariant] = useState(variantFromUrl);
   const [questionIndex, setQuestionIndex] = useState(0);
@@ -75,7 +71,30 @@ export function AskUserPrototype() {
   const [reviewing, setReviewing] = useState(false);
   const [status, setStatus] = useState('');
 
-  const unanswered = questions.length - Object.keys(answers).length;
+  function customSelected(index: number): boolean {
+    const answer = answers[index];
+    return Array.isArray(answer) ? answer.includes(CUSTOM_ANSWER) : answer === CUSTOM_ANSWER;
+  }
+
+  function answerForDisplay(index: number): string {
+    const answer = answers[index];
+    if (Array.isArray(answer)) {
+      return answer
+        .map((item) => (item === CUSTOM_ANSWER ? customDrafts[index] || 'Your own answer' : item))
+        .join(', ');
+    }
+    if (answer === CUSTOM_ANSWER) return customDrafts[index] || 'Your own answer';
+    return answer ?? 'Not answered';
+  }
+
+  function isAnswered(index: number): boolean {
+    return (
+      answers[index] !== undefined && (!customSelected(index) || !!customDrafts[index]?.trim())
+    );
+  }
+
+  const answeredCount = questions.filter((_, index) => isAnswered(index)).length;
+  const unanswered = questions.length - answeredCount;
   const current = questions[questionIndex];
 
   function changeVariant(next: Variant) {
@@ -122,13 +141,6 @@ export function AskUserPrototype() {
     });
   }
 
-  function useWrittenAnswer(index: number) {
-    const answer = customDrafts[index]?.trim();
-    if (!answer) return;
-    setAnswers((previous) => ({ ...previous, [index]: answer }));
-    setStatus('');
-  }
-
   function answerControl(index: number) {
     const question = questions[index];
     if (!question) return null;
@@ -154,29 +166,31 @@ export function AskUserPrototype() {
               </span>
             </button>
           ))}
+          <button
+            aria-pressed={selected(CUSTOM_ANSWER)}
+            className={`ask-option${selected(CUSTOM_ANSWER) ? ' is-selected' : ''}`}
+            onClick={() => choose(index, CUSTOM_ANSWER)}
+            type="button"
+          >
+            <span className="ask-option-mark" aria-hidden="true" />
+            <span className="ask-option-copy">
+              <span className="ask-option-title">Your own answer</span>
+            </span>
+          </button>
         </div>
-        <div className="ask-field">
-          <TextArea
-            label="Your own answer"
-            xstyle={styles.textArea}
-            value={customDrafts[index] ?? ''}
-            onChange={(value) => setCustomDrafts((drafts) => ({ ...drafts, [index]: value }))}
-            rows={2}
-          />
-        </div>
-        <button className="ask-text-action" onClick={() => useWrittenAnswer(index)} type="button">
-          Use written answer
-        </button>
-        <div className="ask-field ask-note-field">
-          <TextArea
-            label="Note on this answer"
-            xstyle={styles.textArea}
-            value={notes[index] ?? ''}
-            onChange={(value) => setNotes((currentNotes) => ({ ...currentNotes, [index]: value }))}
-            rows={2}
-          />
-          <span className="optional-label">Optional</span>
-        </div>
+        {customSelected(index) ? (
+          <div className="ask-field">
+            <TextArea
+              label="Your own answer"
+              isLabelHidden
+              placeholder="Type your answer…"
+              xstyle={styles.textArea}
+              value={customDrafts[index] ?? ''}
+              onChange={(value) => setCustomDrafts((drafts) => ({ ...drafts, [index]: value }))}
+              rows={2}
+            />
+          </div>
+        ) : null}
       </>
     );
   }
@@ -186,21 +200,29 @@ export function AskUserPrototype() {
       <div className="ask-review">
         <h3>Review your answers</h3>
         {questions.map((question, index) => (
-          <button
-            className="ask-review-row"
-            key={question.header}
-            onClick={() => {
-              setQuestionIndex(index);
-              setReviewing(false);
-            }}
-            type="button"
-          >
+          <div className="ask-review-row" key={question.header}>
             <span className="ask-review-question">{question.prompt}</span>
-            <span className={answers[index] ? 'ask-review-answer' : 'ask-review-answer is-empty'}>
-              {answerText(answers[index])}
-            </span>
-            {notes[index] ? <span className="ask-review-note">Note: {notes[index]}</span> : null}
-          </button>
+            <button
+              className={isAnswered(index) ? 'ask-review-answer' : 'ask-review-answer is-empty'}
+              onClick={() => {
+                setQuestionIndex(index);
+                setReviewing(false);
+              }}
+              type="button"
+            >
+              {answerForDisplay(index)}
+            </button>
+            <TextArea
+              label={`Note on ${question.header.toLowerCase()}`}
+              isOptional
+              xstyle={styles.textArea}
+              value={notes[index] ?? ''}
+              onChange={(value) =>
+                setNotes((currentNotes) => ({ ...currentNotes, [index]: value }))
+              }
+              rows={2}
+            />
+          </div>
         ))}
         {unanswered ? (
           <p className="ask-partial-note">
@@ -211,12 +233,12 @@ export function AskUserPrototype() {
         <div className="ask-field">
           <TextArea
             label="Note for the whole questionnaire"
+            isOptional
             xstyle={styles.textArea}
             value={globalNote}
             onChange={setGlobalNote}
             rows={2}
           />
-          <span className="optional-label">Optional</span>
         </div>
       </div>
     );
@@ -225,7 +247,7 @@ export function AskUserPrototype() {
   function finish(action: 'sent' | 'cancelled') {
     setStatus(
       action === 'sent'
-        ? `Sent ${Object.keys(answers).length} answer${Object.keys(answers).length === 1 ? '' : 's'} to Kira · prototype only`
+        ? `Sent ${answeredCount} answer${answeredCount === 1 ? '' : 's'} to Kira · prototype only`
         : 'Cancelled · prototype only',
     );
   }
@@ -239,7 +261,7 @@ export function AskUserPrototype() {
             : 'All questions answered'}
         </span>
         <div className="ask-action-buttons">
-          {reviewing ? (
+          {variant === 'A' ? null : reviewing ? (
             <button className="ask-secondary" onClick={() => setReviewing(false)} type="button">
               Back to questions
             </button>
@@ -263,24 +285,31 @@ export function AskUserPrototype() {
     return (
       <section aria-label="One question at a time" className="ask-variant ask-step">
         <div className="ask-step-head">
-          <span>
-            Question {questionIndex + 1} of {questions.length}
-          </span>
-          <div
-            aria-label={`${questionIndex + 1} of ${questions.length} questions`}
-            className="ask-progress"
-          >
+          <nav aria-label="Question navigation" className="ask-tabs">
             {questions.map((question, index) => (
               <button
-                aria-label={`Go to ${question.header}`}
-                aria-current={index === questionIndex ? 'step' : undefined}
-                className={answers[index] ? 'is-answered' : ''}
+                aria-current={!reviewing && index === questionIndex ? 'step' : undefined}
+                className="ask-tab"
                 key={question.header}
-                onClick={() => setQuestionIndex(index)}
+                onClick={() => {
+                  setQuestionIndex(index);
+                  setReviewing(false);
+                }}
                 type="button"
-              />
+              >
+                {question.header}
+                {isAnswered(index) ? <span aria-hidden="true" className="ask-tab-dot" /> : null}
+              </button>
             ))}
-          </div>
+            <button
+              aria-current={reviewing ? 'step' : undefined}
+              className="ask-tab"
+              onClick={() => setReviewing(true)}
+              type="button"
+            >
+              Review
+            </button>
+          </nav>
         </div>
         {reviewing ? (
           reviewContent()
@@ -297,26 +326,6 @@ export function AskUserPrototype() {
             {answerControl(questionIndex)}
           </div>
         )}
-        {!reviewing ? (
-          <div className="ask-step-nav">
-            <button
-              className="ask-secondary"
-              disabled={questionIndex === 0}
-              onClick={() => setQuestionIndex((index) => Math.max(0, index - 1))}
-              type="button"
-            >
-              Previous
-            </button>
-            <button
-              className="ask-secondary"
-              disabled={questionIndex === questions.length - 1}
-              onClick={() => setQuestionIndex((index) => Math.min(questions.length - 1, index + 1))}
-              type="button"
-            >
-              Next question
-            </button>
-          </div>
-        ) : null}
         {footer()}
       </section>
     );
@@ -337,7 +346,7 @@ export function AskUserPrototype() {
               <fieldset className="ask-question-group" key={question.header}>
                 <legend>
                   <span>{question.header}</span>
-                  <span>{answers[index] ? 'Answered' : 'Not answered'}</span>
+                  <span>{isAnswered(index) ? 'Answered' : 'Not answered'}</span>
                 </legend>
                 <h4>{question.prompt}</h4>
                 {answerControl(index)}
@@ -371,11 +380,11 @@ export function AskUserPrototype() {
                   K
                 </span>
                 <span>{question.prompt}</span>
-                <span className="ask-turn-state">{answers[index] ? 'Answered' : 'Waiting'}</span>
+                <span className="ask-turn-state">{isAnswered(index) ? 'Answered' : 'Waiting'}</span>
               </button>
-              {answers[index] ? (
+              {isAnswered(index) ? (
                 <div className="ask-user-reply">
-                  <span>{answerText(answers[index])}</span>
+                  <span>{answerForDisplay(index)}</span>
                   {notes[index] ? <small>{notes[index]}</small> : null}
                 </div>
               ) : null}
@@ -422,7 +431,7 @@ export function AskUserPrototype() {
           <ul>
             {questions.map((question, index) => (
               <li key={question.header}>
-                <strong>{question.header}:</strong> {answerText(answers[index])}
+                <strong>{question.header}:</strong> {answerForDisplay(index)}
                 {customDrafts[index] ? <span> · written draft: {customDrafts[index]}</span> : null}
                 {notes[index] ? <span> · note: {notes[index]}</span> : null}
               </li>
@@ -431,8 +440,7 @@ export function AskUserPrototype() {
               <strong>Questionnaire note:</strong> {globalNote || 'None'}
             </li>
             <li>
-              <strong>Progress:</strong> {Object.keys(answers).length} answered, {unanswered}{' '}
-              unanswered
+              <strong>Progress:</strong> {answeredCount} answered, {unanswered} unanswered
             </li>
           </ul>
         </details>

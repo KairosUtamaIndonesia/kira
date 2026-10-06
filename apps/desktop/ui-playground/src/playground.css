@@ -434,7 +434,6 @@ button {
   line-height: 1.45;
 }
 .ask-step-head,
-.ask-step-nav,
 .ask-actions,
 .ask-action-buttons {
   display: flex;
@@ -445,22 +444,35 @@ button {
   color: var(--color-text-secondary);
   font-size: 11px;
 }
-.ask-progress {
+.ask-tabs {
   display: flex;
-  gap: 5px;
+  gap: 3px;
+  border-bottom: 1px solid var(--color-border);
 }
-.ask-progress button {
-  width: 28px;
-  height: 4px;
-  padding: 0;
+.ask-tab {
+  min-height: 32px;
+  padding: 5px 10px;
   border: 0;
-  border-radius: 2px;
-  background: var(--color-border);
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  cursor: pointer;
 }
-.ask-progress button.is-answered {
+.ask-tab[aria-current='step'] {
+  border-bottom-color: var(--color-accent);
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+.ask-tab-dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin: 0 0 2px 5px;
+  border-radius: 50%;
   background: var(--color-accent);
 }
-.ask-progress button[aria-current='step'] {
+.ask-tab:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
@@ -504,10 +516,9 @@ button {
 .ask-secondary:focus-visible,
 .ask-cancel:focus-visible,
 .ask-primary:focus-visible,
-.ask-text-action:focus-visible,
 .ask-transcript-question:focus-visible,
 .ask-variant-switcher button:focus-visible,
-.ask-review-row:focus-visible {
+.ask-review-answer:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
@@ -544,30 +555,6 @@ button {
 }
 .ask-field {
   margin-top: 12px;
-}
-.optional-label {
-  margin-left: 5px;
-  color: var(--color-text-secondary);
-  font-weight: 400;
-}
-.ask-text-action {
-  margin-top: 6px;
-  padding: 3px 0;
-  border: 0;
-  background: transparent;
-  color: var(--color-text-secondary);
-  font-size: 11px;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  cursor: pointer;
-}
-.ask-note-field {
-  margin-top: 12px;
-}
-.ask-step-nav {
-  justify-content: space-between;
-  max-width: 650px;
-  margin-top: 14px;
 }
 .ask-secondary,
 .ask-cancel,
@@ -652,6 +639,13 @@ button {
   border-bottom: 1px solid var(--color-border);
   background: transparent;
   color: inherit;
+  text-align: left;
+}
+.ask-review-answer {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: transparent;
   text-align: left;
   cursor: pointer;
 }
