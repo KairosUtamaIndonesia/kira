@@ -2,6 +2,7 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useState, type KeyboardEvent } from 'react';
 import { TextArea } from '@astryxdesign/core/TextArea';
+import * as stylex from '@stylexjs/stylex';
 
 type Variant = 'A' | 'B' | 'C';
 type Answer = string | string[];
@@ -47,6 +48,12 @@ const questions = [
     ],
   },
 ];
+
+const styles = stylex.create({
+  textArea: {
+    borderColor: 'transparent',
+  },
+});
 
 function variantFromUrl(): Variant {
   const value = new URLSearchParams(window.location.search).get('variant');
@@ -151,6 +158,7 @@ export function AskUserPrototype() {
         <div className="ask-field">
           <TextArea
             label="Your own answer"
+            xstyle={styles.textArea}
             value={customDrafts[index] ?? ''}
             onChange={(value) => setCustomDrafts((drafts) => ({ ...drafts, [index]: value }))}
             rows={2}
@@ -162,6 +170,7 @@ export function AskUserPrototype() {
         <div className="ask-field ask-note-field">
           <TextArea
             label="Note on this answer"
+            xstyle={styles.textArea}
             value={notes[index] ?? ''}
             onChange={(value) => setNotes((currentNotes) => ({ ...currentNotes, [index]: value }))}
             rows={2}
@@ -202,6 +211,7 @@ export function AskUserPrototype() {
         <div className="ask-field">
           <TextArea
             label="Note for the whole questionnaire"
+            xstyle={styles.textArea}
             value={globalNote}
             onChange={setGlobalNote}
             rows={2}
