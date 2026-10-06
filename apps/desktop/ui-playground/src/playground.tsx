@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { AskUserPrototype } from './screens/ask-user-prototype';
 import { ChatPreview } from './screens/chat-preview';
 
 const experiments = [
@@ -8,11 +9,30 @@ const experiments = [
     description: 'A starting point for exploring the chat layout and common states.',
     render: () => <ChatPreview />,
   },
+  {
+    id: 'ask-user',
+    name: 'Ask user tool',
+    description: 'Compare ways to answer Kira’s in-chat questions.',
+    render: () => <AskUserPrototype />,
+  },
 ];
 
 export function Playground() {
-  const [selectedId, setSelectedId] = useState(experiments[0]?.id ?? null);
+  const [selectedId, setSelectedId] = useState(() => {
+    const requested = new URLSearchParams(window.location.search).get('experiment');
+    return experiments.some((experiment) => experiment.id === requested)
+      ? requested
+      : (experiments[0]?.id ?? null);
+  });
   const selected = experiments.find((experiment) => experiment.id === selectedId);
+
+  function openExperiment(id: string) {
+    setSelectedId(id);
+    const url = new URL(window.location.href);
+    url.searchParams.set('experiment', id);
+    if (id !== 'ask-user') url.searchParams.delete('variant');
+    window.history.replaceState(null, '', url);
+  }
 
   return (
     <main className="playground">
@@ -33,7 +53,7 @@ export function Playground() {
               aria-current={experiment.id === selectedId ? 'page' : undefined}
               className="experiment-link"
               key={experiment.id}
-              onClick={() => setSelectedId(experiment.id)}
+              onClick={() => openExperiment(experiment.id)}
               type="button"
             >
               <span>{experiment.name}</span>
